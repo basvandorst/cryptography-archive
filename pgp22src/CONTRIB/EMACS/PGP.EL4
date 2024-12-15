@@ -1,0 +1,229 @@
+Date: Thu, 25 Feb 93 22:39:33 -0800
+Message-Id: <9302260636.AA23549@meceng.coe.northeastern.edu>
+From: ratinox@meceng.coe.northeastern.edu (Stainless Steel Rat)
+Subject: GNU Emacs front-end for PGP
+
+This is my first mostly-working PGP front-end for GNU Emacs. It works in
+Rmail, and should work in VM. I don't recommend using it with mh-e due to
+the radically different method of dealing with files and buffers (ie,
+decrypted buffers won't be saved). It doesn't have any of the niceties
+installed yet; I've been going for 36 hours now, and I need some sleep.
+
+The known problems are documented; the unknown ones I want to hear about.
+
+The decryption code could be better, except that I haven't gotten the
+process filter to work the way I want; this brute-force version works, if
+barely.
+
+;;; -*-Emacs-Lisp-*-
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; File:         pgp.el v 1.0
+;;; Description:  PGP Public Key system front-end
+;;; Author:       Richard Pieri, ratinox@meceng.coe.northeastern.edu
+;;; Created:      Fri Dec 25 12:25:42 1992
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Caveat: it is inherently insecure to use PGP or any other encryption
+;;; system on a multi-user system. There are just too many ways for someone
+;;; to spy on what you are doing. It is highly recommended that you keep
+;;; your private keys (secring.pgp) on write-protected mountable floppies
+;;; and you keep these disks in a secure place.
+;;;
+;;; Additionally, the distributed PGP 2.1 code won't use the PGPPASS
+;;; environment variable. The "#ifndef UNIX" on line 423 of pgp.c must be
+;;; changed to "#ifdef UNIX"; this may break PGP on other platforms (in fact
+;;; I can pretty much guarantee it).
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Known Bugs:
+;;; + There is no checking to see if you have entered an invalid pass phrase
+;;;   in pgp-decrypt-message. If you do, then everything will seem to freeze
+;;;   as PGP awaits a valid pass phrase.
+;;; + The encryption/decryption functions send all standard error output to
+;;;   /dev/null: you never get to see any of the informational messages.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; History:
+;;; Stainless Steel Rat, Feb 25, 1993: rewrote the decryption code based on
+;;;         suggestions and code written by Robert Anderson
+;;;         <bs891@cleveland.Freenet.Edu>.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; This is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation. 
+
+;; This software is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+;; GNU General Public License for more details.
+
+;; For a copy of the GNU General Public License write to
+;; the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Installation:
+;;;
+;;; Edit pgp-program to point to the executable for PGP on your system. Then
+;;; byte-compile this file, put it in your load-path. Finally, put the command
+;;; (load "pgp") in your .emacs file. Enjoy.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Variables
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defvar pgp-program "/usr/local/bin/pgp"
+  "Path to PGP program.")
+
+(defvar pgp-path (getenv "PGPPATH")
+  "This should match your PGPPATH environment variable.")
+
+(defvar pgp-temp (concat pgp-path "/pgptemp.pgp")
+  "Scratch file used by pgp -f.")
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Functions
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; This still needs a bit of work because it won't work as a filter.
+;;; At least I haven't figured out how to make it works as a filter...
+(defun pgp-insert-public-key-block ()
+  "Insert your PGP Public Key Block at point."
+  (interactive)
+  (save-window-excursion
+    ;; delete temp files
+    (if (file-exists-p pgp-temp)
+	(delete-file pgp-temp))
+    (if (file-exists-p (concat pgp-path "/pgptemp.asc"))
+	(delete-file (concat pgp-path "/pgptemp.asc")))
+    ;; extract key into temp file
+    (shell-command (concat pgp-program " -kxa $USER " pgp-temp))
+    ;; and insert into the current buffer at point
+    (insert-file (concat pgp-path "/pgptemp.asc"))
+    ))
+
+(defun pgp-encrypt-message (userid)
+  "Encrypt from mail-header-separator to (point-max), replacing clear text
+with cyphertext and the Public Key message delimiters.
+
+Note that this function is inherently flawed as you will never see any of
+PGP's informational messages."
+  (interactive "sRecipient's userid: ")
+  (save-window-excursion
+    (save-excursion
+      ;; set region between mail-header-separator and the end of the buffer
+      (goto-char (point-min))
+      (search-forward mail-header-separator)
+      (forward-char 1)
+      (let ((start (point))
+	    (end (point-max)))
+	;; and encypher it
+	(shell-command-on-region
+	 start end (concat pgp-program " -fea " userid " 2>/dev/null") t))
+      )))
+
+(defun pgp-decrypt-message ()
+  "Decrypt the PGP message between the BEGIN/END PGP MESSAGE delimiters,
+replacing cyphertext with clear text in the current buffer.
+
+Note that this function is inherently flawed as you will never see any of
+PGP's informational messages.
+
+Note that this function may be a security hole. If a pass phrase is in
+memory when GNU Emacs crashes, it will appear in the core file. Anyone with
+a half-decent grasp of hash tables will be able to extract your pass phrase
+from the core file."
+  (interactive)
+  (save-window-excursion
+    (save-excursion
+      ;; delete temp file
+      (if (file-exists-p pgp-temp)
+	  (delete-file pgp-temp))
+      ;; get pass phrase and put it into the environment list
+      (let ((passphrase (pgp-read-passwd "Enter pass phrase: ")))
+	(pgp-set-passphrase passphrase)
+	;; save buffer-read-only status, and make the buffer writable
+	(let ((buffer-status buffer-read-only))
+	  ;; set a region around the PGP message and decypher it
+	  (setq buffer-read-only nil)
+	  (goto-char (point-min))
+	  (search-forward "-----BEGIN PGP MESSAGE-----")
+	  (beginning-of-line)
+	  (push-mark)
+	  (search-forward "-----END PGP MESSAGE-----")
+	  (forward-char 1)
+	  (shell-command-on-region
+	   (point) (mark) (concat pgp-program " -f 2>/dev/null") t)
+	  ;; clear the pass phrase from memory and restore buffer status
+	  (pgp-clear-passphrase)
+	  (setq buffer-read-only buffer-status))
+	))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Password support. Some of this is blatantly taken from ange-ftp.el
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defun pgp-read-passwd (prompt &optional default)
+  "Read a password from the user. Echos a . for each character typed.
+End with RET, LFD, or ESC. DEL or C-h rubs out.  ^U kills line.
+Optional DEFAULT is password to start with."
+  (let ((pass (if default default ""))
+	(c 0)
+	(echo-keystrokes 0)
+	(cursor-in-echo-area t))
+    (while (and (/= c ?\r) (/= c ?\n) (/= c ?\e))
+      (message "%s%s"
+	       prompt
+	       (make-string (length pass) ?.))
+      (setq c (read-char))
+      (if (= c ?\C-u)
+	  (setq pass "")
+	(if (and (/= c ?\b) (/= c ?\177))
+	    (setq pass (concat pass (char-to-string c)))
+	  (if (> (length pass) 0)
+	      (setq pass (substring pass 0 -1))))))
+    (pgp-repaint-minibuffer)
+    (substring pass 0 -1)))
+
+(defun pgp-repaint-minibuffer ()
+  "Gross hack to set minibuf_message = 0, so that the contents of the
+minibuffer will show."
+  (if (eq (selected-window) (minibuffer-window))
+      (if (fboundp 'allocate-event)
+	  ;; lemacs
+	  (let ((unread-command-event (character-to-event ?\C-m
+							  (allocate-event)))
+		(enable-recursive-minibuffers t))
+	    (read-from-minibuffer "" nil pgp-tmp-keymap nil))
+	;; v18 GNU Emacs
+	(let ((unread-command-char ?\C-m)
+	      (enable-recursive-minibuffers t))
+	  (read-from-minibuffer "" nil pgp-tmp-keymap nil)))))
+
+(defun stripstrlist (l str)
+  "Strip from list-of-strings L any string which matches STR."
+  (cond (l (cond ((string-match str (car l))
+		  (stripstrlist (cdr l) str))
+		 (t (cons (car l) (stripstrlist (cdr l) str)))))))
+
+(defun pgp-set-passphrase (arg)
+  "Set PGPPASS environment variable from argument."
+  (interactive "sPGP pass phrase: ")
+  (setq process-environment
+	(cons (concat "PGPPASS=" arg)
+	      (stripstrlist process-environment "^PGPPASS="))))
+
+(defun pgp-clear-passphrase ()
+  "Clear PGPPASS environment variable."
+  (interactive)
+  (setq process-environment (stripstrlist process-environment "^PGPPASS=")))
+
+--Rat                               PGP Public Key Block available upon request
+||||| | | | |  |  |  |   |   |    |    |    |   |   |  |  |  |  | | | | | |||||
+Northeastern's Stainless Steel Rat          ratinox@meceng.coe.northeastern.edu
+And now we meet again, for the first time, for the last time.     --Dark Helmet

@@ -1,0 +1,219 @@
+Path: msuinfo!agate!howland.reston.ans.net!vixen.cso.uiuc.edu!sdd.hp.com!hplabs!unix.sri.com!csl.sri.com!boucher
+From: boucher@csl.sri.com (Peter K. Boucher)
+Newsgroups: sci.crypt
+Subject: KS test
+Date: 22 Nov 1993 21:49:18 GMT
+Organization: Computer Science Lab, SRI International
+Lines: 208
+Distribution: world
+Message-ID: <2crc4uINNptc@roche.csl.sri.com>
+NNTP-Posting-Host: redwood.csl.sri.com
+
+I wrote a module to do KS tests, but my first edition
+Knuth Vol. II had errors in the chi-square stuff, so
+would someone please tell me if my KS functions are wrong?
+
+I read in 4K bytes, and treat them as 1K unsigned longs.
+Then I calculate K+1024 as follows:
+
+============== C CODE FRAGMENT START =====================
+
+/* !!!!!!!!!!!!!!!!!! THESE TWO MUST MATCH !!!!!!!!!!!!!!!!!!! */
+#define N     1024 /* THESE TWO MUST MATCH !!!!!!!!!!!!!!!!!!! */
+#define SQRTN 32.0 /* THESE TWO MUST MATCH !!!!!!!!!!!!!!!!!!! */
+/* !!!!!!!!!!!!!!!!!! THESE TWO MUST MATCH !!!!!!!!!!!!!!!!!!! */
+
+#define NUM_LONGS 4294967296.0
+#define F(x) (((double)(x))/NUM_LONGS) /* probability that a random */
+                                       /* unsigned long is less than*/
+                                       /* x.                        */
+
+double
+long_Kplus_1024(X)
+unsigned long *X;
+{
+    double max = 0.0;
+    double tmp;
+    long j;
+
+    for (j=0L; j<N; j++) {
+        tmp = ((double)(j+1))/((double)(N)) - F(X[j]);
+        if (max < tmp) {
+            max = tmp;
+        }
+    }
+    return(max * SQRTN);
+}
+
+============== C CODE FRAGMENT END =======================
+
+I also calculate K-1024, but with the subtraction parameters
+as follows: 
+
+============== C CODE FRAGMENT START =====================
+
+        tmp = F(X[j]) - ((double)(j))/((double)(N));
+
+============== C CODE FRAGMENT END =======================
+
+I repeat these 8K times, so that I've analyzed 32M of output
+(8M unsigned longs).  Then I calculate K+8192 and K-8192 for
+the saved K+1024's and K-1024's.  As follows:
+
+============== C CODE FRAGMENT START =====================
+
+#define Fk(x) (1.0 - exp(-2.0*(x)*(x)))/* probability that a random */
+                                       /* K+1024 or K-1024 is less  */
+                                       /* than x.                   */
+double
+float_Kplus_8192(X)
+double *X;
+{
+    double max = 0.0;
+    double tmp;
+    long j;
+
+    for (j=0L; j<NUM_BUFS; j++) {
+        tmp = ((double)(j+1))/num_bufs - Fk(X[j]);
+        if (max < tmp) {
+            max = tmp;
+        }
+    }
+    return(max * sqrt(num_bufs));
+}
+
+============== C CODE FRAGMENT END =======================
+
+Finally, I split the K+1024's and K-1024's into 1024 groups
+of equally likely probability and did a chi-square, as follows:
+
+============== C CODE FRAGMENT START =====================
+
+int
+chi_ks(K)
+double *K;
+{
+/* chi-square table for 1023 degrees of freedom */
+#define C99 920.56
+#define C95 949.94
+#define C75 992.10
+#define C50 1022.33
+#define C25 1053.17
+#define C05 1098.31
+#define C01 1131.34
+
+    static double cnt[1024];
+    double V = 0.0, divisor = num_bufs/1024.0;
+    int i, score = 0;
+
+    for (i=0; i<1024; i++) {
+        cnt[i] = 0.0;
+    }
+    for (i=0; i<NUM_BUFS; i++) {
+        cnt[((int)(1023.0*Fk(K[i])))]++;
+    }
+    for (i=0; i<1024; i++) {
+        V += (cnt[i]*cnt[i])/divisor;
+    }
+    if ((V -= num_bufs) < C75) {
+        score--;
+        if (V < C95) {
+            score--;
+            if (V < C99) {
+                score--;
+            }
+        }
+    } else if (V > C25) {
+        score++;
+        if (V > C05) {
+            score++;
+            if (V > C01) {
+                score++;
+            }
+        }
+    }
+    return(score); /*  3  means V was way too hi (non-uniform) */
+                   /*  2 means V was suspiciously too hi */
+                   /*  1 means V was slightly too hi */
+                   /*  0 means V was neither too hi nor too low */
+                   /* -1 means V was slightly too low */
+                   /* -2 means V was suspiciously too low */
+                   /* -3 means V was way too low (overly uniform) */
+}
+
+
+============== C CODE FRAGMENT END =======================
+
+I ran the test ten times each on a PRNG and two ciphers of 
+my design, and on DES in CBC mode, with the following results.
+Note: Kp(kp) is the Fk(K+8192 of the K+1024's), Km(kp) is the 
+Fk(K-8192 of the K+1024's), Kp(km) is the Fk(K+8192 of the 
+K-1024's), Km(km) is the Fk(K-8192 of the K-1024's), CHI(kp) 
+is the result of chi_ks on the K+1024's, and CHI(km) is the 
+result of chi_ks on the K-1024's.  Notice, that the KS 
+results do not seem to predict the CHI results...?!?
+
+KS TEST of all zeros
+Kp(kp)=  0.00,Km(kp)=100.00,Kp(km)=100.00,Km(km)=  0.00,CHI(kp)= 3,CHI(km)= 3
+
+KS TEST of all FFs
+Kp(kp)=100.00,Km(kp)=  0.00,Kp(km)=  0.00,Km(km)=100.00,CHI(kp)= 3,CHI(km)= 3
+
+KS TEST of stdlib rand() function
+Kp(kp)=100.00,Km(kp)=100.00,Kp(km)=100.00,Km(km)=100.00,CHI(kp)= 3,CHI(km)= 3
+
+BCRP KS TESTS
+Kp(kp)= 85.10,Km(kp)= 13.44,Kp(km)= 96.88,Km(km)=  0.40,CHI(kp)=-1,CHI(km)= 1
+Kp(kp)= 61.59,Km(kp)= 24.04,Kp(km)= 49.03,Km(km)= 57.97,CHI(kp)= 2,CHI(km)= 1
+Kp(kp)= 76.44,Km(kp)=  1.08,Kp(km)= 87.42,Km(km)=  0.01,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 98.62,Km(kp)=  0.78,Kp(km)= 66.00,Km(km)=  5.21,CHI(kp)= 2,CHI(km)= 0
+Kp(kp)= 94.37,Km(kp)= 14.46,Kp(km)= 98.61,Km(km)=  0.67,CHI(kp)= 2,CHI(km)= 0
+Kp(kp)= 84.48,Km(kp)= 11.76,Kp(km)= 85.73,Km(km)=  5.98,CHI(kp)= 0,CHI(km)=-1
+Kp(kp)= 79.02,Km(kp)= 68.14,Kp(km)= 87.73,Km(km)=  3.30,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 88.61,Km(kp)= 32.27,Kp(km)= 95.87,Km(km)=  3.06,CHI(kp)= 0,CHI(km)=-1
+Kp(kp)= 94.49,Km(kp)=  4.03,Kp(km)= 95.06,Km(km)=  5.19,CHI(kp)= 1,CHI(km)=-1
+Kp(kp)= 42.31,Km(kp)= 64.34,Kp(km)= 95.47,Km(km)=  7.69,CHI(kp)=-2,CHI(km)= 0
+
+DES KS TESTS
+Kp(kp)= 99.68,Km(kp)=  0.31,Kp(km)= 43.13,Km(km)= 40.38,CHI(kp)= 1,CHI(km)= 1
+Kp(kp)= 83.26,Km(kp)= 39.26,Kp(km)= 92.61,Km(km)= 20.27,CHI(kp)= 0,CHI(km)=-2
+Kp(kp)= 92.89,Km(kp)=  2.03,Kp(km)= 75.93,Km(km)= 49.25,CHI(kp)= 0,CHI(km)= 0
+Kp(kp)= 95.69,Km(kp)=  0.31,Kp(km)= 82.37,Km(km)=  9.04,CHI(kp)= 0,CHI(km)= 0
+Kp(kp)= 62.30,Km(kp)=  8.63,Kp(km)= 94.40,Km(km)=  0.63,CHI(kp)= 0,CHI(km)= 3
+Kp(kp)= 93.18,Km(kp)=  3.61,Kp(km)= 93.16,Km(km)=  9.57,CHI(kp)=-3,CHI(km)= 0
+Kp(kp)= 52.65,Km(kp)= 58.35,Kp(km)= 99.32,Km(km)= 31.47,CHI(kp)= 0,CHI(km)= 2
+Kp(kp)= 73.90,Km(kp)= 28.00,Kp(km)= 97.09,Km(km)=  0.02,CHI(kp)= 0,CHI(km)= 0
+Kp(kp)= 48.14,Km(kp)= 37.11,Kp(km)= 93.77,Km(km)=  0.89,CHI(kp)= 0,CHI(km)=-2
+Kp(kp)= 99.28,Km(kp)= 12.55,Kp(km)= 92.69,Km(km)=  1.93,CHI(kp)= 0,CHI(km)= 1
+
+PRNG KS TESTS
+Kp(kp)= 96.75,Km(kp)=  0.79,Kp(km)= 49.66,Km(km)= 28.67,CHI(kp)= 0,CHI(km)= 1
+Kp(kp)= 26.22,Km(kp)= 68.72,Kp(km)= 98.81,Km(km)=  0.31,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 86.36,Km(kp)= 31.22,Kp(km)= 99.15,Km(km)= 22.95,CHI(kp)= 1,CHI(km)= 1
+Kp(kp)=  4.96,Km(kp)= 95.57,Kp(km)= 99.84,Km(km)=  0.18,CHI(kp)= 1,CHI(km)= 1
+Kp(kp)= 99.68,Km(kp)=  7.40,Kp(km)= 98.15,Km(km)= 37.54,CHI(kp)= 0,CHI(km)= 2
+Kp(kp)= 74.94,Km(kp)=  7.55,Kp(km)= 95.79,Km(km)=  0.09,CHI(kp)= 0,CHI(km)=-1
+Kp(kp)= 93.10,Km(kp)=  0.06,Kp(km)= 61.30,Km(km)=  0.33,CHI(kp)= 0,CHI(km)=-2
+Kp(kp)= 34.77,Km(kp)= 55.75,Kp(km)= 97.96,Km(km)=  4.24,CHI(kp)= 2,CHI(km)=-1
+Kp(kp)= 74.23,Km(kp)= 39.59,Kp(km)= 94.12,Km(km)=  7.81,CHI(kp)= 0,CHI(km)= 1
+Kp(kp)= 93.63,Km(kp)= 29.04,Kp(km)= 87.20,Km(km)=  0.16,CHI(kp)=-1,CHI(km)= 1
+
+SCRP KS TESTS
+Kp(kp)= 64.26,Km(kp)=  4.40,Kp(km)= 47.88,Km(km)= 29.50,CHI(kp)= 2,CHI(km)= 2
+Kp(kp)= 96.48,Km(kp)=  3.59,Kp(km)= 76.02,Km(km)=  1.41,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 89.92,Km(kp)= 26.93,Kp(km)= 89.56,Km(km)=  6.73,CHI(kp)= 0,CHI(km)= 1
+Kp(kp)= 99.25,Km(kp)=  0.04,Kp(km)= 66.84,Km(km)= 50.94,CHI(kp)= 1,CHI(km)= 1
+Kp(kp)= 88.40,Km(kp)=  0.65,Kp(km)= 98.65,Km(km)= 13.13,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 71.17,Km(kp)= 43.30,Kp(km)= 85.70,Km(km)=  0.01,CHI(kp)= 0,CHI(km)= 1
+Kp(kp)= 99.72,Km(kp)=  2.31,Kp(km)= 29.95,Km(km)= 62.45,CHI(kp)= 0,CHI(km)= 0
+Kp(kp)= 94.77,Km(kp)=  1.89,Kp(km)= 95.66,Km(km)=  2.02,CHI(kp)=-1,CHI(km)= 2
+Kp(kp)= 92.23,Km(kp)= 15.41,Kp(km)= 99.73,Km(km)=  0.00,CHI(kp)= 1,CHI(km)= 0
+Kp(kp)= 64.48,Km(kp)= 60.67,Kp(km)= 99.25,Km(km)=  0.87,CHI(kp)= 0,CHI(km)= 1
+
+
+If you'd like a copy of the source, I'll e-mail it to you.
+
+-- 
+Peter K. Boucher
+--
+DISCLAIMER:  The above does not necessarily represent the opinions of my employer.

@@ -1,0 +1,103 @@
+#
+# SSLeay/crypto/objects/Makefile
+#
+
+DIR=	objects
+TOP=	../..
+CC=	cc
+INCLUDES= -I.. -I../../include
+CFLAG=-g
+INSTALLTOP=/usr/local/ssl
+MAKE=		make -f Makefile.ssl
+MAKEDEPEND=	$(TOP)/util/domd $(TOP)
+MAKEFILE=	Makefile.ssl
+AR=		ar r
+
+CFLAGS= $(INCLUDES) $(CFLAG)
+
+ERR=objects
+ERRC=obj_err
+GENERAL=Makefile README
+TEST=
+APPS=
+
+LIB=$(TOP)/libcrypto.a
+LIBSRC=	o_names.c obj_dat.c obj_lib.c $(ERRC).c
+LIBOBJ= o_names.o obj_dat.o obj_lib.o $(ERRC).o
+
+SRC= $(LIBSRC)
+
+EXHEADER= objects.h
+HEADER=	$(EXHEADER) obj_dat.h
+
+ALL=    $(GENERAL) $(SRC) $(HEADER)
+
+top:
+	(cd ../..; $(MAKE) DIRS=crypto SDIRS=$(DIR) sub_all)
+
+all:	obj_dat.h lib
+
+obj_dat.h: objects.h obj_dat.pl
+	perl ./obj_dat.pl < objects.h > obj_dat.h
+
+lib:	$(LIBOBJ)
+	$(AR) $(LIB) $(LIBOBJ)
+	sh $(TOP)/util/ranlib.sh $(LIB)
+	@touch lib
+
+files:
+	perl $(TOP)/util/files.pl Makefile.ssl >> $(TOP)/MINFO
+
+links:
+	@$(TOP)/util/point.sh Makefile.ssl Makefile
+	@$(TOP)/util/mklink.sh ../../include $(EXHEADER)
+	@$(TOP)/util/mklink.sh ../../test $(TEST)
+	@$(TOP)/util/mklink.sh ../../apps $(APPS)
+
+install:
+	@for i in $(EXHEADER) ; \
+	do  \
+	(cp $$i $(INSTALLTOP)/include/$$i; \
+	chmod 644 $(INSTALLTOP)/include/$$i ); \
+	done;
+
+tags:
+	ctags $(SRC)
+
+tests:
+
+lint:
+	lint -DLINT $(INCLUDES) $(SRC)>fluff
+
+depend:
+	$(MAKEDEPEND) $(INCLUDES) $(PROGS) $(LIBSRC)
+
+dclean:
+	perl -pe 'if (/^# DO NOT DELETE THIS LINE/) {print; exit(0);}' $(MAKEFILE) >Makefile.new
+	mv -f Makefile.new $(MAKEFILE)
+
+clean:
+	rm -f *.o *.obj lib tags core .pure .nfs* *.old *.bak fluff
+
+errors: $(ERRC).c
+
+$(ERRC).c: $(ERR).err
+	perl $(TOP)/util/err-ins.pl $(ERR).err $(ERR).h
+	perl ../err/err_genc.pl -s $(ERR).h $(ERRC).c
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.
+
+o_names.o: ../../include/asn1.h ../../include/bio.h ../../include/bn.h
+o_names.o: ../../include/crypto.h ../../include/lhash.h
+o_names.o: ../../include/opensslv.h ../../include/stack.h objects.h
+obj_dat.o: ../../include/asn1.h ../../include/bio.h ../../include/bn.h
+obj_dat.o: ../../include/buffer.h ../../include/crypto.h ../../include/e_os.h
+obj_dat.o: ../../include/err.h ../../include/lhash.h ../../include/opensslv.h
+obj_dat.o: ../../include/stack.h ../cryptlib.h obj_dat.h objects.h
+obj_err.o: ../../include/asn1.h ../../include/bio.h ../../include/bn.h
+obj_err.o: ../../include/crypto.h ../../include/err.h ../../include/opensslv.h
+obj_err.o: ../../include/stack.h objects.h
+obj_lib.o: ../../include/asn1.h ../../include/bio.h ../../include/bn.h
+obj_lib.o: ../../include/buffer.h ../../include/crypto.h ../../include/e_os.h
+obj_lib.o: ../../include/err.h ../../include/lhash.h ../../include/opensslv.h
+obj_lib.o: ../../include/stack.h ../cryptlib.h objects.h

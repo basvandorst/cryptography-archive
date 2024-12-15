@@ -1,0 +1,108 @@
+#!/bin/csh -f
+set MIXDIR = /the/absolute/path/to/your/mixmaster/directory
+set PAGER = more
+if ( ! -d $MIXDIR ) then
+	echo Didn\'t find $MIXDIR
+	exit
+endif
+set MIXMASTER = $MIXDIR/mixmaster
+set MIXLIST = $MIXDIR/type2.list
+set POSTHOST = news.demon.co.uk
+set NMASTERS = `wc -l < $MIXLIST`
+set MAX = 4 # $NMASTERS # A random list of remailers (of length MAX)
+								# is created for each recipient.
+set FILE ; set TO ; set SUBJECT ; set NEWSGROUPS
+if ( $#argv != 4 || $4 != - ) then
+	if ( -e $1 ) then
+		$PAGER $1
+	endif
+	echo -n Send this message via mixmaster remailers\?\ \[n\]\ 
+	if ( $< != y ) exit
+endif
+if ( $#argv == 0 ) then
+	clear
+	while ( $FILE == "" )
+		echo -n File:\ ; set FILE = $<
+	end
+else
+	set FILE = $1
+endif
+if ( $#argv < 2 ) then
+	echo -n To:\ ; set TO = $<
+else
+	set  TO = $2
+endif
+if ( $#argv < 3 ) then
+	echo -n Subject:\ ; set SUBJECT = $<
+else
+	set SUBJECT = "$3"
+endif
+if ( $#argv == 4 && $4 == - ) goto SKIPMENU
+set ANS = t
+while ( $ANS == t || $ANS == s || $ANS == f || $ANS == n )
+	clear
+	echo File:\ $FILE 
+	echo To:\ $TO
+	echo Newsgroups:\ $NEWSGROUPS
+	echo Subject:\ $SUBJECT
+	echo If these values are correct, hit \<return\> to send the message.
+	echo -n Enter f, t, n, or s to change a field, X to exit without sending.\ 
+	set ANS = $<
+	switch ($ANS)
+		case X:
+			exit
+		case f:
+			echo -n File:\ ; set FILE = $<
+			breaksw
+		case t:
+			echo -n To:\ ; set TO = $<
+			breaksw
+		case s:
+			echo -n Subject:\ ; set SUBJECT = $<
+			breaksw
+		case n:
+			echo -n Newsgroups:\ ; set NEWSGROUPS = $<
+			breaksw
+		default:
+			breaksw
+	endsw
+end
+SKIPMENU:
+set CWD = $cwd
+cd $MIXDIR
+if ( ! -e $FILE ) then
+	if ( -e $CWD/$FILE ) then
+		set FILE = $CWD/$FILE
+	endif
+endif
+set noglob
+if ( `echo $NEWSGROUPS | wc -w` ) then
+	echo -n Post message via $POSTHOST to groups:\ ${NEWSGROUPS}\?\ \[n\]\ 
+	if ( $< == y ) then
+		echo -n Message posted to:\ 
+		foreach NG ( $NEWSGROUPS )
+			set ADDRESS = ${NG}@$POSTHOST
+			set ROUTE = `rnd $NMASTERS | cat -n | awk '{print $2" "$1}' | sort -n | head -$MAX | awk '{print $2}' | tr "\012" " "`
+			$MIXMASTER $FILE -s "$SUBJECT" -to $ADDRESS -l "$ROUTE"
+			if ( $#argv != 4 || $4 != - ) echo -n ${NG}\ 
+		end
+	endif
+echo " "
+endif
+if ( $#argv != 4 || $4 != - ) then
+	if ( `echo $TO | wc -c` ) echo -n Message sent to:\ 
+endif
+foreach ADDRESS ( $TO )
+	set ROUTE = `rnd $NMASTERS | cat -n | awk '{print $2" "$1}' | sort -n | head -$MAX | awk '{print $2}' | tr "\012" " "`
+	$MIXMASTER $FILE -s "$SUBJECT" -to $ADDRESS -l "$ROUTE"
+	if ( $#argv != 4 || $4 != - ) echo -n $ADDRESS\ 
+end
+SKIPMAIL:
+unset noglob
+if ( $#argv != 4 || $4 != - ) then
+	echo " " ; echo -n Wipe and delete $FILE \?\ \[n\]\ 
+	if ( $< == y ) pgp -w $FILE >& /dev/null
+else
+	pgp -w $FILE >& /dev/null
+	endif
+cd $CWD

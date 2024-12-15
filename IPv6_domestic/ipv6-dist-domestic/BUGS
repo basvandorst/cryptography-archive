@@ -1,0 +1,84 @@
+
+
+NRL IPv6 Software Distribution, "Alpha-quality" release:
+
+  This is an "alpha-quality" release.  It is not 100% complete yet,
+though large sections of IPv6 are now implemented.  It has NOT been
+extensively tested and it does definitely need extensive testing.  Our
+local SPARC and i486/i586 kernels based on this software are
+relatively stable but it is probable that the software contains 
+undiscovered bugs that will crash the kernel.  There are a number
+of known bugs that we intend to fix in the next release of this
+software.  These bugs include at least the following:
+
+(1) The AH and ESP implementations for IPv6 and IPv4 do interoperate
+   with each other for both SPARC and Intel hardware.  We also have
+   successfully interoperated our IPv4 ESP and AH against the
+   implementation done by Morningstar.
+
+(2) There is a bug somewhere between ipsec_ah_input() and 
+    ipsec_input_policy() [inclusive] on the input side that
+    causes authenticated tunneled packets to be rejected by
+    policy.  This might be a problem with not all mbuf flags
+    being copied when they ought to be. To reproduce,
+    "telnet -A2	localhost".  A similar (the same ?) bug 
+    is evident in ESP and is documented in the appropriate man 
+    page.  We're still debugging this one.
+
+(3) We have not used any formal software assurance techniques in
+   developing our implementation.  We believe that our ESP/AH
+   implementation mostly works as intended, but we do NOT claim
+   that it provides adequate security for any user.  Users who
+   plan to rely on the security of our implementation need to
+   make their own efforts to verify that our code does what they
+   want it to do.
+
+(4) There is a specific known bug when ESP is used with IPv4 and
+   fragmentation occurs.  The outbound processing seems fine.
+   The inbound processing seems to go OK until the packet is handed
+   up to an upper-layer protocol (UDP or TCP).  At that level,
+   the UDP or TCP checksum fails because there are 8-24 bytes of
+   corrupted data beginning about (first fragment size) bytes 
+   into the packet.  This won't crash the system, but can be
+   discerned by data not reaching applications and examination
+   of the relevant per-protocol statistics from the kernel.
+   We are actively working to debug this problem.
+
+(5) Support for multi-homed systems is generally missing, though we've
+   usually tried to put the hooks in place for it.  We intend to
+   add this support in a later release.
+
+(6) Performance is slower over IPv6 than over IPv4.  This is expected
+   for this release.  We will enhance performance in future releases.
+   Known reasons that we are slower right now include:
+	ipv6_preparse(), 
+	lack of any optimisation efforts on the IPv6 side, 
+	years of optimisation by others on the IPv4 side, 
+   	and security checks both inbound and outbound.
+
+(7) Because of IPv6's approach of using host-routes per destination to
+    implement features like Path MTU discovery, adding and deleting routes
+    using the route(8) command has some side-effects in the kernel.  Once
+    fully working, these side effects won't be noticeable to users, but
+    for now, they potentially can cause havoc.  Use caution when using the
+    route(8) command to manipulate the IPv6 routing table.
+
+(8) If an IPv4 socket is listening on a port with a wildcard address, an
+    IPv6 socket cannot listen on the same port.  This may be more of a
+    feature than a bug, given that IPv6 sockets can communicate using IPv4
+    and the ::FFFF:<v4-address> address format.
+
+(9) Expiration of AH and ESP keys has yet to be implemented.  Once a key has
+    been added to the kernel, it remains in the kernel and is usable until it
+    is explicitly deleted by a user-level program like key(8).  There is an 
+    exception, however, for keys allocated to sockets requesting unique-
+    keying.  Since these keys cannot be used by any other sockets, they are 
+    deleted from the kernel key table when the requesting socket is closed  
+    and freed.
+
+
+Any others that we have not documented here should be reported to us using
+the ipv6-bugs@itd.nrl.navy.mil address.
+
+
+

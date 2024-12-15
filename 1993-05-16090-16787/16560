@@ -1,0 +1,103 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!wupost!mont!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu (John Kelsey)
+Subject: Attacks on a posten encryption scheme
+Message-ID: <16BD1111F6.C445585@mizzou1.missouri.edu>
+Sender: news@mont.cs.missouri.edu
+Nntp-Posting-Host: mizzou1.missouri.edu
+Organization: University of Missouri
+References: <1rrjbjINNc6d@emx.cc.utexas.edu> <1993May6.204753.33271@dickens.com> <1993May11.202241.489@gtx.com>
+Date: Mon, 17 May 93 19:28:53 CDT
+Lines: 91
+
+In article <1993May11.202241.489@gtx.com>
+al@gtx.com (Alan J. Filipski) writes:
+ 
+ 
+   Hmmm.  The immediate weakness *I* see in your scheme is that, for the same
+key, a given plaintext byte in a given position is encrypted in the same way.
+While some fairly strong cryptosystems can be designed with this property, it
+makes a practical attack easy--just accumulate several known plaintexts
+encrypted under the same key (probably generated under the same password).
+If the known-plaintexts are from ASCII text in English, then we'll quickly
+wind up with a high probability of being able to decrypt most characters, since
+the most commonly occurring characters are likely to have occurred in one of
+the known plaintexts at a given location.
+   For example, if I know that the first words of 4 known plaintexts are:
+ 
+Hello              From this, I can build a sequence of tables, one for each
+Julie              location in the plaintext/ciphertext.  This means that I've
+Teresa             got a good chance of guessing some letters in the plaintext
+Greetings          of a message I *don't* know, since I know that an H in place
+                   one translates to an &, if I see an & in place one, I know
+it's an H.  Also, since your system is its own inverse, I also know what an &
+will translate into in place one.  Since the vast majority of characters in
+an ASCII text message are spaces, lowercase e,t,a,o,n, etc., I can count on
+getting a lot of common characters.  I don't have numbers in front of me, but
+I can probably read messages after a couple dozen long known plaintexts with
+little problem.  Even without known plaintexts, it wouldn't necessarily be too
+hard to start solving large numbers of ciphertexts, since I could treat the
+ciphertext bytes in place i of their respective ciphertexts as the output of
+a simple 256-> 256 table encryption, and try solving for the most common
+corresponding plaintext character.  After a while, I would be able to read any
+ciphertext encrypted with that key.
+ 
+   Of course, 256 chosen-plaintexts of length N will give me all the tables
+for all places in the message stream 1 to N, and so let me decrypt all
+messages of length <= N very easily.
+ 
+   Another area of attack:
+ 
+>   1. get a 96-bit key
+>
+>   2. initialize three pseudo-random byte streams rand0(), rand1() and
+>   rand2() with (32-bit) seeds derived from the input key.  these are
+>   32-bit linear congruential streams from which certain bytes are masked
+>   off and returned.
+ 
+   LCG generators are pretty easily predictable with a few bytes of output.
+Masking off selected bits may make them much stronger--I don't know--but I'd
+kind-of doubt it.  I don't have access to your rand() function, so I don't
+know what might be needed to predict it.  However, I see a couple general
+statements I think can be made.  First, if the permutation tables are formed
+using only one random seed, it would make sense to attack them by simply
+trying out all possible 32-bit seeds, forming the table, and then checking
+to see if the table was right.  With enough known or chosen plaintexts, this
+ought to be do-able, though I haven't given it lots of thought yet.  (With
+lots of known- or chosen- plaintexts, it's pretty easy to read encrypted
+messages anyway.)  Let's see....
+ 
+   c = r2 XOR (q¤ s¤ p¤ (m XOR r2) +r0‡ +r1‡ -r1‡ -r0)
+ 
+   If we knew p and q (they're inverses), we'd do some substitutions:
+ 
+   XA = (m XOR r2)+ r0
+   XB = p¤XA‡
+   XC = s¤XB +r1‡
+   XD = q¤XC - r0‡ XOR r2
+ 
+   We need to think up a way to peel off the layers here.  (Keep in mind
+that, with a reasonable number of known-plaintexts, or even chosen-plaintexts,
+we ought to get somewhere.)
+ 
+   However, I've got plans for my evening that *don't* revolve entirely
+around a computer lab, so maybe I'll hack around on this scheme some
+more at home or something, and see what I can come up with.  A general
+method of using a long known plaintext to give you the key, or several
+smaller ones to give you the key, seems like it shouldn't be too hard.
+It's just a matter of using known plaintext bytes and ciphertext bytes to
+constrain what the tables may be a bit....
+   One off-the-top-of-my-head idea:  What are the chances of the same
+plaintext byte being encrypted using one of the same pseudorandom values
+(r0,r1,r2) multiple times in the message?  If they're uniformly distributed,
+then we should get several times when a common plaintext character (say,
+the space character, or a lowercase "e" or "t") is encrypted using the same
+value for (say) r2.  How might we recognize these times?  Alternatively,
+we might use a chosen-plaintext attack, encrypting a stream of 0's, and
+seeing what we got.  Then, we'd get repetitions in the stream of r0, r1 and
+r2 at different times.  Again, any guesses as to how we'd know we had a
+repetition in one value?  Two simultaneous repetitions would be quite
+unlikely (1/2**16), so we couldn't count on that.  Or is there another way
+to do this that I'm not seeing?  (I'm sure there is--what am I missing?).
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

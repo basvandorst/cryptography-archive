@@ -1,0 +1,68 @@
+#!/usr/bin/perl -s
+#
+# bootstrap -- Simpler version of unmunge for bootstrapping
+#
+# Unmunge this file using:
+#   perl -ne 'if (s/^ *[^-\s]\S{4,6} ?//) { s/[\244\245\267]/ /g; print; }'
+#
+# $Id: bootstrap,v 1.15 1997/11/14 03:52:53 mhw Exp $
+
+sub Fatal	{ print STDERR @_;  exit(1); }
+sub Max		{ my ($a, $b) = @_;  ($a > $b) ? $a : $b; }
+sub TabSkip	{ $tabWidth - 1 - (length($_[0]) % $tabWidth); }
+
+($tab,$yen,$pilc,$cdot,$tmp1,$tmp2)=("\244","\245","\266","\267","\377","\376");
+$editor = $ENV{'VISUAL'} || $ENV{'EDITOR'} || 'vi';
+$inFile = $ARGV[0];
+doFile: {
+    open(IN, "<$inFile") || die;
+    for ($lineNum = 1; ($_ = <IN>); $lineNum++) {
+	s/^\s+//;  s/\s+$//;	# Strip leading and trailing spaces
+	next if (/^$/);		# Ignore blank lines
+	($prefix, $seenCRCStr, $dummy, $_) = /^(\S{2})(\S{4})( (.*))?/;
+
+	# Correct the number of spaces after each tab
+	while (s/$tab( *)/$tmp1 . ($tmp2 x &Max(length($1), &TabSkip($`)))/e) {}
+	s/ ( +)/" " . ($cdot x length($1))/eg;	# Correct center dots
+	s/$tmp1/$tab/g;  s/$tmp2/ /g;  # Restore tabs and spaces from correction
+	s/\s*$/\n/;		# Strip trailing spaces, and add a newline
+
+	$crc = $seenCRC = 0;			# Calculate CRC
+	for ($data = $_; $data ne ""; $data = substr($data, 1)) {
+	    $crc ^= ord($data);
+	    for (1..8) {
+		$crc = ($crc >> 1) ^ (($crc & 1) ? 0x8408 : 0);
+	    }
+	}
+	if ($crc != hex($seenCRCStr)) {		# CRC mismatch
+	    close(IN);  close(OUT);
+	    unlink(@filesCreated);
+	    @filesCreated = ();
+	    @oldStat = stat($inFile);
+	    system($editor, "+$lineNum", $inFile);
+	    @newStat = stat($inFile);
+	    redo doFile if ($oldStat[9] != $newStat[9]);  # Check mod date
+	    &Fatal("Line $lineNum invalid: $_");
+	}
+
+	if ($prefix eq '--') {			# Process header line
+	    ($code, $pageNum, $file) = /^(\S{19}) Page (\d+) of (.*)/;
+	    $tabWidth = hex(substr($code, 11, 1));
+	    if ($file ne $lastFile) {
+		print "$file\n";
+		&Fatal("$file: already exists\n") if (!$f && (-e $file));
+		close(OUT);
+		open(OUT, ">$file") || &Fatal("$file: $!\n");
+		push(@filesCreated, ($lastFile = $file));
+	    }
+	} else {				# Unmunge normal line
+	    s/$tab( *)/"\t".(" " x (length($1) - &TabSkip($`)))/eg;
+	    s/$yen\n/\f/;	# Handle form feeds
+	    s/$pilc\n//;	# Handle continuation lines
+	    s/$cdot/ /g;	# Center dots -> spaces
+
+	    print OUT;
+	}
+    }
+    close(IN);  close(OUT);
+}

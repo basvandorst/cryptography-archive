@@ -1,0 +1,77 @@
+Path: msuinfo!uchinews!linac!pacific.mps.ohio-state.edu!zaphod.mps.ohio-state.edu!mips!mips!munnari.oz.au!bruce!alanf
+From: alanf@bruce.cs.monash.OZ.AU (Alan Grant Finlay)
+Newsgroups: sci.crypt
+Subject: Tangle encryption program version 3.4
+Message-ID: <6290@bruce.cs.monash.OZ.AU>
+Date: 19 Mar 92 01:33:08 GMT
+Organization: Monash Uni. Computer Science, Australia
+Lines: 68
+
+
+I have just posted a uuencoded archive (arc format) of an encryption program
+called TANGLE version 3.4 including source code and a description of the
+algorithm to the news groups alt.sources and comp.binaries.ibm.pc.d
+(the discusion group to avoid a repeated post).
+
+The program is intended primarily to protect private files (e.g. a diary) from
+snoopers on an MS-DOS PC however the source supplied with this version can
+also be used to compile for Unix (TM) systems.
+
+Earlier versions 3.x of this program (using the same algorithm) were posted
+for discussion in the newsgroup sci.crypt several years ago.  Since that
+time no weaknesses have been brought to my attention.  It is intended that
+the algorithm be resistant to a chosen plaintext attack.  If the algorithm
+is secure against such an attack then it is much stronger than DES since the
+key is longer.  Note that for the intended application of the program
+security against ciphertext only attack is all that is required.
+
+The algorithm runs about twice as slowly as a good software implementation of
+DES (according to information I have received - I have not done this test
+myself).  As with most encryption algorithms it is possible to trade speed
+off against security.  The chosen level of security is such that the algorithm
+compares unfavourably with DES in one regard.  A desirable property of an
+encryption algorithm is that changing a single bit in the plaintext and using
+the same key should result in 50% of the bits in the ciphertext being different
+on average.  This means that for a fixed key the encryption function is a
+pseudorandom function of the input.  For the tangle algorithm about 50 bits
+of the affected block will flip on average.  Depending upon the block size
+this is roughly 1% of the affected block.  In principle this means
+a chosen plaintext attack is possible by checking about 1% of all possible
+plaintexts but this is little better than brute force.  What would be 
+interesting would be to discover a method of directing this search process
+by exploiting any weaknesses of the algorithm.  It remains to be seen if such
+weaknesses exist.  In any event by increasing the number of iterations used
+by the algorithm (roughly three times as many would suffice) then 50% of the
+bits would flip on average.
+
+The algorithm is as follows:
+
+For each block, let us call it page[x,y] where 0<=x<wide and 0<=y<high:
+(it is understood that each line below is for all x<wide and for all y<high)
+-----------------------------------------------------------------------
+   1) Do one shuffle:
+         page[x,y] := page[x,(y+key[x]) mod high]
+         if y is odd then page[x,y] := (page[x,y] XOR page[x,y-1])+1 mod 256
+         page[x,y] := page[(x+(y mod (wide-1))+1) mod wide,y]
+
+   2) Perform a simple substitution:
+         page[x,y] := page[x,y] XOR ((x*high+y)*7 mod 256)
+
+   3) Do 9 shuffles:
+         page[x,y] := page[x,(y+key[x]) mod high]
+         if y is odd then page[x,y] := (page[x,y] XOR page[x,y-1])+1 mod 256
+         page[x,y] := page[(x+(y mod (wide-1))+1) mod wide,y]
+
+Each step in the process is easily reversible.
+-------------------------------------------------------------------------
+
+The encrypted file format is:
+        1) Three decimal integers: program version number (= 3), wide, high.
+           Each as chars terminated by a comma (i.e. C format "%d,%d,%d,").
+        2) for each block:
+              The real number of characters in the block as a comma
+              terminated decimal integer (i.e. C format "%d,").
+              The block of bytes:
+                 for (j:=0..high-1), for (i:=0..wide-1) page[i,j]
+
+-------------------------------------------------------------------------

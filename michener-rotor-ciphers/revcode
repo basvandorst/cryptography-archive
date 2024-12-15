@@ -1,0 +1,251 @@
+/* ------------------- Listing 1 ---------------------------- */
+/* Rivest Forward and Backward Encryption */
+
+/* rnd1() is a function implementing a pseudo-random sequence	*/
+/* generator with many-to-one inverse mapping characteristics.	 */
+/* key1[A] is the key for this function.  rnd2() implements a	 */
+/* different PRSG, which is dependent upon key2[B]			*/
+/* the message, stored in the text[], is transformed in place	*/
+
+static unsigned char key1[A], key2[B];
+
+
+unsigned char text[N]; 
+unsigned char rnd1(), rnd2(); 
+register int i;				/* array index */ 
+int length; 		/* length of message string, length <= N */ 
+ 
+for(i=0; i<length; i++) 
+     text[i] = (text[i] + rnd1()) & 255; 
+ 
+for(i=length-1; i>=0; i--) 
+     text[i] = (text[i] + rnd2()) & 255; 
+ 
+
+/* -------------------- Listing 2 -----------------------------*/
+/* this routine uses a supplied file (n>64K) of random one byte numbers
+to generate a set of encryption and decryption rotors.  These rotors
+are supplied sequentially in a 128K file.  The first 64K of the file
+contains the encryption rotors in series, the second 64K contains the
+decryption rotors in series.  The order within the file is the 256
+elements of the first rotor in sequence followed by the 256 elements of
+the second rotor, on through all the rotors in the set.
+
+Since random files are not easily created by users it is necessary to
+create a close approximation to random files.  This can be done by
+taking a variety of text and program files, compressing them,
+encrypting them with random keys, and concatenating them to form a long
+binary file.  If English text was the source material this compressed,
+binary file should be at least 256K bytes long (making allowances for
+the redundancy of English).  The resulting 4:1 overlap of compressed
+English removes the redundancies and residual order present in the
+original language file.  The length of the binary file should be
+entered into the #define NN line since the binary nature of the file
+prevents EOF characters.  Use command line file direction to read the
+random file into the program and direct the output into the rotor file.
+*/
+ 
+
+#include <stdio.h>
+#define NN	/* length of random file in bytes */
+
+main()
+    {
+    unsigned char rnd[65536];	/* random number array	*/
+    unsigned char rotor[2*65536];
+    register int k, temp, c;
+    register long i, j;
+
+    for(i=0, j=0; i<NN; i++)
+        {
+        rnd[j++] ^= ((unsigned char)(c=getchar()));
+        if (j==65536)
+            j = 0;
+        }
+
+    for(i=0; i<65536; i+=256)
+        for(j=0; j<256; j++)
+            rotor[i+j] = j;
+
+    for(i=0; i<65536; i+=256)
+        for(j=0; j<256; j++)
+            {
+            k=rnd[i+j];
+            temp = rotor[i+j];
+            rotor[i+j] = rotor[i+k];
+            rotor[i+k] = temp;
+            rotor[65536 + i + rotor[i+j]] = j;
+            rotor[65536 + i + rotor[i+k]] = k;
+            }
+
+    for(i=0; i<2*65536; i++)
+        putchar(rotor[i]);
+    }
+
+
+
+/* --------------------- Listing 3 ------------------------ */
+/*      Basic Generalized Rotor Code	*/
+#define NUMROT ? 				/* # or rotors in rotor set */
+unsigned char rot[256][256];		/* encryption rotor set */ 
+unsigned char derot[256][256]; 	/* decryption rotor set */ 
+unsigned char rpos(), rset(); 	/* PR sequence generators */ 
+char ptext;      				/* plaintext */ 	
+char ctext;      				/* ciphertext */ 
+register int k; 
+ 
+/* ------------------  encipherment ----------------------- */
+for(k=0; k<NUMROT; k++) 
+    ptext = rot[rset(k)][(rpos(k)+ptext)&255]; 
+ 
+ctext = ptext; 
+
+/* ------------------  decipherment ----------------------- */
+for(k=NUMROT-1; k>=0; k--) 
+    ctext = (derot[rset(k)][ctext] - rpos(k))&255; 
+ 
+ptext = ctext; 
+ 
+where rset(k) and rpos(k) are calls to the PRSGs to provide the
+appropriate rotor set and rotor position values. 
+
+
+
+/* ---------------------- Listing 4 -------------------------- */
+/* in the following subroutines the PR numbers used for GR operations
+are stored in rndout[] and are accessed by the offset values rndofset
+or ro.  These values are incremented by 8 for each character processed
+to allow for the 8 PR numbers needed per GR operation. */
+
+/*________ character substitution encryption _________________*/
+unsigned char sub(ch,ro)
+unsigned char ch;       /* character to be encrypted */
+int ro;                 /* offset in random number array */
+    {
+    int i;
+
+    for(i=0;i<4;i++)
+ch=rotor[(int)((rndout[i+ro])<<8)+(int)((rndout[i+4+ro]+ch)&255)];
+    return(ch);
+    }
+
+/*__________ character substitution decryption _____________*/
+unsigned char unsub(ch,ro)
+unsigned char ch;       /* character to be decrypted */
+int ro;                 /* offset in random number array */
+    {
+    int i;
+
+    for(i=3;i>=0;i--)
+ch=(rotor[65536+(int)((rndout[i+ro])<<8)+(int)ch]-rndout[i+4+ro])&255;
+    return(ch);
+    }
+
+/*____________________________________________________________*/
+unsigned char transfer[256];  /* transposition transfer table */
+unsigned char bitmask[8]={'\1', '\2', '\4', '\10', '\20', '\40',
+'\100', '\200'}; /* for use in bit access in bit transposition */
+
+
+/* perform byte transposition upon 256 byte array "block[]" */
+
+void bytetrans(block,rndofset,en_de_code)
+unsigned char *block;   /* perform byte transposition on block[] */
+int rndofset;
+int en_de_code; /* flag for forward or reverse transposition */
+    {
+    int i;
+    unsigned char temp[256];
+
+    for(i=0;i<256;i++)
+        temp[i]=block[i];
+
+    trans(rndofset,en_de_code);
+
+    for(i=0;i<256;i++)
+        block[((int)transfer[i])]=temp[i];
+
+    return;
+    }
+/*____________________________________________________________*/
+
+/* perform bit transposition on 32 byte block within a 256 byte block. 
+The 32 byte block is chosen by the value of bbofset passed to the
+routine. */
+
+void bittrans(block,bbofset,rndofset,en_de_code)
+unsigned char *block;   /* perform bit transposition on 32 bytes of */
+int bbofset;            /* of block[], starting with block[bbofset] */
+int rndofset;
+int en_de_code;         /* perform forward or reverse transposition */
+    {
+    int i,j;
+    unsigned char temp[32];
+
+    for(i=0;i<32;i++)
+        {
+        temp[i]=block[j=i+bbofset];
+        block[j]=0;
+        }
+
+    trans(rndofset,en_de_code);
+
+    for(i=0;i<256;i++)
+        if((temp[i>>3] & bitmask[i & 7])!=0)
+block[bbofset+(int)(transfer[i]>>3)] |= bitmask[(int)(transfer[i]&7)];
+
+    return;
+    }
+/*____________________________________________________________*/
+
+void trans(rndofset,en_de_code)
+int rndofset; 		/* determine transposition mappings needed by */
+int en_de_code;     /* bittrans and bytetrans */
+    {
+    int i;
+    if(en_de_code==0)   /* determine encode transposition table */
+        for(i=0;i<256;i++)
+            transfer[i]=sub((unsigned char)i,rndofset);
+
+    else                /* determine decode transposition table */
+        for(i=0;i<256;i++)
+            transfer[i]=unsub((unsigned char)i,rndofset);
+
+    return;
+
+/*____________________________________________________________*/
+void makernd(blocksize) /* store appropriate # of PR #'s in rndout */
+int blocksize;
+{
+int offset;
+
+rndpos=0;
+if(blocksize==1)
+    rnd(0);             /* rnd() performs PR # generation */
+
+else if (blocksize==32)
+    for(offset=0;offset<1584;offset+=8)
+        rnd(offset);
+
+else/* blocksize = 256 bytes */
+    for(offset=0;offset<16960;offset+=8)
+        rnd(offset);
+return;
+}
+
+/*_____________________________________________________________*/
+void rnd(rndofset)      /* generate PR #'s, an array of 8 per function
+call */
+int rndofset;   /* store them in rndout sequentially starting */
+{               /* with rndofset */
+}
+
+/* ______________________________________________________________ */
+The above subroutines were used by a main program which implemented a
+GR based SP block code.  It therefor used multiple applications of
+character substitution as well as bitwise and bytewise transposition. 
+Because of this use it was necessary to store the PR stream needed
+during the block transformation for access during processing.
+----------------------------------------------------------------
+
+

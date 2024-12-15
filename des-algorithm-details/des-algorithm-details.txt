@@ -1,0 +1,333 @@
+From msuinfo!agate!howland.reston.ans.net!math.ohio-state.edu!hobbes.physics.uiowa.edu!news.uiowa.edu!mfischer Thu Aug 11 11:35:18 1994
+Path: msuinfo!agate!howland.reston.ans.net!math.ohio-state.edu!hobbes.physics.uiowa.edu!news.uiowa.edu!mfischer
+From: mfischer@isca.uiowa.edu (Matthew Fischer)
+Newsgroups: sci.crypt
+Subject: DES how-to: here it is
+Date: 11 Aug 1994 02:54:06 GMT
+Organization: University of Iowa, Iowa City, IA, USA
+Lines: 319
+Distribution: usa,ca
+Message-ID: <32c3se$41s@nexus.uiowa.edu>
+References: <329kn0$s65@nexus.uiowa.edu>
+NNTP-Posting-Host: kahless.isca.uiowa.edu
+
+Here's my DES how-to. I would appreciate any comments regarding
+accuracy, readability, additional info, etc. Also if anything in it is
+superfluous. I would like my reader to be able to use this document
+alone to answer all his DES questions pertaining to how to use it.
+
+I haven't actually seen the FIPS PUB's except for 113. It's like 6
+pages long and the government wants me to pay $17.50 for it. I don't
+think so.
+
+As a reminder: it is illegal to export this information from the USA
+except to Canada.
+
+
+                         How to implement the
+                    Data Encryption Standard (DES)
+
+                       A step by step tutorial
+                              Version 0
+
+
+The Data Encryption Standard (DES) algorithm, set forth in January of
+1977 by the US National Bureau of Standards, encrypts and decrypts
+64-bit data blocks under a 56-bit secret key. It is officially
+described in FIPS PUB 46-2. The DES algorithm makes use of both
+transposition and substitution. Although not the strongest algorithm
+around, it seems strong enough, and it is very popular.
+
+This is a tutorial designed to be clear and compact, and to provide a
+newcomer to the DES with all the necessary information to implement it
+himself.
+
+Some notes on notation.
+ An expression like A[X] represents a value of a subscripted variable
+A.
+ An expression like F(X) represents the value of performing function
+F() on X.
+ An expression like A[Z][Y][X] represents a member of a
+three-dimensional array.
+ The symbol ^ represents the exclusive-or function.
+ The symbol = represents the process of assigning the value to the
+right of the = to the variable on the left of the =.
+ The symbol == represents equivalency.
+
+
+Here's how to use it, step by step:
+
+ 1. Process the keys.
+
+ 1.1. Get a 64-bit or 56-bit key from the user.
+
+ 1.1.1. One way is to get an 8-character ASCII string.
+
+ 1.1.2. Another way is to get an indefinite-length string, encipher it
+with DES in CBC mode, and take the last 56 bits as the key.
+
+ 1.2. Generate the 16 derived keys from the user-supplied master key.
+
+ 1.2.1. Rearrange the bits of the 64-bit key as described by the
+matrices below. (Every 8th bit is discarded, making the 64-bit key
+into a 56-bit key.) If your key is already 56 bits long, use the
+second set of matrices.
+
+              Permuted Choice 1 (PC-1) for a 64-bit key
+
+              1  2  3  4  5  6  7    57 49 41 33 25 17  9
+              9 10 11 12 13 14 15     1 58 50 42 34 26 18
+             17 18 19 20 21 22 23    10  2 59 51 43 35 27
+             25 26 27 28 29 30 31    19 11  3 60 52 44 36
+             33 34 35 36 37 38 39    63 55 47 39 31 23 15
+             41 42 43 44 45 46 47     7 62 54 46 38 30 22
+             49 50 51 52 53 54 55    14  6 61 53 45 37 29
+             57 58 59 60 61 62 63    21 13  5 28 20 12  4
+
+                        PC-1 for a 56-bit key
+
+              1  2  3  4  5  6  7    50 43 36 29 22 15  8
+              8  9 10 11 12 13 14     1 51 44 37 30 23 16
+             15 16 17 18 19 20 21     9  2 52 45 38 31 24
+             22 23 24 25 26 27 28    17 10  3 53 46 39 32
+             29 30 31 32 33 34 35    56 49 42 35 28 21 14
+             36 37 38 39 40 41 42     7 55 48 41 34 27 20
+             43 44 45 46 47 48 49    13  6 54 47 40 33 26
+             50 51 52 53 54 55 56    19 12  5 25 18 11  4
+
+ 1.2.2. Split the 56-bit key into two halves. The first 28 bits are
+called C[0] and the last 28 bits are called D[0].
+
+ 1.2.3. Calculate the 16 keys.
+
+ 1.2.3.1. Perform a circular left shift on each half (C[i] and D[i]),
+the number of shifts being given in the table below.
+
+                                  LS
+
+                         Iteration Left Shifts
+                                 1  1
+                                 2  1
+                                 3  2
+                                 4  2
+                                 5  2
+                                 6  2
+                                 7  2
+                                 8  2
+                                 9  1
+                                10  2
+                                11  2
+                                12  2
+                                13  2
+                                14  2
+                                15  2
+                                16  1
+
+ 1.2.3.2. Concatenate C[i] and D[i], and then transpose C[i]D[i]
+according to the matrices below. This will yield K[i].
+
+                       Permuted Choice 2 (PC-2)
+
+                 1  2  3  4  5  6    14 17 11 24  1  5
+                 7  8  9 10 11 12     3 28 15  6 21 10
+                13 14 15 16 17 18    23 19 12  4 26  8
+                19 20 21 22 23 24    16  7 27 20 13  2
+                25 26 27 28 29 30    41 52 31 37 47 55
+                31 32 33 34 35 36    30 40 51 45 33 48
+                37 38 39 40 41 42    44 49 39 56 34 53
+                43 44 45 46 47 48    46 42 50 36 29 32
+
+ 1.2.3.3. Loop back to 1.2.3.1. until i == 16.
+
+ 2. Process a 64-bit data block.
+
+ 2.1. Get a 64-bit data block.
+
+ 2.2. Rearrange the bits of the current data block as described by the
+matrices below.
+
+                       Initial Permutation (IP)
+
+           1  2  3  4  5  6  7  8    58 50 42 34 26 18 10  2
+           9 10 11 12 13 14 15 16    60 52 44 36 28 20 12  4
+          17 18 19 20 21 22 23 24    62 54 46 38 30 22 14  6
+          25 26 27 28 29 30 31 32    64 56 48 40 32 24 16  8
+          33 34 35 36 37 38 39 40    57 49 41 33 25 17  9  1
+          41 42 43 44 45 46 47 48    59 51 43 35 27 19 11  3
+          49 50 51 52 53 54 55 56    61 53 45 37 29 21 13  5
+          57 58 59 60 61 62 63 64    63 55 47 39 31 23 15  7
+
+ 2.3. Split the block into two halves. The first 32 bits are called
+L[0], and the last 32 bits are called R[0].
+
+ 2.4. Apply the 16 derived keys (K[1] through K[16]) to the block.
+
+ 2.4.1. L[i] = R[i-1]. R[i] = L[i-1].
+
+ 2.4.2. Expand the 32-bit R[i-1] into 48 bits according to the
+matrices below.
+
+                              Expand (E)
+
+                 1  2  3  4  5  6    32  1  2  3  4  5
+                 7  8  9 10 11 12     4  5  6  7  8  9
+                13 14 15 16 17 18     8  9 10 11 12 13
+                19 20 21 22 23 24    12 13 14 15 16 17
+                25 26 27 28 29 30    16 17 18 19 20 21
+                31 32 33 34 35 36    20 21 22 23 24 25
+                37 38 39 40 41 42    24 25 26 27 28 29
+                43 44 45 46 47 48    28 29 30 31 32  1
+
+ 2.4.3. Exclusive-or E(R[i-1]) with K[i].
+
+ 2.4.4. Break E(R[i-1])^K[i] into eight 6-bit blocks.
+
+                       1  2  3  4  5  6    B[1]
+                       7  8  9 10 11 12    B[2]
+                      13 14 15 16 17 18    B[4]
+                      19 20 21 22 23 24    B[5]
+                      25 26 27 28 29 30    B[6]
+                      31 32 33 34 35 36    B[7]
+                      37 38 39 40 41 42    B[8]
+
+ 2.4.5. Substitute the values found in the S-boxes for all B[j].
+
+ 2.4.5.1. Take the 1st and 6th bits of B[j] together as a 2-bit value
+indicating the row in S[j] to look in for the substitution.
+
+ 2.4.5.2. Take the 2nd through 5th bits of B[j] together as a 4-bit
+value indicating the column in S[j] to find the substitution.
+
+ 2.4.5.3. Replace B[j] with S[j] [ b[1]b[6] ] [ b[2]b[3]b[4]b[5] ].
+
+                        Selection Box 1 (S[1])
+
+           14  4 13  1  2 15 11  8  3 10  6 12  5  9  0  7
+            0 15  7  4 14  2 13  1 10  6 12 11  9  5  3  8
+            4  1 14  8 13  6  2 11 15 12  9  7  3 10  5  0
+           15 12  8  2  4  9  1  7  5 11  3 14 10  0  6 13
+
+                                 S[2]
+
+           15  1  8 14  6 11  3  4  9  7  2 13 12  0  5 10
+            3 13  4  7 15  2  8 14 12  0  1 10  6  9 11  5
+            0 14  7 11 10  4 13  1  5  8 12  6  9  3  2 15
+           13  8 10  1  3 15  4  2 11  6  7 12  0  5 14  9
+
+                                 S[3]
+
+           10  0  9 14  6  3 15  5  1 13 12  7 11  4  2  8
+           13  7  0  9  3  4  6 10  2  8  5 14 12 11 15  1
+           13  6  4  9  8 15  3  0 11  1  2 12  5 10 14  7
+            1 10 13  0  6  9  8  7  4 15 14  3 11  5  2 12
+
+                                 S[4]
+
+            7 13 14  3  0  6  9 10  1  2  8  5 11 12  4 15
+           13  8 11  5  6 15  0  3  4  7  2 12  1 10 14  9
+           10  6  9  0 12 11  7 13 15  1  3 14  5  2  8  4
+            3 15  0  6 10  1 13  8  9  4  5 11 12  7  2 14
+
+                                 S[5]
+
+            2 12  4  1  7 10 11  6  8  5  3 15 13  0 14  9
+           14 11  2 12  4  7 13  1  5  0 15 10  3  9  8  6
+            4  2  1 11 10 13  7  8 15  9 12  5  6  3  0 14
+           11  8 12  7  1 14  2 13  6 15  0  9 10  4  5  3
+
+                                 S[6]
+
+           12  1 10 15  9  2  6  8  0 13  3  4 14  7  5 11
+           10 15  4  2  7 12  9  5  6  1 13 14  0 11  3  8
+            9 14 15  5  2  8 12  3  7  0  4 10  1 13 11  6
+            4  3  2 12  9  5 15 10 11 14  1  7  6  0  8 13
+
+                                 S[7]
+
+            4 11  2 14 15  0  8 13  3 12  9  7  5 10  6  1
+           13  0 11  7  4  9  1 10 14  3  5 12  2 15  8  6
+            1  4 11 13 12  3  7 14 10 15  6  8  0  5  9  2
+            6 11 13  8  1  4 10  7  9  5  0 15 14  2  3 12
+
+                                 S[8]
+
+           13  2  8  4  6 15 11  1 10  9  3 14  5  0 12  7
+            1 15 13  8 10  3  7  4 12  5  6 11  0 14  9  2
+            7 11  4  1  9 12 14  2  0  6 10 13 15  3  5  8
+            2  1 14  7  4 10  8 13 15 12  9  0  3  5  6 11
+
+ 2.4.5.4. Loop back to 2.4.5.1. until j == 8.
+
+ 2.4.6. Concatenate B[1] through B[8] and transpose this 32-bit value
+as described by the matrices below.
+
+                           Permutation (P)
+
+                       1  2  3  4    16  7 20 21
+                       5  6  7  8    29 12 28 17
+                       9 10 11 12     1 15 23 26
+                      13 14 15 16     5 18 31 10
+                      17 18 19 20     2  8 24 14
+                      21 22 23 24    32 27  3  9
+                      25 26 27 28    19 13 30  6
+                      29 30 31 32    22 11  4 25
+
+ 2.4.7. Exclusive-or the resulting value with R[i]. Thus, all
+together, your R[i] = L[i-1]^P(S[1](B[1])...S[8](B[8])), where B[j] is
+a 6-bit chunk of E(R[i-1])^K[i]).
+
+ 2.4.8. Loop back to 2.4.1. until i == 16.
+
+ 2.5. Take the block R[16]L[16] and rearrange it according to the
+matrices below.
+                                            -1
+                       Final Permutation (IP  )
+
+           1  2  3  4  5  6  7  8    40  8 48 16 56 24 64 32
+           9 10 11 12 13 14 15 16    39  7 47 15 55 23 63 31
+          17 18 19 20 21 22 23 24    38  6 46 14 54 22 62 30
+          25 26 27 28 29 30 31 32    37  5 45 13 53 21 61 29
+          33 34 35 36 37 38 39 40    36  4 44 12 52 20 60 28
+          41 42 43 44 45 46 47 48    35  3 43 11 51 19 59 27
+          49 50 51 52 53 54 55 56    34  2 42 10 50 18 58 26
+          57 58 59 60 61 62 63 64    33  1 41  9 49 17 57 25
+
+
+This has been a description of how to use the DES algorithm to encrypt
+one 64-bit block. To decrypt, use the same process, but just use the
+keys K[i] in reverse order. That is, instead of applying K[1] for the
+first iteration, apply K[16], and then K[15] for the second, on down
+to K[1].
+
+To encrypt or decrypt more than 64 bits there are four official modes.
+One is to go through the above-described process starting at 2. for
+each block in succession. This is called Electronic Codebook (ECB)
+mode. A stronger method is to encode the first block ECB, and then
+exclusive-or each successive block with the encrypted previous block
+and then encrypt it. This is called Cipher Block Chaining (CBC) mode.
+The other two modes are Output Feedback (OFB) and Cipher Block
+Feedback (CFB). I won't go into them. Just use CBC unless you need to
+have random access to your data, then use ECB.
+
+OFB and CFB can handle blocks that are shorter than 64 bits, but ECB
+and CBC cannot. So what do you do when you have fewer than 64 bits in
+CBC mode? You have to pad the block to fill up the 64 bits. You must
+choose a pad value that is unique and can be stripped off later.
+
+Depending on the data encrypted, there are various ways. If it is
+ASCII data, then padding with a value that does not occur in the ASCII
+set, such as 0xff will work. If it is binary data, any value is valid,
+so a more sophisticated scheme is necessary. Assuming you are
+encrypting a series of 8-bit byte values, a good way I've seen is to
+pad the block to 61 bits with random bits, and then to store the
+number of valid bytes in the last 3 bits of the block, and then
+encrypt it. If the block is already 64 bits wide, you will have to add
+another 64-bit block, full of 61 random bits, with the last three bits
+the number of valid data bytes in the block, 0. When decrypting, the
+program can tell when it has reached the last data block, read the
+last three bits, and then truncate the file accordingly.
+
+
+--
+Matthew Fischer <mfischer@kahless.isca.uiowa.edu>
+

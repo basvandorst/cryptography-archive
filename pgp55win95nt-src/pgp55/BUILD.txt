@@ -1,0 +1,269 @@
+
+Build Instructions
+==================
+
+Linefeed conventions
+---------------------
+Note that all the PGP source code files are distributed using
+Unix linefeed conventions (LF), in order for the SHA hashes to
+check out good. You may want to convert the files to DOS/Windows
+style linefeeds (CR+LF) before compiling. Most implementations
+of unzip can do this automatically for you when extracting the
+files from the archive.
+
+Tools
+-----
+The commercial PGP was compiled with Microsoft Visual C++ version
+5.0, and the installer built with InstallShield 3.00.077, but any
+similar version should do. This book, along with Pretty Good
+Privacy(tm) 5.5 - Platform-Independent Source Code, contains
+everything used internally by PGP Inc. to build the binaries that
+PGP ships, except:
+
+  * The .pdf manuals have been omitted.
+  * A large animation (.avi) played during key generation has been
+    omitted.
+  * The original setup.rul file for installation suffered an error
+    if it didn't have the manuals. This has been changed (the
+    bHaveManual flag and associated logic) to work properly in
+    this case.
+  * The install script build.bat was very sensitive to its
+    environment and expected things set up in bizarre ways. The
+    version published here has been entirely rewritten to be less
+    ugly.
+
+There are a number of versions generated: business, personal, OEM,
+with RSA or without, etc. The material presented here can build
+any of them. Most are fairly similar, but the business security
+package has an installer for the admin version which contains an
+installer for the user (non-admin) version, so you'll have to
+build the latter first.
+
+The Windows code is not arranged to allow simultaneous builds of
+different versions, so you are limited to building one version at
+a time. Once you have selected a configuration, building the
+executables is fully automated, but packaging them for
+installation requires attention.
+
+Source code flags
+-----------------
+Client flags are set in clients/pgp/shared/pgpBuildFlags.h.
+
+  * The first set of flags are for beta and demo versions, set to
+    0 for production releases.
+  * The second set are for freeware, business, and personal. One
+    of these three should be checked.
+  * The Admin flag should be 0 unless it's a Business Admin
+    build.
+  * The No License Number flag should be set to 1 for freeware or
+    OEM builds.
+  * The NO_RSA flags need to be set to 0 to enable RSA. While you
+    can have NO_RSA_KEYGEN set to 1 (keygen disabled) and
+    NO_RSA_OPERATIONS set to 0 (operations enabled), the opposite
+    is illogical and illegal.
+
+Library flags are set in libs/pgpcdk/priv/include/pgpSDKBuildFlags.h.
+There are fewer, as they just indicate library support for various
+algorithms.
+
+The RSA flags are like the last two in pgpBuildFlags.h, but use
+positive logic; they indicate RSA support, not lack of it as in
+pgpBuildFlags.h.
+
+There are some other flags for conventional encryption, but it's
+unlikely that you'll want to change them.
+
+Building
+--------
+  * In Visual C++ 5.0, open the workspace clients/pgp/win32/pgp55.dsw.
+  * Using the "Build/Set Active Configuration..." menu item, select
+    the "PGP55 - Win32 Release" configuration.
+  * Set the option flags in the source code as desired.
+  * Start the build (F7).
+  * Twiddle your thumbs for a bit while it builds.
+
+InstallShield Theory of Operation
+---------------------------------
+The most important part of InstallShield is a little language
+interpreter in a file called setup.exe; this is what actually
+runs to start an installation. It interprets a compiled form of
+an input script, traditionally called setup.rul. The interpreter
+needs a few auxiliary files such as .dll files to start work
+uncompressing, and unpacks some more from a _setup.lib file.
+The script can do anything; it's just optimized for program
+installation. PGP includes an uninstaller created with
+InstallShield.
+
+You build a directory tree and package it up in a compressed
+archive, typically called data.z for the installer to unpack on
+the target system. Some files (in the tempstuff directory) are
+used only during installation and are removed after that.
+
+The archive can be split across multiple disks if necessary;
+the interpreter can deal with that cleanly with the aid of a
+setup.pkg file telling it where to find things.
+
+Finally, the entire assemblage of interpreter, compiled script,
+auxiliary files and archive can be bundled up in a single
+self-extracting .exe file.
+
+Installer flags
+---------------
+win32/Installer/setup/setup.ini needs the correct name and
+version number (such as "PGP Freeware version 5.5.2").
+
+win32/Installer/setup/setup.rul contains two TITLE fields. They
+are normally identical, unless there are to be two lines on the
+InstallShield blue screen. In this case, the first TITLE field
+should have a n in it for the line break, and the TITLE2 field
+should have a comma and space instead. We have always used only
+one line except for Qualcomm Builds, which is "PGP for Personal
+Privacy, version 5.5.xnQualcomm OEM".
+
+There are a number of flags in setup.rul which should be set to
+values corresponding to the program options. Most are in a block
+up at the front, except for PRODUCT_VERSION. (And a dozen places
+that "5.5" is referred to.)
+
+The ISADMIN flag has three possible settings. TRUE and FALSE are
+for Business Security builds, TRUE for admin and FALSE for user.
+Personal Privacy and Freeware builds use NULL.
+
+PGP_NO_LICENSE_NUMBER is analogous to the one mentioned above,
+set to 1 for a freeware or OEM build.
+
+IS_QUALCOMM_BUILD is, well, whether or not it's a Qualcomm OEM
+build.
+
+Arranging the installation
+--------------------------
+The manual part of the installation involves building an image
+in the Installer/DATA directory of what you want installed. Not
+complicated, but tedious. (All directories mentioned here are
+relative to clients/pgp/win32 unless indicated otherwise.)
+
+Clean up the installer directory Installer/DATA/. Remove any
+CVS or RCS subdirectories or anything else that might confuse
+InstallShield.
+
+Create the directories
+
+  Installer/DATA/Admin/ (Business Security Admin only)
+  Installer/DATA/Admin/ClientInstaller/ (likewise)
+  Installer/DATA/Eudora/
+  Installer/DATA/Eudora/Regular/
+  Installer/DATA/Eudora/fourdoto/
+  Installer/DATA/Exchange/
+  Installer/DATA/Pgp55/
+  Installer/DATA/WinSysDir/
+  Installer/DATA/Pgp55/signatures/ (Not for unsigned test builds)
+  Installer/DATA/Pgp55/signatures/Eudora 3 plugin sig/ (likewise)
+  Installer/DATA/Pgp55/signatures/Eudora 4 plugin sig/ (likewise)
+  Installer/Uninstaller/tempstuff/
+
+The manual in Adobe PDF format is not included in this book, but
+if it were, you would create an Installer/DATA/Manual/ directory
+for it.
+
+Go to PGP55/Release/. There will be a whole bunch of executables
+and .dll's in there. Copy these to the following directories in
+DATA/:
+
+pgpplugin.dll       -> DATA/Eudora/Regular/
+EudoraPluginV4.dll  -> DATA/Eudora/fourdoto/pgpplugin.dll
+pgpExch.dll         -> DATA/Exchange/
+PGPadmin.exe        -> DATA/Admin/ (Business Security admin only)
+PGPkeys.exe         -> DATA/Pgp55/
+PGPlog.exe          -> DATA/Pgp55/
+PGPtools.exe        -> DATA/Pgp55/
+PGPtray.exe         -> DATA/Pgp55/
+PGP55cd.dll         -> DATA/WinSysDir/
+PGP55km.dll         -> DATA/WinSysDir/
+Pgp55rnn.dll        -> DATA/WinSysDir/
+PGP55rd.dll         -> DATA/WinSysDir/
+PGP55sc.dll         -> DATA/WinSysDir/
+PGPsdk.dll          -> DATA/WinSysDir/
+PGPsdkKS.dll        -> DATA/WinSysDir/
+
+Use the setbmps.bat script to copy the appropriate splash-screen
+bitmaps into the tempstuff directories. Run setbmps X, where X
+is b for Business Security, p for Personal Privacy, or f for
+freeware.
+
+For Business Security builds, copy
+
+  Installer/keyrings/BUSpubring.pkr -> Installer/tempstuff/pubring.pkr
+
+For other builds, copy
+
+  Installer/keyrings/OTHERpubring.pkr -> Installer/tempstuff/pubring.pkr
+
+Also copy
+
+  Installer/Extras/eudora.url   -> Installer/DATA/Pgp55/
+  Installer/Extras/adobe.url    -> Installer/DATA/Pgp55/
+
+The commercial PGP also includes keygen.avi in the DATA/Pgp55/
+directory, but it is a large (800K) animation which serves only to
+entertain you while a key is being generated, so has been omitted
+from this book. The program works fine without it; it just displays
+a boring blank window during key generation.
+
+Next, install the correct readme, help, etc. files as follows. Note
+that you'll have to skip the steps involving the .pdf manuals, as
+they aren't included in this book.
+
+Business Security Build with full RSA support:
+----------------------------------------------
+Extras/Readme.txt        -> DATA/Pgp55/
+licenses/license.txt     -> DATA/Pgp55/
+Help/pgp55.CNT           -> DATA/Pgp55/
+Help/pgp55.hlp           -> DATA/Pgp55/
+Extras/PGP55win.pdf      -> DATA/Manual/
+
+For an Admin build, also:
+-------------------------
+Extras/cso.pdf           -> DATA/Admin/
+non-admin disk images    -> DATA/Admin/ClientInstaller/
+
+Personal Privacy build with RSA support (but not keygen):
+---------------------------------------------------------
+Extras/Readme.txt        -> DATA/Pgp55/
+licenses/license.txt     -> DATA/Pgp55/
+Help/pgp55PER.CNT        -> DATA/Pgp55/pgp55.CNT
+Help/pgp55PER.hlp        -> DATA/Pgp55/pgp55.hlp
+Extras/PGP55winPER.pdf   -> DATA/Manual/PGP55win.pdf
+
+Personal Privacy build without RSA support:
+-------------------------------------------
+Extras/Readme.txt        -> DATA/Pgp55/
+licenses/perdhlic.txt    -> DATA/Pgp55/
+Help/pgp55PERDH.CNT      -> DATA/Pgp55/pgp55.CNT
+Help/pgp55PERDH.hlp      -> DATA/Pgp55/pgp55.hlp
+Extras/PGP55winPERDH.pdf -> DATA/Manual/PGP55win.pdf
+
+Freeware build:
+---------------
+Extras/ReadmeFREE.txt    -> DATA/Pgp55/Readme.txt
+licenses/freelic.txt     -> DATA/Pgp55/license.txt
+Help/pgp55FREE.CNT       -> DATA/Pgp55/pgp55.CNT
+Help/pgp55FREE.hlp       -> DATA/Pgp55/pgp55.hlp
+
+Edit DATA/Pgp55/Readme.txt to put in the correct date,
+version number, etc.
+
+Finally
+-------
+Check Installer/Build.bat and replace the reference to
+c:ishield32 at the front with wherever you have InstallShield.
+You are now ready to invoke InstallShield's various components
+on the directory tree you have created. This part is automated;
+from the Installer/ directory, run build.bat. It pauses after
+each script compile, but you should be alert for other errors.
+(exebuild is particularly error-prone.)
+
+This will package up the uninstaller, add it to the DATA
+directory, package up the DATA directory, and split it among
+disk images in the Installer/Images/ directory. And finally,
+in Installer/ will be a complete self-extracting installation
+archive pgpinst.exe.

@@ -1,0 +1,101 @@
+Notes on implementation of WinVN feature to check new groups:
+
+/mrr   late October - early November 1990
+
+WinVN uses the NNTP LIST command to determine whether new newsgroups
+have been created.
+
+==> NEWSRC FORMAT
+
+newsrc format has been changed.  A Unix .newsrc consists entirely of
+lines of the form:
+	 group{!|:} <ranges>
+WinVN newsrc files have these lines' format changed to
+	 group{!|:} [s<artnum>] <ranges>
+
+where <artnum> is the highest article number last present on the server,
+whether it was seen by the user or not.
+If the "s" entry is missing, the highest seen is assumed to be
+the higher number in the last range present on the line.
+
+==> APPEARANCE OF WINDOWS
+
+The Net window contains one line for each newsgroup.  By convention,
+subscribed groups are listed first, then unsubscribed groups.
+Unsubscribed groups are assumed to be in alphabetical order.
+Subscribed groups are not assumed to be in alphabetical
+order, in order to accomodate the user's preferences.
+
+Each line in the Net window consists of the name of the newsgroup,
+preceded by an "indicator" character which gives some status information.
+The indicator character is a ">" if the group name was found
+in the most recent string search.  Otherwise, the character is
+a "*" if new articles are present, a " " if no new articles
+are present, or a "?" if we don't know (because no LIST command
+was done).
+
+Each line in a Group window consists of the Subject line of
+an article, preceded by an indicator character.  The indicator
+character is "s" if the article has been seen by the user,
+"n" if the article is new since the last session and hasn't been
+seen, or " " if the article is old and hasn't been seen.
+
+==> METHOD OF DETERMINING NEW NEWSGROUPS
+
+When WinVN starts up, it reads the newsrc file and stores the
+information in the file in the Net document as lines in
+textblocks.  WinVN then asks the user whether s/he wants
+to check the server newsgroup status.
+
+If so, WinVN issues a LIST command, locks
+all the blocks in the Net document, and
+allocates and builds a hash table.   The hash table contains
+entries indexed by a hash function based on the newsgroup name.
+Each entry contains a pointer to the line in the Net document
+containing information for that group.  Collisions are handled
+by the time-honored approach of choosing the next available
+free entry.
+
+WinVN also allocates space for a table, NewGroupTable, to be used to store
+pointers to new newsgroups.
+
+WinVN is now ready to process the LIST command.  What comes back is:
+
+215 <text which can be ignored>
+<groupname> <highest_art_#> <lowest_art_#> {y|n|m}
+(above line format repeated for all active newsgroups)
+.
+
+
+WinVN ignores the 215 line, of course.  For all the groupname
+lines, WinVN computes the hash function and checks to see if the
+group name is in the table.  (It has to check the actual name as
+well as the hash value to guard against collisions.  If a collision
+occurs, it checks the next entry.)  If the entry is found,
+the highest-article-on-server field is set in the group's line in the
+Net document.
+
+If the entry is not found, this is a new group.
+A line containing the group's information in NetDoc format is
+created and copied to dynamically-allocated memory.  A pointer to
+this line is stored in NewGroupTable.
+
+By the time the LIST's "." line is received, the Net document has 
+been updated for previously-known groups, and the NewGroupTable
+contains an unsorted list of the new groups, with lines in the same
+format used by the Net document.  WinVN creates a window to display
+this document.  The pointers in NewGroupTable are sorted so
+the new groups are in alphabetical order.
+WinVN then puts up a dialog box displaying the new groups and
+invites the user to select the groups to subscribe to by clicking
+on their names.  When the user is finished, s/he selects the "OK"
+button.
+
+WinVN then merges the "new groups" lines with the Net document.
+It does so by inserting new subscribed groups just before the first
+unsubscribed group in the Net document, and inserting new unsubscribed
+groups just before the first unsubscribed group whose name comes after
+the new group in the collating sequence.
+
+Finally, WinVN unlocks all of NetDoc and unlocks and frees
+the tables is has created in global memory.

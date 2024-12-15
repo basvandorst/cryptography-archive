@@ -1,0 +1,65 @@
+Path: msuinfo!uwm.edu!cs.utexas.edu!swrinde!gatech!hubcap!ncrcae!ncrhub2!ncrgw2!psinntp!internet!sbi!zeuswtc!pivot!bet
+From: bet@sbi.com (Bennett Todd @ Salomon Brothers Inc., NY )
+Newsgroups: sci.crypt
+Subject: Questions about munging a file to stomp on a constant prefix
+Message-ID: <856@pivot.sbi.com>
+Date: 17 Feb 93 05:10:58 GMT
+References: <1993Feb13.210927.24696@ucsu.Colorado.EDU> <C2I8KJ.2tq@undergrad.math.waterloo.edu>
+Sender: news@pivot.sbi.com
+Lines: 54
+Nntp-Posting-Host: sandstorm
+
+
+The folk wisdom has it that a good hack for annoying cryptanalysts is to
+send your text through something like
+
+	compress|tail +4c
+
+before you encrypt it; the decrypted text is then reconstructed by piping
+through
+
+	(compress</dev/null;cat)|compress -d
+
+The idea is to use compress to stomp on the statistical regularity of ASCII
+text, without putting in the constant first 3 bytes of header that compress
+prepends to every file.
+
+
+Well, I'm contemplating the shape of a universe with gzip instead of
+compress. I checked and gzip</dev/null generates 20 bytes; all the test
+files I tried have 4 constant bytes. So the trivial hack above won't
+translate directly to gzip.
+
+
+Is there any deep defect to xor-ing the second half of the message with the
+first half to conceal a constant magic like this? For instance (in perl):
+
+	#!/usr/local/bin/perl
+
+	$/ = 0777; # slurp the whole file into one string
+	$input = <>;
+
+	$len = length($input);
+	$cutpoint = $len / 2;
+	$firsthalf = substr($input,0,$cutpoint);
+	$secondhalf = substr($input,$cutpoint);
+	$stomp = substr($secondhalf,0,length($firsthalf));
+
+	vec($0,0,8); # turn on bitstring operations
+	$firsthalf ^= $stomp;
+
+	print $firsthalf, $secondhalf;
+
+
+This filter isn't a useful encryption of course. But supposed I call the
+above filter ``spindle'' (fold is taken:-):
+
+	gzip <plaintext | spindle | encrypt >foo
+	decrypt <foo | spindle | gzip -d >plaintext
+
+would seem to be inverses. The question is, does spindle as presented above
+suffice to conceal the known-plaintext of a constant header? Does it
+introduce any new points of attack?
+
+-Bennett
+bet@sbi.com

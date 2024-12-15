@@ -1,0 +1,441 @@
+Newsgroups: sci.crypt,sci.math
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Computing inverses modulo n
+Message-ID: <1994Mar8.082037.22303@mnemosyne.cs.du.edu>
+Followup-To: sci.crypt
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Tue, 8 Mar 94 08:20:37 GMT
+Lines: 426
+Xref: msuinfo sci.crypt:24505 sci.math:66598
+
+I was doing some thinking about Montgomery multiplication the other day
+and was trying to understand the code in Arjen Lenstra's lip.c
+Large Integer Package.
+
+Anyway, I wasn't sure why the code as computing inverses the way it was,
+when I came up with simpler ways to achieve the same end when computing
+inverses modulo 65537 for IDEA key inversion.
+
+So I sat down and wrote up a full derivation of my techniques so I could
+be sure I had it straight.  It was fundamentally for my own notes, but
+other people might be interested, so here it is for whatever use people
+care to make of it.
+
+Reacll the warning of Knuth: Beware of bugs in the following code.
+I have only proved it correct, not tried it.
+
+Anyway, the following will hopefully be somewhat enlightening...
+
+How to find multiplicative inverses.
+ 
+This starts with the Extended Euclidean Algorithm.
+ 
+The Euclidean Algorithm is a technique for finding the greatest common
+denominator of two numbers a and b.  It is famous for being the first
+algorithm to be described as such, a general technique, rather than
+being presented as a series of examples with the generalization being
+left to the reader.
+ 
+The algorithm works with two lists of numbers, a[] and b[].  a[0] = a
+and b[0] = b.  Each step, a[i+1] = b[i] and b[i+1] = a[i] % b[i],
+the remainder when divided.  When you reach n such that b[n] == 0,
+then a[n] is the GCD of a and b.  The numbers are integers, and each
+step b[i+1] is less than b[i], so it is guaranteed to eventually
+terminate.  (In fact, it is guaranteed to take a number of steps
+which is logarithmic in the sizes of the inputs, but that is a much
+more complex proof.)
+ 
+It is usually assumed that a[i] > b[i].  if a[0] < b[0], the first step
+just swaps the two and the relationship is established for the rest of
+the algorithm.
+ 
+If two numbers, a and b are relatively prime, their GCD is 1.  It
+is possible to find a multiplicative inverse B of b modulo a such
+that b*B == 1 (mod a).
+ 
+This can be done with the Extended Euclidean Algorithm, which, in
+addition to the series of numbers a[] and b[], keeps track of s[]
+and t[], so that at each step, a[i] = s[i] * a[0] + t[i] * b[0].
+ 
+First comes the problrm of deriving s[] and t[] so that
+ 
+a[i] = s[i] * a[0] + t[i] * b[0]
+ 
+holds.  Obviously, s[0] = 1 and t[0] = 0.
+ 
+Each step, a[i+1] = b[i] and b[i+1] = a[i] % b[i].
+ 
+It should be obvious that s[1] = 0 and t[1] = 1.
+ 
+b[i] = a[i+1] = s[i+1] * a[0] + t[i+1] * b[0].
+ 
+Start by reqriting b[i+1] = a[i] % b[i].  Let q[i] = a[i] / b[i], so
+b[i+1] = a[i] - q[i] * b[i].
+ 
+After the ith step, a[i] = s[i] * a[0] + t[i] * b[0] and b[i] = a[i+1] =
+s[i+1] * a[0] + t[i+1] * b[0], then these can be substituted into the
+above equation for b[i+1] to produce:
+ 
+b[i+1] = s[i] * a[0] + t[i] * b[0] - q[i] * (s[i+1] * a[0] + t[i+1] * b[0])
+       = (s[i] - q[i] * s[i+1]) * a[0] + (t[i] - q[i] * t[i+1]) * b[0]
+ 
+Also, by definition, b[i+1] = a[i+2] = s[i+2] * a[0] + t[i+2] * b[0].
+Equating the coefficients of a[0] and b[0] in these two equations
+produces:
+ 
+s[i+2] = s[i] - q[i] * s[i+1]
+t[i+2] = t[i] - q[i] * t[i+1]
+ 
+If a[0] and b[0] are relatively prime, you can continue this until
+a[n] = 1, at which point you have can take a[n] = s[n] * a[0] + t[n] * b[0]
+modulo a[0], and conclude that 1 == t[n] * b[0] (mod a[0]).
+ 
+In other words, t[n] is the inverse of b[0], modulo a[0].
+ 
+To compute this, there is no need to keep track of s[] at all,
+so here is a first pass at a loop.  The only optimization performed
+(much more later!) is that q[i] is used only briefly, so it is
+replaced by the single variable q.
+ 
+ 
+t[0] = 0;
+t[1] = 1;
+ 
+i = 0;
+for (;;) {
+        /* Loop invariant: a[i], b[i], and t[i+1] are valid */
+ 
+        if (b[i] == 1)          /* Thus, a[i+1] == 1 */
+                return t[i+1];  /* The inverse */
+ 
+        q = a[i] / b[i];
+        b[i+1] = a[i] % b[i];
+        a[i+1] = b[i];
+        t[i+2] = t[i] - q * t[i+1];
+ 
+        i++;
+}
+ 
+Now to begin optimisation.  Start by unrolling it twice:
+ 
+t[0] = 0;
+t[1] = 1;
+ 
+i = 0;
+for (;;) {
+        /* New loop invariant: i is even */
+        /* Loop invariant: a[i], b[i], and t[i+1] are valid */
+ 
+        if (b[i] == 1)          /* Thus, a[i+1] == 1 */
+                return t[i+1];  /* The inverse */
+ 
+        q = a[i] / b[i];
+        b[i+1] = a[i] % b[i];
+        a[i+1] = b[i];
+        t[i+2] = t[i] - q * t[i+1];
+ 
+        /* Loop invariant: a[i+1], b[i+1], and t[i+2] are valid */
+ 
+        if (b[i+1] == 1)        /* Thus, a[i+2] == 1 */
+                return t[i+2];  /* The inverse */
+ 
+        q = a[i+1] / b[i+1];
+        b[i+2] = a[i+1] % b[i+1];
+        a[i+2] = b[i+1];
+        t[i+3] = t[i+1] - q * t[i+2];
+ 
+        i += 2;
+}
+ 
+Then the arrays can be replaced by variables.  Call them
+t_even, t_odd, a_even_b_odd and b_even_a_odd.  The latter two
+are initialized to a[0] and b[0].
+ 
+ 
+t_even = 0;
+t_odd = 1;
+ 
+i = 0;
+for (;;) {
+        /* New loop invariant: i is even */
+        /* Loop invariant: a[i], b[i], and t[i+1] are valid */
+        /*
+         * Loop invariants:
+         * a_even_b_odd = a[i]
+         * b_even_a_odd = b[i]
+         * t_even = t[i]
+         * t_odd = t[i+1]
+         */
+ 
+        if (b_even_a_odd == 1)          /* Thus, a[i+1] == 1 */
+                return t_odd;   /* The inverse */
+ 
+        q = a_even_b_odd / b_even_a_odd;
+        a_even_b_odd = a_even_b_odd % b_even_a_odd;
+        b_even_a_odd = b_even_a_odd;
+        t_even = t_even - q * t_odd;
+ 
+        /* Loop invariant: a[i+1], b[i+1], and t[i+2] are valid */
+        /*
+         * Loop invariants:
+         * a_even_b_odd = b[i+1]
+         * b_even_a_odd = a[i+1]
+         * t_even = t[i+2]
+         * t_odd = t[i+1]
+         */
+ 
+        if (a_even_b_odd == 1)  /* Thus, a[i+2] == 1 */
+                return t_even;  /* The inverse */
+ 
+        q = b_even_a_odd / a_even_b_odd;
+        b_even_a_odd = b_even_a_odd % a_even_b_odd;
+        a_even_b_odd = a_even_b_odd;
+        t_odd = t_odd - q * t_even;
+ 
+        i += 2;
+}
+ 
+The next step is to replace the cumbersome varibles a_even_b_odd
+and b_even_a_odd with a and b, respectively, remove the redundant
+b = b and a = a copies, and use two-operand operations where possible:
+ 
+t_even = 0;
+t_odd = 1;
+ 
+i = 0;
+for (;;) {
+        /* New loop invariant: i is even */
+        /* Loop invariant: a[i], b[i], and t[i+1] are valid */
+        /*
+         * Loop invariants:
+         * a = a[i]
+         * b = b[i]
+         * t_even = t[i]
+         * t_odd = t[i+1]
+         */
+ 
+        if (b == 1)             /* Thus, a[i+1] == 1 */
+                return t_odd;   /* The inverse */
+ 
+        q = a / b;
+        a %= b;
+        t_even -= q * t_odd;
+ 
+        /* Loop invariant: a[i+1], b[i+1], and t[i+2] are valid */
+        /*
+         * Loop invariants:
+         * a = b[i+1]
+         * b = a[i+1]
+         * t_even = t[i+2]
+         * t_odd = t[i+1]
+         */
+ 
+        if (a == 1)             /* Thus, a[i+2] == 1 */
+                return t_even;  /* The inverse */
+ 
+        q = b / a;
+        b %= a;
+        t_odd -= q * t_even;
+ 
+        i += 2;
+}
+ 
+Then, replace t_even and t_odd with t0 = -t_even and t1 = t_odd.
+Thus, the lines that modify t_even and t_odd become:
+ 
+   t_even = t_even - q * t_odd
+   t_odd  =  t_odd - q * t_even
+ 
+=> -t0    = -t0    - q *  t1
+    t1    =  t1    - q * -t0
+ 
+=>  t0    =  t0    + q *  t1
+    t1    =  t1    + q *  t0
+ 
+=> t0 += q * t1
+   t1 += q * t0
+ 
+This avoids the need to deal with negative numbers.  The initial value
+of t0 has to be the negative of the initial value of t_even, but that
+was 0, so there is no problem there.
+ 
+After these adjustments, the code looks like this:
+ 
+t0 = 0;
+t1 = 1;
+ 
+i = 0;
+for (;;) {
+        /* New loop invariant: i is even */
+        /* Loop invariant: a[i], b[i], and t[i+1] are valid */
+        /*
+         * Loop invariants:
+         * a = a[i]
+         * b = b[i]
+         * t0 = -t[i]
+         * t1 = t[i+1]
+         */
+ 
+        if (b == 1)             /* Thus, a[i+1] == 1 */
+                return t1;      /* The inverse */
+ 
+        q = a / b;
+        a %= b;
+        t0 += q * t1;
+ 
+        /* Loop invariant: a[i+1], b[i+1], and t[i+2] are valid */
+        /*
+         * Loop invariants:
+         * a = b[i+1]
+         * b = a[i+1]
+         * t0 = -t[i+2]
+         * t1 = t[i+1]
+         */
+ 
+        if (a == 1)             /* Thus, a[i+2] == 1 */
+                return -t0;     /* The inverse */
+ 
+        q = b / a;
+        b %= a;
+        t1 += q * t0;
+ 
+        i += 2;
+}
+ 
+To further reduce the need to fiddle with negative numbers, -t0 can be
+replaced with a[0]-t0.  It turns out that this does not introduce negative
+numbers, because t0 and t1 are bounded between 0 and a[0].
+ 
+The following is missing a crucial step to become a proof, but should
+be a sufficiently convincing argument.
+ 
+The termination test is a[n] = 1.  a[n] = b[n-1], and
+b[n] = a[n-1] % b[n-1].  Thus, b[n] = a[n-1] % 1 = 0.
+As mentioned at the beginning, the termination test is
+usually b[n] = 0, with a[n] being the GCD of a[0] and b[0],
+but this application assumes we know that GCD(a[0],b[0]) = 1,
+so we can test for a[n] = b[n-1] = 1 and avoid the last division.
+ 
+Thus, a[n+1] = b[n] = 0.  Well, a[n+1] = s[n+1]*a[0] + t[n+1]*b[0].
+If a[0] and b[0] are relatively prime, and s[n+1] and t[n+1] are
+not both zero, then s[n+1] must be a multiple of b[0] and t[n+1]
+must be a multiple of a[0].  Thus, this reduces to
+0 = k*b[0]*a[0] + -k*a[0]*b[0], where s[n+1] = k * b[0] and
+t[n+1] = -k * a[0], for some non-zero integer k.
+ 
+It turns out that the Euclidean algorithm is reasonably efficient,
+and k is no larger than it has to be, so it is +/-1.  This is the
+unproved point in this argument, but it is an equality, so it is
+easy to see experimentally and should not be too hard to prove.
+ 
+Now |t[i]|, the absolute value of t[i], is nondecreasing; in other 
+words |t[i]| <= |t[i+1]|.  It should not be hard to see this by 
+looking at how t0 and t1 are computed in the above code.  So 
+|t[n]| <= |t[n+1]| = a[0], and since the inverse of b[0] mod a[0] 
+is not a[0] (which would be zero), |t[n]| is not equal to a[0], 
+so it must be strictly less than a[0].  Thus:
+ 
+0 = t[0] < 1 = t[1] <= |t[2]| <= |t[3]| <= ... <= |t[n]| < |t[n+1]| = a[0].
+ 
+Since the modified algorithm deals with |t[i]| everywhere, it is
+now known to suffice if the t0 and t1 variables can hold numbers up to
+a[0]-1 in size.  This is very useful, for example, in finding the
+coefficients needed for Montgomery multiplication, where a[0] is usually
+one more the largest number that can be conveniently dealt with, i.e.
+the word size of the computer (usually 2^32).  That requires some
+special-case work for the first division, but after that, a[i] < a[0],
+so word-sized variables will suffice.
+ 
+Given that t[0] and t[1] are such simple numbers, it makes sense to
+special-case the first iteration of the loop.  t[2] = t[0] - q[0] * t[1],
+which reduces to t[2] = 0 - q[0] * 1 = -q.  In the code we have,
+t0 += q * t1 reduces to t0 = q the first time through the loop.
+ 
+Also taking out the unnecessary i variable, the loop-invariant comments, 
+and keeping the original a around for negating t0 on return, we have the 
+final version of the code:
+ 
+datatype mult_inverse(datatype a, datatype b)
+{
+        datatype t0, t1, c, q;
+ 
+        t1 = 1;
+ 
+        if (b == 1)
+                return t1;
+ 
+        t0 = a / b;
+        c = a % b;
+ 
+        while (c != 1) {
+                q = b / c;
+                b %= c;
+                t1 += q * t0;
+                if (b == 1)
+                        return t1;
+ 
+                q = c / b;
+                c %= b;
+                t0 += q * t1;
+        }
+        return a-t0;
+}
+ 
+You can usually compute x / y and x % y in the same operation.
+A smart enough compiler will do it for you.
+ 
+The nice thing about the above code is that every variable is strictly
+greater than zero and less than a.  If you are using a multi-precision
+math package, there is no need to test signs, and can know the necessary
+ranges beforehand.  If a is the word size of the computer, then normal
+words will suffice for all the variables.
+ 
+Suppose a is one larger than UINT_MAX, and the computer has no
+larger data type.  (Or even if it does, but division with it is
+inefficient.)  Finding a / b and a % b is a bit tricky.  Here is
+how to do it.
+ 
+The b==1 case is tested for and discarded before the division.  Since
+b is relatively prime to a, this means that a % b cannot be zero.
+Thus, dividing (a-1) by b produces a remainder one smaller than
+a % b.  It cannot wrap around.  Thus, the quotient of the division
+is the desired number.  So compute
+ 
+        q = (a-1) / b;
+        c = (a-1) % b + 1;
+ 
+and you will be all set.  Hardcoding a to UINT_MAX+1, a version of the code
+to find the inverse of b is:
+ 
+unsigned mult_inverse(unsigned b)
+{
+        unsigned t0, t1, c, q;
+ 
+        t1 = 1;
+ 
+        if (b == 1)
+                return t1;
+ 
+        t0 = UINT_MAX / b;
+        c = UINT_MAX % b + 1;
+ 
+        while (c != 1) {
+                q = b / c;
+                b %= c;
+                t1 += q * t0;
+                if (b == 1)
+                        return t1;
+ 
+                q = c / b;
+                c %= b;
+                t0 += q * t1;
+        }
+        return -t0;
+}
+-- 
+	-Colin

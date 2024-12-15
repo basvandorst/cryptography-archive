@@ -1,0 +1,651 @@
+Path: xanth!mcnc!gatech!ukma!cwjcc!hal!ncoast!allbery
+From: ljz@fxgrp.UUCP (Lloyd Zusman)
+Newsgroups: comp.sources.misc
+Subject: v04i113: Arbitrary Precision Math Library -- 1 of 5
+Message-ID: <8810051944.AA05696@fxgrp.fx.com>
+Date: 7 Oct 88 00:09:31 GMT
+Sender: allbery@ncoast.UUCP
+Reply-To: ljz@fxgrp.UUCP (Lloyd Zusman)
+Lines: 640
+Approved: allbery@ncoast.UUCP
+
+Posting-number: Volume 4, Issue 113
+Submitted-by: "Lloyd Zusman" <ljz@fxgrp.UUCP>
+Archive-name: apml/Part1
+
+Enclosed you will find the Arbitrary Precision Math Library (1 of 5)
+
+Please post this to the comp.sources.misc newsgroup.
+
+I finally got this into good enough shape to send out to the net. To use,
+just unshar the 5 pieces, read the README file, possibly alter the makefiles
+to conform to your system's conventions, and then type 'make test'.
+
+Good luck!
+
+--
+  Lloyd Zusman                  Internet:  ljz@fx.com
+  Master Byte Software                  or ljz%fx.com@ames.arc.nasa.gov
+  Los Gatos, California                 or fxgrp!ljz@ames.arc.nasa.gov
+  "We take things well in hand."    uucp:  ...!ames!fxgrp!ljz
+  [ our Internet connection is down: use uucp or mail to the entry above it ]
+
+#--------------------------Cut Here--------------------------
+#! /bin/sh
+# This is a shell archive.  Remove anything before the "#! /bin/sh" line,
+# then unpack it by saving it in a file and typing "sh file."
+#
+# Wrapped by Lloyd Zusman (ljz) at fxgrp on Wed Oct  5 12:41:51 1988
+#
+# unpacks with default permissions
+#
+# Contents : README FUNCTIONS
+#
+if `test ! -s README`
+then
+echo "x - README"
+sed 's/^X//' > README << '@\END_OF_FILE_README'
+X
+X    	    	Arbitrary Precision Math Library
+X
+XThe Arbitrary Precision Math Library is a series of routines that
+Xallows the user to perform math to any level of accuracy that is
+Xdesired.  These APM entities ("APM" == "Arbitrary Precision Math") can
+Xbe initialized from character strings or from long integers, and they
+Xcan be converted back into character strings by a routine that allows
+Xsimple formatting.  With the exception of the routines that do
+Xdivision, the results of APM operations are guaranteed to contain
+Xenough precision to hold exact values.  The APM routines will
+Xautomatically allocate enough space in their results to hold the
+Xproper number of digits.
+X
+XThe APM math is done on a new data type called "APM".  This is
+Xactually a pointer to a structure, but the contents of the structure
+Xshould never be manipulated: all operations on APM entities are done
+Xthrough a functional interface.
+X
+XAPM items can be represented in any of 36 bases: 2 through 36 and
+X10000.  The latter is quite useful: numbers that are represented in
+Xbases that are powers of 10 are quite easy to accurately convert to
+Xand from character strings containing their decimal representation,
+Xand 10000 is the largest power of 10 that fits into a short integer
+X(16 bits).  The base must fit into a short integer since calculations
+Xinternal to the APM routines need up to twice as much storage as is
+Xneeded to hold the base, and the largest unit we can deal with easily
+Xis a long integer (2 shorts).  It turns out that speed improves and
+Xmemory usage decreases as the magnitude of the base increases, so base
+X10000 is a win in both counts.  I have done some informal benchmarks
+Xin which base 10000 is 6 to 10 times faster than base 10 for numbers
+Xwith 15 - 20 decimal digits of precision.
+X
+XAlthough there is a multitude of bases, there is as yet no provision
+Xfor conversion from one base to another, except for the special case
+Xof converting between base-10 character strings and base-10000 APM
+Xvalues.  All the input APM parameters to any given APM routine must be
+Xof the same base.
+X
+XThe caller must initialize all APM values before the routines can
+Xoperate on them (including the values intended to contain results of
+Xcalculations).  Once this initialization is done, the user never needs
+Xto worry about resizing the APM values, as this is handled inside the
+XAPM routines and is totally invisible to the user.
+X
+XThe result of a APM operation cannot be one of the other APM operands.
+XIf you want this to be the case, you must put the result into a
+Xtemporary variable and then assign it to the appropriate operand.
+X
+XAll of the routines set the value of a global integer called
+X"apm_errno" to an error status: 0 means the operation succeeded, > 0
+Xmeans there was a warning but that there still is a result, and < 0
+Xmeans there was an error which prohibited the operation from
+Xcompleting.  Except where otherwise noted, the routines return this
+Xsame status value.
+X
+XThe caller has the option of registering a handler for errors and
+Xwarnings.  If this has been done, the handler will be invoked as each
+XAPM routine returns, and it will be passed appropriate information as
+Xto the status of the call to this APM routine.  With a registered
+Xerror handler it is not necessary for the caller to check the error
+Xcode after each call to a APM routine.
+X
+XFor ease of debugging, each APM routine is actually a macro that saves
+Xthe file name and line number and then calls a function of a slightly
+Xdifferent name.  This allows the error handler to report the exact
+Xlocation of the APM operation which caused the error.  The macros you
+Xwill use have names of the form "apmRoutineName".  To get the
+Xcorresponding actual function name (say, when using a debugger),
+Xreplace all capital letters with an underbar ("_") followed by its
+Xlower-case counterpart.  For example, for a hypothetical routine
+Xcalled "apmRoutineName", the actual function will be named
+X"apm_routine_name".  You should never explicitly call the actual
+Xfunction.
+X
+XYou should avoid using symbols that start with the characters "APM_"
+Xand "apm_", as they may clash with symbols that already exist in the
+XAPM Library.
+X
+XThere is one routine for each basic arithmetic operation such as
+Xadding, subtracting, etc.  This can become cumbersome when the result
+Xof a complicated expression is desired.  Therefore, I have added a
+Xroutine that will perform a series of operations in the manner of an
+XRPN ("Reverse Polish Notation") calculator.  See the routine 'apmCalc'
+X(below) for more details.
+X
+XIn my original version of this library, I discovered that a great deal
+Xof system overhead was wasted allocating and deallocating APM values.
+XSo, I adopted what has turned out to be a noticibly faster allocation
+Xscheme: newly allocated APM values are stored in a list.  When the
+Xuser disposes of one of these, it isn't really freed: its entry in the
+Xlist is marked as unused.  Subsequent attempts to allocate a new APM
+Xvalue will make use of any existing entries in this list that are
+Xmarked as unused instead of allocating a new entry.  Only when there
+Xare no unused entries in the list will a new entry be allocated.
+XThere is a routine that can be called which will perform a garbage
+Xcollection: i.e., it actually frees all unused APM entries (see
+X'apmGarbageCollect', below).
+X
+XA file called apm.h must be included in all programs that use the APM
+Xroutines.  It defines the "APM" data type, the error codes, the
+Xapm_errno variable, and several other things.
+X
+XThis software was written in as portable a manner as possible.  I have
+Xgotten it running successfully under several environments: on a Sun
+X3/xxx using SunOS 3.5 and 4.0, on an IBM RT running under AIX, under
+XMSDOS on an IBM PC using Microsoft C version 5.1 and Turbo C version
+X1.5 (or was it version 2.0?).  There are two makefiles: the one called
+X"Makefile" is the unix version ... it works under SunOS 3.5 and I
+Xpresume it would be easy to alter it to work under other unix
+Xenvironments; the one called "makefile.msc" will build the library
+Xunder MSDOS using Microsoft C version 5.1 ... it is meant to run with
+Xthe make program "PC/MAKE".
+X
+XI'm sure that some of you will find ways of enhancing and speeding up
+Xthe routines in this library.  Time permitting, I will be doing that
+Xas well.  I urge you to post your bug fixes and changes to the net and
+Xmail them to me at my address below, so they might be incorporated
+Xinto a later version of this library.  Some suggested areas of
+Xenhancement and optimization are:
+X
+X1)	Somehow speeding up the memory allocation scheme.
+X
+X2)	Some sort of floating-point/APM conversion.  I left this out
+X	because of the widely varying floating-point formats that
+X	exist on the various machines these routines can and might run
+X	on, and because I intended APM to *replace* floating-point,
+X	not to work in conjunction with it.
+X
+X3)	Base conversion.
+X
+X4)	Roots, powers, logarithms, trig functions, exponential functions,
+X	etc.
+X
+X5)  	More productions in the makefiles ("install", "rdist", etc.).
+X
+X6)  	A fancy installation script.
+X
+X7)	Writing a man page for all this.
+@\END_OF_FILE_README
+else
+  echo "shar: Will not over write README"
+fi
+if `test ! -s FUNCTIONS`
+then
+echo "x - FUNCTIONS"
+sed 's/^X//' > FUNCTIONS << '@\END_OF_FILE_FUNCTIONS'
+XAPM
+XapmInit(init, scale_factor, base)
+Xlong init;
+Xint scale_factor;
+Xshort base;
+X{}
+X  This routine initializes a new APM value.  The 'init' parameter is a long
+X  integer that represents its initial value, the 'scale_factor' variable
+X  indicates how this initial value should be scaled, and 'base' is the base of
+X  the initial value.  Note that the APM value returned by this routine is
+X  normally a reclaimed APM value that has been previously disposed of via
+X  apmDispose(); only if there are no previous values to be reclaimed will this
+X  routine allocate a fresh APM value (see also the apmGarbageCollect()
+X  routine).
+X
+X  Bases can be 2 - 36, 10000, or 0, where 0 defaults to base 10000.
+X
+X  If the call fails, it will return (APM)NULL and 'apm_errno' will contain a
+X  meaningful result.  Otherwise, a new APM value will be initialized.
+X
+X  For example, assume that we want to initialize two APM values in base 10000,
+X  the first to 1.23456 and the second to 1 E20 ("one times 10 to the 20th
+X  power"):
+X
+X      APM apm_1 = apmInit(123456L, -5, 0);
+X      APM apm_2 = apmInit(1L, 20, 0);
+X
+X  As a convenience, the following macro is defined in apm.h:
+X
+X      #define apmNew(BASE)    apmInit(0L, 0, (BASE))
+X
+Xint
+XapmDispose(apm)
+XAPM apm;
+X{}
+X  This routine disposes of a APM value 'apm' by returning it to the list of
+X  unused APM values (see also the apmGarbageCollect() routine).  It returns
+X  an appropriate status which is also put into 'apm_errno'.
+X
+Xint
+XapmGarbageCollect()
+X{}
+X  When APM values are disposed of, they remain allocated.  Subsequent calls to
+X  apmInit() may then return a previously allocated but disposed APM value.
+X  This is done for speed considerations, but after a while there may be lots of
+X  these unused APM values lying around.  This routine reclaims the space taken
+X  up by these unused APM values (it frees them).  It returns an appropriate
+X  status which is also put into 'apm_errno'.
+X
+Xint
+XapmAdd(result, apm1, apm2)
+XAPM result;
+XAPM apm1;
+XAPM apm2;
+X{}
+X  This routine adds 'apm1' and 'apm2', putting the sum into 'result', whose
+X  previous value is destroyed.  Note that all three parameters must have been
+X  previously initialized via apmInit().
+X
+X  The 'result' parameter cannot be one of the other APM parameters.
+X
+X  The return code and the 'apm_error' variable reflect the status of this
+X  function.
+X
+Xint
+XapmSubtract(result, apm1, apm2)
+XAPM result;
+XAPM apm1;
+XAPM apm2;
+X{}
+X  This routine subtracts 'apm2' from 'apm1', putting the difference into
+X  'result', whose previous value is destroyed.  Note that all three parameters
+X  must have been previously initialized via apmInit().
+X
+X  The 'result' parameter cannot be one of the other APM parameters.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmMultiply(result, apm1, apm2)
+XAPM result;
+XAPM apm1;
+XAPM apm2;
+X{}
+X  This routine multiplies 'apm1' and 'apm2', putting the product into 'result',
+X  whose previous value is destroyed.  Note that all three parameters must have
+X  been previously initialized via apmInit().
+X
+X  The 'result' parameter cannot be one of the other APM parameters.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmDivide(quotient, radix_places, remainder, apm1, apm2)
+XAPM quotient;
+Xint radix_places;
+XAPM remainder;
+XAPM apm1;
+XAPM apm2;
+X{}
+X  This routine divides 'apm1' by 'apm2', producing the 'quotient' and
+X  'remainder' variables.  Unlike the other three basic operations,
+X  division cannot be counted on to produce non-repeating decimals, so
+X  the 'radix_places' variable exists to tell this routine how many
+X  digits to the right of the radix point are to be calculated before
+X  stopping.  If the 'remainder' variable is set to (APM)NULL, no
+X  remainder is calculated ... this saves quite a bit of computation time
+X  and hence is recommended whenever possible.
+X
+X  All APM values must have been previously initialized via apmInit() (except,
+X  of course the 'remainder' value if it is to be set to NULL).
+X
+X  Division by zero creates a zero result and a warning.
+X
+X  The 'quotient' and 'remainder' variables can't be one of the other APM
+X  parameters.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmCompare(apm1, apm2)
+XAPM apm1;
+XAPM apm2;
+X{}
+X  This routine compares 'apm1' and 'apm2', returning -1 if 'apm1' is less than
+X  'apm2', 1 if 'apm1' is greater than 'apm2', and 0 if they are equal.
+X
+X  It is not an error if 'apm1' and 'apm2' are identical, and in this case the
+X  return value is 0.
+X
+X  The 'apm_errno' variable contains the error code.  You must check this value:
+X  if it is set to an error indication, the comparison failed and the return
+X  value is therefore meaningless.
+X
+Xint
+XapmCompareLong(apm, longval, scale_factor, base)
+XAPM apm;
+Xlong longval;
+Xint scale_factor;
+Xshort base;
+X{}
+X  This routine works just like apmCompare(), but it compares the 'apm' value to
+X  'longval', scaled by 'scale_factor' in 'base'.  The 'apm_errno' variable
+X  contains the error code.
+X
+Xint
+XapmSign(apm)
+XAPM apm;
+X{}
+X  This routine returns the sign of the 'apm' value: -1 for negative, 1 for
+X  positive.  The 'apm_errno' variable contains the error code.  You must check
+X  'apm_errno': if it's non-zero, the function return value is meaningless.
+X
+Xint
+XapmAbsoluteValue(result, apm)
+XAPM result;
+XAPM apm;
+X{}
+X  This routine puts the absolute value of 'apm' into 'result', whose previous
+X  value is destroyed.  Note that the two parameters must have been previously
+X  initialized via apmInit().
+X
+X  The 'result' parameter cannot be the other APM parameter.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmNegate(result, apm)
+XAPM result;
+XAPM num;
+X{}
+X  This routine puts the additive inverse of 'apm' into 'result', whose previous
+X  value is destroyed.  Note that the two parameters must have been previously
+X  initialized via apmInit().
+X
+X  The 'result' parameter cannot be the other APM parameter.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmReciprocal(result, radix_places, apm)
+XAPM result;
+Xint radix_places;
+XAPM num;
+X{}
+X  This routine puts the multiplicative inverse of 'apm' into 'result', whose
+X  previous value is destroyed.  Note that the two APM parameters must have been
+X  previously initialized via apmInit().  Since taking the reciprocal involves
+X  doing a division, the 'radix_places' parameter is needed here for the same
+X  reason it's needed in the apmDivide() routine.
+X
+X  Taking the reciprocal of zero yields zero with a warning status.
+X
+X  The 'result' parameter cannot be the other APM parameter.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmScale(result, apm, scale_factor)
+XAPM result;
+XAPM apm;
+Xint scale_factor;
+X{}
+X  This routine assigns to 'result' the value of 'apm' with its radix point
+X  shifted by 'scale_factor' (positive 'scale_factor' means shift left).  The
+X  'scale_factor' represents how many places the radix is shifted in the base of
+X  'apm' unless 'apm' is in base 10000 ...  in this special case, 'scale_factor'
+X  is treated as if the base were 10.
+X
+X  This is a very quick and accurate way to multiply or divide by a power of 10
+X  (or the number's base).
+X
+X  The 'result' parameter cannot be the other APM parameter.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmValidate(apm)
+XAPM apm;
+X{}
+X  This routine sets 'apm_errno' and its return status to some non-zero value if
+X  'apm' is not a valid APM value.
+X
+Xint
+XapmAssign(result, apm)
+XAPM result;
+XAPM num;
+X{}
+X  This routine assigns the value of 'apm' to 'result', whose previous value is
+X  destroyed.  Note that the two parameters must have been previously
+X  initialized via apmInit().
+X
+X  It is not considered an error if 'result' and 'apm' are identical; this case
+X  is a virtual no-op.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmAssignLong(result, long_value, scale_factor, base)
+XAPM result;
+Xlong long_value;
+Xint scale_factor;
+Xshort base;
+X{}
+X  This routine assigns a long int to 'result'.  Its second through fourth
+X  parameters correspond exactly to the parameters of apmInit().  The only
+X  difference between the two routines is that this one requires that its result
+X  be previously initialized.  The 'long_value' parameter is a long that
+X  represents the value to assign to 'result', the 'scale_factor' variable
+X  indicates how this value should be scaled, and 'base' is the base of the
+X  value.
+X
+X  Bases can be 2 - 36, 10000, or 0, where 0 defaults to base 10000.
+X
+X  For example, assume that we want to assign values to two previously
+X  initialized APM entities, apm_1 and apm_2.  The base will be base 10000, the
+X  first value will be set to 1.23456 and the second will be set to 1 E20 ("one
+X  times 10 to the 20th power"):
+X
+X      int ercode;
+X
+X      ercode = apmAssignLong(apm_1, 123456L, -5, 0);
+X      ...
+X
+X      ercode = apmAssignLong(apm_2, 1L, 20, 0);
+X      ...
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmAssignString(apm, string, base)
+XAPM apm;
+Xchar *string;
+Xshort base;
+X{}
+X  This routine takes a character string containing the ASCII representation of
+X  a numeric value and converts it into a APM value in the base specified.  The
+X  'apm' parameter must have been previously initialized, 'string' must be
+X  non-NULL and valid in the specified base, and 'base' must be a valid base.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+XapmConvert(string, length, decimals, round, leftjustify, apm)
+Xchar *string;
+Xint length;
+Xint decimals;
+Xint round;
+Xint leftjustify;
+XAPM apm;
+X{}
+X  This routine converts a APM value 'apm' into its ASCII representation
+X  'string'. The 'length' parameter is the maximum size of the string (including
+X  the trailing null), the 'decimals' parameter is the number of decimal places
+X  to display, the 'round' parameter is a true-false value which determines
+X  whether rounding is to take place (0 = false = no rounding), the
+X  'leftjustify' parameter is a true-false value which determines whether the
+X  result is to be left justified (0 = false = right justify; non-zero = true =
+X  left justify), and the 'apm' paramter is the APM value to be converted.
+X
+X  The 'string' parameter must point to an area that can hold at least 'length'
+X  bytes.
+X
+X  If the 'decimals' parameter is < 0, the string will contain the number of
+X  decimal places that are inherent in the APM value passed in.
+X
+X  The return code and the 'apm_errno' variable reflect the status of this
+X  function.
+X
+Xint
+X(*apmErrorFunc(newfunc))()
+Xint (*newfunc)();
+X{}
+X  This routine registers an error handler for errors and warnings.  Before any
+X  of the other APM routines return to the caller, an optional error handler
+X  specified in 'newfunc' can be called to intercept the result of the
+X  operation.  With a registered error handler, the caller can dispense with the
+X  repetitious code for checking 'apm_errno' or the function return status after
+X  each call to a APM routine.
+X
+X  If no error handler is registered or if 'newfunc' is set to NULL, no action
+X  will be taken on errors and warnings except to set the 'apm_errno' variable.
+X  If there is an error handler, it is called as follows when there is an error
+X  or a warning:
+X
+X      retcode = (*newfunc)(ercode, message, file, line, function)
+X
+X  where ...
+X
+X      int retcode;  	/* returned by 'newfunc': should be 'ercode' */
+X      int ercode;   	/* error code */
+X      char *message;	/* a short string describing the error */
+X      char *file;   	/* the file in which the error occurred */
+X      int line;	    	/* the line on which the error occurred */
+X      char *function;	/* the name of the function in error */
+X
+X  Note that your error handler should normally return 'ercode' unless it does a
+X  longjmp, calls exit(), or in some other way interrupts the normal processing
+X  flow.  The value returned from your error handler is the value that the apm
+X  routine in error will return to its caller.
+X
+X  The error handler is called after 'apm_errno' is set.
+X
+X  This routine returns a pointer to the previously registered error handler or
+X  NULL if one isn't registered.
+X
+Xint
+XapmCalc(result, operand, ..., NULL)
+XAPM result;
+XAPM operand, ...;
+X{}
+X  This routine performs a series of calculations in an RPN ("Reverse
+X  Polish Notation") fashion, returning the final result in the 'result'
+X  variable.  It takes a variable number of arguments and hence the
+X  rightmost argument must be a NULL.
+X
+X  Each 'operand' is either a APM value or a special constant indicating
+X  the operation that is to be performed (see below).  This routine makes
+X  use of a stack (16 levels deep) similar to that in many pocket
+X  calculators.  It also is able to access a set of 16 auxiliary
+X  registers (numbered 0 through 15) for holding intermediate values.
+X
+X  The stack gets reinitialized at the start of this routine, so values
+X  that have been left on the stack from a previous call will disappear.
+X  However, the auxiliary registers are static and values remain in these
+X  registers for the duration of your program.  They may also be
+X  retrieved outside of this routine (see the apmGetRegister() and
+X  apmSetRegister() routines, below).
+X
+X  An operand that is an APM value is automatically pushed onto the stack
+X  simply by naming it in the function call.  If the stack is full when a
+X  value is being pushed onto it, the bottommost value drops off the
+X  stack and the push succeeds; this is similar to how many pocket
+X  calculators work.  Also, if the stack is empty, a pop will succeed,
+X  yielding a zero value and keeping the stack empty.  The topmost value
+X  on the stack is automatically popped into the 'result' parameter after
+X  all the operations have been performed.
+X
+X  An operand that is one of the following special values will cause
+X  an operation to be performed.  These operations are described in the
+X  following list.  Note that the values "V", "V1", and "V2" are used
+X  in the following list to stand for temporary values:
+X
+X	APM_ABS		pop V, push absolute value of V
+X	APM_NEG		pop V, push -V
+X	APM_CLEAR	empty the stack
+X	APM_DUP		pop V, push V, push V
+X	APM_SWAP	pop V1, pop V2, push V1, push V2
+X	APM_SCALE(N)	pop V, push V scaled by N [ as in apmScale() ]
+X	APM_PUSH(N)	V = value in register N, push V
+X	APM_POP(N)	pop V, store it in register N
+X	APM_ADD		pop V1, pop V2, push (V2 + V1)
+X	APM_SUB		pop V1, pop V2, push (V2 - V1)
+X	APM_MUL		pop V1, pop V2, push (V2 * V1)
+X	APM_DIV(N)	pop V1, pop V2, push (V2 / V1) with N radix places
+X			[ as in apmDivide() ], remainder goes into register 0
+X	APM_RECIP(N)	pop V, push 1/V with N radix places
+X			[ as in apmReciprocal() ]
+X
+X  Since register 0 is used to hold the remainder in a division, it is
+X  recommended that this register not be used to hold other values.
+X
+X  As an example, assume that APM values "foo", "bar", and "baz" have
+X  been initialized via apmInit() and that "foo" and "bar" are to be used
+X  to calculate "baz" as follows (assume that divisions stop after 16
+X  decimal places have been calcluated):
+X
+X	baz = 1 / ((((foo * bar) + foo) / bar) - foo)
+X
+X  The function call will be:
+X
+X	bcdCalc(baz, foo, APM_DUP, APM_POP(1), bar, APM_DUP, APM_POP(2),
+X		APM_MUL, APM_PUSH(1), APM_ADD, APM_PUSH(2), APM_DIV(16),
+X		APM_PUSH(1), APM_SUB, APM_RECIP(16), NULL);
+X
+X  Note that the value of "foo" is stored in register 1 and the value of
+X  "bar" is stored in register 2.  After this call, these registers will
+X  still contain those values.
+X
+Xint
+XapmGetRegister(regvalue, regnumber)
+XAPM regvalue;
+Xint regnumber;
+X{}
+X  The value in auxiliary register number 'regnumber' is assigned to APM
+X  value 'regvalue'.  The 'regnumber' parameter must be between 0 and 15,
+X  inclusive.  The 'regvalue' parameter must have been previously
+X  initialized via apmInit().
+X
+Xint
+XapmSetRegister(regvalue, regnumber, newvalue)
+XAPM regvalue;
+Xint regnumber;
+XAPM newvalue;
+X{}
+X  The value in auxiliary register number 'regnumber' is assigned to APM
+X  value 'regvalue', and then the APM value 'newvalue' is stored in that
+X  same register.  The 'regnumber' parameter must be between 0 and 15,
+X  inclusive.  The 'regvalue' and 'newvalue' parameters must have been
+X  previously initialized via apmInit().
+@\END_OF_FILE_FUNCTIONS
+else
+  echo "shar: Will not over write FUNCTIONS"
+fi
+echo "Finished archive 1 of 5"
+# to concatenate archives, remove anything after this line
+exit 0

@@ -1,0 +1,138 @@
+Path: msuinfo!agate!howland.reston.ans.net!gatech!newsxfer.itd.umich.edu!uunet!nwnexus!coho!ken
+From: ken@coho.halcyon.com (Ken Pizzini)
+Newsgroups: sci.crypt
+Subject: Re: transposition cryptanalysis
+Date: 5 Aug 1994 03:23:09 GMT
+Organization: What, me?
+Lines: 127
+Message-ID: <31sbat$g1d@nwfocus.wa.com>
+References: <30pkti$k9s@nwfocus.wa.com> <1994Aug3.060707.8932@qiclab.scn.rain.com>
+NNTP-Posting-Host: coho.halcyon.com
+
+In article <1994Aug3.060707.8932@qiclab.scn.rain.com>,
+Leonard Erickson <Leonard.Erickson@f51.n105.z1.fidonet.org> wrote:
+>With transposition, one simply computes the standard deviation of
+>the ciphertext. It'll have essientally the same Sd as plaintext. 
+
+This will identify a ciphertext as being pure transposition, yes.
+
+>One then starts the computer doing statistics on the occurence of
+>*pairs* (or triplets even) of characters at various "intervals".
+>
+>This actually gets the transposition pattern fairly quickly. Multiple
+>transposition is equivalent to *one* more complex transpostion (one
+>having N1 * N2 as it's base).
+
+But I don't see that multiple transposition would give identifiable
+intervals to exploit.
+
+
+>BTW, I suggest that you try *decrypting* your simple example. I'm not
+>certain that the process is "properly" reversible as you have it set
+>up.
+
+It is quite reversable.  As proof, I offer this hackneyed C code:
+
+---Cut Here---
+#include <stdio.h>
+#include <stdlib.h>
+
+#undef ENCODE
+
+const int k1[] = {5, 7, 2, 9, 10, 3, 8, 4, 1, 6};
+const int k2[] = {3, 11, 4, 2, 7, 1, 9, 6, 8, 10, 5};
+
+#define N1	(sizeof(k1) / sizeof(k1[0]))
+#define N2	(sizeof(k2) / sizeof(k2[0]))
+
+char text[] =
+#ifdef ENCODE
+	"SUPPOSESOMEONEWHOMWESHALLCALLTHESENDERWANTSTOSENDA"
+	"MESSAGETOSOMEONEELSEWHOMWESHALLCALLTHERECEIVERMORE"
+	"OVERTHESENDERWANTSTOMAKESUREANINTERMEDIARYCANNOTAF"
+	"FECTTHEMESSAGEINANYWAYSPECIFICALLYTHEINTERMEDIARYC"
+	"ANNOTINTERCEPTANDREADTHEMESSAGEINTERCEPTANDMODIFYT"
+	"HEMESSAGEORFABRICATEAREALISTICLOOKINGSUBSTITUTEMES"
+	"SAGE"
+#else
+	"ANOLTWOLNEWINARATTDETSLSMOAUREIOEHEEEEESTMREAIOAID"
+	"ESNCEUGASEHEEOTCEEMCANVYAEHTNYRRNEEIFLLOOAADWOWSTI"
+	"TRENEAYAIRYAYEETPIEUESAMTNLAEEEEWFOAATSCCRNCOGTASE"
+	"PBNTAESSTEORIKSMSCGDPLHNNCGOMENMILSRASETHMEODSTLRR"
+	"NIAETFSGFLPTMMTESEOSEWLRYTEEAPVMEETTBTAEKONSEECOHW"
+	"MLSFIOMAARASEDRACESLHSASDESHDNTGREHCCHUNEINIHNMRDS"
+	"IINT"
+#endif
+;
+
+void
+k1perm(char *c, const int p[], size_t plen)
+{
+	size_t text_len = strlen(c);
+	char *t = malloc(text_len);
+	size_t i, j, col, extra;
+	size_t nrow;
+
+	if (!t)
+		abort();
+	memcpy(t, c, text_len);
+	nrow = text_len / plen;
+	extra = text_len % plen;
+	for (i=0; i<plen; ++i){
+		col = p[i]-1;
+		for (j=col; j<text_len; j += plen)
+#ifdef ENCODE
+			*c++ = t[j];
+#else
+			c[j] = *t++;
+#endif
+	}
+	free(t);
+}
+
+void
+k2perm(char *c, const int p[], size_t plen)
+{
+	size_t text_len = strlen(c);
+	char *t = malloc(plen);
+	size_t i;
+
+	if (!t)
+		abort();
+	while (text_len > plen){
+		memcpy(t, c, plen);
+		for (i=0; i<plen; ++i)
+#ifdef ENCODE
+			c[p[i]-1] = t[i];
+#else
+			c[i] = t[p[i]-1];
+#endif
+		c += plen;
+		text_len -= plen;
+	}
+	free(t);
+}
+
+int
+main()
+{
+	const char *text_ptr;
+	const char *text_end;
+
+#ifdef ENCODE
+	k1perm(text, k1, N1);
+	k2perm(text, k2, N2);
+#else
+	k2perm(text, k2, N2);
+	k1perm(text, k1, N1);
+#endif
+
+	text_end = text + strlen(text);
+	for (text_ptr = text; text_ptr < text_end; text_ptr += 50)
+		printf("%.50s\n", text_ptr);
+
+	return 0;
+}
+---Cut Here---
+
+		--Ken Pizzini

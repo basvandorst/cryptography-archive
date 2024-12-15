@@ -1,0 +1,90 @@
+Path: msuinfo!uwm.edu!cs.utexas.edu!zaphod.mps.ohio-state.edu!howland.reston.ans.net!gatech!concert!duke!trt
+From: trt@duke.cs.duke.edu (Tom Truscott)
+Newsgroups: alt.security,comp.security.misc,sci.crypt
+Subject: Re: Using MD5 as a replacement for crypt() ?
+Message-ID: <733271577@romeo.cs.duke.edu>
+Date: 27 Mar 93 22:33:00 GMT
+References: <C4Irnz.F4F@Consent.UUCP>
+Followup-To: alt.security
+Organization: IBM RTP
+Lines: 78
+Xref: msuinfo alt.security:9725 comp.security.misc:3139 sci.crypt:14579
+
+
+This is only marginally an answer to your question.
+Any replacement for crypt(3) should address its current weaknesses,
+which include:
+
+0.  The password security scheme that employs crypt() is obsolete,
+    as it is insecure in today's networked environment.
+    A Kerberos-like scheme, and complete end-to-end encryption,
+    would be a much better baseline.
+The remainder of this article will ignore this detail :-)
+
+
+1.  It is "too fast", making typical passwords highly vulnerable.
+
+This is crypt()'s overwhelming problem.
+Of course I am assuming the Bad Guy has access to the encrypted string,
+if we assume otherwise then there is no need to encrypt.
+I am also assuming that making crypt "slower" reduces the vulnerability
+of all passwords, not just the typical ones.
+Some minor (in my opinion) problems:
+
+2.  It limits passwords to 8 characters, which probably
+    reduces the range of passwords that people would choose.
+3.  It has only a 12-bit "salt", so precomputed list attacks
+    are allegedly feasible.
+4.  It is based on DES which, although apparently as secure as advertised,
+    has only a 56 bit key.
+
+======================
+
+The revised crypt() that is in the BSD "net-2" release
+addresses these problems by being a fast implementation
+but supporting a "new style" of encrypted string which:
+
+1.  Includes an iteration count (up to 16 million)
+    to increase the time needed per crypt() call.
+2.  Is derived from arbitrarily long password strings.
+    (For practical reasons getpass() limits passwords to 128 characters.)
+3.  Includes a 24-bit salt allegedly to defeat precomputed list attacks.
+
+======================
+
+If one is doing a "clean sheet of paper" replacement for crypt(),
+then I think one should concentrate harder on #1 ("too fast"),
+in particular:
+
+    Reduce the advantage that a Bad Guy with lots of hardware
+    has over the single user trying to log in.
+
+Unfortunately, if the Bad Guy has 100 100 MIPS workstations
+and you must log into a 1 MIP legacy-station,
+the Bad Guy can trial-encrypt 10k possibilities
+while your crypt() is happening!
+I don't see anyway around that problem,
+assuming the Good Guys use a software implementation of crypt().
+But we should at least be able to:
+
+    Reduce the advantage that a Bad Guy with lots of *custom* hardware
+    has over the single user trying to log in.
+
+That rules out a pure software implementation of DES!
+Similarly, beware of someone building an MD5 chip.
+We want to make sure that the Bad Guy must design and build the
+custom hardware, not buy it off the shelf.
+
+The new crypt() should fully exploit the computational
+power of the systems that run it,
+in a way that maximizes the cost of equivalent custom hardware.
+Workstations have lots of memory, so it might be good if crypt()
+inherently required lots of memory for good performance.
+For example, suppose the only efficient algorithm for crypt()
+involved lots of random access to cache-sized arrays,
+and repeated linear scans of main-memory-sized arrays.
+Boolean operations and permutations are cheap in custom hardware,
+so instead use add/subtract (and maybe floating point?!).
+MD5 might be good in this respect, I'm just not sure.
+
+Tom Truscott

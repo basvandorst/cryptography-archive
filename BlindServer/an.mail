@@ -1,0 +1,42 @@
+#!/bin/sh
+if [ ! "$1" ]
+then
+  echo "You must specify a directory where your ID is stored"
+  exit 1
+fi
+
+if [ ! -f $HOME/.blind/$1/name ]
+then
+  echo "You need to first create an identity"
+  echo "Run an.createid $1"
+  exit
+fi
+
+PGPPATH=$HOME/.blind/$1
+export PGPPATH
+
+cat <<EOF > /tmp/snd.$$
+To: $2
+Subject:
+Date: `date`
+
+EOF
+
+emacs +5 /tmp/snd.$$
+
+pgp -saf <<EOF >/tmp/signed.$$
+::mailmessage
+`cat /tmp/snd.$$`
+--END OF MESSAGE--
+EOF
+
+
+if [ -f $HOME/.blind/$1/serverpath ]
+then
+  cat $HOME/.blind/$1/serverpath /tmp/signed.$$ | /usr/lib/sendmail -t
+else
+  cat /tmp/signed.$$ | /usr/lib/sendmail `cat $HOME/.blind/$1/servername`
+fi
+rm /tmp/signed.$$
+
+

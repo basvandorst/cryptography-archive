@@ -1,0 +1,395 @@
+% texinit.tex - basic capabilities presumed present by all TeX programs.
+
+        %%% Define the Control Characters not in plain TeX
+
+\catcode'15=10  % !!!! carriage return is a space !!!!
+                % i.e., multiple carriage returns don't break paragraphs
+                % this declaration is repeated in \endmacromode
+\catcode'174=4  % | as allignment tab
+\catcode'176=8  % ~ for subscripts
+
+        %%% Macros for Printing the Control Characters
+
+\def\%{\char'45 }%      % Note, the space after 45 is needed! (e.g.\%0)
+\chardef\@=`\@
+\def \\{{\ty\char'134 }}%
+\def \leftbrace{{\ty\char'173 }}%
+\def \rightbrace{{\ty\char'176 }}%
+\def \dollar{{\ty\char'044 }}%
+\def \#{{\ty\char'043 }}%
+%% wonder what this is for??
+\def \|{\setbox9\hbox{\ty A}%
+        \hbox to \wd9
+             {\ctr{\lower .3ex\vbox to 2ex
+                                   {\hrule width .05em height .8ex depth 0pt
+                                    \vfill
+                                    \hrule width .05em height .8ex}}}}
+
+        %%% Various New Control Structures
+
+                %% Macro Mode
+
+% In macro mode, all spaces, tabs, and carriage returns are ignored.
+% Any desired whitespace must be indicated explicitly by the use of
+% underline.  The Boolean conditions:
+
+        \newif\ifmacromode              % if in macro mode
+        \newcount\macromodelevel        % recursion level
+
+% are used to indiate whether macro mode is in force and to allow
+% macro mode to be called recursively from within itself.  This
+% avoids accidents in which macro mode is prematurely turned off,
+% for example because a file containing \macromode and \endmacromode
+% declarations is \input from within a segment of that is itself
+% in macro mode.  Macromode explicitly does not use grouping because
+% macros defined in macro mode are not intended to be local.
+
+  \def\macromode
+     {\advance \macromodelevel by 1
+      \ifmacromode \else
+        \catcode '015=9 % make <cr> an ignored character
+        \catcode '040=9 % make space an ignored character
+        \catcode '011=9 % make tab an ignored character
+        \catcode '137=10        % make underline equivalent to space
+        \macromodetrue
+       \fi}%
+
+  \def\endmacromode
+     {\ifmacromode
+       \advance \macromodelevel by -1
+       \ifnum\macromodelevel<1
+        \macromodefalse
+        \catcode '015=10        %make carriage return a space
+        \catcode '040=10        %make space a space
+        \catcode '011=10        %make tab a space
+        \catcode '137=12        %make underline an ``other'' character
+        \catcode`\_=8           % underline for subscripts
+        \fi \else \errmessage{Not in macro mode}\fi}
+
+\macromode
+
+                %% Macro that ignores its argument
+
+\long\def\ig#1{}
+
+                %% Macros for Testing the Emptiness of Arguments
+
+\def\ifnull#1#2#3{\setbox8\hbox{#1}\ifdim_\wd8>0pt_{#3}_\else_{#2}}
+\def\ifnonnull#1#2#3{\setbox8\hbox{#1}\ifdim_\wd8>0pt_{#2}_\else_{#3}\fi}
+
+                %% Send to Teletype
+
+% send a message to the teletype.  This function has no effect
+% on the document
+
+  \def\sendtty#1{\immediate\write16{#1}}
+
+\endmacromode
+
+        %%% Paragraph Structure Macros
+
+% In order to facilitate an open style of layout in the manuscript,
+% carriage return is made equivalent to a space
+
+                \catcode'15=10
+
+% so that double carriage returns don't break paragraphs.  Paragraph
+% breaking is done by  explicit markers \para and \endpara.  The
+% markers \begdis and \enddis mark the beginnings and ends of displays
+% within paragraphs.  These need not be mathematical formulae, but might
+% be lists, illustrations, etc.  Paragraph and display declarations must
+% be correctly related.  The following macros do not do much that
+% affects the document.  The \endpara is equivalent to \para and the
+% \enddis does a \noindent.  They mostly issue warnings if the following
+% rules are violated:
+%       Paragraphs must begin before they end;
+%       Displays must begin before they end;
+%       Paragraphs do not occur within paragraphs;
+%       Paragraphs do not occur within displays;
+%       Displays do not occur within displays;
+
+% Boolean conditions
+
+\macromode
+
+        \newif\ifinpar % if in paragraph
+        \newif\ifindis % if in display
+
+% keep track of whether we are inside a paragraph, inside a display,
+% or neither
+
+% Make \endpar a synonym for TeX's standard \par control sequence.
+% The conveniently short sequence \par can now (although it isn't at
+% present: Jan 92) be used for some other purpose.
+
+                \let \endpar=\par
+
+% beginning of a paragraph
+
+  \def\para{\ifinpar {\errmessage{Missing endpara}}\else {}\fi \inpartrue}
+
+% end of a paragraph
+
+  \def\endpara{\ifinpar {}\else {\errmessage{Missing para}}\fi
+               \inparfalse
+               \endpar}
+
+% beginning of a display
+
+  \def\begdis{\ifindis {\errmessage{Missing enddis}}\else {}\fi \indistrue}
+
+% end of a display
+
+  \def\enddis{\ifindis {}\else {\errmessage{Missing begdis}}\fi
+              \indisfalse
+              \noindent}
+
+\newbox\voidbox
+\def\hmode{\unhbox\voidbox}     % Force \TeX into horizontal mode.
+\let\vmode=\endpar              % Force \TEX into vertical mode.
+
+\def\endpara{\endpar}           % End of paragraph
+\def\para{\hmode}               % Beginning of paragraph
+
+\def\begdis{\vmode}                     % Begin display within paragraph
+\def\enddis{\ifvmode{\noindent}\else{}\fi} % End display within paragraph
+
+\def\enddoc{\endpar\vfil\end} % Uniform use of \enddoc replaces \endletter,
+                              % etc.  The single \enddoc control sequence
+                              % is redefined by each format. WD 21 Oct 82
+
+        %%% Boxes and glue macros
+
+\def\pinch#1{\hbox to 0pt{#1}}
+
+\def\lft#1{#1\hss} \def\rt#1{\hss#1} \def\ctr#1{\hss#1\hss}
+
+\def\llap#1{\pinch{\rt{#1}}} \def\rlap#1{\pinch{\lft{#1}}}
+\def\clap#1{\pinch{\ctr{#1}}}
+
+\def\crush#1{\vbox to 0pt{#1}}
+\def\tp#1{\vss#1} % vertical analog of \lft
+\def\bt#1{#1\vss} % vertical analog of \rt
+\def\vctr#1{\vss#1\vss} % vertical analog of \ctr
+\def\tlap#1{\crush{\tp{#1}}} % vertical analog of \llap
+\def\blap#1{\crush{\bt{#1}}} % vertical analog of \rlap
+\def\vclap#1{\crush{\vctr{#1}}} % vertical analog of \clap
+
+
+                %% Macros for placing white or black borders around boxes
+
+% To border something is to put whitespace around it; to frame something
+% is to put blackspace around it.  The most common forms of both border
+% and frame have fourfold symetry and the basic functions border and
+% frame thus take two arguments: and object and a dimension.  It is
+% also convenient to put something into a (white) box of given dimensions
+% and this function, trim, takes three arguments: #1 is the object; #2
+% is the vertical  dimension; #3  is the horizontal  dimension.
+% In full generality it is possible to surround something with white or
+% black areas whose dimensions vary with direction.  At present these
+% functions are called fourborder and fourframe: #1 is the object; #2 is
+% the upper vertical  dimension;  #3  is  the  lower  vertical
+% dimension; #4 is the left horizontal dimension; #5 is the right horizontal
+% dimension.  Positive arguments place the frame outside the box being
+% framed, negative ones place it inside.  Finally there is the special
+% case of boxit, which has only the object as argument as its border and
+% frame dimensions are fixed.
+
+\def\boxit#1{\frame{\border{#1}{3pt}}{.4pt}}
+\def\border#1#2{\fourborder{#1}{#2}{#2}{#2}{#2}}
+\def\frame#1#2{\fourframe{#1}{#2}{#2}{#2}{#2}}
+\def\trim#1#2#3{\vbox to #2{\vctr{\hbox to #3{\ctr{#1}}}}}
+\def\contract#1{\trim{#1}{0pt}{0pt}}
+\def\fourborder#1#2#3#4#5
+   {\vbox{\vskip #2 \hbox{\hskip #4 #1 \hskip #5} \vskip #3}}
+
+\def\fourframe#1#2#3#4#5
+   {\vbox{\ifdim#2>0pt {\hrule height #2 depth 0pt} \else
+                       {\hrule height -#2 depth 0pt \vskip #2} \fi
+          \hbox{\ifdim#4>0pt {\vrule width #4} \else
+                             {\vrule width -#4 \hskip #4} \fi
+                #1
+                \ifdim#5>0pt {\vrule width #5} \else
+                             {\hskip #5\vrule width -#5} \fi}
+          \ifdim#3>0pt {\hrule height 0pt depth #3} \else
+                       {\vskip #3 \hrule height -#3 depth 0pt} \fi}}
+
+        %%% Figure Macro
+
+% Insert a  figure, which  may be  merely a  \vskip or  an empty  border
+% intended to  contain a  paste  in.  In  report  formats, this  may  be
+% replaced by a  more complex figure  macro that makes  an entry in  the
+% table of contents.
+% Arg 1: the caption
+% Arg 2: the proper name
+% Arg 3: the figure itself
+
+\def\figure#1#2#3\endfig
+   {$$\vbox{\halign{\ctr{##}\cr
+              #3\cr
+                \cr
+              #1\cr}}$$\vmode}
+
+        %%% Citation and Reference
+
+% The citation and reference commands take two arguments: a proper  name
+% for the  item  cited and  a  ``title'' to  be  used in  the  reference
+% construction.  The  \ref  command  must be  followed  by  the  \endref
+% command.  The string  in between  the two  may be  either a  reference
+% written out explicitly or  (if reffmt has been  loaded) a sequence  of
+% \Author, \Title, etc. declarations.
+
+\def\cref#1#2{#1}       % cross reference to a figure, chapter, section, etc.
+
+\def\cit#1#2{\ifnonnull{#2}{\unskip$^{#2}$}{[#1]}\null}
+\def\contref#1\endcontref{      % Continuation of reference
+    \noindent\hangindent \refmar\hmode\hbox to \refmar{}#1\par}
+\def\endref{\unskip\endrfa\ifnonnull{\vref}{\vref}{}\par}
+\def\ref#1#2{\resetref\def\endrfa{}
+           \noindent\hangindent \refmar
+           \hmode\hbox to \refmar
+                      {\ifnonnull{#2}{[#2]}
+                                 {\ifnonnull{#1}{[#1]}{}}
+                       \hfill}}
+\def\refmar{1\VU}
+\def\resetref{\gdef\vref{}} % This function is redefined by reffmt to one
+                            % that resets all the fields of a reference to nil.
+
+        %%% Various Items Usually Expressed by Italic
+
+\def\bk#1{{\it #1}}             % book title
+\def\jt#1{{\it #1}}             % journal title
+\def\df#1{{\it #1}}             % defined term
+\def\em#1{{\it #1}}             % emphasis
+\def\fw#1{{\it #1}}             % foreign word
+
+        % The macros for first, second, third, and fourth generate
+        % superscripted (mathmode exponents) Roman abbreviations.
+
+\def\st{$^{\rm st}$}    % elvated `st' for writing first as 1st
+\def\nd{$^{\rm nd}$}    % elvated `nd' for writing second as 2nd
+\def\rd{$^{\rm rd}$}    % elvated `rd' for writing third as 3rd
+\def\th{$^{\rm th}$}    % elvated `th' for writing fourth as 4th, etc.
+
+
+        % \Alph and \alph generate lower and uppercase letters
+        % from numbers between 1 and 26.
+
+        % Note that the hyphen in the zero position cannot
+        % be a digit if the definition is made in macro mode,
+        % since this digit will combine with the argument to
+        % form a larger number.
+
+\def\alph
+#1% number between 1 and 26
+{\ifcase #1 -\or a\or b\or c\or d\or e\or f\or g\or h\or
+            i\or j\or k\or l\or m\or n\or o\or p\or q\or
+            r\or s\or t\or u\or v\or w\or x\or y\or z\fi}
+
+\def\Alph
+#1% number between 1 and 26
+{\ifcase #1 -\or A\or B\or C\or D\or E\or F\or G\or H\or
+            I\or J\or K\or L\or M\or N\or O\or P\or Q\or
+            R\or S\or T\or U\or V\or W\or X\or Y\or Z\fi}
+
+
+\def\note#1{}           % a manuscript note that does not appear
+                        % in the document
+
+        % Used in some memos to head informal sections
+\def\heading#1{\par\vskip 4ex\centerline{#1}\vskip 1ex\penalty 1000}
+
+                % date and time macro
+
+\def\ifundefined#1{\expandafter\ifx\csname#1\endcsname\relax}
+\ifundefined{monthnum}{\global\let\monthnum=\month} \else
+                        {\sendtty{monthnum_redefined}} \fi
+\def\month
+   {\ifcase \monthnum \or {January}\or {February}\or {March}\or
+         {April}\or {May}\or {June}\or {July}\or {August}\or
+         {September}\or {October}\or {November}\or {December} \fi}
+\newcount\scratch \newcount\minute \newcount\hour
+\def\setdatetime
+   {\scratch=\time \minute=\the\scratch \hour=\the\scratch
+    \divide\hour by 60 \multiply\hour by 60
+    \global\advance\minute by-\hour \global\divide\hour by 60}
+\setdatetime
+\xdef\datetime{\the\day\month\the\year-\the\hour:\ifnum\the\minute<10{0}\fi\the\minute}
+
+        %%% Some Important \TEX parameters
+
+\endmacromode
+
+
+%\input mathinit
+
+\def\form#1#2{}         % potentially generate a formula number
+                        % first argument is the formula's name for
+                        % cross reference in the manuscript.
+                        % second argument is an overriding formula number
+                        % that will replace any systematically generated
+                        % number.
+
+%\input fonts.tex
+
+        % Page Layout
+
+%\input pageout % for the moment use plain tex output routine
+
+\headline={\rlap{\lefthead}\hss\clap{\centerhead}\hss\llap{\righthead}}
+\footline={\rlap{\leftfoot}\hss\clap{\centerfoot}\hss\llap{\rightfoot}}
+
+\def\lefthead{} \def\centerhead{} \def\righthead{}
+\def\leftfoot{} \def\centerfoot{\tenrm\folio} \def\rightfoot{\datetime}
+
+\overfullrule=0pt       % don't mark overfull boxes with black slugs
+
+% \spc and \tab expand to one space and eight spaces respectively
+% for use in \sendtty messages to the console and log file
+
+        \xdef\spc{ } \xdef\tab{\spc\spc}
+        \xdef\tab{\tab\tab} \xdef\tab{\tab\tab}
+
+        % Fixes for SUN installation - 9 Feb 89
+
+\def\small#1{#1}        \def\medium#1{#1}       \def\large#1{#1}
+\let\ty=\tt     % Used in lots of places
+                % Why did he change the name of the typewriter font?
+
+\let\implies=\Rightarrow
+\def\goesto{\rightarrow}
+\let\xor=\oplus
+
+        % Miscellaneous Stylistic Parameters
+
+\parskip=1ex plus 1ex
+
+
+\sendtty{loaded: /files/home/diffie/tex/macros/texinit.tex}
+
+% 27Aug89 - Defs of \st, \nd, \rd, and \th chaned to use rm
+% 20Aug90 - \datetime changed to print minutes correctly
+%  6Dec90 - Set \overfullrule to 0pt
+%         - Put the tabs for \sendtty in texinit
+% 26Dec90 - added right brace after \sendtty in \ifundefined{monthnum}
+%           construction.  This fixes the (\end occurred inside a group...)
+%           message when texinit is loaded twice.
+% 27Dec90 - Redefined \lft, \rt, and \ctr to use \hss.
+%           Redefined \llap and \rlap in terms of \pinch, \lft, etc.
+%           Added \clap, and changed \headline and \footline to use
+%           \llap, \clap, and \rlap.
+%           Changed \heading based on the one in impact reports.
+%           Removed definitions of TeX80 parameters \trace, \jpar,
+%           and \ragged.
+
+% What do I do about \VU? - WD 27Dec90
+% What about: \chpar16=1 % default allows uppercase words to be hyphenated
+
+% 11Feb92 - defined \@ by technique in plain.tex
+
+% 27Feb92 - added \spc in with \tab
+% 28Apr92 - Added \alph and \Alph
+% 11Dec92 - Added \parskip=1ex plus 1ex
+% 11Dec92 - Changed heading to skip only 1ex to accomodate parskip
+%  8Feb93 - added \jt: journal title.
+

@@ -1,0 +1,108 @@
+From: Bryan Olson <Bryan_Olson@jhuapl.edu>
+Newsgroups: sci.crypt
+Subject: Re: RC4 Sources
+Date: Wed, 21 Aug 1996 10:49:44 -0400
+Organization: Johns Hopkins Applied Physics Lab
+Lines: 99
+
+Wayne Schlitt wrote:
+
+[ noting a bug in some source for RC4 ] 
+> I really doubt that this is the source to RC4, considering this
+> serious bug...  It also takes many more than the 5-8 machine
+> instructions per byte that RSA claims.
+> 
+> (It doesn't look to be _too_ bad a cipher though...  I would have to
+> analyze the interactions between state swapping and the selection of y
+> to see how long the period is...  As it stands, a single bit change in
+> the plain text causes _only_ the resulting cipher bit to change and
+> vis versa.  Changing it to be a chained-block-cipher or a
+> propagating-chain-block-cipher would help it a lot.)
+> 
+
+I don't think the code is supposed to be RSADSI's source.  They
+distribute RC4 as part of a toolkit, not a stand-alone.  You are
+correct about the one-bit changes, since the RC4 algorithm is
+really a cryptographic pseudo-random byte stream generator.
+
+Below I've written a C++ class an RC4 generator, stripped of all
+the file and buffer handling.  I think the algorithm is far more 
+clear and perhaps more useful in this form, provided the reader
+knows a little C++.
+
+The period of RC4 is unknown, but the state transition is such 
+that each state has only one predecessor state.  I think there
+are some results on weak keys, but most keys result in periods
+far to long to measure.
+
+
+I don't know what rights RSADSI has to the algorithm, but
+anyone can use my code as they like.
+//
+//  RC4_Gen is a cryptographic byte-stream generator using what
+//  I believe to be Ronald Rivest's RC4 stream cipher.
+//
+//  It should work on any system where an unsigned char is a byte,
+//  (which covers just about all modern machines).
+//
+//  To use it, construct an RC4_Gen passing it a pointer to some key
+//  and the size (in char units) of the key.
+//
+//  Use the next() function to get a series of crypto-stream 
+//  bytes.  The same() function returns the previous stream byte 
+//  without changing the generator's state.  The previous byte is
+//  undefined until the first call to next() returns.
+// 
+class RC4_Gen
+{
+  public:
+
+    RC4_Gen( const void* pKey, int keyLength ) ;
+
+    unsigned char
+    next()
+    {
+	x = ( x + 1 ) % 256 ;
+	y = ( state[ x ] + y ) % 256 ;
+	swap( state[ x ], state[ y ] ) ;
+	return state[ ( state[ x ] + state[ y ] ) % 256 ] ;
+    }
+
+    unsigned char
+    same() const
+    {
+	return state[ ( state[ x ] + state[ y ] ) % 256 ] ;
+    }
+
+  private:
+
+    static void
+    swap( unsigned char& lhs, unsigned char& rhs )
+    {  unsigned char temp = lhs ; lhs = rhs ; rhs = temp ; }
+
+    unsigned char x;        
+    unsigned char y;
+    unsigned char state[256];       
+} ;
+
+RC4_Gen:: RC4_Gen( const void *pKeyV, int keyLength )
+    :   x( 0 ),
+	y( 0 )
+{
+    const unsigned char*  pKey = (const unsigned char*) pKeyV ;
+    short  i ;
+    for( i=0 ;  i<256 ; ++i )
+	state[ i ] = i ;
+
+    short  keyIndex = 0;
+    short  stateIndex = 0;
+
+    for( i=0  ; i<256 ; ++i )
+    {
+	stateIndex = ( stateIndex + pKey[keyIndex] + state[i] ) % 256 ;
+	swap( state[ i ], state[ stateIndex ] ) ;
+	keyIndex = ( keyIndex + 1 ) % keyLength ;
+    }
+}
+
+

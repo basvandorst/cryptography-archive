@@ -1,0 +1,222 @@
+.\"#	@(#)COPYRIGHT	1.1a (NRL) 17 August 1995
+.\"
+.\"COPYRIGHT NOTICE
+.\"
+.\"All of the documentation and software included in this software
+.\"distribution from the US Naval Research Laboratory (NRL) are
+.\"copyrighted by their respective developers.
+.\"
+.\"This software and documentation were developed at NRL by various
+.\"people.  Those developers have each copyrighted the portions that they
+.\"developed at NRL and have assigned All Rights for those portions to
+.\"NRL.  Outside the USA, NRL also has copyright on the software
+.\"developed at NRL. The affected files all contain specific copyright
+.\"notices and those notices must be retained in any derived work.
+.\"
+.\"NRL LICENSE
+.\"
+.\"NRL grants permission for redistribution and use in source and binary
+.\"forms, with or without modification, of the software and documentation
+.\"created at NRL provided that the following conditions are met:
+.\"
+.\"1. Redistributions of source code must retain the above copyright
+.\"   notice, this list of conditions and the following disclaimer.
+.\"2. Redistributions in binary form must reproduce the above copyright
+.\"   notice, this list of conditions and the following disclaimer in the
+.\"   documentation and/or other materials provided with the distribution.
+.\"3. All advertising materials mentioning features or use of this software
+.\"   must display the following acknowledgement:
+.\"
+.\"	This product includes software developed at the Information
+.\"	Technology Division, US Naval Research Laboratory.
+.\"
+.\"4. Neither the name of the NRL nor the names of its contributors
+.\"   may be used to endorse or promote products derived from this software
+.\"   without specific prior written permission.
+.\"
+.\"THE SOFTWARE PROVIDED BY NRL IS PROVIDED BY NRL AND CONTRIBUTORS ``AS
+.\"IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+.\"TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+.\"PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL NRL OR
+.\"CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+.\"EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+.\"PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+.\"PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+.\"LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+.\"NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+.\"SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\"The views and conclusions contained in the software and documentation
+.\"are those of the authors and should not be interpreted as representing
+.\"official policies, either expressed or implied, of the US Naval
+.\"Research Laboratory (NRL).
+.\"
+.\"----------------------------------------------------------------------*/
+.\"
+.Dd October 1, 1995
+.Dt ROUTE 4
+.Os NRL-IPv6
+.Sh NAME
+.Nm key
+.Nd kernel key and security association database
+.Sh SYNOPSIS
+.Fd #include <sys/socket.h>
+.Fd #include <netinet6/ipsec.h>
+.Fd #include <netinet6/key.h>
+.Ft int
+.Fn socket PF_KEY SOCK_RAW 0
+.Sh DESCRIPTION
+The kernel maintains a database of keys used for various security
+functions, espeically network security.  One or more user processes
+maintains this database by sending messages over a special kind of socket,
+much like routing processes do with the routing information database.
+Key table changes may only be carried out by the super user.
+.Pp
+The operating system may spontaneously emit key messages in response
+to external events, such as the expiration of a key, or failure to
+locate a suitable key for a request.
+The message types are described in greater detail below.
+.Pp
+When a (for now kernel-level) service requires security, it notifies the
+.Dq key engine
+that it requires a
+.Dq security association
+from itself to a destination.  Security associations are a one-way
+abstraction of security information between two endpoints.  The kernel key
+database manager identifies outbound associations based on the tuple of
+.Em <source address, destination address, network socket>
+, and inbound associations
+based on
+.Em <source address, destination address, security parameters index (SPI)>.
+When an outbound security association is requested, the key engine
+will first search to see if one is available.  If not, it will attempt to
+communicate with a user process through the key socket to request the
+addition of a security association.
+.Pp
+On inbound packets, if a security association is not available, then the
+packet is dropped.  Unlike outbound security associations, inbound
+associations are supposed to be in place
+.Em before
+they are needed.  This property should be true because, as part of the
+outbound security association request, the destination should have updated
+its inbound security association database.  This assumption is actually only
+true in the presence of a good method of obtaining security associations and
+keys (often called
+.Dq key management
+).
+.Pp
+By decoupling key management from the actual storage of keys and security
+associations, many forms of key management can be implemented outside the
+kernel, using the key socket to update the kernel's database.  This is not
+unlike what
+.Xr route 4
+provides by separating the packet forwarding database from any one mechanism
+for updating it.  (For example, a user can run either
+.Xr routed 8
+or
+.Xr gated 8
+to update the routing tables.)  Manual key updates can also be done using
+the key socket.  The
+.Xr key 8
+program provides a command-line interface to the key socket.
+.Pp
+The kernel may reject certain messages, and will indicate this
+by filling in the
+.Ar key_errno
+field.
+The key engine returns
+.Dv EEXIST
+if
+requested to duplicate an existing entry,
+.Dv ESRCH
+if
+requested to delete a non-existent entry,
+or
+.Dv ENOBUFS
+if insufficient resources were available
+to install a new security association.
+In the current implementation, all key management process run locally,
+and the values for
+.Ar key_errno
+are available through the normal
+.Em errno
+mechanism, even if the key reply message is lost.
+.Pp
+A process may avoid the expense of reading replies to its own messages by
+issuing a
+.Xr setsockopt 2
+call indicating that the
+.Dv SO_USELOOPBACK
+option at the
+.Dv SOL_SOCKET
+level is to be turned off.
+A process may ignore all messages from the key socket by doing a 
+.Xr shutdown 2
+system call for further input.
+.Pp
+Messages include:
+.Bd -literal
+#define KEY_ADD          1	/* Add new key/security association */
+#define KEY_DELETE       2	/* Delete key/security association */
+#define KEY_UPDATE       3	/* Update key/security association */
+#define KEY_GET          4	/* Report key/security association info */
+#define KEY_ACQUIRE      5	/* Request to get key/sec. assoc. */
+#define KEY_GETSPI       6	/* Provide unique SPI value */
+#define KEY_REGISTER     7	/* Register PF_KEY application */
+#define KEY_EXPIRE       8	/* Key has expired */
+#define KEY_DUMP         9	/* Request dump of key database */
+#define KEY_FLUSH        10	/* Remove contents of key database */
+.Ed
+.Pp
+A message header consists of:
+.Bd -literal
+struct key_msghdr {
+  u_short key_msglen;	/* To skip over non-understood messages */
+  u_char  key_msgvers;	/* Future binary compatibility */
+  u_char  key_msgtype;	/* Message type */
+  pid_t   key_pid;	/* To identify sending process */
+  int     key_seq;	/* For sender to identify action */
+  int     key_errno;	/* Why message failed */
+
+  u_int8  type;		/* Security assocation type */
+  u_int8  state;	/* Security association state */
+  u_int8  label;	/* Security association classification label */
+  u_int32 spi;		/* Security parameters index (ID value) */
+  u_int8  keylen;	/* Length of security association key */
+  u_int8  ivlen;	/* Initialization vector length */
+  u_int8  algorithm;	/* Type of authentication/encryption algorithm */
+  u_int8  lifetype;	/* Unused, will relate to key expiration times */
+  u_int32 lifetime1;	/* Unused, will relate to key expiration times */
+  u_int32 lifetime2;	/* Unused, will relate to key expiration times */
+};
+.Ed
+.Pp
+followed by variable length data fields for three sockaddrs (source,
+destination, and from), the actual key, and the actual initialization
+vector.
+.Pp
+State is a vector of flags, including:
+.Bd -literal
+#define K_USED           0x1    /* Key used/not used */
+#define K_UNIQUE         0x2    /* Key unique/reusable */
+#define K_LARVAL         0x4    /* SPI assigned, but sa incomplete */
+#define K_ZOMBIE         0x8    /* sa expired but still useable */
+#define K_DEAD           0x10   /* sa marked for deletion */
+#define K_INBOUND        0x20   /* sa for inbound packets, ie. dst=me */
+#define K_OUTBOUND       0x40   /* sa for outbound packets, ie. src=me */
+.Ed
+.Sh SEE ALSO
+.Xr socket 2 ,
+.Xr ipsec 4 ,
+.Xr route 4 ,
+.Xr key 8
+.Sh HISTORY
+The
+.Nm
+socket first appeared in NRL's
+.Bx 4.4
+IPv6 networking distribution.
+
+.Nm Key
+started its life as a pipe dream thought up by Dan McDonald, and came to
+life through the excruciating efforts of Bao Phan.

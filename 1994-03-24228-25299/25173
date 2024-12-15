@@ -1,0 +1,133 @@
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!wupost!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: Randomized encryption, more random thoughts.
+Date: Sun, 27 Mar 94 16:40:13 CST
+Organization: University of Missouri, Columbia
+Lines: 122
+Message-ID: <16F86EA72S86.C445585@mizzou1.missouri.edu>
+References: <jgfoot-250394111511@silliman-college-kstar-node.net.yale.edu> <WCS.94Mar27042724@anchor.att.com> <CnCF8B.C8H@cnsnews.Colorado.EDU>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+ 
+   I posted last weekend about using privately-generated randomness to
+combine and/or strengthen encryption systems.  I've had time to work out
+some further ideas, which I wanted to kind-of toss out there for comments.
+ 
+   Generally, you can combine two encryption routines using random bits.
+All these ideas are variants on encrypting data with a one-time pad, and
+then sending the one-time pad, encrypted by two or more other routines.
+For example, Alice is sending to Bob, using both IDEA and DES.  She wants
+an opponent to break both encryption functions before she can read the
+message from Alice to Bob.  To send a message block, Alice:
+  1.  Generates A and B, two 64-bit random blocks.
+  2.  Forms ciphertext blocks X, Y, and Z, where:
+      X = DES(A)
+      Y = IDEA(B)
+      Z = plaintext XOR A xor B
+ 
+   Last time, I showed how the eavesdropper (Eve), if she had somehow
+broken IDEA and recovered Alice's IDEA key, could now get a chosen cipher-
+text attack on DES.  Colin James suggested using some kind of one-way
+function to avoid this in mail.  My first guess was something like:
+      X = A
+      Y = B
+      Z = plaintext XOR MD5(A+Key0) XOR SHA(B+Key1)
+      (Let's assume we throw out the high 32 bits from SHA, so blocks are
+       the same size.)
+ 
+   Unfortunately, this looks like it falls prey to the same kind of attacks
+as before.  If Eve has somehow retrieved Key0, she can now try some chosen
+ciphertexts, ie X = A, Y = Q, Z = R.  Bob decrypts those as
+    plaintext = R xor MD5(A+Key0) xor SHA(Q+Key1)
+and Eve recovers SHA(Q+Key1) for any chosen Q she wants.  Now, it doesn't
+look particularly easy to invert this back to get Key1, but the ability to
+resist this kind of attack, for a large number of chosen Q's isn't
+necessarily something SHA's designers worked carefully to prevent.  Indeed,
+DES' designers were probably more concerned about defending against chosen
+ciphertext attacks than SHA's designers were, about defending against this
+kind of attack.
+ 
+   Another possible variant of this would be:
+    X = A, Y = B, Z = M xor MD5(K0+B+SHA(K1+A))
+ 
+   Again, if Eve has somehow figured out how to invert MD5 (perhaps
+by choosing several trillion values for B, while not allowing any other
+parameters to change), then she winds up with the same attack on SHA,
+although it might be a lot more costly.
+ 
+   If the cipher seems much more likely to fall to chosen ciphertext than
+to chosen plaintext, then there's an obvious variant suggested by the
+above.  Ciphertext:  X = A, Y = B, Z = M xor DES(A) xor IDEA(B).
+ 
+   If Eve has somehow retrieved the IDEA key, she still has to get a
+chosen-plaintext attack through DES, through her chosen ciphertext attack
+on this scheme.
+ 
+   In all of these schemes, Eve is (practically) going to have a lot of
+problems breaking either IDEA *or* DES, since she's going to have to get
+through both of them to get even a known-plaintext attack on either one.
+However, there's an odd twist here:  With a chosen ciphertext attack, Eve
+*can* apply differential attacks here, assuming that XOR-differences are
+useful.  Let's assume we're using the scheme above, ie
+   X = A, Y = B, Z = M xor DES(A) xor IDEA(B).
+ 
+   Eve chooses Q, R, S, and gets back S xor DES(Q) xor IDEA(R).  Now,
+for each plaintext difference she wants to try against DES, she just
+chooses Q1 and Q2 satisfying her desired difference, keeps R and S constant,
+and sends Bob     X = Q1, Y = R, Z = S
+                  X = Q2, Y = R, Z = S
+ 
+   With the variant I described at the top of this note, Eve gets to
+choose ciphertext differences, instead.  For DES, this wouldn't be any
+harder than with chosen plaintext differences, so far as I can see.
+Note that IDEA wouldn't be susceptible to this kind of differential attack,
+because XOR-differences aren't useful in attacking IDEA.  (So far as
+anyone knows, differential attacks aren't generally useful against IDEA,
+either.)
+ 
+   Unfortunately, this sort of randomized combining doesn't seem to allow a
+cheaper way of dealing with keysearch machines, either.  Imagine Alice
+tried to use DES twice with different keys in this randomization scheme.
+She'd get:
+   X = A, Y = B, Z = M XOR DES(A,K0) XOR DES(B,K1)
+ 
+   Eve can attack this with an odd sort of "meet-in-the-middle" variant.
+Basically, this involves building and sorting two tables:
+ 
+   DES(A,i)   DES(B,j) XOR Z XOR M
+ 
+   After building and sorting these tables, Eve finds i,j pairs where
+the two table entries are equal.  She will come up with key collisions,
+as in the standard meet-in-the-middle attack, and so she'll need to try
+those candidate key pairs on another couple of ciphertext blocks.
+ 
+   I don't see any good way of setting this up so that some kind of
+meet-in-the-middle attack doesn't work.  I tried these variants:
+   a.  X = A, Y = B, Z = M xor DES(A,K0) xor DES(B,K1)
+   b.  X = DES(A,K0), Y = DES(B,K1), Z = M xor A xor B
+   c.  X = A, Y = B, Z = M xor DES(A xor DES(B,K1),K0)
+   d.  X = A, Y = B, Z  = DES(M xor A xor DES(B,K1),K0)
+   e.  X = A, Y = DES(M xor DES(A,K0),K1)
+ 
+   Anyone have any ideas?
+ 
+   Generally, this dampens my enthusiasm for using randomized blocks
+like this.  However, one of the important advantages of using these
+randomized blocks is to protect against weird interactions between
+two ciphers.  If you use DES(IDEA(DES(M,K0),K1),K2), there might be some
+odd interaction between the two ciphers resulting in less security.
+Now, I have to admit, in the case of IDEA and DES, I can't see how that
+would happen--there's a *lot* of difference in structure between the
+ciphers.  However, it's possible.  Also, as I said before, the lack of
+availability of known plaintext/ciphertext pairs for Eve gives this
+scheme some reasons for existence.
+ 
+   A couple of other ideas I've had for schemes like this.  First,
+would using some kind of block permutation of bits, maybe even something
+as simple as "braiding" the three blocks using a crypto-strength PRNG,
+help?  Second, what about (for long messages batched together) using a
+crypto-strength PRNG to shuffle the ciphertext blocks before transmission?
+Either of these would add a lot of strength to this sort of scheme.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

@@ -1,0 +1,73 @@
+Path: msuinfo!uchinews!linac!uwm.edu!spool.mu.edu!yale.edu!jvnc.net!darwin.sura.net!gatech!rutgers!network.ucsd.edu!qualcom.qualcomm.com!qualcom.qualcomm.com!karn
+From: karn@qualcom.qualcomm.com (Phil Karn)
+Newsgroups: sci.crypt
+Subject: Re: Khufu and Khafre
+Message-ID: <1992Feb14.034519.15459@qualcomm.com>
+Date: 14 Feb 92 03:45:19 GMT
+Article-I.D.: qualcomm.1992Feb14.034519.15459
+References: <1992Feb13.023613.22345@demon.co.uk> <1992Feb13.231223.8159@cs.aukuni.ac.nz>
+Sender: news@qualcomm.com
+Reply-To: karn@chicago.qualcomm.com
+Organization: Qualcomm, Inc
+Lines: 59
+Nntp-Posting-Host: qualcom.qualcomm.com
+
+In article <1992Feb13.231223.8159@cs.aukuni.ac.nz>, pgut1@cs.aukuni.ac.nz (Peter Gutmann) writes:
+|> Actually a much bigger problem with the algorithms is that they have been
+|> patented by Xerox.  This is a real shame since they are great encryption
+|> functions (fast, simple, (as far as I know) secure, etc), but since they're
+|> tied up in patents noone can use them.
+
+Try my scheme. It builds an invertible cipher out of any secure
+one-way hash function (e.g., MD-4, MD-5). Given that many systems will
+soon include one of these two functions for secret-key authentication
+of messages (e.g., SNMP), you might as well reuse the same basic code
+in a cipher.
+
+These two hash functions have been placed into the public domain by
+RSADSI. And my scheme for using them in ciphers is not patented, to my
+knowledge, or at least I have independently reinvented it.
+
+Here it is once again, for anyone who may have missed it (or to once
+again establish prior art to keep anybody else from patenting it!)
+
+The cipher works on 32-byte blocks of plaintext and ciphertext. It
+takes a two-part key, Ka and Kb. (Ka and Kb can be the same value if
+desired).  Ka and Kb can be of any length, though the implementation
+with MD-4 or MD-5 is much faster if they're limited to 48 bytes (which
+should be strong enough to resist most brute-force attacks!)
+
+To encrypt, you split the plaintext block into two 16-byte halves, Pa
+and Pb.  Append Ka to Pa and hash with MD-4 or MD-5.  XOR the 16-byte
+hash result with Pb to produce the second half of the ciphertext, Cb.
+Now take Cb and append to it Kb, the second half-key.  Hash this value
+and XOR the result with Pa to produce the first half of the
+ciphertext, Ca. Combine Ca and Cb to produce your 32-byte ciphertext
+block.
+
+To decrypt, simply apply the steps in reverse order: Append Kb to Cb,
+hash and XOR with Ca to produce Pa. Append Ka to Pa, hash and XOR with
+Cb to produce Pb.
+
+The resemblance to DES is purely intentional. Only two rounds are
+needed since all the complexity is already in MD-4 or MD-5. And since
+the key appears only at the hash function's input, it cannot be
+practically recovered by even a chosen-plaintext attack iff MD-4 and
+MD-5 are as advertised (that recovering the input that hashes to a
+given value is computationally infeasible, even if part of the input
+is known).
+
+For sake of speed, you could use just the MDblock primitive from MD-4
+or MD-5 instead of doing the complete hash function.  MDblock takes 64
+bytes and produces 16, and in normal use it is iterated over an
+arbitrary amount of data to which has been appended a length field.
+
+The length field helps guard against someone appending data to the end
+of a variable-length message and updating the hash code without
+detection. But since the hash operations here all operate on
+fixed-size blocks, this step is unnecessary. Eliminating it reduces
+the number of MDblock calls to two per 32-byte block of plain or
+cipher text. The result is a cipher that is MUCH faster than DES, and
+probably much more secure too.
+
+Phil

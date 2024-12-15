@@ -1,0 +1,205 @@
+From tukki.jyu.fi!paasivir Tue Sep 28 15:09:32 1993
+Return-Path: <paasivir@tukki.jyu.fi>
+Received: from tukki.jyu.fi by vanbc.wimsey.com with smtp
+	(Smail3.1.28.1 #12) id m0ohnEI-0000dlC; Tue, 28 Sep 93 15:09 PDT
+Received: by tukki.jyu.fi id AA08832
+  (5.67a/IDA-1.4.4 for markh@wimsey.bc.ca); Wed, 29 Sep 1993 00:06:53 +0200
+From: Risto Paasivirta <paasivir@tukki.jyu.fi>
+Message-Id: <199309282206.AA08832@tukki.jyu.fi>
+Subject: By the way...
+To: markh@wimsey.bc.ca (Mark C. Henderson)
+Date: Wed, 29 Sep 1993 00:06:52 +0200 (EET)
+In-Reply-To: <m0ohVWF-0000nlC@vanbc.wimsey.com> from "Mark C. Henderson" at Sep 27, 93 08:14:27 pm
+X-Mailer: ELM [version 2.4 PL21]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 8bit
+Content-Length: 4625      
+Status: OR
+
+
+
+I developed another cipher (this took few hours only..) I think
+that if there is no great bugs or serious security flaws, I'll
+use this for encrypting hiscore tables etc... It's probably weak
+but fast!
+
+If you have friends who are interested, please give this to them.
+I don't think there is much use to ask sci.crypt for comments. :-(
+
+	Risto
+
+ps. Of course I'll soon find horrible bugs from this code...
+When compiled with gcc -DTEST, output should be something like:
+ initial state:
+ 259D460567C00C78E0ADD5CD4F677479
+ 000102030405060708090A0B0C0D0E0F00102030405060708090A0B0C0D0E0F0
+ encip state:
+ 45E06C1D8EAF11B8C24826D64CC4829C
+ A22960A8B084FC382827DFBD28690EFA726C57BACD80593EDD236A8DBA770C6C
+ decip state:
+ 45E06C1D8EAF11B8C24826D64CC4829C
+ 000102030405060708090A0B0C0D0E0F00102030405060708090A0B0C0D0E0F0
+ 500000 byte encipher
+ took 2.88s
+ 173611 bytes/s
+ 500000 byte decipher
+ took 2.85s
+ 175438 bytes/s
+ done
+(But I think clock() gives little optimistic times in sunos5.2/gcc 2.4.5)
+--- cut ---
+/*
+ * scrypt.c -- V1.0 -- simple and very fast stream cipher
+ * Public Domain, 1993 by Risto Paasivirta, paasivir@jyu.fi
+ * Please, send comments. No warranty, try with your own risk.
+ * Compile with ANSI C. Tested with Amiga SAS/C 6.3 and GCC 2.4.5
+ */
+
+typedef unsigned char uchar;
+
+/* key length
+ * ks[KEYLEN] => {count, t, last_byte, state[KEYLEN-3]}
+ */
+
+#define KEYLEN 16
+
+/*
+ * random substitution table
+ */
+
+static const uchar S[256] = {
+	 41, 46, 67,201,162,216,124,  1, 61, 54, 84,161,236,240,  6, 19,
+	 98,167,  5,243,192,199,115,140,152,147, 43,217,188, 76,130,202,
+	 30,155, 87, 60,253,212,224, 22,103, 66,111, 24,138, 23,229, 18,
+	190, 78,196,214,218,158,222, 73,160,251,245,142,187, 47,238,122,
+	169,104,121,145, 21,178,  7, 63,148,194, 16,137, 11, 34, 95, 33,
+	128,127, 93,154, 90,144, 50, 39, 53, 62,204,231,191,247,151,  3,
+	255, 25, 48,179, 72,165,181,209,215, 94,146, 42,172, 86,170,198,
+	 79,184, 56,210,150,164,125,182,118,252,107,226,156,116,  4,241,
+	 69,157,112, 89,100,113,135, 32,134, 91,207,101,230, 45,168,  2,
+	 27, 96, 37,173,174,176,185,246, 28, 70, 97,105, 52, 64,126, 15,
+	 85, 71,163, 35,221, 81,175, 58,195, 92,249,206,186,197,234, 38,
+	 44, 83, 13,110,133, 40,132,  9,211,223,205,244, 65,129, 77, 82,
+	106,220, 55,200,108,193,171,250, 36,225,123,  8, 12,189,177, 74,
+	120,136,149,139,227, 99,232,109,233,203,213,254, 59,  0, 29, 57,
+	242,239,183, 14,102, 88,208,228,166,119,114,248,235,117, 75, 10,
+	 49, 68, 80,180,143,237, 31, 26,219,153,141, 51,159, 17,131, 20,
+};
+
+/*
+ * s_crypt(uchar *buf, int len, uchar d[KEYLEN], uchar enc) -- en/decrypt
+ * len byte buffer buf using state d
+ */
+
+void
+s_crypt(uchar *buf, int len, uchar d[KEYLEN], uchar enc)
+{
+	uchar i, t;
+
+	t = d[1];
+	while(len--) {
+		for (i = 2; i < KEYLEN; i++)
+			t = (d[i] ^= S[t]);
+		if (enc) {
+			*buf ^= t; 
+			d[2] = *buf++;
+		} else {
+			d[2] = *buf;
+			*buf++ ^= t;
+		}
+		t += d[0]++;
+	}
+	d[1] = t;
+}
+
+/*
+ * s_key(uchar d[KEYLEN], uchar *s) -- initialize state d from key string s
+ */
+
+void
+s_key(uchar d[KEYLEN], uchar *s)
+{
+	uchar i, t = 0;
+
+	for (i = 0; i < KEYLEN; i++)
+		d[i] = 0;
+	do {
+		t ^= *s;
+		for (i = 2; i < KEYLEN; i++)
+			t = (d[i] ^= S[t]);
+		t += d[0]++;
+	} while (*s++);
+	d[1] = t;
+}
+
+#ifdef TEST
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+void
+hd(uchar *p, int i)
+{
+	while (i--) {
+		putc("0123456789ABCDEF"[*p >> 4], stdout);
+		putc("0123456789ABCDEF"[*p & 15], stdout);
+		p++;
+	}
+	putc('\n',stdout);
+}
+
+uchar buf[10000];
+
+main()
+{
+	int i;
+	uchar *key = "0123456789abcdefghijklmnopqrstuvwxyz";
+	uchar ks[KEYLEN];
+	time_t s;
+
+	for (i = 0; i < 10000; i++)
+		buf[i] = (i & 16) ? (i & 15) << 4 : i & 15;
+	s_key(ks, key);
+	printf("initial state:\n");
+	hd(ks, KEYLEN);
+	hd(buf, 32);
+	printf("encip state:\n");
+	s_crypt(buf, 32, ks, 1);
+	hd(ks, KEYLEN);
+	hd(buf, 32);
+	printf("decip state:\n");
+	s_key(ks, key);
+	s_crypt(buf, 32, ks, 0);
+	hd(ks, KEYLEN);
+	hd(buf, 32);
+	printf("500000 byte encipher\n");
+	s = clock();
+	for (i=0; i < 50; i++) {
+		s_key(ks, key);
+		s_crypt(buf, 10000, ks, 1);
+	}
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 50000000 / s);
+	printf("500000 byte decipher\n");
+	s = clock();
+	for (i=0; i < 50; i++) {
+		s_key(ks, key);
+		s_crypt(buf, 10000, ks, 0);
+	}
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 50000000 / s);
+	printf("done\n");
+}
+
+#endif
+
+--- cut ---
+
+-- 
+/*paasivir@jyu.fi*/int a[3302],b=3301,*c=a,d,e,f;main(){for(e=b;--e;*c++=1);*c
+=2;for(d=2001;d--;printf("%05d",f))for(c=a,e=b;e;f/=e--){f+=*c*1e5;*c++=f%e;}}
+

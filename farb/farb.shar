@@ -1,0 +1,1005 @@
+From msuinfo!agate!howland.reston.ans.net!pipex!uknet!EU.net!uunet!world!jhallen Sun May 15 11:52:30 1994
+Newsgroups: alt.sources
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uknet!EU.net!uunet!world!jhallen
+From: jhallen@world.std.com (Joseph H Allen)
+Subject: FARB 1.0: Arbitrary precision floating point routines
+Message-ID: <CpMsqH.CsC@world.std.com>
+Organization: The World Public Access UNIX, Brookline, MA
+Date: Wed, 11 May 1994 09:23:04 GMT
+Lines: 994
+
+
+Archive-name: farb1.0
+Submitted-by: jhallen@world.std.com
+
+Here's an arbitrary precision number C-library which handles both integer
+and floating point numbers.  For example:
+
+   printf("%s\n",Fdiv("234.54334534762347623487623487623487234","172e3",50));
+
+Divides and prints:
+
+  1.36362410085827602462137345858276088569767441860465e-3
+
+The numbers are stored as ASCII decimal strings and the provided functions
+generally return new strings in malloc blocks.  Results from the floating
+point functions are placed in engineering format (exponant is a multiple of
+3 and there are 1 to 3 digits to the left of decimal point).
+
+Provided functions:
+ Floating point: addition, subtraction, multiplication, division,
+                 comparison, magnitude comparison, cvt to/from double,
+                 truncate integer part, cvt integer part to integer string,
+                 absolute value and negate.
+
+ Integer: add, subtract, multiply, divide, modulous, comparison,
+          magnitude comparison, absolute value and negate.
+
+#!/bin/sh
+# This is a shell archive (produced by shar 3.50)
+# To extract the files from this archive, save it to a file, remove
+# everything above the "!/bin/sh" line above, and type "sh file_name".
+#
+# made 05/11/1994 09:18 UTC by jhallen@world
+# Source directory /home/foyer/jhallen
+#
+# existing files will NOT be overwritten unless -c is specified
+#
+# This shar contains:
+# length  mode       name
+# ------ ---------- ------------------------------------------
+#  13460 -rw------- farb.c
+#   4895 -rw-r--r-- farb.h
+#
+# ============= farb.c ==============
+if test -f 'farb.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping farb.c (File already exists)'
+else
+echo 'x - extracting farb.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'farb.c' &&
+/* Arbitrary precision math routines
+X   These routines take ASCII numbers in C strings and return
+X   ASCII string results in malloc blocks.
+X   Copyright (C) 1994 Joseph H. Allen
+X
+This is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation; either version 1, or (at your option) any later version.
+X
+This software is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+X
+You should have received a copy of the GNU General Public License along with 
+JOE; see the file COPYING.  If not, write to the Free Software Foundation, 
+675 Mass Ave, Cambridge, MA 02139, USA.  */ 
+X
+X
+#include <string.h>
+#include "farb.h"
+X
+/* A valid number string is zero terminated C string containing 1 or more ASCII
+X * digits possibly preceeded by a '-' sign.  Whitespace and negative zero is
+X * not allowed.  Leading zeros _must_ be suppressed.
+X */
+X
+static int max(a,b) { return a>=b?a:b; }
+static int min(a,b) { return a<=b?a:b; }
+X
+/* Unsigned Add.  If 'n' is true, preceed the result string with '-' */
+X
+char *Uadd(a,b,n)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b), lens;
+X int c, x;
+X char *s, *r;
+X
+X if(a[0]=='-') --lena, ++a;
+X if(b[0]=='-') --lenb, ++b;
+X
+X s=(char *)malloc((lens=max(lena,lenb)+1)+1);
+X s[lens]=0;
+X
+X if(lena>lenb)
+X  {
+X  for(x=0,c=0;x!=lenb;++x)
+X   if((s[lens-x-1]=a[lena-x-1]-'0'+b[lenb-x-1]-'0'+c)>=10)
+X    c=1, s[lens-x-1]+='0'-10;
+X   else
+X    c=0, s[lens-x-1]+='0';
+X  for(;x!=lena;++x)
+X   if((s[lens-x-1]=a[lena-x-1]-'0'+c)>=10) c=1, s[lens-x-1]+='0'-10;
+X   else c=0, s[lens-x-1]+='0';
+X  }
+X else
+X  {
+X  for(x=0,c=0;x!=lena;++x)
+X   if((s[lens-x-1]=a[lena-x-1]-'0'+b[lenb-x-1]-'0'+c)>=10)
+X    c=1, s[lens-x-1]+='0'-10;
+X   else c=0, s[lens-x-1]+='0';
+X  for(;x!=lenb;++x)
+X   if((s[lens-x-1]=b[lenb-x-1]-'0'+c)>=10) c=1, s[lens-x-1]+='0'-10;
+X   else c=0, s[lens-x-1]+='0';
+X  }
+X if(c) s[lens-++x]='1';
+X
+X if(n) r=(char *)malloc(x+2), r[0]='-', strcpy(r+1,s+lens-x);
+X else r=(char *)malloc(x+1), strcpy(r,s+lens-x);
+X
+X free(s);
+X return r;
+X }
+X
+/* Unsigned Subtract.  If 'n' is true, preceed the result string with '-'. The
+X * magnitude of 'a' _must_ be larger than the magnitude of 'b'. */
+X
+char *Usub(a,b,n)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b), lens;
+X int c, x;
+X char *s, *r;
+X
+X if(a[0]=='-') --lena, ++a;
+X if(b[0]=='-') --lenb, ++b;
+X
+X s=(char *)malloc((lens=max(lena,lenb))+1);
+X s[lens]=0;
+X
+X for(x=0,c=0;x!=lenb;++x)
+X  if((s[lens-x-1]=a[lena-x-1]-b[lenb-x-1]-c)<0) c=1, s[lens-x-1]+='0'+10;
+X  else c=0, s[lens-x-1]+='0';
+X for(;x!=lena;++x)
+X  if((s[lens-x-1]=a[lena-x-1]-'0'-c)<0) c=1, s[lens-x-1]+='0'+10;
+X  else c=0, s[lens-x-1]+='0';
+X while(x!=1 && s[lens-x]=='0') --x;
+X
+X if(n) r=(char *)malloc(x+2), r[0]='-', strcpy(r+1,s+lens-x);
+X else r=(char *)malloc(x+1), strcpy(r,s+lens-x);
+X
+X free(s);
+X return r;
+X }
+X
+/* Magnitude comparison.
+X * Returns 1 if |a|>|b|, 0 if |a|=|b|, or -1 if |a|<|b| */
+X
+static int ncmp(a,lena,b,lenb)
+char *a, *b;
+X {
+X while(*a=='0' && lena!=1) ++a, --lena;
+X while(*b=='0' && lenb!=1) ++b, --lenb;
+X
+X if(lena>lenb) return 1;
+X else if(lena<lenb) return -1;
+X
+X do
+X  if(*a>*b) return 1;
+X  else if(*a<*b) return -1;
+X  while(++a, ++b, --lena);
+X
+X return 0;
+X }
+X
+int Ucmp(a,b)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b);
+X if(a[0]=='-') --lena, ++a;
+X if(b[0]=='-') --lenb, ++b;
+X return ncmp(a,lena,b,lenb);
+X }
+X
+/* Compare.  Returns 1 if a>b, 0 if a=b, or -1 if a<b */
+X
+int Cmp(a,b)
+char *a, *b;
+X {
+X if(a[0]!='-' && b[0]=='-') return 1;
+X if(a[0]=='-' && b[0]!='-') return -1;
+X if(a[0]=='-') return -Ucmp(a,b);
+X else return Ucmp(a,b);
+X }
+X
+/* Add */
+X
+char *Add(a,b)
+char *a, *b;
+X {
+X if(a[0]!='-' && b[0]=='-')
+X  if(Ucmp(a,b)>=0) return Usub(a,b,0);
+X  else return Usub(b,a,1);
+X else if(a[0]=='-' && b[0]!='-')
+X  if(Ucmp(a,b)<=0) return Usub(b,a,0);
+X  else return Usub(a,b,1);
+X else if(a[0]!='-') return Uadd(a,b,0);
+X else return Uadd(a,b,1);
+X }
+X
+/* Subtract */
+X
+char *Sub(a,b)
+char *a, *b;
+X {
+X if(a[0]!='-' && b[0]!='-')
+X  if(Ucmp(a,b)>=0) return Usub(a,b,0);
+X  else return Usub(b,a,1);
+X else if(a[0]=='-' && b[0]=='-')
+X  if(Ucmp(a,b)<=0) return Usub(b,a,0);
+X  else return Usub(a,b,1);
+X else if(a[0]!='-') Uadd(a,b,0);
+X else Uadd(a,b,1);
+X }
+X
+/* Multiply */
+X
+char *Mul(a,b)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b), lens;
+X int n=0;
+X int x, y, m, c;
+X char *s, *r;
+X
+X if(a[0]=='-') n^=1, ++a, --lena;
+X if(b[0]=='-') n^=1, ++b, --lenb;
+X
+X s=(char *)malloc((lens=lena+lenb)+1);
+X s[lens]=0;
+X memset(s,'0',lens);
+X
+X for(x=0;x!=lenb;++x)
+X  if(m=b[lenb-x-1]-'0')
+X   {
+X   for(y=0, c=0;y!=lena;++y)
+X    if((s[lens-x-y-1]+=c+(a[lena-y-1]-'0')*m-'0')>=10)
+X     c=s[lens-x-y-1]/10, s[lens-x-y-1]+='0'-c*10;
+X    else c=0, s[lens-x-y-1]+='0';
+X   for(;c;++y)
+X    if((s[lens-x-y-1]+=c-'0')>=10) c=1, s[lens-x-y-1]+='0'-10;
+X    else c=0, s[lens-x-y-1]+='0';
+X   }
+X
+X for(x=lens;x!=1 && s[lens-x]=='0';--x);
+X
+X if(x==1 && s[lens-x]=='0') n=0;
+X
+X if(n) r=(char *)malloc(x+2), r[0]='-', strcpy(r+1,s+lens-x);
+X else r=(char *)malloc(x+1), strcpy(r,s+lens-x);
+X
+X free(s);
+X return r;
+X }
+X
+/* Negate */
+X
+char *Neg(a)
+char *a;
+X {
+X if(a[0]=='-') return strdup(a+1);
+X else if(a[0]!='0' || a[1])
+X  {
+X  char *r=(char *)malloc(strlen(a)+2);
+X  r[0]='-';
+X  strcpy(r+1,a);
+X  return r;
+X  }
+X else return strdup(a);
+X }
+X
+/* Absolute value */
+X
+char *Abs(a)
+char *a;
+X {
+X if(a[0]=='-') return strdup(a+1);
+X else return strdup(a);
+X }
+X
+/* Subtract b/blen from a/alen as many times as possible.  Return the number of
+X * times (0-9) which we subtracted
+X */
+X
+static int into(a,lena,b,lenb)
+char *a, *b;
+X {
+X int m;
+X for(m=0;ncmp(a,lena,b,lenb)>=0;++m)
+X  {
+X  int x, c;
+X  for(x=0,c=0;x!=lenb;++x)
+X   if((a[lena-x-1]-=b[lenb-x-1]+c)<0)
+X    c=1, a[lena-x-1]+='0'+10;
+X   else c=0, a[lena-x-1]+='0';
+X  for(;c;++x)
+X   if((a[lena-x-1]-='0'+c)<0)
+X    c=1, a[lena-x-1]+='0'+10;
+X   else c=0, a[lena-x-1]+='0';
+X  }
+X return m;
+X }
+X
+/* Divide */
+X
+char *Div(a,b)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b), lenq;
+X int n=0;
+X int x, m;
+X char *q, *r, *z;
+X
+X if(a[0]=='-') n^=1, ++a, --lena;
+X if(b[0]=='-') n^=1, ++b, --lenb;
+X
+X r=strcpy((char *)malloc(lena+1),a);
+X
+X q=(char *)malloc((lenq=lena)+1);
+X q[lenq]=0;
+X
+X for(x=0;x!=lena;++x) q[x]=into(r,x+1,b,lenb)+'0';
+X
+X for(x=lenq;x!=1 && q[lenq-x]=='0';--x);
+X if(x==1 && q[lenq-x]=='0') n=0;
+X if(n) z=(char *)malloc(x+2), z[0]='-', strcpy(z+1,q+lenq-x);
+X else z=(char *)malloc(x+1), strcpy(z,q+lenq-x);
+X
+X free(r); free(q);
+X return z;
+X }
+X
+/* Modulous */
+X
+char *Mod(a,b)
+char *a, *b;
+X {
+X int lena=strlen(a), lenb=strlen(b), lenq;
+X int n=0;
+X int x, m;
+X char *q, *r, *z;
+X
+X if(a[0]=='-') n^=1, ++a, --lena;
+X if(b[0]=='-') n^=1, ++b, --lenb;
+X
+X r=strcpy((char *)malloc(lena+1),a);
+X
+X q=(char *)malloc((lenq=lena)+1);
+X q[lenq]=0;
+X
+X for(x=0;x!=lena;++x) q[x]=into(r,x+1,b,lenb)+'0';
+X
+X for(x=lena;x!=1 && r[lena-x]=='0';--x);
+X if(x==1 && r[lena-x]=='0') n=0;
+X if(n) z=(char *)malloc(x+2), z[0]='-', strcpy(z+1,r+lena-x);
+X else z=(char *)malloc(x+1), strcpy(z,r+lena-x);
+X
+X free(r); free(q);
+X return z;
+X }
+X
+/* Convert arb to integer */
+X
+int Int(a)
+char *a;
+X {
+X int x=0;
+X sscanf(a,"%d",&x);
+X return x;
+X }
+X
+/* Convert integer to arb */
+X
+char *Arb(a)
+X {
+X char buf[64];
+X sprintf(buf,"%d",a);
+X return strdup(buf);
+X }
+X
+/** Decimal and floating point routines **/
+X
+/* Convert floating point number to integer and exponant */
+X
+char *Extract(a,expa)
+char *a;
+int *expa;
+X {
+X int ex, 	/* Offset to 'e' or 'E' */
+X     sgn,	/* Set to 1 if number is negative, otherwise set to zero */
+X     dot,	/* Offset to '.' */
+X     first,	/* Offset to first significant digit */
+X     last,	/* Offset to one past last significant digit */
+X     x;
+X int exp=0;	/* Value of exponant */
+X char *r;
+X
+X /* Calculate offsets */
+X for(ex=0;a[ex] && a[ex]!='e' && a[ex]!='E';++ex);
+X for(dot=0;dot!=ex && a[dot]!='.';++dot);
+X if(a[0]=='-') sgn=1;
+X else sgn=0;
+X for(first=sgn;(a[first]=='.' || a[first]=='0') && first!=ex;++first);
+X if(first!=ex)
+X  {
+X  for(last=ex-1;last!=first && (a[last]=='0' || a[last]=='.');--last);
+X  ++last;
+X  }
+X else last=ex;
+X
+X /* Get exponant if there is one */
+X if(a[ex])
+X  {
+X  for(x=((a[ex+1]=='-'||a[ex+1]=='+')?ex+2:ex+1);a[x];++x)
+X   exp=exp*10+a[x]-'0';
+X  if(a[ex+1]=='-') exp= -exp;
+X  }
+X /* Adjust exponant for position of decimal point */
+X if(dot<last) exp-=last-dot-1;
+X else exp-=last-dot;
+X
+X /* Get mantissa */
+X if(dot<last && dot>first)
+X  {
+X  r=(char *)malloc(1+sgn+last-first-1);
+X  if(dot-first) memcpy(r+sgn,a+first,dot-first);
+X  if(last-(dot+1)) memcpy(r+sgn+dot-first,a+dot+1,last-(dot+1));
+X  r[sgn+last-first-1]=0;
+X  }
+X else
+X  {
+X  r=(char *)malloc(2+sgn+last-first);
+X  if(last-first) memcpy(r+sgn,a+first,last-first), r[sgn+last-first]=0;
+X  else r[sgn]='0', r[sgn+1]=0, exp=0;
+X  }
+X
+X if(sgn) r[0]='-';
+X
+X *expa=exp;
+X return r;
+X }
+X
+/* Normalize floating point number into engineering format (the exponant is
+X * a multiple of three and there is one to three digits to the left of the
+X * decimal point).
+X */
+X
+char *Eng(s,exp)
+char *s;
+X {
+X int sgn;
+X int dot;
+X int len;
+X int x;
+X int chng;
+X char *r;
+X char buf[32];
+X
+X if(s[0]=='-') sgn=1;
+X else sgn=0;
+X len=strlen(s);
+X
+X if(s[sgn]=='0') exp=0;
+X
+X /* Zap trailing zeros */
+X for(x=len-1;x>sgn && s[x]=='0';--x) ++exp;
+X len=x+1;
+X
+X /* Set dot position and set exponant value */
+X chng=exp%3;
+X exp-=chng;
+X dot=len-sgn+chng;
+X
+X if(dot<=0) dot+=3, exp-=3;
+X
+X chng=(dot-1)/3;
+X exp+=chng*3;
+X dot-=chng*3;
+X
+X /* Generate number */
+X sprintf(buf,"e%d",exp);
+X r=(char *)malloc(strlen(buf)+strlen(s)+12);
+X if(sgn && s[sgn]!='0') r[0]='-', x=1;
+X else x=0;
+X if(dot<0)
+X  {
+X  r[x++]='.';
+X  while(dot++<0) r[x++]='0';
+X  memcpy(r+x,s+sgn,len-sgn); x+=len-sgn;
+X  if(exp) strcpy(r+x,buf);
+X  else r[x]=0;
+X  }
+X else if(dot<len-sgn)
+X  {
+X  if(dot) memcpy(r+x,s+sgn,dot); x+=dot;
+X  r[x]='.'; ++x;
+X  memcpy(r+x,s+sgn+dot,len-sgn-dot); x+=len-sgn-dot;
+X  if(exp) strcpy(r+x,buf);
+X  else r[x]=0;
+X  }
+X else
+X  {
+X  int q;
+X  memcpy(r+x,s+sgn,len-sgn); x+=len-sgn;
+X  for(q=0;q!=dot-(len-sgn);++q) r[x++]='0';
+X  if(exp) strcpy(r+x,buf);
+X  else r[x]=0;
+X  }
+X
+X return r;
+X }
+X
+/* Add n zeros to end of s */
+X
+char *Shift(s,n)
+char *s;
+X {
+X int len=strlen(s), x;
+X char *new=(char *)malloc(len+n+1);
+X memcpy(new,s,len);
+X for(x=0;x!=n;++x) new[len+x]='0';
+X new[len+x]=0;
+X return new;
+X }
+X
+/* Floating point multiply */
+X
+char *Fmul(a,b)
+char *a, *b;
+X {
+X char *am, *bm, *r;
+X int ae, be, re;
+X am=Extract(a,&ae);
+X bm=Extract(b,&be);
+X re=ae+be;
+X r=Mul(am,bm);
+X free(am); free(bm);
+X return Eng(r,re);
+X }
+X
+/* Floating point addition */
+X
+char *Fadd(a,b)
+char *a, *b;
+X {
+X char *am, *bm, *r;
+X int ae, be, re;
+X am=Extract(a,&ae);
+X bm=Extract(b,&be);
+X if(ae>be)
+X  {
+X  char *n=Shift(am,ae-be);
+X  ae=be;
+X  free(am); am=n;
+X  }
+X else if(be>ae)
+X  {
+X  char *n=Shift(bm,be-ae);
+X  be=ae;
+X  free(bm); bm=n;
+X  }
+X re=ae;
+X r=Add(am,bm);
+X free(am); free(bm);
+X return Eng(r,re);
+X }
+X
+/* Floating point subtraction */
+X
+char *Fsub(a,b)
+char *a, *b;
+X {
+X char *am, *bm, *r;
+X int ae, be, re;
+X am=Extract(a,&ae);
+X bm=Extract(b,&be);
+X if(ae>be)
+X  {
+X  char *n=Shift(am,ae-be);
+X  ae=be;
+X  free(am); am=n;
+X  }
+X else if(be>ae)
+X  {
+X  char *n=Shift(bm,be-ae);
+X  be=ae;
+X  free(bm); bm=n;
+X  }
+X re=ae;
+X r=Sub(am,bm);
+X free(am); free(bm);
+X return Eng(r,re);
+X }
+X
+/* Floating point division: to n places */
+X
+char *Fdiv(a,b,n)
+char *a, *b;
+X {
+X char *am, *bm, *r;
+X int ae, be, re;
+X int sa, sb;
+X am=Extract(a,&ae);
+X bm=Extract(b,&be);
+X sa=strlen(am); if(am[0]=='-') --sa;
+X sb=strlen(bm); if(bm[0]=='-') --sb;
+X if(sa-sb<n)
+X  {
+X  am=Shift(am,n-(sa-sb));
+X  ae-=n-(sa-sb);
+X  }
+X re=ae-be;
+X r=Div(am,bm);
+X free(am); free(bm);
+X return Eng(r,re);
+X }
+X
+/* Negate */
+X
+char *Fneg(a)
+char *a;
+X {
+X int exp;
+X char *s=Extract(a,&exp), *t, *r;
+X t=Neg(s);
+X r=Eng(t,exp);
+X free(s);
+X free(t);
+X return r;
+X }
+X
+/* Absolute value */
+X
+char *Fabs(a)
+char *a;
+X {
+X if(a[0]=='-') return strdup(a+1);
+X else return strdup(a);
+X }
+X
+/* Magnitude comparison */
+X
+int Fucmp(a,b)
+char *a, *b;
+X {
+X char *am, *bm;
+X int ae, be;
+X int la, lb;
+X int r;
+X am=Extract(a,&ae);
+X bm=Extract(b,&be);
+X la=strlen(am); if(am[0]=='-') --la;
+X lb=strlen(bm); if(bm[0]=='-') --lb;
+X
+X if(la+ae>lb+be) r=1;
+X else if(la+ae<lb+be) r= -1;
+X else
+X  {
+X  if(ae>be)
+X   {
+X   char *n=Shift(am,ae-be);
+X   free(am); am=n;
+X   }
+X  else if(ae<be)
+X   {
+X   char *n=Shift(bm,be-ae);
+X   free(bm); bm=n;
+X   }
+X  r=Ucmp(am,bm);
+X  }
+X
+X free(am); free(bm);
+X return r;
+X }
+X
+/* Comparison */
+X
+int Fcmp(a,b)
+char *a, *b;
+X {
+X if(a[0]=='-' && b[0]!='-') return -1;
+X else if(a[0]!='-' && b[0]=='-') return 1;
+X else if(a[0]!='-') return Fucmp(a,b);
+X else return -Fucmp(a,b);
+X }
+X
+/* Truncate everything after the decimal point */
+X
+char *Ftrunc(a)
+char *a;
+X {
+X int ae;
+X int len;
+X int sgn;
+X char *am=Extract(a,&ae);
+X char *r;
+X if(am[0]=='-') sgn=1; else sgn=0;
+X len=strlen(am);
+X if(ae<0)
+X  {
+X  if(-ae>=len-sgn) am[sgn]='0', am[sgn+1]=0;
+X  else am[len+ae]=0;
+X  ae=0;
+X  }
+X r=Eng(am,ae);
+X free(am);
+X return r;
+X }
+X
+/* Convert integer part of floating point number to an integer string with
+X * no exponant */
+X
+char *FtoArb(a)
+char *a;
+X {
+X int ae;
+X int len;
+X int sgn;
+X char *am=Extract(a,&ae);
+X char *r;
+X if(am[0]=='-') sgn=1; else sgn=0;
+X len=strlen(am);
+X if(ae<0)
+X  {
+X  if(-ae>=len-sgn) free(am), am=strdup("0"), sgn=0;
+X  else am[len+ae]=0;
+X  ae=0;
+X  }
+X else if(ae>0)
+X  {
+X  char *n=Shift(am,ae);
+X  free(am);
+X  am=n;
+X  }
+X return am;
+X }
+X
+/* Convert to double */
+X
+double Fdouble(a)
+char *a;
+X {
+X double n=0.0;
+X sscanf(a,"%lg",&n);
+X return n;
+X }
+X
+/* Convert from double */
+X
+char *Farb(n)
+double n;
+X {
+X char buf[64];
+X sprintf(buf,"%lg",n);
+X return strdup(buf);
+X }
+SHAR_EOF
+chmod 0600 farb.c ||
+echo 'restore of farb.c failed'
+Wc_c="`wc -c < 'farb.c'`"
+test 13460 -eq "$Wc_c" ||
+	echo 'farb.c: original size 13460, current size' "$Wc_c"
+fi
+# ============= farb.h ==============
+if test -f 'farb.h' -a X"$1" != X"-c"; then
+	echo 'x - skipping farb.h (File already exists)'
+else
+echo 'x - extracting farb.h (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'farb.h' &&
+/* Arbitrary precision math routines
+X   These routines take ASCII numbers in C strings and return
+X   ASCII string results in malloc blocks.
+X   Copyright (C) 1994 Joseph H. Allen
+X
+This is free software; you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation; either version 1, or (at your option) any later version.
+X
+This software is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+more details.
+X
+You should have received a copy of the GNU General Public License along with 
+JOE; see the file COPYING.  If not, write to the Free Software Foundation, 
+675 Mass Ave, Cambridge, MA 02139, USA.  */ 
+X
+#ifndef _farb
+#define _farb 1
+X
+/** Unsigned arithmetic **
+X * These all take numbers of the form: [-]xxxxxx
+X * Leading zeros must be suppressed.  If there is a leading minus sign, it
+X * is ignored.  Leading zeros in the result will be suppressed.
+X */
+X
+/* char *Uadd(a,b,n);
+X * Unsigned addition: |a|+|b|
+X * If 'n' is true, the result will be negative (even if it is zero).
+X */
+char *Uadd();
+X
+/* char *Usub(a,b,n);
+X * Unsigned subtraction: |a|-|b|
+X * If 'n' is true, the result will be negative (even if it is zero).
+X * |a| must be larger or equal to |b| or this routine will go into an
+X * infinite loop.
+X */
+char *Usub();
+X
+/** Integer arithmetic **
+X * These all take numbers of the form [-]xxxxx
+X * Leading zeros must be suppressed.  The result will have leading zeros
+X * suppressed.
+X */
+X
+/* int Cmp(char *a,char *b);
+X * Comparison: 1 if a>b, 0 if a=b, or -1 if a<b
+X */
+int Cmp();
+X
+/* int Ucmp(char *a,char *b);
+X * Magnitude comparison: 1 if |a|>|b|, 0 if |a|=|b|, or -1 if |a|<|b|
+X */
+int Ucmp();
+X
+/* char *Neg(char *a);
+X * Negate: -a
+X */
+char *Neg();
+X
+/* char *Abs(char *a);
+X * Absolute value: |a|
+X */
+char *Abs();
+X
+/* char *Add(char *a,char *b);
+X * Addition: a+b
+X */
+char *Add();
+X
+/* char *Sub(char *a,char *b);
+X * Subtraction: a-b
+X */
+char *Sub();
+X
+/* char *Mul(char *a,char *b);
+X * Multiplication: a*b
+X */
+char *Mul();
+X
+/* char *Div(char *a,char *b);
+X * Division: a/b
+X */
+char *Div();
+X
+/* char *Mod(char *a,char *b);
+X * Remainder of a/b.
+X */
+char *Mod();
+X
+/* int Int(char *a);
+X * Convert string to integer
+X */
+int Int();
+X
+/* char *Arb(int a);
+X * Convert integer to string
+X */
+char *Arb();
+X
+/* char *Shift(char *a,int n)
+X * Add n zeros after a, even if 'a' is zero.
+X */
+char *Shift();
+X
+/** Floating point functions **
+X *
+X * These all take a number in the form: [-]xxx.xxx{E|e}[-]xxx
+X * The decimal point and the exponent are optional, but there must be at least
+X * one digit in the mantissa of the number.  Leading and trailing zeros are
+X * acceptable.  No syntax checking is done: the numbers must be in the correct
+X * format.
+X *
+X * The exponent is limited to the machine size of an integer.
+X *
+X * They each return a number in engineering format.  That is, a number
+X * where the exponent is a multiple of 3 and there are 1 to 3 digits to
+X * the left of the decimal point.  If the exponent is zero, it is not
+X * included.  If there are no digits to the right of the decimal point,
+X * the decimal point it is not included.
+X */
+X
+/* char *Extract(char *a,int *expa);
+X * Convert floating point number into a separate integer and exponent.
+X * The integer is returned as a string, and the exponent is placed at the
+X * address 'expa'.
+X */
+char *Extract();
+X
+/* char *Eng(char *s,int exp);
+X * Generate a floating point number from an integer and an exponent in
+X * the engineering format.
+X */
+char *Eng();
+X
+/* char *Fadd(char *a,char *b);
+X * Floating point addition: a+b
+X */
+char *Fadd();
+X
+/* char *Fsub(char *a,char *b);
+X * Floating point subtraction: a-b
+X */
+char *Fsub();
+X
+/* int Fcmp(char *a,char *b);
+X * Comparison: 1 if a>b, 0 if a==b, or -1 if a<b
+X */
+int Fcmp();
+X
+/* int Fucmp(char *a,char *b);
+X * Magnitude comparison: 1 if |a|>|b|, 0 if |a|==|b|, or -1 if |a|<|b|
+X */
+int Fucmp();
+X
+/* char *Fneg(char *a);
+X * Negate: -a
+X */
+char *Fneg();
+X
+/* char *Fabs(char *a);
+X * Absolute value: |a|
+X */
+char *Fabs();
+X
+/* char *Fmul(char *a,char *b);
+X * Floating point multiplication: a*b
+X */
+char *Fmul();
+X
+/* char *Fdiv(char *a,char *b,int n);
+X * Floating point division: a/b
+X * At least n digits are generated.  No rounding takes place: the
+X * number is simply truncated.
+X */
+char *Fdiv();
+X
+/* char *Ftrunc(char *a);
+X * Truncate and digits after the decimal point
+X */
+char *Ftrunc();
+X
+/* char *FtoArb(char *a);
+X * Truncate digits after the decimal point and add enough zeros so that the
+X * exponent does not need to be generated (I.E., converts the number to an
+X * arbitrary length integer).
+X */
+char *FtoArb();
+X
+/* double Fdouble(char *a);
+X * Convert to a double
+X */
+double Fdouble();
+X
+/* char *Farb(double n);
+X * Convert a double to a string
+X */
+char *Farb();
+X
+#endif
+SHAR_EOF
+chmod 0644 farb.h ||
+echo 'restore of farb.h failed'
+Wc_c="`wc -c < 'farb.h'`"
+test 4895 -eq "$Wc_c" ||
+	echo 'farb.h: original size 4895, current size' "$Wc_c"
+fi
+exit 0
+-- 
+/*  jhallen@world.std.com (192.74.137.5) */               /* Joseph H. Allen */
+int a[1817];main(z,p,q,r){for(p=80;q+p-80;p-=2*a[p])for(z=9;z--;)q=3&(r=time(0)
++r*57)/7,q=q?q-1?q-2?1-p%79?-1:0:p%79-77?1:0:p<1659?79:0:p>158?-79:0,q?!a[p+q*2
+]?a[p+=a[p+=q]=q]=q:0:0;for(;q++-1817;)printf(q%79?"%c":"%c\n"," #"[!a[q-1]]);}
+

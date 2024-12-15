@@ -1,0 +1,70 @@
+Systems tested:
+---------------
+
+next
+sun4gcc
+linux
+sco-3.2 (There's some problem with the daemon communication - no invitation
+	appears.)
+mips-ultrix
+irix
+
+Installation comments:
+----------------------
+
+*** Do *not* change config.h.  Instead, choose the correct entry in
+Makefile.  If needed, change the entry, or create a new one.
+
+*** It will complain about the "random file" not existing.  Ignore
+that.  The random seed file will come into existance after about
+300 keystrokes or so of normal 'talking'.
+
+All bugs to:
+------------
+
+	miron@extropia.wimsey.com
+
+Description:
+------------
+
+1. IDEA is used in cfb mode one character at a time.
+2. DH key exchange is used.  The generator is 2.
+   Generic DH functions:
+	- createDHkey()
+		Creates a random private key (P) of length NBITS.
+		Computes the public key 2^P mod q
+	- getDHpublic(byte* ptr)
+		Stores the public key in external format in ptr.
+	- computeDHagreed_key(unit* key, byte** ptr)
+		Computes key^P mod q which is equal to 2^(P*log2(key)),
+		log2(key) being the peer's private key.  This is the
+		agreed upon session key.  ptr is set to point to a static
+		area which contains the external representation of this
+		key.
+	- DHburn
+		Burn the private key.
+
+   A constant moduli q is used.  512 bits of precision are used.
+   The session key is folded using 'XOR' to produce the IDEA key
+   for the session.
+
+3. Two methods of authentication:
+	- private key
+		The private keyphrase is used to encrypt the DH exchange,
+		thereby both signing it and hiding it.  The keyphrase is
+		hashed and then used as the IDEA key for an ideacfb on the
+		DH public key.
+	- PGP
+		PGP is used to sign the DH exchange.  The identity of the
+		peer is displayed after the signature is checked.  It is
+		a signature on the external representation of the DH
+		public key.  The 'popen()' library function is used
+		to communicate with PGP.
+
+4. Random numbers:
+	- The private key is randomly generated.  The strong
+	RNG from PGP is used.  The timer is captured after
+	every incoming and outgoing keystroke.  The user is warned
+	at the beginning of the session if the random seed file
+	(stored in $HOME/.rand) is empty or non-existent.  It takes
+	about 300 keystrokes to create/refresh the file.

@@ -1,0 +1,443 @@
+Cryptographically-Protected Anonymous Remailer (Perl based)
+Hal Finney
+Based on work by Eric Hughes
+
+Note: the remailer is currently an experimental product.  No liability
+can be accepted for problems, including lost or garbled mail.  People
+who operate remailers should be aware that malicious or abusive mail
+could be sent through their remailers, and conceivably they might be
+held responsible for the contents of such mail.
+
+The remailing scripts are designed to be used on a Unix-based system
+which uses the "sendmail" program for mail delivery.  They intercept
+incoming mail by the use of a ".forward" file in the user's home directory,
+filter the mail looking for remail requests, and put other messages into
+the user's normal mail directory.
+
+Here is how the files are organized on my system:
+
+Home directory:
+	.forward		Command to run the remailer script
+Home/remail:
+	maildelivery		Config file for slocal.pl script
+	slocal.pl		Replacement for slocal, written in perl
+	remail.pl		Perl script for remailing requests
+	pgpmail.pl		Perl script for PGP decryption requests
+	recurse.pl		Perl script for calling slocal again
+Home/remail/pgp:
+	pgp			PGP executable
+	pgp.hlp			Help file for PGP
+	config.txt		PGP config file
+	randseed.pgp		Random bytes used by PGP
+	pubring.pgp		PGP public key ring
+	secring.pgp		PGP secret key ring
+
+
+Some customization will be needed of the files below.  The first line of
+each perl script contains the path to the local version of perl.  Edit
+these if needed to correspond to the local location of perl.  Edit the
+.forward file to correspond to the location you put the remail directory
+if different from mine.  Also edit the remail.pl script where it puts in
+the mail address of the remailer to correspond to your own mail address.
+
+It's best to test the basic remailer functions before trying to get the PGP
+working.  The slocal.pl script has some debugging functions built in which
+write to /dev/null but which can be changed to write to a log file on
+/tmp.  This can be useful to track down remailer failures.
+
+Once these work, the next step is to get PGP running on your system.  For
+simplicity, I assume that PGP is in a subdirectory of the remailer.  If
+this is different for you, edit the pgpmail.pl script for the location of
+PGP on your system.  Also, edit the PGPPASS entry in the pgpmail.pl
+script to correspond to the pass phrase you will use for your PGP remailer.
+
+Create a key for your remailer, using this same pass phrase.  Make sure this
+is the key which will be used by default to decrypt incoming messages.
+This can be set in config.pgp, or by default PGP will use the most recently
+created key.
+
+The remailer creates two archive files.  archive.pgp contains the messages
+which are recognized as being for PGP.  archive.remail contains the messages
+which are recognized as remailing requests.  Note that an encrypted remailing
+request will first go into archive.pgp in encrypted form, then will also
+be added to archive.remail in its decrypted form.
+
+Please report problems with the remailer to me at 74076.1041@compuserve.com.
+
+.forward file:
+---------------------------- cut here -------------------------------
+"|/alum/hal/remail/slocal.pl"
+---------------------------- cut here -------------------------------
+
+slocal.pl
+---------------------------- cut here -------------------------------
+#!/usr/bin/perl
+
+# slocal subset
+
+# Read maildelivery file in .slocal format.
+# Returns arrays @field, @pat, @action, @res, @cmd.
+sub read_delivery {
+    open (IN, "maildelivery")  ||  die $?;
+
+    while (<IN>) {
+	next if /^\s*#/ || /^\s*$/;	# Skip blank and comment lines
+	@line = split (" ");
+	undef(@mailline);
+	for ($i=0; $i<=$#line; $i++) {
+	    $field = $line[$i];
+	    if ($field =~ /^"/) {	# Re-join args collected by quotes
+		while ((substr($field,-1,1) ne '"')  &&  (++$i<=$#line)) {
+		    $field .= ' ' . $line[$i];
+		}
+		substr($field,0,1) = '';
+		substr($field,-1,1) = '';
+	    }
+	    push (@mailline, $field);
+	}			
+	die "Incorrect number of fields on line:\n  ". $_ if @mailline != 5;
+	($field[$ln], $pat[$ln], $action[$ln], $res[$ln], $cmd[$ln]) =
+		    @mailline;
+	# Lower-case field and pattern
+	$field[$ln] =~ tr/A-Z/a-z/;
+	$pat[$ln] =~ tr/A-Z/a-z/;
+	++$ln;
+    }
+}
+
+# Call to read mail header from parameter, e.g. read_header(STDIN).
+# Returns headers and fields in associative array %head.
+# Return header as a string in $head.
+sub read_header {
+    local ($/,$*,$s) = ("",1,@_);	# Paragraph mode
+    $head = <$s>;		# Read header
+    ($head1=$head) =~ tr/A-Z/a-z/;	# Lower case everything
+    chop $head1;		# Delete trailing newline
+    $head1 =~ s/\n\s+/ /g ;	# Merge continuation lines
+    %head = ("FRONT\001", split(/^([-\w]+):/, $head1));
+}
+
+# Defines and subroutines for BSD-style mail delivery.
+$LOCK_SH = 1;
+$LOCK_EX = 2;
+$LOCK_NB = 4;
+$LOCK_UN = 8;
+sub lock {
+  local ($mbox) = @_;
+  flock ($mbox, $LOCK_EX);
+  # and, in case someone appended while we were waiting...
+  seek($mbox, 0, 2);
+}
+sub unlock {
+  local ($mbox) = @_;
+  flock ($mbox, $LOCK_UN);
+}
+
+# Call as &maildeliver ($mailbox, $message).
+# Delivers the message to the specified mailbox using BSD conventions.
+# Returns $mailstat = 1 if it fails, $mailstat = 0 if it succeeds.
+#
+sub maildeliver {
+    local ($*, $mbox, $msg) = (1, @_);
+    # Eliminate trailing blank lines
+    chop($msg) while substr($msg,-1,1) eq "\n";
+
+    # Quote '^From ' lines
+    $msg =~ s/\nFrom /\n>From /g;
+
+    open (MBOX, ">>$mbox") || ($mailstat = 1 && return);
+    &lock(MBOX);
+    print MBOX $msg, "\n\n";
+# Wed Nov 25 09:39:04 1992
+# Had a bug where we would do just an unlock here.  Since we hadn't
+# closed the FD, another process which immediately grabbed a lock
+# which would do a seek to the end, didn't always find the right spot
+# due to buffering.  So we close instead, which automatically releases
+# the lock.
+#   &unlock(MBOX);
+    close(MBOX);
+    $mailstat = 0;
+}
+
+
+# Exercise the above subroutines
+
+
+# Prepare for debugging logging
+
+#open (LOG, ">/tmp/LOG$$") || die "Can't log: $!\n";
+open (LOG, ">/dev/null");
+select(LOG);
+print "Starting process $$\n";
+print "Environment = ", join(',',%ENV), "\n";
+print "UID = $<; EUID = $>; CWD = " . `pwd`;
+
+# Parse optional command-line argument, or use effective user ID.
+($user, $passwd, $uid, $gid, $quota, $comm, $gcos, $dir, $shell) =
+	($user = $ARGV[0]) ? getpwnam($user) : getpwuid($>);
+	
+die "Usage: $0 [username]\n" if $dir eq '';
+
+$mbox = "/usr/spool/mail/$user";
+chdir("$dir/remail") || die "Chdir failure: $!\n";
+print "MBOX = $mbox; CWD = " . `pwd`;
+
+# Some systems run mail delivery with a pretty bare environment.
+$ENV{'USER'} = $user;
+$ENV{'HOME'} = $dir;
+substr($ENV{'PATH'},0,0) = ".:";
+$gcos =~ s/&/$user/;
+$gcos =~ s/,+$//;
+$ENV{'USERNAME'} = $gcos;	# Remailer uses this
+print "Environment = ", join(',',%ENV), "\n";
+
+# My version of Perl (4.0) needs this or unsuccessful pipe commands
+# cause it to silently die.
+$SIG{'PIPE'} = 'IGNORE';
+
+# Read things...
+&read_delivery ;
+&read_header(STDIN);
+$msg = join ('', $head, <STDIN>);
+
+for $i (0 .. $#field) {
+    $field = $field[$i];
+    if (defined ($head{$field})  ||  $field eq "*") {
+	if (($field eq "*")  ||  ($head{$field} =~ /$pat[$i]/)  ||
+			$pat[$i] eq "") {
+print "Match on field $field, pattern $pat[$i], contents are: $head{$field}\n";
+	    # Here we have a match.
+	    next if ($delivered && $res[$i] eq '?');
+	    if ($action[$i] eq "file" || $action[$i] eq ">") {
+print "Delivering to file $cmd[$i]\n";
+		&maildeliver ( $cmd[$i], $msg );
+print "(File write returned status: $mailstat)\n";
+		if ($res[$i] =~ /A|\?/  && $mailstat == 0) {
+print "Now delivered.\n";
+		    $delivered = 1;
+		}
+		next;
+	    }
+	    if ($action[$i] eq "pipe" || $action[$i] eq "|") {
+print "Delivering to pipe $cmd[$i]\n";
+		open (PIPE, "|" . $cmd[$i]);
+		print(PIPE $msg);
+		close(PIPE);
+print "$?\n";
+		$mailstat = $?;
+print "(Pipe returned status: $mailstat)\n";
+		if ($res[$i] =~ /A|\?/  && $mailstat == 0) {
+print "Now delivered.\n";
+		    $delivered = 1;
+		}
+		next;
+	    }
+	}
+    }
+}
+
+# Possibly deliver to default mailbox, found from command-line argument
+if (!$delivered) {
+print "Delivering to regular mailbox: $mbox\n";
+    &maildeliver ( $mbox, $msg );
+print "(Result status: $mailstat)\n";
+}
+---------------------------- cut here -------------------------------
+
+
+maildelivery
+---------------------------- cut here -------------------------------
+#
+# field                 pattern action/ string 
+#                               result  (quote included spaces)
+#
+Request-Remailing-To    ""      pipe R  remail.pl
+Request-Remailing-To    ""      file A  archive.remail
+# Make 'Anon-To' a synonym for Request-Remailing-To
+# (remail.pl has to know about this synonym as well)
+Anon-To			""	pipe R  remail.pl
+Anon-To			""	file A  archive.remail
+Encrypted               PGP     pipe R  pgpmail.pl
+Encrypted               PGP     file A  archive.pgp
+*                       ""      pipe ?  recurse.pl
+---------------------------- cut here -------------------------------
+
+
+remail.pl:
+---------------------------- cut here -------------------------------
+#!/usr/bin/perl
+
+# Remailing perl script, based on that of Eric Hughes
+
+# Set this to be what you would like it to go out as.
+# slocal.pl sets environment variable USERNAME from the password file.
+$remail_header = "Remailed-By: $ENV{'USERNAME'} <hal@alumni.caltech.edu>\n" ;
+
+while (<>) {
+	s/[ \t\r]*$// ;
+        last if /^$/ ;
+        $subject = $_ if /^Subject:/ ;
+        if (/^Request-Remailing-To:/  ||  /^Anon-To:/) {
+                chop ;
+                s/^.*:// ;
+                $addressee = $_ ;
+        }
+}
+
+#open( OUTPUT, ">foo" ) || die "Cannot open 'foo'." ;
+open( OUTPUT, "| /usr/lib/sendmail " . $addressee ) ;
+select( OUTPUT ) ;
+
+print "To:" . $addressee . "\n" ;
+print "From: nobody\n" ;
+print $subject ;
+print $remail_header;
+
+#
+# check to see if there are header lines in the body to collapse 
+#   into the full header.
+#
+
+if ( $_ = <> ) {
+	s/[ \t\r]*$// ;
+        if (/^##$/) {
+                # do nothing if the pasting token appears
+                # the rest of the body will be directly appended
+                # this allows for extra header lines to be added
+        } else {
+                # normal line
+                print "\n" ;
+                print $_ ;
+        }
+} else {
+        # empty body
+        exit ;
+}
+
+print <>;
+---------------------------- cut here -------------------------------
+
+
+recurse.pl:
+---------------------------- cut here -------------------------------
+#!/usr/bin/perl
+# Call slocal recursivelly, first checking the message body for the
+# pasting token "::" and appending any following lines before a blank
+# line to the header.
+
+  # First read in the whole header.
+
+while (<>) {
+	s/[ \t\r]*$// ;
+        last if /^$/ ;
+        $header .= $_ ;
+}
+
+  # We have just read the last line in the header.
+  # Now we check to see if there is a pasting operator.
+
+if ( ( $_ = <> ) && /^::[ \t\r]*$/ ) {
+        while (<>) {
+		s/[ \t\r]*$// ;
+                last if /^$/ ;
+                $header .= $_ ;
+        }
+} else {
+        # There is either an empty body or no pasting operator
+        #   Thus exit with a return code of 1 to indicate that
+        #   the mail has not been delivered.
+                exit( 1 );
+}
+
+# There was a header pasting operator.
+#   So we open 'slocal.pl' as a pipe, effectively redelivering the mail
+#   back to ourselves.
+
+#open( OUTPUT, ">foo" ) ;
+open( OUTPUT, "| slocal.pl");
+select( OUTPUT ) ;
+
+# Now just print out the message
+
+print $header ;
+print "\n" ; 
+print <>;
+---------------------------- cut here -------------------------------
+
+
+pgpmail.pl:
+---------------------------- cut here -------------------------------
+#!/usr/bin/perl
+
+# Perl script for passing PGP portions through PGP and leaving the
+# rest alone.
+# This version just does 1 PGP portion, and it has to be just after
+# the header.  This is for security, so people can't send us packets
+# to be decrypted and get them back.
+
+# Scratch file names
+$scr1 = "/tmp/pm1_" . $$ ;
+$scr2 = "/tmp/pm2_" . $$ ;
+
+open (STDOUT, "| recurse.pl");
+
+#print "Doing header...\n" ;
+# Print out message header.
+while (<>) {
+    last if (/^$/) ;
+    next if /^Encrypted:/ ;	# Delete 'Encrypted' header
+    print $_ ;
+}
+
+    print "\n" ;
+
+# Eat blank lines
+while (<>) {
+    last if (!/^$/) ;
+}
+#print "Blank lines eaten...\n" ;
+
+if (/^-----BEGIN PGP MESSAGE-----$/) {
+    #print "Found PGP header...\n" ;
+    open ( OUT1, ">" .  $scr1 ) ;
+
+    print OUT1 $_ ;
+
+    while ( <> ) {
+	print OUT1 $_ ;
+	last if (/^-----END PGP MESSAGE-----$/) ;
+    }
+
+    close ( OUT1 ) ;
+
+    #print "Printing PGP header to file " . $scr1 . "\n" ;
+
+    $stat = system ( "PGPPATH=./pgp PGPPASS=yourpassphrase  ./pgp/pgp -f " . "<" . $scr1 . " 2>/dev/null >" . $scr2 ) ;
+
+    if ( $stat == 0 ) {
+    #print "PGP Succeeded\n" ;
+	open ( IN1, $scr2 ) ;	# Use output if PGP succeeded
+    } else {
+    #print "PGP Failed\n" ;
+	open ( IN1, $scr1 ) ;	# Ignore output if PGP failed
+    }
+
+    #print "Copying results of PGP run...\n" ;
+    while ( <IN1> ) {
+	s/\r$// ;		# Remove trailing CR's
+	print $_ ;
+    }
+
+    unlink ( $scr1 ) ;		# Remove scratch files
+    unlink ( $scr2 ) ;
+} else {
+    print $_ ;
+}
+
+#print "Copying remainder of file...\n" ;
+
+#Copy remainder of file
+print <>;
+---------------------------- cut here -------------------------------
+
+

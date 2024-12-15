@@ -1,0 +1,6561 @@
+*********************************************************************
+*===================================================================*
+**								   **
+*=								   =*
+**								   **
+*=     oooooooooo	   ooooo       oooooooooo      ooooo	   =*
+**	ooooooooooo 	 ooooooooo	ooooooooooo 	ooo 	   **
+**	ooo 	ooo 	ooo 	ooo 	ooo 	ooo 	ooo 	   **
+*=	ooo 	ooo 	ooo 	ooo 	ooo 	ooo 	ooo 	   =*
+**	ooooooooooo 	ooooooooooo 	oooooooooo	ooo 	   **
+*=	oooooooooo	ooooooooooo 	ooooooooooo 	ooo 	   =*
+**	ooo 		ooo 	ooo 	ooo 	ooo 	ooo 	   **
+*=	ooo 		ooo 	ooo 	ooo 	ooo 	ooo 	   =*
+**     ooooo           ooooo   ooooo   ooooo   ooooo   ooooo	   **
+**								   **
+*=								   =*
+**			version numero 2			   **
+**								   **
+*=			   commentee				   =*
+**								   **
+*=		   fichier cree le 22 sept. 1987		   =*
+**								   **
+*=				par 				   =*
+**								   **
+*=	  christian batut , henri cohen , michel olivier	   =*
+**								   **
+*=	  """"""""""""""""""""""""""""""""""""""""""""""	   =*
+**								   **
+**								   **
+*===================================================================*
+*********************************************************************
+
+
+*-------------------------------------------------------------------*
+*									*
+*  Notations :							*
+*		T = type ( S , I , ou R ).				*
+*		R = type reel.					*
+*		S = type entier court ( long du C). 		*
+*		P = p-adique.					*
+*									*
+*		L = longueur de la mantisse pour un reel ;		*
+*			longueur de la mantisse effective pour un entier*
+*		l = longueur totale du nombre avec codage.		*
+*		le= longueur effective totale de l'entier avec code *
+*			on doit avoir : l <= 2^15-1.			*
+*									*
+*		exp = exposant non biaise d'un reel.                *
+*		fexp= exposant biaise ( fexp = exp + 2^23 ).	*
+*			  on doit avoir : -2^23 <= exp < 2^23		*
+*		fvalp=valuation p-adique biaisee d'un p-adique.     *
+*			  ( fvalp = valuation + 2^15 )			*
+*									*
+*-------------------------------------------------------------------*
+
+
+
+
+*-------------------------------------------------------------------*
+*									*
+*	Conventions :							*
+*		Tous les sous programmes creent la place necessaire *
+*		pour stocker le resultat , a l'exception des        *
+*		programmes d'affectation et d'echange , ainsi que	*
+*		des programmes dont le nom se termine par la lettre *
+*		"z" . On entre dans ces derniers avec une zone creee*
+*		dans la pile PARI ou le resultat est range. 	*
+*									*
+*		Le nombre reel 0 s'ecrit avec mantisse non          *
+*		significative;le deuxieme lgmot code contient	*
+*		-32*L + (2^23) ou L est la longueur de la mantisse	*
+*									*
+*		Les registres a0,a1,d0,d1 sont en general utilises	*
+*		par les programmes et ne sont pas restaures a leurs *
+*		valeurs d'entree.Tous les autres sont sauvegardes.  *
+*									*
+*		Les objets utilises par PARI sont crees dans une	*
+*		pile dite dans la suite "pile PARI",pointee par 	*
+*		_avma.						*
+*									*
+*-------------------------------------------------------------------*
+
+
+
+
+
+affer1 	EQU	1
+affer2 	EQU	2
+affer3 	EQU	3
+affer4 	EQU	4
+affer5 	EQU	5
+exger1 	EQU	6
+exger2 	EQU	7
+shier1 	EQU	8
+shier2 	EQU	9
+truer1 	EQU	10
+truer2 	EQU	11
+adder1 	EQU	12
+adder2 	EQU	13
+adder3 	EQU	14
+adder4 	EQU	15
+adder5 	EQU	16
+muler1 	EQU	17
+muler2 	EQU	18
+muler3 	EQU	19
+muler4 	EQU	20
+muler5 	EQU	21
+muler6 	EQU	22
+diver1 	EQU	23
+diver2 	EQU	24
+diver3 	EQU	25
+diver4 	EQU	26
+diver5 	EQU	27
+diver6 	EQU	28
+diver7 	EQU	29
+diver8 	EQU	30
+diver9 	EQU	31
+diver10  EQU	32
+diver11  EQU	33
+diver12  EQU	34
+divzer1  EQU	35
+dvmer1 	EQU	36
+dvmzer1  EQU	37
+moder1 	EQU	38
+modzer1  EQU	39
+reser1 	EQU	40
+reszer1  EQU	41
+arier1 	EQU	42
+arier2 	EQU	43
+errpile  EQU	44
+rtodber  EQU	45
+gerper 	EQU	46
+
+	MACHINE MC68020
+
+	cseg
+
+	PUBLIC	_avma,_top,_bot,_lontyp,_err
+	XDEF	_expi,_cget,_cgetg,_cgeti,_cgetr,_cgiv,_gerepile
+	XDEF	_mpaff,_affsz,_affsi,_affsr,_affii,_affir
+	XDEF	_affrs,_affri,_affrr
+	XDEF	_stoi,_itos
+	XDEF	_mpneg,_mpnegz,_negs,_negi,_negr
+	XDEF	_mpabs,_mpabsz,_abss,_absi,_absr
+	XDEF	_mptrunc,_mptruncz,_mpent,_mpentz
+	XDEF	_mpexg,_vals,_vali
+	XDEF	_mpshift,_mpshiftz,_shifts,_shifti,_shiftr
+	XDEF	_mpcmp,_cmpss,_cmpsi,_cmpsr,_cmpis,_cmpii,_cmpir
+	XDEF	_cmprs,_cmpri,_cmprr
+	XDEF	_mpadd,_addss,_addsi,_addsr,_addii,_addir,_addrr
+	XDEF	_mpaddz,_addssz,_addsiz,_addsrz,_addiiz,_addirz,_addrrz
+	XDEF	_mpsub,_subss,_subsi,_subsr,_subis,_subii,_subir
+	XDEF	_subrs,_subri,_subrr
+	XDEF	_mpsubz,_subssz,_subsiz,_subsrz,_subisz,_subiiz,_subirz
+	XDEF	_subrsz,_subriz,_subrrz
+	XDEF	_mpmul,_mulss,_mulmodll,_mulsi,_mulsr,_mulii,_mulir,_mulrr
+	XDEF	_mpmulz,_mulssz,_mulsiz,_mulsrz,_muliiz,_mulirz,_mulrrz
+	XDEF	_dvmdss,_dvmdsi,_dvmdis,_dvmdii
+	XDEF	_mpdvmdz,_dvmdssz,_dvmdsiz,_dvmdisz,_dvmdiiz
+	XDEF	_mpdiv,_divss,_divsi,_divsr,_divis,_divii,_divir
+	XDEF	_divrs,_divri,_divrr
+	XDEF	_mpdivis,_divise
+	XDEF	_mpdivz,_divssz,_divsiz,_divsrz,_divisz,_diviiz,_divirz
+	XDEF	_divrsz,_divriz,_divrrz
+	XDEF	_mpinvz,_mpinvsr,_mpinvir,_mpinvrr
+	XDEF	_modss,_modsi,_modis,_modii
+	XDEF	_mpmodz,_modssz,_modsiz,_modisz,_modiiz
+	XDEF	_resss,_ressi,_resis,_resii
+	XDEF	_mpresz,_resssz,_ressiz,_resisz,_resiiz
+	XDEF	_convi,_confrac
+	XDEF	_addsii,_mulsii,_divisii
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 		PROGRAMMES DE GESTION DE LA MEMOIRE PARI	  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+*===================================================================*
+*									*
+*		Allocation memoire dans pile PARI en C			*
+*									*
+*	entree : a7@(4) contient la longueur totale a attribuer 	*
+*	sortie : d0 pointe sur un type I ou R			*
+*		 d1 et a1 sont inutilises				*
+*									*
+*===================================================================*
+
+_cget 	move.l	4(sp),d0
+	bsr.s 	_get
+	move.l	a0,d0
+	rts
+
+_cgetg  move.l	8(sp),d0	; a7@(8) contient le type
+	ror.l	#8,d0
+	move.w	6(sp),d0
+	bsr.s 	_get
+	move.l	a0,d0
+	rts
+	
+_cgeti  move.l	4(sp),d0
+	bsr.s 	_geti
+	move.l	a0,d0
+	rts
+
+_cgetr  move.l	4(sp),d0
+	bsr.s 	_getr
+	move.l	a0,d0
+	rts
+
+*===================================================================*
+*									*
+*		Allocation memoire dans pile PARI			*
+*									*
+*	entree : d0.w contient le nombre total de longs mots	*
+*		 demandes si type I ou R				*
+*	sortie : a0 pointe sur la zone allouee ; _avma est mis	*
+*		 a jour ; message d'erreur si memoire insuffisante ;*
+*		 d0 est inchange;d1 et a1 sont sauvegardes. 	*
+*	remarque : il est interdit de creer des type S dans la pile *
+*									*
+*===================================================================*
+
+				; allocation memoire type qcque
+
+_get 	move.l	d1,-(sp) 	; d0.l contient code et longueur
+	moveq	#0,d1
+	move.w	d0,d1
+	lsl.l	#2,d1
+	move.l	_avma,a0
+	sub.l	d1,a0
+	cmp.l	_bot,a0
+	bmi.s 	mnet
+	move.l	a0,_avma
+	swap	d0
+	move.b	#1,d0
+	swap	d0
+	move.l	d0,(a0)
+	move.l	(sp)+,d1
+	rts
+
+				; allocation memoire de type I
+
+_geti 	move.l	d1,-(sp)
+	moveq	#0,d1
+	move.w	d0,d1
+	lsl.l	#2,d1
+	move.l	_avma,a0
+	sub.l	d1,a0
+	cmp.l	_bot,a0
+	bmi.s 	mnet
+	move.l	a0,_avma
+	move.w	#$101,(a0)
+	move.w	d0,2(a0)
+	move.l	(sp)+,d1
+	rts
+
+				; allocation memoire type R
+
+_getr 	move.l	d1,-(sp)
+	moveq	#0,d1
+	move.w	d0,d1
+	lsl.l	#2,d1
+	move.l	_avma,a0
+	sub.l	d1,a0
+	cmp.l	_bot,a0
+	bmi.s 	mnet
+	move.l	a0,_avma
+	move.w	#$201,(a0)
+	move.w	d0,2(a0)
+	move.l	(sp)+,d1
+	rts
+
+				; nettoyage pile PARI
+				; a ecrire .....!!!!!!!!!
+mnet 	move.l	#errpile,-(sp)
+	jsr 	_err
+
+*===================================================================*
+*									*
+*		Desallocation memoire PARI en C 			*
+*									*
+*	entree : a7@(4) pointe sur un type I ou R			*
+*	sortie : la zone occupee est desallouee 			*
+*									*
+*===================================================================*
+
+
+_cgiv 	move.l	4(sp),a0	; est suivi par giv
+				
+
+*===================================================================*
+*									*
+*		Desallocation memoire PARI				*
+*									*
+*	entree : a0@ contient le premier long mot code d'une        *
+*		 zone memoire a desallouer : uniquement de type 	*
+*		 I ou R 						*
+*	sortie : __avma est mis a jour si necessaire ; ou bien le	*
+*		 nombre de peres de la zone est decremente. 	*
+*		 a0 pointe sur _avma a jour				*
+*		 tous les autres registres sont inchanges		*
+*									*
+*===================================================================*
+
+_giv 	move.l	d0,-(sp)
+	cmp.b	#$ff,1(a0)	; comparaison nb peres avec 255
+	beq.s 	givf
+				; ici le nb de peres est non sature
+	cmp.l	_avma,a0
+	beq.s 	giv1
+				; ici diminuer le nb de peres de 1
+	sub.b	#1,1(a0)
+givf 	move.l	(sp)+,d0
+	rts
+				; ici la zone est en tete de pile
+giv1 	sub.b	#1,1(a0)
+	bne.s 	givf
+				; ici on desalloue la zone
+1$  	move.w	2(a0),d0
+	lea 	0(a0,d0.w*4),a0; a0 pointe sur zone suivante
+	move.l	a0,_avma
+	tst.b	1(a0)
+	beq.s 	1$		; aller desallouer zone suivante
+	bra.s 	givf		; si zone suivante a un seul pere
+				; ou si a0 = top memoire ( cf init)
+
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+*								  *
+*			GESTION DE PILE 			  *
+*								  *
+*	Entree : sp($4) et sp($8) contiennent 2 adresses l > p	  *
+*		 sp($12) contient 0 ou une adresse q ;		  *
+*								  *
+*	Sortie : la zone entre p et l est ecrasee ; 		  *
+*	-	 la zone entre _avma et p est decalee d'autant ;   *
+*	-	 tous les pointeurs situes dans cette derniere	  *
+*		 zone et qui pointent avant p sont mis a jour	  *
+*		 et q est augmente du decalage .		  *
+*		 ( d0 contient celui ci ou le decalage en octets )*
+*	-	 de plus si q est non nul la racine pointee par l *
+*		 est mise a jour si il y a lieu .		  *
+*	-	 _avma est mis a jour ( augmente du decalage )	  *
+*								  *
+*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*
+
+_gerepile  movem.l d2-d6/a2-a3,-(sp)
+        move.l    _avma,d5
+        move.l    32(sp),d2        ; l adresse fin de la zone a detruire
+        move.l    d2,a0
+        move.l    d2,d4
+        move.l    36(sp),d1        ; p adresse deb de la zone a detruire
+        move.l    d1,a1
+        move.l    d1,d0
+        sub.l    d0,d2             ; decalage ( en octets ) = l - p
+        bhi.s     10$               ; si l <= p rien a faire
+        move.l    40(sp),d0
+        bra.s     9$
+10$     sub.l    d5,d1
+        lsr.l    #2,d1             ; nb de lg mots a decaler
+        bra.s     2$
+1$      move.l    -(a1),-(a0)
+2$      dbra    d1,1$             ; boucle de decalage
+        sub.l    #$10000,d1
+        bge.s     1$
+        move.l    a0,_avma          ; nouvel _avma et debut zone recopiee
+        clr.l    d3
+        lea     _lontyp,a3        ; tableau des types
+*---------------------------------| mise a jour de la zone recopiee :
+                                  ; d4 pointe debut zone recopiee
+                                  ; a0 pointe apres fin zone recopiee
+3$      move.b    (a0),d3         ; type de la zone examinee
+        move.l    0(a3,d3.w*4),d1 ; d1 recoit _lontyp[typ(l1)]
+        lea     0(a0,d1.l*4),a1   ; a1 pointe sur le dernier mot code
+        move.w    2(a0),d1        ; longueur de la zone examinee
+	move.l	 a0,a2
+        lea     0(a0,d1.w*4),a0   ; a0 pointe apres fin de cette zone
+	cmp.b	#10,d3	          ; type polynome ?
+	bne	13$
+	move.w	6(a2),d6	 ; oui, longueur effective > vraie longueur
+	cmp.w	d1,d6
+	bhi	6$	 ; si oui la zone est finie.
+	lea	0(a2,d6.w*4),a2
+	bra.s	4$
+13$	move.l	a0,a2
+	subq.l	#4,a1
+8$      addq.l   #4,a1             ; passer au lgmot suivant de la zone examinee
+4$      cmp.l    a2,a1             ; a t'on fini pour cette zone
+        bcc.s     6$                ; si oui zone suivante
+        cmp.l    (a1),d0            ; sinon le lgmot examine pointe t'il avant p ?
+        bls.s     5$                ; sinon ne rien faire
+        cmp.l    (a1),d5            ; si oui, verifier que le long mot examine
+        bhi.s     8$                ; pointe apres _avma
+        add.l    d2,(a1)+           ; si oui ajouter decalage
+        bra.s     4$
+5$      cmp.l    (a1)+,d4           ; le longmot pointe t'il apres l ?
+        bls.s     4$                ; si oui ok
+        cmp.l    d4,a0
+        bhi.s     4$
+        move.l    #gerper,-(sp)      ; sinon erreur
+        jsr     _err
+6$      cmp.l    d4,a0             ; a t'on fini ?
+        bcs.s     3$                ; si a0 < d4 non : traiter zone suivante
+        bne.s     7$                ; si a0 > d4 oui
+        tst.l    40(sp)           ; si a0 = d4 et q = 0 oui
+        bne.s     3$                ; sinon traiter zone suivante :
+
+7$      move.l	d0,d1
+	move.l    40(sp),d0
+        beq.s     11$
+        cmp.l    d0,d1             ; si q pointe apres p retourner q
+        bls.s     9$                ; sinon
+        cmp.l    d0,d5
+        bhi.s     9$
+11$     add.l    d2,d0             ; retourner q + decalage ( ou decalage )
+9$      movem.l  (sp)+,d2-d6/a2-a3
+	rts
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+***			EXPOSNAT D'UN ENTIER			  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+                                ; entree:a7@(4) pointe sur n de type I non nul
+                                ; sortie:d0.l contient l'exposant de n
+
+_expi 	move.l	4(sp),a0
+	moveq	#0,d0
+	move.w	6(a0),d0
+	subq.l	#2,d0
+	lsl.l	#5,d0
+	move.l	8(a0),d1
+	bfffo	d1{0:32},d1
+	addql	#1,d1
+	sub.l	d1,d0
+	rts
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 		PROGRAMMES D'AFFECTATION OU D'ECHANGE		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+*===================================================================*
+*									*
+*	Affectation generale	n2 --> n1				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($8) contient n2 		*
+*	interdit : n2 ou n1 de type S				*
+*	remarques: erreur dans le cas R --> I			*
+*		   d0,d1,a0,a1 sont inchanges			*
+*									*
+*===================================================================*
+
+_mpaff  cmp.b	#1,([8,sp])
+	bne.s 	1$
+				; ici T1 = I
+	cmp.b	#1,([4,sp])
+	beq.s 	_affii		; ici T1 = T2 = I
+	bra 	_affri		; ici T1 = I et T2 = R
+				; ici T1 = R
+1$  	cmp.b	#1,([4,sp])
+	beq 	_affir		; ici T1 = R et T2 = I
+	bra 	_affrr		; ici T1 = T2 = R
+
+*-------------------------------------------------------------------*
+
+				; affectation s2 --> i1 ou r1
+_affsz  cmp.b	#2,([4,sp])
+	beq 	_affsr
+				; affectation s2 --> i1
+
+_affsi  link	a6,#0
+	movem.l	d0/a0,-(sp)
+	move.l	8(a6),d0	; d0.l contient s2
+	move.l	12(a6),a0	; a0 pointe sur i1
+	cmp.w	#2,2(a0)
+	bne.s 	1$
+				; ici l1 = 2 (i1 = 0)
+	tst.l	d0
+	beq.s 	4$
+				; ici s2 <> 0 (erreur)
+	move.l	#affer1,-(sp)
+	jsr 	_err
+				; ici s2 = 0 ou l1 >= 3
+1$  	tst.l	d0
+4$  	bmi.s 	2$
+				; ici s2 >= 0
+	bne.s 	3$
+				; ici s2 = 0
+	move.l	#2,4(a0)
+	bra.s 	affsif
+				; ici s2 > 0 et l1 >= 3
+3$  	move.l	#$1000003,4(a0)
+	move.l	d0,8(a0)
+	bra.s 	affsif
+				; ici s2 < 0 et l1 >= 3
+2$  	move.l	#$ff000003,4(a0)
+	neg.l	d0
+	move.l	d0,8(a0)
+affsif  movem.l	(sp)+,d0/a0
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+
+				; affectation i2 --> i1
+
+_affii  link	a6,#0
+	movem.l	d0/a0-a1,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur i2
+	move.l	12(a6),a0	; a0 pointe sur i1
+	cmp.l	a0,a1
+	beq.s 	affiif
+				; ici a0 <> a1
+	move.w	2(a0),d0	; d0.w contient l1
+	cmp.w	6(a1),d0
+	bcc.s 	1$
+				; ici le2 > l1 (erreur)
+	move.l	#affer3,-(sp)
+	jsr 	_err
+				; ici le2 <= l1
+1$  	move.w	6(a1),d0	; d0.w contient le2
+	subq.w	#2,d0		; d0.w contient L2
+	addq.l	#4,a0
+	addq.l	#4,a1
+				; copie de i2 dans i1
+2$  	move.l	(a1)+,(a0)+
+	dbra	d0,2$
+affiif  movem.l	(sp)+,d0/a0-a1
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+
+				; conversion i --> long du C dans d0
+
+_itos 	move.l	a1,-(sp)
+	move.l	8(sp),a1	; a1 pointe sur i2
+	cmp.w	#3,6(a1)
+	bls.s 	1$
+				; ici l2 >= 4 (erreur)
+	move.l	#affer2,-(sp)
+	jsr 	_err
+				; ici l2 <= 3
+1$  	beq.s 	2$
+				; ici l2 = 2 (i2 = 0)
+	moveq	#0,d0
+	bra.s 	itosf
+				; ici l2 = 3
+2$  	move.l	8(a1),d0	; d0.l contient |i2|
+	cmp.l	#$80000000,d0
+	bcs.s 	3$
+	beq.s 	4$
+				; ici |i2| > 2^31 (erreur)
+5$  	move.l	#affer2,-(sp)
+	jsr 	_err
+				; ici |i2| = 2^31
+4$  	tst.b	4(a1)
+	bpl.s 	5$		; si i2 = 2^31 erreur
+	bra.s 	itosf		; ici i2 = -2^31
+				; ici |i2| <= 2^31-1
+3$  	tst.w	4(a1)
+	bpl.s 	itosf
+	neg.l	d0
+itosf 	move.l	(sp)+,a1
+	rts
+
+*-------------------------------------------------------------------*
+
+				; conversion long du C --> i cree
+
+_stoi 	move.l	4(sp),d1
+	bne.s 	1$
+	move.l	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	stoif
+1$  	move.l	#3,d0
+	bsr 	_geti
+	tst.l	d1
+	bmi.s 	2$
+	move.l	#$1000003,4(a0)
+	bra.s 	3$
+2$  	move.l	#$ff000003,4(a0)
+	neg.l	d1
+3$  	move.l	d1,8(a0)
+stoif 	move.l	a0,d0
+	rts
+
+*-----------------------------------------------------------------------*
+
+				; affectation s2 --> r1
+
+_affsr  link	a6,#0
+	movem.l	d0-d1/a0,-(sp)
+	move.l	12(a6),a0	; a0 pointe sur r1
+	move.l	8(a6),d0	; d0.l contient s2
+	bne.s 	1$
+				; ici s2 = 0
+	moveq	#0,d0
+	move.w	2(a0),d0
+	subq.w	#2,d0
+	lsl.l	#5,d0
+	neg.l	d0
+	add.l	#$800000,d0	; d0.l contient fexp(0)
+	move.l	d0,4(a0)
+	clr.l	8(a0)
+	bra.s 	affsrf
+				; ici s2 <> 0
+1$  	bpl.s 	2$
+	neg.l	d0
+	move.b	#$ff,4(a0)	; mise signe si s2 < 0
+	bra.s 	3$
+2$  	move.b	#1,4(a0)	; mise signe si s2 > 0
+				; ici s2 <> 0
+3$  	bfffo	d0{0:32},d1	; d1.l recoit nb. de shifts (=k)
+	lsl.l	d1,d0		; d0.l est norme
+	neg.w	d1
+	add.w	#31,d1
+	move.w	d1,6(a0)
+	move.b	#$80,5(a0)	; mise exposant
+	move.l	d0,8(a0)	; mise 1er long mot mantisse
+	moveq	#0,d0
+	move.w	2(a0),d1
+	subq.l	#3,d1		; d1.w recoit L1-1
+	add.l	#12,a0		; a0 pointe sur 2eme long mot mantisse
+	bra.s 	4$
+5$  	move.l	d0,(a0)+
+4$  	dbra	d1,5$
+affsrf  movem.l	(sp)+,d0-d1/a0
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+
+				; affectation i2 --> r1
+
+_affir  link a6,#0
+	movem.l	d0-d6/a0-a1,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur i2
+	move.l	12(a6),a0	; a0 pointe sur r1
+	tst.b	4(a1)
+	bne.s 	1$
+				; ici i2 = 0
+	moveq	#0,d0
+	move.w	2(a0),d0
+	subq.w	#2,d0
+	lsl.l	#5,d0
+	neg.l	d0
+	add.l	#$800000,d0
+	move.l	d0,4(a0)
+	clr.l	8(a0)
+	bra.s 	_affirf
+				; ici i2 <> 0
+1$  	move.l	8(a1),d0	; d0.l contient 1er lg mot mantisse
+	bfffo	d0{0:32},d1	; d1.l recoit nb de shifts (=k)
+	lsl.l	d1,d0		; d0.l normalise
+	moveq	#0,d2
+	move.w	6(a1),d2
+	lsl.l	#5,d2
+	sub.l	d1,d2
+	add.l	#$7fffbf,d2	; d2.l = fexp2 = 2^23 + L1*32 -1 -k
+	move.l	d2,4(a0)	; mise exposant
+	move.b	4(a1),4(a0)	; mise signe
+	move.w	6(a1),d4
+	subq.w	#3,d4		; d4.w recoit L2-1 (compteur)
+	move.w	2(a0),d2
+	subq.w	#3,d2		; d2.w recoit L1-1
+	add.l	#12,a1		; a1 pointe sur 2eme lg mot mantisse i2
+	addq.l	#8,a0		; a0 ponte sur 1er lg mot mantisse r1
+	moveq	#1,d6		; masque
+	lsl.l	d1,d6
+	subq.l	#1,d6
+	sub.w	d4,d2		; d2.w	recoit L1-L2
+	bpl.s 	2$
+				; ici L1 < L2
+	add.w	d2,d4		; d4.w	recoit L1-1
+	bra.s 	2$
+				; copie mantisse shiftee dans r1
+3$  	move.l	(a1)+,d3
+	rol.l	d1,d3
+	move.l	d3,d5
+	and.l	d6,d3
+	add.l	d3,d0
+	move.l	d0,(a0)+
+	sub.l	d3,d5
+	move.l	d5,d0
+2$  	dbra	d4,3$
+	tst.w	d2
+	bmi.s 	4$
+				; ici L1 > L2 completer par des 0
+	moveq	#0,d3
+	move.l	d0,(a0)+
+	bra.s 	5$
+6$  	move.l	d3,(a0)+
+5$  	dbra	d2,6$
+	bra.s 	_affirf
+				; ici L1 <= L2
+4$  	move.l	(a1)+,d3
+	rol.l	d1,d3
+	and.l	d6,d3
+	add.l	d3,d0
+	move.l	d0,(a0)+ 	; mise a jour dernier lg mot
+_affirf  movem.l	(sp)+,d0-d6/a0-a1
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+
+				; affectation r2 --> r1
+
+_affrr  link	a6,#0
+	movem.l	d0-d1/a0-a1,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur r2
+	move.l	12(a6),a0	; a0 pointe sur r1
+	cmp.l	a0,a1
+	beq.s 	affrrf
+				; ici a0 <> a1
+	tst.b	4(a1)
+	bne.s 	6$		
+				; ici r2 = 0
+	move.l	4(a1),4(a0)
+	clr.l	8(a0)
+	bra.s 	affrrf
+				; ici r2 <> 0
+6$  	addq.l	#4,a0
+	addq.l	#4,a1
+	move.w	-2(a0),d0
+	move.w	-2(a1),d1	; d0.w , d1.w contient l1,l2
+	cmp.w	d0,d1
+	bhi.s 	1$
+				; ici l1 >= l2
+	sub.w	d1,d0		; d0.w contient l1-l2
+	subq.w	#2,d1		; d1.w	contient L2
+3$  	move.l	(a1)+,(a0)+	; copie de r2 dans r1
+	dbra	d1,3$
+	moveq	#0,d1
+	bra.s 	2$
+				; ici completer par des 0
+4$  	move.l	d1,(a0)+
+2$  	dbra	d0,4$
+	bra.s 	affrrf
+				; ici l2 > l1
+1$  	subq.w	#2,d0		; d0.w recoit L1 (compteur)
+5$  	move.l	(a1)+,(a0)+
+	dbra	d0,5$
+affrrf  movem.l	(sp)+,d0-d1/a0-a1
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+
+				; affectation r2 --> s1
+
+_affrs  move.l	#affer4,-(sp)
+	jsr 	_err
+
+*-------------------------------------------------------------------*
+
+				; affectation r2 --> i1
+
+_affri  move.l	#affer5,-(sp)
+	jsr 	_err
+
+*===================================================================*
+*									*
+*			Echange de deux nombres 			*
+*									*
+*	entree : a7($4) contient l'adresse d'une zone z2 contemant	*
+*		 n2 de type I ou R ; a7($8) contient l'adresse d'une*
+*		 zone z1 contenant n1 de type I ou R		*
+*	sortie : a7($4) contient l'adresse de z2 contenant n1       *
+*		 a7($8) contient l'adresse de z1 contenant n2       *
+*		 d0,d1,a0,a1 sont sauvegardes			*
+*	remarque : message d'erreur si impossible ; type S interdit *
+*									*
+*===================================================================*
+
+_mpexg  link	a6,#0
+	movem.l	d0-d4/a0-a2,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur n2
+	move.l	12(a6),a1	; a1 pointe sur n1
+	move.b	(a2),d2
+	move.b	(a1),d1		; d1.b et d2.b contiennent T1 et T2
+	cmp.b	d1,d2
+	beq.s 	1$
+				; ici T1 <> T2 (erreur)
+	move.l	#exger2,-(sp)
+	jsr 	_err
+				; ici T1 = T2
+1$  	move.l	(a1),d3		; d3.l contient le 1er lgmot code de n1
+	move.l	(a2),d4		; d4.l contient le 1er lgmot code de n2
+	cmp.w	d3,d4
+	bne.s 	2$
+				; ici T1 = T2 et l1 = l2
+	subq.w	#3,d3
+	addq.l	#4,a1
+	addq.l	#4,a2
+6$  	move.l	(a2),d4
+	move.l	(a1),(a2)+
+	move.l	d4,(a1)+
+	dbra	d3,6$
+	bra.s 	exgf
+				; ici T1 = T2 et l1 <> l2
+2$  	cmp.b	#1,d1
+	bne.s 	3$
+				; ici T1 = T2 = I et l1 <> l2
+	cmp.w	d3,d4
+	ble.s 	4$
+	exg 	a1,a2		; si l2 > l1 echanger n1 et n2
+	exg 	d3,d4
+				; ici l2 <= l1
+4$  	cmp.w	6(a1),d4
+	bpl.s 	5$
+				; ici l2 < le1 (erreur)
+	move.l	#exger1,-(sp)
+	jsr 	_err
+				; ici l2 >= le1
+5$  	move.l	d4,d0
+	bsr 	_geti		; allocation memoire pour copie de n2
+	move.l	a0,-(sp) 	; empilage adresse copie
+	move.l	a2,-(sp) 	; empilage adresse de n2
+	bsr 	_affii
+	addq.l	#8,sp		; depilage
+	move.l	a2,-(sp) 	; empilage adresse n2
+	move.l	a1,-(sp) 	; empilage adresse n1
+	bsr 	_affii
+	addq.l	#8,sp		; depilage
+	move.l	a1,-(sp) 	; empilage adresse n1
+	move.l	a0,-(sp) 	; empilage adresse copie
+	bsr 	_affii
+	addq.l	#8,sp		; depilage
+	bsr 	_giv 		; desallouer copie
+	bra.s 	exgf
+				; ici T1 = T2 = R et l1 <> l2
+3$  	move.l	d4,d0
+	bsr 	_getr		; allocation memoire pour copie de n2
+	move.l	a0,-(sp) 	; empilage adresse copie
+	move.l	a2,-(sp) 	; empilage adresse n2
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	a2,-(sp) 	; empilage adresse n2
+	move.l	a1,-(sp) 	; empilage adresse n1
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	a1,-(sp) 	; empilage adresse n1
+	move.l	a0,-(sp) 	; empilage adresse copie
+	bsr 	_affrr
+	addq.l	#8,sp
+	bsr 	_giv 		; desallouer copie
+exgf 	movem.l	(sp)+,d0-d4/a0-a2
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 		PROGRAMMES DE CHANGEMENT DE SIGNE		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Negation generale				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*	sortie : d0 pointe sur n1 de type I ou R			*
+*		 contenant n1 = -n2 (zone creee)			*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpneg  cmp.b	#1,([4,sp])
+	beq.s 	_negi
+	bra 	_negr
+
+*===================================================================*
+*									*
+*			Negation (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($8) contient -n2		*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpnegz move.l	4(sp),a0
+	cmp.l	8(sp),a0
+	bne.s 	1$
+	neg.b	4(a0)
+	rts
+1$  	move.l	4(sp),-(sp)
+	bsr.s 	_mpneg
+	move.l	d0,-(sp)
+	move.l	16(sp),4(sp)
+	bsr 	_mpaff
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*			Negation					*
+*									*
+*	entree : a7($4) contient un type S ou pointe sur un 	*
+*		 type I ou R , soit n2				*
+*	sortie : d0 pointe sur un type I ou R ,soit n1=-n2		*
+*		 (zone creee)					*
+*									*
+*===================================================================*
+
+				; negation s2 --> i1
+
+_negs 	move.l	4(sp),d1	; d1.l recoit s2
+	bne.s 	1$
+				; ici s2 = 0
+	move.l	_gzero,d0
+	rts
+				; ici s2 <> 0
+1$  	moveq	#3,d0
+	bsr 	_geti		; allocation 3 longs mots
+	move.l	a0,d0		; d0 pointe sur resultat
+	move.l	#$1000003,4(a0)
+	neg.l	d1
+	bpl.s 	2$
+				; ici s2 < 0
+	move.b	#$ff,4(a0)
+	neg.l	d1
+2$  	move.l	d1,8(a0)
+negsf 	rts
+
+*-------------------------------------------------------------------*
+
+				; negation i2 --> i1
+
+_negi 	move.l	4(sp),a1	; a1 pointe sur i2
+	move.w	6(a1),d1
+	move.l	d1,d0
+	bsr 	_geti
+	move.l	a0,d0		; d0 pointe sur -i2
+	addq.l	#4,a0
+	addq.l	#4,a1
+	subq.w	#2,d1
+				; recopie de i2
+1$  	move.l	(a1)+,(a0)+
+	dbra	d1,1$
+	move.l	d0,a0
+	neg.b	4(a0)
+	rts
+
+*-------------------------------------------------------------------*
+
+				; negation r2 --> r1
+
+_negr 	move.l	4(sp),a1
+	move.l	(a1),d1
+	move.l	d1,d0
+	bsr 	_getr
+	move.l	a0,d0
+	addq.l	#4,a0
+	addq.l	#4,a1
+	subq.w	#2,d1
+1$  	move.l	(a1)+,(a0)+
+	dbra	d1,1$
+	move.l	d0,a0
+	neg.b	4(a0)
+	rts
+
+*===================================================================*
+*									*
+*			Valeur absolue generale 			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*	sortie : d0 pointe sur n1 de type I ou R avec n1=abs(n2)	*
+*		 de type I ou R (zone creee)			*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpabs  cmp.b	#1,([4,sp])
+	beq.s 	_absi
+	bra 	_absr
+
+*===================================================================*
+*									*
+*			Valeur absolue (par valeur) 		*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($8) contient abs(n2)	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpabsz move.l	4(sp),a0
+	cmp.l	8(sp),a0
+	bne.s 	1$
+	and.b	#1,4(a0)
+	rts
+1$  	move.l	4(sp),-(sp)
+	bsr.s 	_mpabs
+	move.l	d0,-(sp)
+	move.l	16(sp),4(sp)
+	bsr 	_mpaff
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*			Valeur absolue				*
+*									*
+*	entree : a7($4) contient ou pointe sur n2			*
+*	sortie : d0 pointe sur i1 ou r1 (zone creee)		*
+*									*
+*===================================================================*
+
+				; valeur absolue s2 --> i1
+
+_abss	move.l	4(sp),d1	; d1.l contient s2
+	bne.s 	1$
+				; ici s2 = 0
+	move.l	_gzero,d0
+	rts
+				; ici s2 <> 0
+1$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	a0,d0
+	move.l	#$1000003,4(a0)
+	tst.l	d1
+	bpl.s 	2$
+	neg.l	d1
+2$  	move.l	d1,8(a0)
+	rts
+
+*-------------------------------------------------------------------*
+
+				; valeur absolue i2 --> i1
+
+_absi 	move.l	4(sp),a1	; a1 pointe sur i2
+	move.w	6(a1),d1
+	move.w	d1,d0
+	bsr 	_geti
+	move.l	a0,d0		; d0 pointe sur resultat
+	cmp.w	#2,d1
+	bne.s 	1$
+				; ici i2 = 0
+	move.l	#2,4(a0)
+	bra.s 	absif
+				; ici i2 <> 0
+1$  	move.l	#$1000000,4(a0)
+	move.w	d1,6(a0)
+	addq.l	#8,a1
+	addq.l	#8,a0
+	subq.w	#3,d1
+2$  	move.l	(a1)+,(a0)+
+	dbra	d1,2$
+absif 	rts
+
+*-------------------------------------------------------------------*
+
+				; valeur absolue r2 --> r1
+
+_absr 	move.l	4(sp),a1
+	move.w	2(a1),d1
+	move.w	d1,d0
+	bsr 	_getr
+	move.l	a0,d0		; a0 pointe sur resultat
+	subq.w	#2,d1
+	addq.l	#4,a1
+	addq.l	#4,a0
+1$  	move.l	(a1)+,(a0)+
+	dbra	d1,1$
+	move.l	d0,a0
+	tst.b	4(a0)
+	bpl.s 	absrf
+	neg.b	4(a0)
+absrf 	rts
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			VALUATION				  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*	Valuation 2-adique d'un entier court ou d'un entier 	*
+*									*
+*	entree : a7($4) contient s1 de type S ou pointe sur i1 de	*
+*		 type I 						*
+*	sortie : d0.l contient k tel que : k>=0 , n1=2^k*n2 ,	*
+*		 avec n2 et 2 premiers entre eux ; si n1=0 , alors	*
+*		 d0.l contient -1.					*
+*	remarque : type R interdit					*
+*									*
+*===================================================================*
+
+				; valuation de s1 de type S
+
+_vals 	link	a6,#0
+	move.l	d2,-(sp)
+	moveq	#-1,d0
+	move.l	8(a6),d1	; d1.l contient s1
+	beq.s 	valsf
+	moveq	#0,d0
+	tst.w	d1
+	bne.s 	1$
+	add.l	#16,d0
+	swap	d1
+1$  	tst.b	d1
+	bne.s 	2$
+	addq.l	#8,d0
+	lsr.l	#8,d1
+2$  	move.l	d1,d2
+	and.l	#15,d2
+	bne.s 	3$
+	addq.l	#4,d0
+	lsr.l	#4,d1
+3$  	move.l	d1,d2
+	and.l	#3,d2
+	bne.s 	4$
+	addq.l	#2,d0
+	lsr.l	#2,d1
+4$  	btst	#0,d1
+	bne.s 	valsf
+	addq.l	#1,d0
+valsf 	move.l	(sp),d2
+	unlk	a6
+	rts
+
+				; valuation de i1 de type I
+
+_vali 	link	a6,#0
+	move.l	d2,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur i1
+	moveq	#-1,d0
+	tst.b	4(a1)
+	beq.s 	valif
+				; ici i1 <> 0
+	move.w	6(a1),d1	; d1.w contient L1+2
+	lea 	0(a1,d1.w*4),a1 ; a1 pointe fin mantisse de i1
+	move.l	#$ffff,d0
+5$  	tst.l	-(a1)
+	dbne	d0,5$
+	not.w	d0
+	lsl.l	#5,d0		; d0.l contient 32*nb.de lgmots nuls
+	move.l	(a1),d1		; a droite de i1 et a1 pointe 1er lgmot
+	tst.w	d1		; non nul (qui existe car i1 <> 0)
+	bne.s 	1$
+	add.l	#16,d0
+	swap	d1
+1$  	tst.b	d1
+	bne.s 	2$
+	addq.l	#8,d0
+	lsr.l	#8,d1
+2$  	move.l	d1,d2
+	and.l	#15,d2
+	bne.s 	3$
+	addq.l	#4,d0
+	lsr.l	#4,d1
+3$  	move.l	d1,d2
+	and.l	#3,d2
+	bne.s 	4$
+	addq.l	#2,d0
+	lsr.l	#2,d1
+4$  	btst	#0,d1
+	bne.s 	valif
+	addq.l	#1,d0
+valif 	move.l	(sp),d2
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES DE SHIFT 			  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Shift general				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) contient k = nombre de shifts		*
+*	sortie : d0 pointe sur n1 de type I ou R			*
+*		 contenant n1 = 2^k * n2 (zone creee)		*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpshift cmp.b	#1,([4,sp])
+	beq 	_shifti
+	bra 	_shiftr
+
+*===================================================================*
+*									*
+*			Shift (par valeur)				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) contient le nombre de shifts (=k)		*
+*		 a7($12) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient 2^k * n2	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpshiftz move.l	4(sp),a0
+	cmp.l	12(sp),a0
+	bne.s 	1$
+	cmp.b	#2,(a0)
+	bne.s 	1$
+	move.l	4(a0),d0
+	and.l	#$ffffff,d0
+	add.l	8(sp),d0
+	bvs 	shier
+	cmp.l	#$1000000,d0
+	bcc 	shier
+	tst.l	d0
+	bmi 	shier
+	move.w	d0,6(a0)
+	swap	d0
+	move.b	d0,5(a0)
+	rts
+1$  	move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr.s 	_mpshift
+	move.l	d0,(sp)
+	move.l	20(sp),4(sp)
+	bsr 	_mpaff
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*		Shift d'un entier court = entier                    *
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient k = nombre de shifts		*
+*	sortie : d0 pointe sur i1 de type I 			*
+*		 avec i1 = 2^k * s2 (zone creee)			*
+*									*
+*===================================================================*
+
+_shifts link	a6,#-12
+	move.l	12(a6),-(sp)	; empilage k
+	move.l	8(a6),d0	; d0.l contient s2
+	bne.s 	1$
+				; ici s2 = 0
+	move.l	#$1000002,-12(a6)
+	move.l	#2,-8(a6)	; creation de 0 en var. locale
+	bra.s 	3$
+				; ici s2 <> 0
+1$  	move.l	#$1000003,-12(a6)
+	move.l	#$1000003,-8(a6)
+	tst.l	d0
+	bpl.s 	2$
+	neg.l	d0
+	move.b	#$ff,-8(a6)
+2$  	move.l	d0,-4(a6)	; creation de s2 en var. locale
+3$  	pea 	-12(a6)	; empilage adresse var. locale
+	bsr.s 	_shifti
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*			Shift entier = entier			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient k = nombre de shifts		*
+*	sortie : d0 pointe sur i1 de type I 			*
+*		 avec i1 = 2^k * i2 (zone creee)			*
+*									*
+*===================================================================*
+
+_shifti link	a6,#0
+	movem.l	d2-d7/a2-a3,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur i2
+	move.l	12(a6),d7	; d7.l contient k
+	bne.s 	1$
+				; ici k = 0
+	move.w	2(a2),d0
+	bsr 	_geti
+	move.l	a0,a3	; sauvegarde adresse resultat
+	subq.w	#2,d0
+	addq.l	#4,a0
+	addq.l	#4,a2
+24$ 	move.l	(a2)+,(a0)+
+	dbra	d0,24$
+	bra 	shiftif
+				; ici k <> 0
+1$  	tst.b	4(a2)
+	bne.s 	2$
+				; ici i1 = 0
+6$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	a0,a3		; sauvegarde adresse resultat
+	move.l	#2,4(a0)
+	bra 	shiftif
+				; ici k <> 0 et i2 <> 0
+2$  	moveq	#0,d0
+	move.w	6(a2),d0	; d0.w contient L2+2
+	cmp.l	#1,d7
+	bne.s 	3$
+				; ici k = 1 et i2 <> 0
+	move.l	8(a2),d5
+	btst	#31,d5
+	beq.s 	4$
+				; ici d5 >= 2^31
+	addq.w	#1,d0		; demander 1 lgmot supplementaire
+	cmp.w	#$8000,d0
+	bcs.s 	4$
+				; ici debordement
+18$ 	move.l	#shier1,-(sp)
+	jsr 	_err
+				; ici k = 1 et i2 <> 0
+4$  	bsr 	_geti
+	move.l	a0,a3		; sauvegarde adresse resultat
+	move.w	2(a0),6(a0)	; mise longueur effective
+	move.b	4(a2),4(a0)	; mise signe
+	lea 	0(a0,d0.w*4),a1 ; a1 pointe fin resultat
+	lea 	0(a2,d0.w*4),a2
+	btst	#31,d5
+	beq.s 	5$
+	subq.w	#4,a2		; ici a2 pointe fin i2
+	move.l	#1,8(a0)
+	subq.w	#1,d0
+5$  	subq.w	#3,d0		; d0.w compteur
+7$  	move.l	-(a2),d1
+	roxl.l	#1,d1
+	move.l	d1,-(a1)
+	dbra	d0,7$
+	bra 	shiftif
+				; ici k <> 1 et i2 <> 0
+3$  	cmp.l	#-1,d7
+	bne.s 	8$
+				; ici k = -1 et i2 <> 0
+	cmp.l	#1,8(a2)
+	bhi.s 	9$
+	subq.w	#1,d0
+	cmp.w	#2,d0
+	beq 	6$		; si i1 = 0
+9$  	bsr 	_geti
+	move.l	a0,a3
+	move.b	4(a2),4(a0)	; mise signe
+	move.w	2(a0),6(a0)	; mise longueur effective
+	addq.l	#8,a0
+	addq.l	#8,a2
+	move.w	-2(a2),d0
+	subq.w	#3,d0		; d0.w compteur
+	move.l	(a2)+,d1
+	lsr.l	#1,d1
+	beq.s 	10$
+	move.l	d1,(a0)+
+	bra.s 	10$
+11$ 	move.l	(a2)+,d1
+	roxr.l	#1,d1
+	move.l	d1,(a0)+
+10$ 	dbra	d0,11$
+	bra 	shiftif
+				; ici k<>0,k<>1,k<>-1 et i2<>0
+8$  	tst.l	d7
+	bpl.s 	12$
+				; ici shift a droite : k < -1 et i2 <> 0
+	neg.l	d7		; d7.l contient /k/
+	move.l	d7,d4
+	lsr.l	#5,d4		; d4.l contient r
+	and.l	#31,d7		; k=32*q+r; d7.l contient q
+	sub.w	d4,d0		; d0.w contient L2+2-q
+	cmp.w	#2,d0
+	bls 	2$		; si r1 = 0
+	move.l	8(a2),d4
+	lsr.l	d7,d4
+	bne.s 	13$
+				; ici on perd un lgmot de resultat
+	subq.w	#1,d0
+	cmp.w	#2,d0
+	beq 	6$		; si r1 = 0
+13$ 	bsr 	_geti		; allocation memoire pour resultat
+	move.l	a0,a3
+	move.b	4(a2),4(a0)	; mise signe
+	move.w	2(a0),6(a0)	; mise longueur effective
+	lea 	0(a2,d0.w*4),a2 ; a2 pointe ou il faut !
+	lea 	0(a0,d0.w*4),a1 ; a1 pointe fin resultat
+	tst.l	d4
+	beq.s 	14$
+	move.l	d4,8(a0)
+	subq.w	#3,d0		; d0.w compteur
+	bra.s 	15$
+14$ 	addq.l	#4,a2
+	subq.w	#2,d0
+15$ 	moveq	#-1,d6
+	lsr.l	d7,d6		; masque de shift
+	move.l	-(a2),d4
+	lsr.l	d7,d4
+	bra.s 	16$
+17$ 	move.l	-(a2),d2 	; boucle de shift
+	ror.l	d7,d2
+	move.l	d2,d3
+	and.l	d6,d3
+	sub.l	d3,d2
+	add.l	d2,d4
+	move.l	d4,-(a1)
+	move.l	d3,d4
+16$ 	dbra	d0,17$
+	bra.s 	shiftif
+				; ici shift a gauche : k > 1 et i2 <> 0
+12$ 	move.l	d7,d4
+	and.l	#31,d7		; d7.l contient q
+	lsr.l	#5,d4		; d4.l contient r (k=32*q+r)
+	add.l	d4,d0		; d0.l contient L2+2+q
+	cmp.w	#$7fff,d0
+	bcc 	18$
+	moveq	#-1,d6
+	lsl.l	d7,d6
+	not.l	d6		; masque de shift
+	move.l	8(a2),d2
+	rol.l	d7,d2
+	move.l	d2,d3
+	and.l	d6,d3
+	beq.s 	19$
+	addq.w	#1,d0		; un long mot supplementaire
+19$ 	bsr 	_geti
+	move.l	a0,a3
+	move.l	2(a0),6(a0)	; mise longueur effective
+	move.b	4(a2),4(a0)	; mise signe
+	addq.l	#8,a0
+	tst.l	d3
+	beq.s 	20$
+	move.l	d3,(a0)+
+20$ 	sub.l	d3,d2
+	move.l	d2,d5
+	move.w	6(a2),d0
+	add.l	#12,a2
+	subq.w	#3,d0		; d0.w contient compteur
+	bra.s 	21$
+22$ 	move.l	(a2)+,d2
+	rol.l	d7,d2
+	move.l	d2,d3
+	and.l	d6,d3
+	sub.l	d3,d2
+	add.l	d3,d5
+	move.l	d5,(a0)+
+	move.l	d2,d5
+21$ 	dbra	d0,22$
+	move.l	d5,(a0)+
+	moveq	#0,d0
+	bra.s 	23$
+25$ 	move.l	d0,(a0)+
+23$ 	dbra	d4,25$
+shiftif move.l	a3,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d7/a2-a3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*			Shift reel = reel				*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) contient k = nombre de shifts		*
+*	sortie : d0 pointe sur r1 de type R 			*
+*		 avec r1 = 2^k * r2 zone creee) 			*
+*									*
+*===================================================================*
+
+_shiftr link	a6,#0
+	movem.l	d2/a2-a3,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur r2
+	move.l	12(a6),d2	; d2.l contient k
+	bne.s 	1$
+				; ici k = 0
+	move.w	2(a2),d0
+	bsr 	_getr
+	move.l	a0,a3
+	subq.w	#2,d0
+	addq.l	#4,a0
+	addq.l	#4,a2
+4$  	move.l	(a2)+,(a0)+
+	dbra	d0,4$		; boucle de recopie de r2 dans r1
+	bra.s 	shiftrf
+				; ici k <> 0
+1$  	move.l	4(a2),d1
+	and.l	#$ffffff,d1
+	add.l	d2,d1		; d1.l contient fexp2 + k
+	bvc.s 	sh
+				; ici debordement
+shier 	move.l	#shier2,-(sp)
+	jsr 	_err
+				; ici k + fexp2 <= 2^31 -1
+sh  	cmp.l	#$1000000,d1
+	bcc.s 	shier		; si k + fexp2 >= 2^24
+	tst.l	d1
+	bmi.s 	shier		; si k + fexp2 < 0
+	move.w	2(a2),d0
+	bsr 	_getr		; allocation memoire pour resultat
+	move.l	a0,a3
+	move.l	d1,4(a0)	; mise exposant
+	move.b	4(a2),4(a0)	; mise signe
+	addq.l	#8,a0
+	addq.l	#8,a2
+	subq.w	#3,d0
+5$  	move.l	(a2)+,(a0)+
+	dbra	d0,5$
+shiftrf move.l	a3,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2/a2-a3
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES DE PARTIE ENTIERE		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*		Fausse partie entiere (trunc)			*
+*									*
+*	entree : a7($4) pointe sur n1 de type I ou de type R	*
+*	sortie : d0 pointe sur i1 de type I (zone creee)		*
+*	calcul : si r1 >= 0 , i1 est la partie entiere		*
+*		 si r1 < 0 , i1 = - Ent (-r1)			*
+*	remarque : type S interdit					*
+*									*
+*===================================================================*
+
+_mptrunc link	a6,#0
+	movem.l	d2-d6/a2-a4,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur n1
+	cmp.b	#1,(a1)
+	bne.s 	5$
+				; ici n1 est de type I
+	move.w	6(a1),d0
+	bsr 	_geti
+	move.l	a0,a4
+	subq.w	#2,d0
+	addq.l	#4,a0
+	addq.l	#4,a1
+7$  	move.l	(a1)+,(a0)+
+	dbra	d0,7$
+	bra 	truncf
+				; ici n1 est de type R
+5$  	move.l	4(a1),d3	; d3.l contient second long mot code r1
+	move.l	d3,d0
+	and.l	#$ffffff,d0	; d0.l contient fexp1
+	sub.l	#$800000,d0	; d0.l contient exp1
+	bpl.s 	1$
+				; ici exp1 < 0 (trunc r1 = 0)
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	a0,a4
+	move.l	#$2,4(a0)
+	bra.s 	truncf
+				; ici exp1 >= 0
+1$  	move.l	d0,d2		; d2.l	contient exp1
+	lsr.l	#5,d0		; d0.l contient exp1 div 32 = q
+	addq.l	#3,d0		; d0.l	contient le(i1)
+	cmp.l	#$7fff,d0
+	bls.s 	2$
+				; ici le(i1)> 2^15 : erreur
+	move.l	#truer1,-(sp)
+	jsr 	_err
+				; ici le(i1)<=2^15
+2$  	bsr 	_geti		; allocation q+3 longs mots pour i1
+	move.l	a0,a4
+	move.w	d0,6(a0)	; mise longueur effective de i1
+	move.b	4(a1),4(a0)	; mise signe de i1
+	move.l	a0,a3		; sauvegarde adresse i1
+	addq.l	#8,a0
+	addq.l	#8,a1		; a0,a1 pointent sur mantisses i1,r1
+	move.w	-6(a1),d1	; d1.w contient l(r1)
+	sub.w	d0,d1		; d1.w contient l(r1)-le(i1)
+	bpl.s 	3$
+				; ici l(r1)<le(i1) : erreur
+	move.l	#truer2,-(sp)
+	jsr 	_err
+				; ici l(r1)>=le(i1)
+3$  	subq.w	#3,d0		; d0.w contient l(i1)-1 (compteur)
+	addq.b	#1,d2		; d2.b contient exp1+1 (derniers bits)
+	and.b	#31,d2		; d2.b contient exp1+1 mod 32
+	bne.s 	4$
+				; ici pas de shift a faire
+8$  	move.l	(a1)+,(a0)+
+	dbra	d0,8$		; recopie des mantisses
+	bra.s 	truncf
+				; ici d2.b shifts a faire
+4$  	moveq	#1,d6
+	lsl.l	d2,d6
+	subq.l	#1,d6		; masque de shift
+	moveq	#0,d5
+6$  	move.l	(a1)+,d3 	; boucle de shift
+	rol.l	d2,d3
+	move.l	d3,d4
+	and.l	d6,d4
+	sub.l	d4,d3
+	add.l	d5,d4
+	move.l	d4,(a0)+
+	move.l	d3,d5
+	dbra	d0,6$
+truncf  move.l	a4,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d6/a2-a4
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Fausse partie entiere (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($8) contient trunc(n2)	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mptruncz move.l	4(sp),-(sp)
+	bsr 	_mptrunc
+	move.l	12(sp),(sp)
+	move.l	d0,-(sp)
+	bsr 	_mpaff
+	move.l	d0,a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*		Partie entiere ( max { n <= x} )			*
+*									*
+*	entree : a7($4) pointe sur n1 de type I ou R		*
+*	sortie : d0 pointe sur i1 de type I (zone creee)		*
+*	remarque : type S interdit					*
+*									*
+*===================================================================*
+
+_mpent  link	a6,#0
+	movem.l	d2-d6/a2-a4,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur n1
+	cmp.b	#1,(a1)
+	bne.s 	1$
+				; ici n1 est de type I
+	move.w	6(a1),d0	  	; d0.w recoit le1
+	bsr 	_geti
+	move.l	a0,a4		; sauvegarde adresse resultat
+	subq.w	#2,d0
+	addq.l	#4,a0
+	addq.l	#4,a1
+6$  	move.l	(a1)+,(a0)+
+	dbra	d0,6$
+	bra 	entf
+				; ici n1 est de type R
+1$  	tst.b	4(a1)
+	blt.s 	2$
+				; ici n1 >= 0 (ent(n1)=trunc(n1))
+	move.l	8(a6),-(sp) 	; empilage adresse n1
+	bsr 	_mptrunc
+	move.l	d0,a4		; sauvegarde adresse resultat
+	addq.l	#4,sp
+	bra 	entf
+				; ici n1 < 0
+2$  	move.l	4(a1),d3
+	and.l	#$ffffff,d3
+	sub.l	#$800000,d3	; d3.l contient exp1
+	bpl.s 	3$
+				; ici exp1 < 0 (ent(n1)=-1)
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	a0,a4		; sauvegarde adresse resultat
+	move.l	#$ff000003,4(a0)
+	move.l	#1,8(a0)
+	bra.s 	entf
+				; ici exp1 >= 0
+3$  	move.l	_avma,a3	; ancien __avma dans var. locale
+	move.l	8(a6),-(sp) 	; empilage adresse n1
+	bsr 	_mptrunc
+	move.l	d0,a4		; sauvegarde adresse res. provisoire
+	addq.l	#4,sp		; depilage des parametres
+	move.l	d3,d1		; d1.l contient exp1
+	lsr.l	#5,d3		; d3.l contient exp1 div 32 = q
+	and.l	#31,d1		; d1.l contient exp1 mod 32 = r
+	move.l	8(a6),a1
+	lea 	8(a1,d3.l*4),a2 ; a2 pointe q+1eme lgmot mantisse
+	move.l	#$80000000,d6	; d6.l contient 2^31
+	lsr.l	d1,d6		; d6.l	contient 2^(31-r)
+	subq.l	#1,d6		; masque:0...01...1 avec r+1 zeros
+	moveq	#0,d2
+	move.w	2(a1),d2
+	subq.l	#3,d2		; d2.l contient L1-1
+	sub.l	d3,d2		; d2.l contient L1-1-q
+	move.l	(a2)+,d5 	; d5.l contient le q+1 eme lgmot
+	and.l	d6,d5
+	beq.s 	4$
+	bra.s 	5$
+7$  	tst.l	(a2)+
+4$  	dbne	d2,7$
+	bne.s 	5$
+				; ici tous les lgmots sont nuls
+	bra.s 	entf
+				; ici un au moins non nul
+5$  	move.l	a4,-(sp) 	; empilage trunc(n1)
+	move.l	#$ffffffff,-(sp) ; empilage -1
+	bsr 	_addsi		; calcul de trunc(n1)-1
+	addq.l	#8,sp		; depilage
+	move.l	a4,a1		; a1 pointe sur trunc(n1)
+	move.l	a3,a4		; a4 contient __avma ancien
+	move.l	d0,a0		; a0 pointe sur resultat (res)
+	move.w	2(a0),d0	; d0.w contient l(res)
+	subq.w	#1,d0		; d0.w contient l-1
+8$  	move.l	-(a1),-(a4)
+	dbra	d0,8$		; transfert du resultat ds pile PARI
+	move.l	a4,_avma	; mise a jour pile PARI
+entf 	move.l	a4,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d6/a2-a4
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*			Partie entiere (par valeur) 		*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : la zone pointee par a7($8) contient ent(n2)	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpentz move.l	4(sp),-(sp)
+	bsr 	_mpent
+	move.l	12(sp),(sp)
+	move.l	d0,-(sp)
+	bsr 	_mpaff
+	move.l	d0,a0
+	addq.l	#8,sp
+	bra 	_giv
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 		PROGRAMMES DE COMPARAISON			  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Comparaison generale			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : d0.l contient -1 si n2<n1,0 si n2=n1,1 sinon.	*
+*		 d1,a0,a1 sont sauvegardes				*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpcmp  link	a6,#0
+	movem.l	d1-d2/a1-a2,-(sp)
+	move.l	8(a6),a2
+	move.l	12(a6),a1	; a1 et a2 pointent sur n1 et n2
+	moveq	#0,d1
+	move.b	(a2),d2		; d2.b contient T2
+	cmp.b	(a1),d2
+	ble.s 	1$
+				; ici T2 > T1
+	exg 	a1,a2
+	moveq	#1,d1
+				; ici T2 <= T1
+1$  	move.l	a1,-(sp)
+	move.l	a2,-(sp)
+	cmp.b	#1,(a1)
+	bne.s 	2$
+				; ici T1 = T2 = I
+	bsr 	_cmpii
+	bra.s 	cmpf
+				; ici T1 = R
+2$  	cmp.b	#1,(a2)
+	bne.s 	3$
+				; ici T1 = R et T2 = I
+	bsr 	_cmpir
+	bra.s 	cmpf
+				; ici T1 = T2 = R
+3$  	bsr 	_cmprr
+cmpf 	addq.l	#8,sp
+	tst.b	d1
+	beq.s 	1$
+	neg.l	d0
+1$  	movem.l	(sp)+,d1-d2/a1-a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	Comparaison : entier court et entier court			*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0.l contient	-1 si s2<s1,0 si s2=s1,1 sinon	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmpss  link	a6,#0
+	movem.l	d1-d2,-(sp)
+	move.l	8(a6),d2	; d2.l contient s2
+	move.l	12(a6),d1	; d1.l contient s1
+	cmp.l	d1,d2
+	beq.s 	1$
+	bpl.s 	2$
+				; ici s2 < s1
+	moveq	#-1,d0
+	bra.s 	cmpssf
+				; ici s2 > s1
+2$  	moveq	#1,d0
+	bra.s 	cmpssf
+				; ici s2 = s1
+1$  	moveq	#0,d0
+cmpssf  movem.l	(sp)+,d1-d2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : entier court et entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0.l contient 1 si s2>i1,0 si s2=i1,-1 sinon	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmpsi  link	a6,#0
+	movem.l	d1-d4/a1,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur i1
+	move.b	4(a1),d1	; d1.b contient signe de i1 (si1)
+	move.b	d1,d4		; d4.b contient si1
+	move.b	#1,d3
+	move.l	8(a6),d2	; d2.l contient s2
+	bgt.s 	1$		; si s2 > 0
+				; ici s2 <= 0
+	bne.s 	2$		; si s2 < 0
+				; ici s2 = 0
+	move.b	#0,d3
+	bra.s 	1$
+				; ici s2 < 0
+2$  	move.b	#-1,d3		; d3.b contient signe de s2 (ss2)
+1$  	eor.b	d3,d4		; d4.b contient :
+				; 0 si les deux nuls ou >0 ou <0
+				; >0 si un nul l'autre >0
+				; <0 si un nul autre<0,un<0 autre>0 	
+	bpl.s 	3$
+				; ici d4.b < 0
+	moveq	#1,d0
+	tst.b	d3
+	bpl.s 	4$
+				; ici s2<0 et i1>0
+	moveq	#-1,d0
+4$  	bra.s 	cmpsif
+				; ici d4.b >=0
+3$  	cmp.w	#3,6(a1)
+	ble.s 	5$
+				; ici L1 >= 2
+8$  	moveq	#-1,d0
+	tst.b	d1
+	bpl.s 	6$
+	neg.l	d0
+6$  	bra.s 	cmpsif
+				; ici L1 <= 1
+5$  	cmp.w	#2,6(a1)
+	beq.s 	7$
+				; ici L1 = 1
+	tst.l	d2
+	bpl.s 	9$
+	neg.l	d2
+9$  	moveq	#1,d0
+	cmp.l	8(a1),d2
+	bhi.s 	10$
+	bne.s 	11$
+	moveq	#0,d0
+	bra.s 	cmpsif
+11$ 	moveq	#-1,d0
+10$ 	tst.b	d1
+	bpl.s 	cmpsif
+	neg.l	d0
+	bra.s 	cmpsif
+7$  	moveq	#1,d0
+	tst.b	d3
+	bne.s 	cmpsif
+	moveq	#0,d0
+cmpsif  movem.l	(sp)+,d1-d4/a1
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : entier court et reel			*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0.l contient 1 si s2>r1, 0 si s2=r1, -1 sinon 	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmpsr  link	a6,#0
+	movem.l	d1-d4/a0-a2,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur r1
+	move.b	4(a1),d1	; d1.b contient sr1 (signe de r1)
+	move.b	d1,d4		; d4.b aussi
+	move.b	#1,d3
+	move.l	8(a6),d2	; d2.l contient s2
+	bgt.s 	1$
+	bne.s 	2$
+	move.b	#0,d3
+	bra.s 	1$
+2$  	move.b	#-1,d3		; d3.b contient ss2 (signe de s2)
+1$  	eor.b	d3,d4		; d4.b contient 'signe'
+	bpl.s 	3$
+				; ici d4.b < 0
+	moveq	#1,d0
+	tst.b	d3
+	bpl.s 	4$
+	moveq	#-1,d0
+4$  	bra.s 	cmpsrf
+				; ici d4.b >= 0
+3$  	tst.b	d1
+	bne.s 	5$
+				; ici r1 = 0
+	moveq	#1,d0
+	tst.b	d3
+	bne.s 	6$
+				; ici s2 = r1 = 0
+	moveq	#0,d0
+6$  	bra.s 	cmpsrf
+				; ici r1 <> 0
+5$  	move.w	2(a1),d0
+	bsr 	_getr		; pour copie reelle de s2
+	move.l	a0,a2	; sauvegarde adresse copie
+	move.l	a0,-(sp) 	; empilage adresse copie
+	move.l	d2,-(sp) 	; empilage s2
+	bsr 	_affsr
+	addq.l	#8,sp		; depilage
+	move.l	a1,-(sp) 	; empilage adresse r1
+	move.l	a0,-(sp) 	; empilage adresse copie
+	bsr 	_cmprr
+	addq.l	#8,sp
+	move.l	a2,a0
+	bsr 	_giv
+cmpsrf  movem.l	(sp)+,d1-d4/a0-a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : entier et entier court		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient s1 				*
+*	sortie : d0.l contient le signe de i2 - s1			*
+*		 aucun autre registre n'est affecte                 *
+*									*
+*===================================================================*
+
+_cmpis  move.l	4(sp),-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_cmpsi
+	addq.l	#8,sp
+	neg.l	d0
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : entier et entier			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0.l contient :1 si i2>i1,0 si i2=i1,-1 sinon	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmpii  link	a6,#0
+	movem.l	d1-d4/a1-a2,-(sp)
+	move.l	8(a6),a2
+	move.l	12(a6),a1	; a1, a2 pointent sur i1, i2
+	move.b	4(a1),d1	; d1.b contient si1
+	move.b	d1,d4
+	move.b	4(a2),d2	; d2.b contient si2
+	eor.b	d2,d4
+	bpl.s 	1$
+				; ici d4.b < 0
+	moveq	#1,d0
+	tst.b	d2
+	bpl.s 	cmpiif
+	moveq	#-1,d0
+	bra.s 	cmpiif
+				; ici d4.b >= 0
+1$  	move.w	6(a1),d1
+	move.w	6(a2),d2	; d1.w et d2.w contiennent le1 et le2
+	cmp.w	d1,d2
+	blt.s 	3$
+	beq.s 	4$
+				; ici le2 > le1
+6$  	moveq	#1,d0
+	tst.b	4(a1)
+	bpl.s 	cmpiif
+	moveq	#-1,d0
+	bra.s 	cmpiif
+				; ici le2 < le1
+3$  	moveq	#-1,d0
+	tst.b	4(a2)
+	bpl.s 	cmpiif
+	moveq	#1,d0
+	bra.s 	cmpiif
+				; ici le2 = le1
+4$  	cmp.w	#2,d1
+	bne.s 	7$
+	moveq	#0,d0
+	bra.s 	cmpiif
+				; ici i1 et i2 <> 0
+7$  	move.b	4(a1),d3
+	addq.l	#8,a1
+	addq.l	#8,a2
+	subq.w	#3,d1
+11$ 	cmpm.l	(a1)+,(a2)+
+	dbne	d1,11$
+	bhi.s 	8$
+	beq.s 	9$
+	moveq	#-1,d0
+	bra.s 	10$
+9$  	moveq	#0,d0
+	bra.s 	cmpiif
+8$  	moveq	#1,d0
+10$ 	tst.b	d3
+	bpl.s 	cmpiif
+	neg.l	d0
+cmpiif  movem.l	(sp)+,d1-d4/a1-a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : entier et reel			*
+*									*
+*	entree : a7($4) pointe sur i2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0.l contient :1 si i2>r1,0 si i2=r1,-1 sinon	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmpir  link	a6,#0
+	movem.l	d1-d4/a0-a3,-(sp)
+	move.l	8(a6),a2
+	move.l	12(a6),a1	; a1 et a2 pointent sur r1 et i2
+	move.b	4(a1),d1
+	move.b	d1,d4
+	move.b	4(a2),d2
+	eor.b	d2,d4
+	bpl.s 	1$
+	moveq	#1,d0
+	tst.b	d2
+	bpl.s 	2$
+	moveq	#-1,d0
+2$  	bra.s 	cmpirf
+				; ici d4.b >= 0
+1$  	tst.b	d1
+	bne.s 	3$
+	moveq	#1,d0
+	tst.b	d2
+	bne.s 	4$
+	moveq	#0,d0
+4$  	bra.s 	cmpirf
+				; ici faire copie de i2 en type R
+3$  	move.w	2(a1),d0	; allouer memoire pour copie de i2
+	bsr 	_getr
+	move.l	a0,a3
+	move.l	a0,-(sp) 	; empiler adresse copie
+	move.l	a2,-(sp) 	; empiler adresse i2
+	bsr 	_affir
+	addq.l	#8,sp		; depiler
+	move.l	a1,-(sp) 	; empiler adresse r1
+	move.l	a0,-(sp) 	; empiler adresse copie
+	bsr.s 	_cmprr
+	addq.l	#8,sp		; depiler
+	move.l	a3,a0
+	bsr 	_giv 		; rendre copie
+cmpirf  movem.l	(sp)+,d1-d4/a0-a3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : reel et entier court			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) contient s1 				*
+*	sortie : d0.l contient le signe de r2 - s1			*
+*		 aucun autre registre n'est affecte                 *
+*									*
+*===================================================================*
+
+_cmprs  move.l	4(sp),-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_cmpsr
+	addq.l	#8,sp
+	neg.l	d0
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : reel et entier			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) contient i1 				*
+*	sortie : d0.l contient le signe de r2 - i1			*
+*		 aucun autre registre n'est affecte                 *
+*									*
+*===================================================================*
+
+_cmpri  move.l	4(sp),-(sp)
+	move.l	12(sp),-(sp)
+	bsr.s 	_cmpir
+	addq.l	#8,sp
+	neg.l	d0
+	rts
+
+*===================================================================*
+*									*
+*		Comparaison : reel et reel				*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0.l contient :1 si r2>r1,0 si r2=r1,-1 sinon	*
+*		 d1,a0,a1 sont sauvegardes				*
+*									*
+*===================================================================*
+
+_cmprr  link	a6,#0
+	movem.l	d1-d5/a1-a2,-(sp)
+	move.l	8(a6),a2
+	move.l	12(a6),a1	; a1 et a2 pointent sur r1 et r2
+	move.b	4(a1),d1
+	move.b	d1,d4
+	move.b	4(a2),d2
+	eor.b	d2,d4
+	bpl.s 	1$
+				; ici d4.b < 0
+	moveq	#1,d0
+	tst.b	d2
+	bpl.s 	2$
+	moveq	#-1,d0
+2$  	bra.s 	cmprrf
+				; ici d4.b >= 0
+1$  	tst.b	d1
+	bne.s 	3$
+	moveq	#1,d0
+	tst.b	d2
+	bne.s 	4$
+	moveq	#0,d0
+4$  	bra.s 	cmprrf
+3$  	tst.b	4(a2)
+	bne.s 	5$
+	moveq	#-1,d0
+	bra.s 	cmprrf
+				; ici r2 <> 0
+5$  	moveq	#1,d0
+	move.w	2(a1),d1
+	move.w	2(a2),d2
+	cmp.w	d1,d2
+	bpl.s 	6$
+	exg 	d1,d2
+	exg 	a1,a2
+	moveq	#-1,d0
+6$  	tst.b	4(a2)
+	bpl.s 	7$
+	neg.l	d0
+7$  	move.l	4(a1),d5
+	and.l	#$ffffff,d5
+	move.l	4(a2),d3
+	and.l	#$ffffff,d3
+	cmp.l	d5,d3
+	bpl.s 	8$
+10$ 	neg.l	d0
+	bra.s 	cmprrf
+8$  	bne.s 	cmprrf
+	sub.w	d1,d2
+	subq.w	#3,d1
+	addq.l	#8,a1
+	addq.l	#8,a2
+9$  	cmpm.l	(a1)+,(a2)+
+	dbne	d1,9$
+	bcs.s 	10$
+	beq.s 	11$
+	bra.s 	cmprrf
+12$ 	tst.l	(a2)+
+11$ 	dbne	d2,12$
+	bne.s 	cmprrf
+	moveq	#0,d0
+cmprrf  movem.l	(sp)+,d1-d5/a1-a2
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES D'ADDITION                     ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Addition generale				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : d0 pointe sur n2 + n1 de type I ou R (zone creee)	*
+*	interdit : type S						*
+*	precision : voir les formules des routines specalisees	*
+*									*
+*===================================================================*
+
+_mpadd  move.l	4(sp),a0
+	move.l	8(sp),a1	; a1 et a0 pointent sur n1 et n2
+	move.b	(a0),d0
+	move.b	(a1),d1		; d1.b et d0.b contiennent T1 et T2
+	cmp.b	d1,d0
+	ble.s 	1$
+				; ici T2 > T1
+	exg 	a1,a0
+	exg 	d1,d0
+	move.l	a0,4(sp)
+	move.l	a1,8(sp)
+				; ici T2 <= T1
+1$  	cmp.b	#1,d1
+	beq 	_addii		; ici T1 = T2 = I
+2$  	cmp.b	#2,d0
+	beq 	_addrr		; ici T1 = T2 = R
+	bra 	_addir
+
+*===================================================================*
+*									*
+*			Addition (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*		 a7($12) pointe sur n3 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient n2+n1 	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpaddz lea 	_mpadd,a0
+	bra 	mpopz
+
+				; addition S+S=I ou R
+
+_addssz lea 	_addss,a0
+	bra 	mpopz
+
+				; addition S+I=I ou R
+
+_addsiz lea 	_addsi,a0
+	bra 	mpopz
+
+				; addition S+R=R sinon erreur
+
+_addsrz lea 	_addsr,a0
+	bra 	mpopz
+
+				; addition I+I=I ou R
+
+_addiiz lea 	_addii,a0
+	bra 	mpopz
+
+				; addition I+R=R sinon erreur
+
+_addirz lea 	_addir,a0
+	bra 	mpopz
+
+				; addition R+R=R sinon erreur
+
+_addrrz lea 	_addrr,a0
+	bra 	mpopz
+
+*===================================================================*
+*									*
+*	 Addition : entier court + entier court = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur s1+s2 de type I(zone cree)		*
+*	remarque : s1 + s2 = s0 est interdit			*
+*									*
+*===================================================================*
+
+_addss  link	a6,#-2
+	move.l	d2,-(sp)
+	move.l	8(a6),d1
+	move.l	12(a6),d2
+	add.l	d2,d1		; d1.l contient s2 + s1
+	bne.s 	1$
+				; ici d1.l=0
+	bvs.s 	2$
+				; ici s1+s2=0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	addssf
+				; ici s1+s2=-2^32 (s1=s2=-2^31)
+2$  	move.w	#4,d0
+	bsr 	_geti
+	move.l	#$ff000004,4(a0)
+	move.l	#1,8(a0)
+	clr.l	12(a0)
+	bra.s 	addssf
+				; ici d1.l<>0
+1$  	move.w	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	add.l	8(a6),d2	; repositionne les indicateurs
+	bvs.s 	3$
+				; ici pas d'overflow
+	bmi.s 	4$		; d1 donne bien le signe du resultat
+	bra.s 	5$
+				; ici overflow
+3$  	bcc.s 	5$		; le carry donne le signe du resultat
+4$  	neg.l	d1
+	move.b	#$ff,4(a0)
+5$  	move.l	d1,8(a0)
+addssf  move.l	a0,d0		; d0 pointe sur resultat
+	move.l	(sp),d2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Addition : entier court + entier = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur s2 + i1 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_addsi  link	a6,#0
+	movem.l	d2-d4/a2,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur i1
+	move.l	8(a6),d2	; d2.l contient s2
+	bne.s 	1$		; si s2 <> 0
+				; ici s2 = 0 (i1 + s2 = i1)
+	move.w	6(a1),d0
+	bsr 	_geti		; allocation memoire pour resultat
+	move.l	a0,d4
+	subq.w	#2,d0		; compteur de boucle pour recopie de i1
+	addq.l	#4,a0
+	addq.l	#4,a1
+2$  	move.l	(a1)+,(a0)+	; recopie de i1
+	dbra	d0,2$
+	bra 	addsif
+				; ici s2 <> 0
+1$  	tst.b	4(a1)
+	bne.s 	3$		; si i1 <> 0
+				; ici i1 = 0 (i1 + s2 = s2)
+	moveq	#3,d0
+	bsr 	_geti		; allocation memoire pour resultat
+	move.l	a0,d4
+	move.l	#$1000003,4(a0)
+	move.l	d2,8(a0)
+	
+	bpl 	addsif
+				; ici s2 < 0
+	move.b	#$ff,4(a0)
+	neg.l	8(a0)
+	bra.s 	addsif
+				; ici s2 et i1 <> 0
+3$  	move.w	6(a1),d0	; d0.w contient le1
+	bsr 	_geti
+	move.l	a0,d4
+	move.w	4(a1),d1
+	ext.l	d1		; d1.l contient signe de i1
+	lea 	0(a0,d0.w*4),a0
+	lea 	0(a1,d0.w*4),a2 ; a0 pointe fin du resultat;a2 fin de i1
+	moveq	#0,d3
+	subq.w	#3,d0		; d0.w compteur boucle addition
+	eor.l	d2,d1		; comparaison signes i1 et s2
+	bmi.s 	susi		; si i1 * s2 < 0
+				; ici i1 * s2 > 0
+	tst.l	d2
+	bpl.s 	51$ 		; valeur absolue de s2
+	neg.l	d2
+51$ 	add.l	-(a2),d2
+	bra.s 	4$		; boucle d'addition
+5$  	move.l	d2,-(a0)
+	move.l	-(a2),d2
+	addx.l	d3,d2
+4$  	dbra	d0,5$
+	bcc.s 	6$		; ici retenue finale
+	move.l	d2,-(a0) 	; mise a jour dernier long mot
+	moveq	#1,d0
+	bsr 	_geti		; allocation un long mot supplementaire
+	move.l	a0,d4
+	move.l	4(a0),(a0)
+	addq.w	#1,2(a0)	; mise a jour premier long mot code
+	cmp.w	#$7fff,2(a0)
+	bls.s 	7$
+				; ici debordement
+	move.l	#adder1,-(sp)
+	jsr 	_err
+7$  	move.w	2(a0),6(a0)	; mise longueur effective
+	movw    4(a1),4(a0)     ; signe du resultat
+	move.l	#1,8(a0)	; mise a jour retenue finale
+	bra.s 	8$
+				; ici pas de retenue finale
+6$  	move.l	d2,-(a0) 	; mise a jour dernier long mot
+	subq.w	#8,a0
+	move.w	2(a0),6(a0)	; longueur effective
+  	move.w	4(a1),4(a0)	; signe du resultat
+8$	move.l	a0,d4
+addsif  move.l	d4,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d4/a2
+	unlk	a6
+	rts
+				; ici i1 * s2 < 0 : soustraction
+susi 	move.l	d2,d1		; d1.l recoit s2
+	bpl.s 	6$
+	neg.l	d1		; d1.l recoit |s2|
+6$  	move.l	-(a2),d2
+	sub.l	d1,d2		; amorcage de la soustraction
+	bra.s 	1$
+				; boucle de soustraction
+2$  	move.l	d2,-(a0)
+	move.l	-(a2),d2
+	subx.l	d3,d2
+1$  	dbra	d0,2$
+	bcc.s 	3$
+				; ici retenue finale:longueur resultat=3
+	neg.l	d2
+	move.l	d2,-(a0)
+	subq.l	#8,a0		; a0 pointe sur resultat
+	move.w	#3,6(a0)	; mise a jour longueur effective
+	move.b	4(a1),d2
+	neg.b	d2
+	move.b	d2,4(a0)	; mise a jour signe (-|i1|)
+	bra.s 	addsif
+				; ici pas de retenue finale
+3$  	tst.l	d2
+	beq.s 	4$
+				; ici d2 <> 0
+	move.l	d2,-(a0)
+	move.l	4(a1),-(a0) 	; mise a jour second long mot code
+	bra.s 	addsif
+				; ici d2 = 0
+4$  	move.l	4(a1),-(a0)
+	subq.w	#1,2(a0)
+	cmp.w	#2,2(a0)
+	bne.s 	5$
+				; ici L1 = 1 ; le resultat est 0
+	clr.b	(a0)
+5$  	move.l	-8(a0),-(a0)
+	subq.w	#1,2(a0)
+	move.l	a0,d4
+	addq.l	#4,_avma		; mise a jour pile PARI
+	bra.s 	addsif
+
+*===================================================================*
+*									*
+*		Addition : entier + entier = entier 		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur i2 + i1 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_addii  link	a6,#0
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur i2
+	move.l	12(a6),a1	; a1 pointe sur i1
+	moveq	#0,d2
+	moveq	#0,d1
+	move.w	6(a2),d2
+	move.w	6(a1),d1	; d1.w recoit le1 et d2.w recoit le2
+	cmp.w	d1,d2
+	bcc.s 	1$
+	exg 	a1,a2
+	exg 	d1,d2		; si L2 < L1 ,echanger a1,a2 et d1,d2
+				; ici L2 >= L1
+1$  	tst.b	4(a1)
+	bne.s 	2$		; ici i1 = 0 : i1 + i2 = i2
+	move.w	6(a2),d0
+	bsr 	_geti		; allocation memoire pour recopie de i2
+	subq.w	#2,d0		; compteur de recopie
+	move.l	a0,a1
+	addq.l	#4,a1
+	addq.l	#4,a2
+				; boucle de recopie
+3$  	move.l	(a2)+,(a1)+
+	dbra	d0,3$
+	bra 	addiif
+				; ici i1 <> 0 ( donc i2 <> 0)
+2$  	move.b	4(a1),d3
+	move.b	4(a2),d4
+	eor.b	d4,d3		; d3 contient signe de i2 * i1
+	bmi 	suii
+				; ici i2 * i1 > 0
+	move.w	d2,d0
+	bsr 	_geti		; allocation memoire le2 longs mots
+	lea 	0(a0,d0.w*4),a0 ; a0 pointe fin du resultat
+	lea 	0(a2,d0.w*4),a2 ; a2 pointe fin de i2
+	lea 	0(a1,d1.w*4),a1 ; a1 pointe fin de i1
+	sub.w	d1,d2		; d2.w contient L2-L1
+	subq.w	#3,d1		; d1.w contient L1-1 (compteur)
+	moveq	#0,d4
+				; ici premiere boucle d'addition
+4$  	move.l	-(a1),d0
+	move.l	-(a2),d5
+	addx.l	d5,d0
+	move.l	d0,-(a0)
+	dbra	d1,4$
+	roxr.w	d4,d0		; mise a jour dernier long mot
+	bra.s 	5$
+				; ici deuxieme boucle:propagation carry
+6$  	move.l	-(a2),d0
+	addx.l	d4,d0
+	move.l	d0,-(a0)
+	roxr.w	d4,d0
+5$  	dbcc	d2,6$
+	bcs.s 	7$		; si carry jusqu'a la fin
+				; ici pas de carry
+	bra.s 	8$
+				; ici troisieme boucle:recopie mantisse
+9$  	move.l	-(a2),-(a0)
+8$  	dbra	d2,9$
+				; ici pas de carry finale
+	move.l	-(a2),-(a0)
+	subq.l	#4,a0
+	bra.s 	addiif
+				; ici carry finale
+7$  	move.w	-2(a2),d2
+	addq.w	#1,d2
+	cmp.w	#$8000,d2
+	bcs.s 	10$
+				; ici debordement
+	move.l	#adder2,-(sp)
+	jsr 	_err
+				; ici demander 1 long mot en plus
+10$ 	moveq	#1,d0
+	bsr 	_geti
+	move.l	#1,8(a0)	; mise retenue
+	move.l	4(a0),(a0)
+	move.w	d2,2(a0)	; mise a jour premier long mot code
+	move.l	-(a2),4(a0)
+	move.w	d2,6(a0)	; idem deuxieme long mot code
+addiif  move.l	a0,d0		; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+				; ici i2 * i1 < 0 : soustraction
+suii 	move.l	a1,a3
+	move.l	a2,a4		; a3,a4 pointent sur i1,i2
+	sub.w	d1,d2		; d2.w contient L2-L1
+	bne.s 	1$
+				; ici L2=L1
+	subq.w	#3,d1		; d1.w	contient L1-1
+	addq.l	#8,a3
+	addq.l	#8,a4		; a3,a4 pointent debut mantisses i1,i2
+2$  	cmpm.l	(a3)+,(a4)+
+	dbne	d1,2$		; on compare |i1| et |i2|
+	bhi.s 	1$		; si |i2| > |i1|
+				; ici |i2| < |i1|
+	bne.s 	3$
+				; ici |i2| = |i1| : i2 + i1 = 0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	addiif
+				; ici |i2| < |i1| : echanger i2 et i1
+3$  	exg 	a1,a2
+				; ici |i2| > |i1| (signe i2=signe resultat)
+1$  	move.w	6(a2),d0
+	bsr 	_geti		; allocation memoire le2 longs mots
+	move.w	6(a1),d1	; d1.w	contient L1+2
+	move.l	a0,-(sp) 	; empilage adresse resultat
+	move.b	4(a2),d7	; d7.b	contient signe resultat
+	lea 	0(a1,d1.w*4),a1
+	lea 	0(a2,d0.w*4),a2
+	lea 	0(a0,d0.w*4),a0 ; a0,a1,a2 pointent fin resultat,i1,i2
+	sub.l	d3,d3		; initialisation bit X
+	subq.w	#3,d1		; d1.w contient L1-1 (compteur)
+				; premiere boucle de soustraction
+4$  	move.l	-(a2),d0
+	move.l	-(a1),d5
+	subx.l	d5,d0
+	move.l	d0,-(a0)
+	dbra	d1,4$
+	roxr.w	d3,d0		; restauration du bit C
+	bra.s 	5$
+				; deuxieme boucle:propagation carry
+6$  	move.l	-(a2),d5
+	subx.l	d3,d5
+	move.l	d5,-(a0)
+	roxr.w	d3,d0
+5$  	dbcc	d2,6$
+	bra.s 	7$
+				; troisieme boucle:recopie fin i2
+8$  	move.l	-(a2),-(a0)
+7$  	dbra	d2,8$
+	move.l	(sp)+,a0 	; depilage adresse resultat
+	move.w	2(a0),d1	; d1.w contient lon eff du resultat
+	moveq	#0,d2
+	move.w	d1,d2		; d2.w idem
+	addq.l	#8,a0		; a0 pointe mantisse resultat
+9$  	tst.l	(a0)+
+	dbne	d1,9$		; chasse aux '0' partie gauche resultat
+	subq.l	#4,a0		; a0 pointe 1er long mot non nul
+	move.l	d1,-(a0) 	; mise a jour longueur effective
+	move.b	d7,(a0)		; mise a jour signe
+	move.w	d1,-(a0) 	; mise a jour longueur totale
+	move.w	#$101,-(a0) 	; mise a jour type et peres
+	sub.w	d1,d2
+	lsl.l	#2,d2
+	add.l	d2,_avma		; mise a jour pile PARI
+	bra 	addiif
+
+*===================================================================*
+*									*
+*		Addition : entier court + reel = reel		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur s2 + r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_addsr  link	a6,#-12 	; 3 lgmots pour transformer s2 en type I
+	move.l	8(a6),d1	; d1.l contient s2
+	bne.s 	1$
+				; ici s2 = 0
+	move.l	#$1000002,-12(a6)
+	move.l	#2,-8(a6)
+	bra.s 	3$
+				; ici s2 <> 0
+1$  	bmi.s 	2$
+	move.l	#$1000003,-12(a6)
+	move.l	#$1000003,-8(a6)
+	move.l	d1,-4(a6)
+	bra.s 	3$
+				; ici s2 < 0
+2$  	move.l	#$1000003,-12(a6)
+	move.l	#$ff000003,-8(a6)
+	neg.l	d1
+	move.l	d1,-4(a6)
+3$  	move.l	12(a6),-(sp)
+	pea 	-12(a6)
+	bsr.s 	_addir
+	unlk	a6
+	rts 	
+	
+*===================================================================*
+*									*
+*		Addition : entier + reel = reel 			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur i2 + r1 de type R (zone creee)	*
+*	precision : si exp2>=exp1 , L = L1 + int((exp2-exp1)/32) + 1*
+*			si exp2<exp1  , L = L1				*
+*			i2 est transforme en un reel			*
+*									*
+*===================================================================*
+
+_addir  link	a6,#-4		; var. locale pour copie i2 en r2
+	movem.l	d2-d3/a2,-(sp)
+	move.l	8(a6),a2
+	move.l	12(a6),a1	; a1,a2 pointent sur r1,i2
+	tst.b	4(a2)
+	bne.s 	1$
+				; ici i2 = 0 ( i2 + r1 = r1)
+6$  	move.w	2(a1),d0
+	bsr 	_getr
+	move.l	a0,-4(a6)	; sauve adresse resultat
+	addq.l	#4,a1
+	addq.l	#4,a0
+	subq.w	#2,d0
+				; boucle de copie d'un reel
+4$  	move.l	(a1)+,(a0)+
+	dbra	d0,4$
+	bra 	addirf
+				; ici i2 <> 0
+1$  	tst.b	4(a1)
+	bne.s 	3$
+				; ici r1 = 0 (i2 + r1 = i2)
+	move.l	4(a1),d1
+	sub.l	#$800000,d1
+	asr.l	#5,d1
+	moveq	#0,d0
+	move.w	6(a2),d0
+	sub.l	d1,d0		; d0.l contient L2-[exp1/32]
+	cmp.l	#3,d0
+	bcs 	2$
+	cmp.l	#$8000,d0
+	bcc 	2$
+	bsr 	_getr
+	move.l	a0,-4(a6)
+	move.l	a0,-(sp)
+	move.l	a2,-(sp)
+	bsr 	_affir		; le resultat est i2 en type R
+	addq.l	#8,sp		; de longueur L2-[exp1/32]
+	bra 	addirf
+				; ici i2 et r1 <> 0
+3$  	move.l	8(a2),d0
+	bfffo	d0{0:32},d1	; d1.l recoit nb de shifts (=s)
+	moveq	#0,d0
+	move.w	6(a2),d0
+	subq.w	#2,d0
+	lsl.l	#5,d0
+	sub.l	d1,d0
+	subq.l	#1,d0		; d0.l recoit 32*L2-s-1 = exp2
+	moveq	#0,d3
+	move.w	2(a1),d3	; d3.w recoit l1
+	move.l	4(a1),d2
+	and.l	#$ffffff,d2
+	sub.l	#$800000,d2	; d2.l recoit exp1
+	sub.l	d0,d2		; d2.l recoit exp1-exp2
+	ble.s 	5$
+				; ici exp1 > exp2
+	lsr.l	#5,d2		; d2.l recoit L3=[(exp1-exp2)/32]
+	sub.l	d2,d3		; d3.l recoit L1-L3+2
+	cmp.l	#2,d3
+	ble 	6$		; si L1 <= L3 alors:r1+i2=r1
+				; ici L1 > L3
+7$  	move.l	_avma,-(sp)	; empilage pile PARI
+	move.w	d3,d0
+	bsr 	_getr		; allocation memoire L1-L3+2 lg mots
+				; pour ecrire i2 en type R
+	move.l	a0,-(sp) 	; empilage r2 (copie de i2)
+	move.l	a2,-(sp) 	; empilage i2
+	bsr 	_affir
+	move.l	a1,(sp)		; empilage r1
+	bsr.s 	_addrr
+	move.l	d0,a0		; a0 pointe sur r2 + r1
+	move.w	2(a0),d0	; d0.w contient lr (longueur resultat)
+	subq.w	#1,d0		; d0.w contient lr-1 (compteur pile)
+	move.l	4(sp),a1	; a1 pointe sur r2
+	addq.l	#8,sp		; depilage r1 et r2
+	moveq	#0,d1
+	move.w	2(a1),d1
+	lsl.l	#2,d1		; d1.l contient 4*l2 (nb d'octets a 
+				; desallouer dans pile PARI)
+
+	move.l	(sp)+,a0 	; a0 pointe sur ancien __avma
+				; boucle de transfert du resultat
+8$  	move.l	-(a1),-(a0)
+	dbra	d0,8$
+	add.l	d1,_avma	; mise a jour pile PARI
+	move.l	a0,-4(a6)
+	bra.s 	addirf
+				; ici exp1 <= exp2
+5$  	neg.l	d2
+	lsr.l	#5,d2		; d2.l recoit L3=[(exp2-exp1)/32]
+	add.w	d2,d3
+	addq.w	#1,d3		; d3.w recoit L1+L3+1
+	cmp.w	#$8000,d3
+	bcs.s 	7$
+				; ici debordement
+2$  	move.l	#adder3,-(sp)
+	jsr 	_err
+addirf  move.l	-4(a6),d0	; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d3/a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Addition : reel + reel = reel			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur r2 + r1 de type R (zone creee)	*
+*	precision : L = inf ( L2 , L1 + [(exp2-exp1)/32])		*
+*			si exp2 >= exp1 (sinon echanger r1 et r2)	*
+*									*
+*===================================================================*
+
+_addrr  link	a6,#-16
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur r2
+	move.l	12(a6),a1	; a1 pointe sur r1
+	tst.b	4(a2)
+	bne 	1$
+				; ici r2 = 0 (r2 + r1 = r1)
+4$  	tst.b	4(a1)
+	bne.s 	22$
+				; ici r2=r1=0
+	move.l	4(a1),d1
+	cmp.l	4(a2),d1
+	bgt.s 	23$
+	move.l	4(a2),d1	; d1.l contient sup(fexp1,fexp2)
+23$ 	moveq	#3,d0
+	bsr 	_getr
+	move.l	a0,-8(a6)
+	move.l	d1,4(a0)
+	clr.l	8(a0)
+	bra 	addrrf
+				; ici r2 = 0 et r1 <> 0
+22$ 	moveq	#0,d0
+	move.l	4(a2),d2	; d2.l contient fexp2
+	move.l	4(a1),d1
+	and.l	#$ffffff,d1	; d1.l contient fexp1
+	sub.l	d2,d1		; d1.l recoit exp1-exp2
+	bcc.s 	24$
+				; ici exp2 >= exp1
+	moveq	#3,d0
+	bsr 	_getr
+	move.l	a0,-8(a6)	; le resultat est 0 avec exposant fexp2
+	move.l	4(a2),4(a0)
+	clr.l	8(a0)
+	bra 	addrrf
+				; ici exp2 < exp1
+24$ 	lsr.l	#5,d1		; d1.l contient [(exp1-exp2)/32]
+	move.w	2(a1),d0
+	subq.w	#2,d0		; d0.l contient L1
+	cmp.l	d1,d0
+	ble.s 	25$
+	move.l	d1,d0		; d0.l=inf(L1,[(e1-e2)/32])=L
+	addq.l	#1,d0		; le resultat est r1 en longueur:
+25$ 	addq.l	#2,d0		; L1 si L1<=[(e1-e2)/32] ou
+	bsr 	_getr
+	move.l	a0,-8(a6)
+	addq.l	#4,a1
+	addq.l	#4,a0
+	subq.w	#2,d0
+27$ 	move.l	(a1)+,(a0)+
+	dbra	d0,27$
+	bra 	addrrf
+				; ici r2 <> 0
+1$  	tst.b	4(a1)
+	bne.s 	3$
+				; ici r1 = 0 (r2 + r1 = r2)
+	exg 	a2,a1
+	bra.s 	22$
+				; ici r1 * r2 <> 0
+3$  	move.b	4(a1),d3
+	move.b	4(a2),d5
+	eor.b	d5,d3		; d3.b contient : 0 si r1 * r2 > 0
+				; et est negatif sinon
+	move.b	d3,-2(a6)	; sauvegarde du 'signe'
+	move.l	4(a2),d3
+	and.l	#$ffffff,d3	; d3.l contient fexp2=e2
+	move.l	4(a1),d1
+	and.l	#$ffffff,d1	; d1.l contient fexp1=e1
+	sub.l	d1,d3		; d3.l	contient exp2-exp1
+	beq 	5$		; si e2 = e1
+	bcc.s 	6$		; si e2 > e1
+				; ici e2 < e1
+	exg 	a1,a2
+	neg.l	d3		; d3.l recoit e1-e2 > 0
+				; ici e2-e1 > 0
+6$  	move.w	d3,d4
+	and.w	#31,d4
+	lsr.l	#5,d3		; e2-e1=32*L3+r ; d4.w,d3.l recoit r,L3
+	moveq	#0,d2
+	move.w	2(a2),d2
+	subq.w	#2,d2		; d2.l recoit L2
+	cmp.l	d2,d3
+	bcs.s 	7$
+				; ici L3 >= L2 (r1 + r2 = r2)
+	move.w	2(a2),d0
+	bsr 	_getr
+	move.l	a0,-8(a6)
+	addq.l	#4,a2
+	addq.l	#4,a0
+	subq.w	#2,d0
+28$ 	move.l	(a2)+,(a0)+
+	dbra	d0,28$
+	bra 	addrrf
+				; ici L3 < L2
+7$  	moveq	#0,d1
+	move.w	2(a1),d1
+	subq.w	#2,d1		; d1.l recoit L1
+	move.l	d3,d5
+	add.l	d1,d5		; d5.l recoit L1 + L3
+	cmp.l	d2,d5
+	bcs.s 	8$		; si L1 + L3 < L2
+				; ici L3 < L2 <= L1 + L3
+	move.b	#1,-4(a6)	; a6($-4) flag contenant :
+				; 0 si L1+L3 < L2 faire alors copie r1
+				; 1 si L3 < L2 <= L1+L3 et idem
+				; 2 si e1 = e2 et alors pas de copie
+	move.w	d2,d0
+	addq.w	#2,d0		; d0.w recoit l2
+	bsr 	_getr		; allocation L2+2 lgmots pour resultat
+	move.l	a0,-8(a6)	; adresse resultat dans var. locale
+	move.w	d2,d5
+	sub.w	d3,d5		; d5.w contient L2 - L3
+	move.w	d5,d0
+	addq.w	#1,d0		; d0.w contient L2 - L3 + 1
+	bsr 	_getr		; allocation L2-L3+1 pour copie r1 avec
+				; un unique longmot code
+	subq.w	#2,d0		; d0.w contient L2 - L3 - 1
+	move.w	2(a2),d1
+	lea 	0(a2,d1.w*4),a2 ; a2 pointe fin de r2
+	bra.s 	9$
+				; ici L1 + L3 < L2
+8$  	clr.b	-4(a6) 	        ; a6($-4) mis a 0
+	move.w	d5,d0
+	addq.w	#3,d0		; d0.w contient L1 + L3 + 3
+	bsr 	_getr		; allocation pour resultat
+	move.l	a0,-8(a6)	; adresse resultat dans var. locale
+	lea 	0(a2,d0.w*4),a2 ; a2 pointe ou necessaire !!
+	move.w	2(a1),d5	; d5.w contient L1 + 2
+	move.w	d5,d0		; d0.w contient L1 + 2
+	subq.w	#2,d5		; d5.w contient L1
+	bsr 	_getr		; allocation L1+2 pour copie r1 avec
+				; un  seul lgmot code
+	subq.w	#3,d0		; d0.w contient L1 - 1
+9$  	move.l	a0,-12(a6) 	; adresse copie r1 dans var. locale
+	addq.l	#4,a0
+	move.l	a0,a3		; a0 et a3 pointent sur debut copie
+	addq.l	#8,a1		; a1 pointe debut mantisse r1
+29$ 	move.l	(a1)+,(a0)+
+	dbra	d0,29$		; boucle copie r1
+	tst.w	d4		; test de r = nb de shifts
+	bne.s 	10$
+				; ici r = 0 ; pas de shift a faire
+				; a0 pointe fin copie r1
+				; a3 pointe debut mantisse copie r1
+	moveq	#0,d7
+	move.w	-2(a3),d7
+	subq.w	#1,d7		; d7.w contient longueur mantisse copie
+	move.w	d7,d2
+	subq.w	#1,d2		; d2.w = compteur boucle addition
+	lea 	0(a3,d7.w*4),a3 ; a3 pointe fin copie r1
+	move.l	a3,a1		; a1 aussi
+	bra.s 	11$
+				; ici r <> 0 ; shift a faire
+10$ 	subq.w	#1,d5
+	move.w	d5,d2		; d5.w et d2.w = compteur boucle shift
+	move.l	#-1,d6
+	lsr.l	d4,d6		; masque de shift:0...01...1; avec r '0'
+	moveq	#0,d0
+				; boucle de shift de copie de r1
+12$ 	move.l	(a3),d7
+	ror.l	d4,d7
+	move.l	d7,d1
+	and.l	d6,d1
+	sub.l	d1,d7
+	add.l	d1,d0
+	move.l	d0,(a3)+
+	move.l	d7,d0
+	dbra	d5,12$
+	move.l	a3,a1
+	tst.b	-4(a6)
+	bne.s 	11$ 		; si a6($-4) <> 0
+				; ici a6($-4) = 0
+	move.l	d0,(a1)+
+	addq.w	#1,d2		; d2.w = compteur boucle addition
+11$ 	move.l	-8(a6),a0	; a0 pointe sur resultat
+	moveq	#0,d1
+	move.w	2(a0),d1
+	lea 	0(a0,d1.w*4),a0 ; a0 pointe fin du resultat
+	bra.s 	14$
+				; ici e1 = e2
+5$  	move.b	#2,-4(a6)	; a6($-4) recoit 2
+	move.l	d1,-16(a6) 	; a6($-16) recoit e1=e2 biaise
+	move.w	2(a1),d0
+	cmp.w	2(a2),d0
+	bcs.s 	15$
+	move.w	2(a2),d0
+15$ 	bsr 	_getr		; allocation inf (l1,l2) pour resultat
+	move.l	a0,-8(a6)	; adresse du resultat dans var. locale
+	moveq	#0,d2
+	move.w	d0,d2
+	move.l	d2,d0
+	subq.w	#3,d2
+	moveq	#0,d3
+	move.l	a2,a4
+	move.l	a1,a3
+	lea 	0(a0,d0.w*4),a0 ; a0 pointe fin resultat
+	lea 	0(a1,d0.w*4),a1 ; a1 pointe fin de r1 ou copie
+	lea 	0(a2,d0.w*4),a2 ; a2 pointe fin de r2
+
+				; zone des boucles d'addition
+
+				; conditions initiales :
+				; a0 pointe fin resultat
+				; a1 pointe fin r1 ou copie
+				; a2 pointe fin r2
+				; d2.w contient L4-1
+				; d3.w contient L3 avec L3+L4=long.res.
+14$ 	sub.l	d4,d4		; initialisation bit X
+	tst.b	-2(a6) 	; test du signe de r1*r2
+	bne 	surr
+				; ici r1 * r2 > 0
+				; 1ere boucle d'addition
+16$ 	move.l	-(a1),d1
+	move.l	-(a2),d5
+	addx.l	d5,d1
+	move.l	d1,-(a0)
+	dbra	d2,16$
+	roxr.w	d4,d0		; remise a jour du bit C
+	bcc.s 	17$ 		; si pas de carry
+	bra.s 	18$ 		; si carry
+				; 2eme boucle:propagation carry
+19$ 	move.l	-(a2),d5
+	addx.l	d4,d5
+	move.l	d5,-(a0)
+	roxr.w	d4,d0		; mise a jour bit C
+18$ 	dbcc	d3,19$
+	bcs.s 	20$ 		; si carry finale
+	bra.s 	17$
+				; 3eme boucle:recopie reste mantisse r2
+30$ 	move.l	-(a2),-(a0)
+17$ 	dbra	d3,30$
+	move.l	-(a2),-(a0)	; mise signe et exposant:celui de r2
+	cmp.b	#2,-4(a6)
+	beq.s 	addrrf		; si a6($-4) = 2
+				; ici rendre copie de r1
+	move.l	-12(a6),a0
+	bsr 	_giv
+	bra.s 	addrrf
+				; ici carry finale
+20$ 	move.l	-(a2),d1
+	and.l	#$ffffff,d1
+	addq.l	#1,d1		; d1.l recoit fexp resultat
+	cmp.l	#$1000000,d1
+	blt.s 	2$
+				; ici fexp>=2^24 : erreur
+	move.l	#adder4,-(sp)
+	jsr 	_err
+				; ici non debordement
+2$  	cmp.b	#2,-4(a6)
+	beq.s 	13$
+				; ici rendre copie de r1
+	move.l	a0,a3
+	move.l	-12(a6),a0
+	bsr 	_giv
+	move.l	a3,a0
+13$ 	move.l	d1,-4(a0)
+	move.b	(a2),-4(a0) 	; mise a jour exp et sign resultat
+	move.w	-6(a0),d2
+	subq.w	#3,d2		; compteur de shift
+	move.w	#-1,d0
+	move.w	d0,ccr		; mise a 1 des bit x et c
+31$ 	roxr.w	(a0)+
+	roxr.w	(a0)+		; boucle de mise de retenue finale et
+	dbra	d2,31$		; shift de 1 vers la droite mantisse
+addrrf  move.l	-8(a6),d0	; d0 pointe sur resultat
+	movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+				; ici faire une soustraction
+				; pour conditions initiales cf.plus haut
+surr 	moveq	#0,d6
+	move.w	d2,d6
+	move.w	d2,d7
+	add.w	d3,d7
+	addq.w	#3,d7
+	cmp.b	#2,-4(a6)
+	bne.s 	1$
+				; ici e2 = e1:comparer les mantisses
+	addq.l	#8,a3
+	addq.l	#8,a4
+12$ 	cmpm.l	(a3)+,(a4)+
+	dbne	d2,12$
+	bhi.s 	1$		; si |r2| > |r1|
+	bne.s 	2$		; si |r2| < |r1|
+				; ici |r2| = |r1| et donc r2 + r1 = 0
+	move.l	-8(a6),a0	; le resultat est 0 avec comme exposant
+	moveq	#0,d2		; -32*inf(l1,l2)+e1
+	move.w	2(a0),d2
+	subq.w	#2,d2
+	lsl.l	#5,d2	
+	neg.l	d2
+	add.l	-16(a6),d2 	; ajouter e1 biaise
+	bpl.s 	15$
+	move.l	#adder5,-(sp)	; underflow dans R+R
+	jsr 	_err
+15$ 	cmp.l	#$1000000,d2
+	blt.s 	16$
+				; ici fexp>=2^24 : erreur overflow dans R+R
+	move.l	#adder4,-(sp)
+	jsr 	_err
+16$ 	bsr 	_giv
+	moveq	#3,d0
+	bsr 	_getr
+	move.l	a0,-8(a6)
+	move.l	d2,4(a0)
+	clr.l	8(a0)
+	bra.s 	addrrf
+				; ici |r2| < |r1| : echanger r2 et r1
+2$  	exg 	a1,a2
+				; ici |r2| > |r1|
+1$  	sub.w	d2,d6
+	sub.l	d4,d4		; initialisation bit X
+				; 1ere boucle de soustraction
+3$  	move.l	-(a2),d0
+	move.l	-(a1),d5
+	subx.l	d5,d0
+	move.l	d0,-(a0)
+	dbra	d2,3$
+	roxr.w	d4,d0		; remise ajour bit C
+	bra.s 	4$
+				; 2eme boucle:propagation carry
+5$  	move.l	-(a2),d5
+	subx.l	d4,d5
+	move.l	d5,-(a0)
+	roxr.w	d4,d0
+4$  	dbcc	d3,5$
+	bra.s 	6$
+				; 3eme boucle:copie reste mantisse r2
+13$ 	move.l	-(a2),-(a0)
+6$  	dbra	d3,13$
+	moveq	#0,d3
+	moveq	#-1,d2
+	move.w	d2,d3
+14$ 	tst.l	(a0)+
+	dbne	d2,14$		; chasse aux '0' du resultat provisoire
+				; a0 pointe sur 1er lgmot non nul
+	sub.w	d2,d3		; d3.w	contient de lgmots nuls
+	add.w	d6,d3
+	sub.l	#12,a0		; a0 pointe sur resultat
+	move.l	a0,-8(a6)
+	move.l	a0,a1		; a1 aussi
+	cmp.b	#2,-4(a6)
+	beq.s 	7$		; si pas de copie faite
+				; ici rendre copie
+	move.l	-12(a6),a0
+	bsr 	_giv
+7$  	moveq	#0,d0
+	move.w	d3,d0
+	lsl.l	#2,d0		; d0.l = nb d'octets a 0 du result.
+	add.l	d0,_avma	; mise a jour pile PARI(rendre d3 lgmot)
+	move.l	a1,a0		; a0 pointe sur resultat final
+	move.w	#$201,(a0)
+	sub.w	d3,d7
+	move.w	d7,2(a0)	; mise a jour 1er lgmot code resultat
+	lsl.l	#5,d3
+	move.l	8(a0),d0
+	bfffo	d0{0:32},d1	; d1.l contient nb de shifts=r
+	lsl.l	d1,d0		; normalisation 1er lgmot mantisse
+	add.l	d1,d3
+	lsl.l	#2,d6
+	sub.l	d6,a2
+	move.l	-4(a2),d2
+	and.l	#$ffffff,d2
+	sub.l	d3,d2
+	move.l	d2,4(a0)	; calcul et mise exposant resultat
+	move.b	-4(a2),4(a0)	; mise signe resultat
+	tst.b	d1
+	bne.s 	8$		; si r <> 0
+	bra.s 	9$		; si r = 0
+8$  	moveq	#1,d6
+	lsl.l	d1,d6
+	subq.l	#1,d6		; masque de shift
+	addq.l	#8,a1
+	subq.w	#3,d7		; d7.w	contient L-1
+	bra.s 	10$
+				; boucle de shift vers la gauche
+11$ 	move.l  4(a1),d2
+	rol.l	d1,d2
+	move.l	d2,d3
+	and.l	d6,d3
+	sub.l	d3,d2
+	add.l	d3,d0
+	move.l	d0,(a1)+
+	move.l	d2,d0
+10$ 	dbra	d7,11$
+	move.l	d0,(a1)
+9$  	bra 	addrrf
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES DE SOUSTRACTION		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Soustraction generale			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : d0 pointe sur n2 - n1 de type I ou R (zone creee)	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpsub  cmp.b	#1,([8,sp])
+	bne.s 	1$
+	cmp.b	#1,([4,sp])
+	beq 	_subii
+	bra 	_subri
+1$  	cmp.b	#1,([4,sp])
+	beq 	_subir
+	bra 	_subrr
+
+*===================================================================*
+*									*
+*			Soustraction (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*		 a7($12) pointe sur n3 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient n2 - n1	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpsubz lea 	_mpsub,a0
+	bra 	mpopz
+
+				; soustraction S-S=I ou R
+
+_subssz lea 	_subss,a0
+	bra 	mpopz
+
+				; soustraction S-I=I ou R
+
+_subsiz lea 	_subsi,a0
+	bra 	mpopz
+
+				; soustraction S-R=R sinon erreur
+
+_subsrz lea 	_subsr,a0
+	bra 	mpopz
+
+				; soustraction I-S=I ou R
+
+_subisz lea 	_subis,a0
+	bra 	mpopz
+
+				; soustraction I-I=I ou R
+
+_subiiz lea 	_subii,a0
+	bra 	mpopz
+
+				; soustraction I-R=R sinon erreur
+
+_subirz lea 	_subir,a0
+	bra 	mpopz
+
+				; soustraction R-S=R sinon erreur
+
+_subrsz lea 	_subrs,a0
+	bra 	mpopz
+
+				; soustraction R-I=R sinon erreur
+
+_subriz lea 	_subri,a0
+	bra 	mpopz
+
+				; soustraction R-R=R sinon erreur
+
+_subrrz lea 	_subrr,a0
+	bra 	mpopz
+
+*===================================================================*
+*									*
+*	Soustraction : entier court - entier court = entier 	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7$(8) contient s1 de type S			*
+*	sortie : d0 pointe sur s2 - s1 de type I (zone creee)	*
+*	remarque : s2 - s1 = s0 est interdit			*
+*									*
+*===================================================================*
+
+_subss  link	a6,#-12
+	move.l	12(a6),d1	; d1.l recoit s1
+	neg.l	d1		; d1.l recoit -s1
+	bvs.s 	1$
+				; ici |s1| <= 2^31-1
+	move.l	d1,-(sp) 	; empilage -s1
+	move.l	8(a6),-(sp) 	; empilage s2
+	bsr 	_addss		; calcul se s2+(-s1)
+	bra.s 	subssf
+				; ici s1 = -2^31
+1$  	move.l	#$1000003,-12(a6)
+	move.l	#$1000003,-8(a6)
+	move.l	#$80000000,-4(a6) ; creation de 2^31 type entier
+	pea 	-12(a6)	        ; empilage adresse de 2^31
+	move.l	8(a6),-(sp) 	; empilage s2
+	bsr 	_addsi
+subssf  unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Soustraction : entier - entier = entier 		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur i2 - i1 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_subii  link	a6,#-4
+	move.l	12(a6),-(sp)	; empilage adresse i1
+	move.l	8(a6),-(sp) 	; empilage adresse i2
+	move.l	12(a6),a0	; a0 pointe sur i1
+	neg.b	4(a0)		; changer signe de i1
+	move.l	a0,-4(a6)
+	bsr 	_addii
+	move.l	-4(a6),a0
+	neg.b	4(a0)		; remettre signe de i1
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Soustraction : reel - reel = reel			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur r2 - r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_subrr  link	a6,#-4		; voir commentaires de _subii
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	move.l	12(a6),a0
+	neg.b	4(a0)
+	move.l	a0,-4(a6)
+	bsr 	_addrr
+	move.l	-4(a6),a0
+	neg.b	4(a0)
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	Soustraction : entier court - entier = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur s2 - i1 de type I			*
+*									*
+*===================================================================*
+
+_subsi  link	a6,#-4		; voir commentaires de _subii
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	move.l	12(a6),a0
+	neg.b	4(a0)
+	move.l	a0,-4(a6)
+	bsr 	_addsi
+	move.l	-4(a6),a0
+	neg.b	4(a0)
+	unlk	a6
+	rts
+
+*===================================================================*
+*									#	
+*		Soustraction : entier court - reel = reel		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur s2 - r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_subsr  link	a6,#-4		; voir commentaires de _subii
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	move.l	12(a6),a0
+	neg.b	4(a0)
+	move.l	a0,-4(a6)
+	bsr 	_addsr
+	move.l	-4(a6),a0
+	neg.b	4(a0)
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	Soustraction : entier - entier court = entier		*
+*									*
+*	entree : a7($4) pointe sur i1 de type I 			*
+*		 a7($8) contient s2 de type S			*
+*	sortie : d0 pointe sur i1 - s2 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_subis  link	a6,#-12 	; voir commentaires de _subss
+	move.l	8(a6),-(sp)
+	move.l	12(a6),d1
+	neg.l	d1
+	bvs.s 	1$
+	move.l	d1,-(sp)
+	bsr 	_addsi
+	bra.s 	subisf
+1$  	move.l	#$1000003,-12(a6)
+	move.l	#$1000003,-8(a6)
+	move.l	#$80000000,-4(a6)
+	pea 	-12(a6)
+	bsr 	_addii
+subisf  unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Soustraction : entier - reel = reel 		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur i2 - r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_subir  link	a6,#-4		; voir commentaires de _subii
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	move.l	12(a6),a0
+	neg.b	4(a0)
+	move.l	a0,-4(a6)
+	bsr 	_addir
+	move.l	-4(a6),a0
+	neg.b	4(a0)
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Soustraction : reel - entier = reel 		*
+*									*
+*	entree : a7($4) pointe sur r1 de type R 			*
+*		 a7($8) pointe sur i2 de type I 			*
+*	sortie : d0 pointe sur r2 - i1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_subri  link	a6,#-4		; voir commentaires de _subii
+	move.l	8(a6),-(sp)
+	move.l	12(a6),-(sp)
+	move.l	12(a6),a0
+	neg.b	4(a0)
+	move.l	a0,-4(a6)
+	bsr 	_addir
+	move.l	-4(a6),a0
+	neg.b	4(a0)
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	Soustraction : reel - entier court = reel			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur r2 - s1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_subrs  link	a6,#-12 	; voir commentaires de _subss
+	move.l	8(a6),-(sp)
+	move.l	12(a6),d1
+	neg.l	d1
+	bvs.s 	1$
+	move.l	d1,-(sp)
+	bsr 	_addsr
+	bra.s 	subsrf
+1$  	move.l	#$1000003,-12(a6)
+	move.l	#$1000003,-8(a6)
+	move.l	#$80000000,-4(a6)
+	pea 	-12(a6)
+	bsr 	_addir
+subsrf  unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES DE MULTIPLICATION		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Multiplication generale 			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : d0 pointe sur n2 * n1 de type I ou R (zone cree)	*
+*	interdit : type S						*
+*	precision : voir routines specialisees			*
+*									*
+*===================================================================*
+
+_mpmul  move.l	4(sp),a0
+	move.l	8(sp),a1	; a1 et a0 pointent sur n1 et n2
+	move.b	(a0),d0
+	move.b	(a1),d1		; d1.b et d0.b contiennent T1 et T2
+	cmp.b	d1,d0
+	ble.s 	1$
+				; ici T2 > T1
+	exg 	a1,a0
+	exg 	d1,d0
+	move.l	a0,4(sp)
+	move.l	a1,8(sp)
+				; ici T2 <= T1
+1$  	cmp.b	#1,d1
+	beq 	_mulii		; ici T1 = T2 = I
+2$  	cmp.b	#2,d0
+	beq 	_mulrr		; ici T1 = T2 = R
+	bra 	_mulir
+
+*===================================================================*
+*									*
+*		Multiplication (par valeur) 			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*		 a7($12) pointe sur n3 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient n2*n1 	*
+*	interdit : type S						*
+*									*
+*===================================================================*
+
+_mpmulz lea 	_mpmul,a0
+	bra 	mpopz
+
+				; multiplication S*S=I ou R
+
+_mulssz lea 	_mulss,a0
+	bra 	mpopz
+
+				; multiplication S*I=I ou R
+
+_mulsiz lea 	_mulsi,a0
+	bra 	mpopz
+
+				; multiplication S*R=R sinon erreur
+
+_mulsrz lea 	_mulsr,a0
+	bra 	mpopz
+
+				; multiplication I*I=I ou R
+
+_muliiz lea 	_mulii,a0
+	bra 	mpopz
+
+				; multiplication I*R=R sinon erreur
+
+_mulirz lea 	_mulir,a0
+	bra 	mpopz
+
+				; multiplication R*R=R sinon erreur
+
+_mulrrz lea 	_mulrr,a0
+	bra 	mpopz
+
+*===================================================================*
+*									*
+*	Multiplication : entier court * entier court = entier	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur s2 * s1 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_mulss  link	a6,#-2
+	movem.l	d2-d4,-(sp)
+	move.l	8(a6),d2	; d2.l contient s2
+	bne.s 	1$
+2$  	move.w	#2,d0		; ici s2 ou s1 = 0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	mulssf
+				; ici s2 <> 0
+1$  	move.l	d2,d4
+	bpl.s 	3$
+	neg.l	d2		; d2.l contient |s2|
+3$  	move.l	12(a6),d1	; d1.l contient s1
+	beq.s 	2$		; si s1=0
+	eor.l	d1,d4		
+	tst.l	d1
+	bpl.s 	4$
+	neg.l	d1		; d1.l contient |s1|
+4$  	mulu.l	d1,d3:d2
+	move.w	#4,d0
+	tst.l	d3
+	bne.s 	5$
+	move.w	#3,d0		; d0 recoit 3 ou 4 pour allocation
+5$  	bsr 	_geti
+	move.w	2(a0),6(a0)	; met long effect.
+	move.b	#1,4(a0)	; met signe
+	tst.l	d4
+	bpl.s 	6$
+	neg.b	4(a0)
+6$  	tst.l	d3
+	bne.s 	7$
+	move.l	d2,8(a0)
+	bra.s 	mulssf
+7$  	move.l	d3,8(a0)
+	move.l	d2,12(a0)
+mulssf  move.l	a0,d0
+	movem.l	(sp)+,d2-d4
+	unlk	a6
+	rts
+
+
+_mulmodll move.l 4(sp),d1
+	mulu.l	8(sp),d0:d1
+	divu.l	12(sp),d0:d1
+	rts
+
+
+*===================================================================*
+*									*
+*	Multiplication : entier court * entier = entier 		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur s2 * i1	de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_mulsi  link	a6,#0
+	movem.l	d2-d6/a2,-(sp)
+	move.l	8(a6),d2	; d2.l contient s2
+	bne.s 	1$
+				; ici s2 = 0 ou i1 = 0
+2$  	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	mulsif
+				; ici s2 <> 0
+1$  	bpl.s 	6$
+	neg.l	d2		; d2 contient |s2|
+6$  	move.l	12(a6),a1	; a1 pointe sur i1
+	tst.b	4(a1)
+	beq.s 	2$		; si i1 = 0
+				; ici i1 <> 0 et s2 <> 0
+	move.w	6(a1),d0	; d0.w contient le1
+	bsr 	_geti
+	lea 	0(a0,d0.w*4),a2 ; a2 pointe apres resultat (i0)
+	lea 	0(a1,d0.w*4),a1 ; a1 pointe apres i1
+	subq.w	#3,d0
+	moveq	#0,d6
+	moveq	#0,d5		; initialisation retenue
+				; debut boucle multiplication
+3$  	move.l	-(a1),d4
+	mulu.l	d2,d3:d4
+	add.l	d5,d4
+	addx.l	d6,d3
+	move.l	d4,-(a2)
+	move.l	d3,d5
+	dbra	d0,3$
+	beq.s 	5$
+				; ici retenue finale
+	move.w	#1,d0
+	bsr 	_geti
+	move.w	6(a0),d0
+	addq.w	#1,d0		; d0.w contient le(i0)
+	bvc.s 	4$
+				; ici debordement
+	move.l	#muler3,-(sp)
+	jsr 	_err
+4$  	move.w	d0,2(a0)	; mise longueur
+	move.l	d5,8(a0)	; mise retenue
+5$  	move.w	2(a0),6(a0)	; mise le(i0)
+	move.b	-4(a1),4(a0)
+	tst.l	8(a6)
+	bpl.s 	mulsif
+	neg.b	4(a0)		; mise signe
+mulsif  move.l	a0,d0	
+	movem.l	(sp)+,d2-d6/a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Multiplication : entier court * reel = reel 	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur s2 * r1 de type R			*
+*			 de longueur L = L1 (zone creee)		*
+*									*
+*===================================================================*
+
+_mulsr  link	a6,#-4
+	movem.l	d2-d6/a2,-(sp)
+	move.l	8(a6),d2	; d2.l contient s2
+	bne.s 	1$
+				; ici s2 = 0
+	move.l	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	a0,d0
+	bra 	mulsrf1
+				; ici s2 <> 0
+1$  	move.l	12(a6),a1	; a1 pointe sur r1
+	tst.b	4(a1)
+	bne.s 	2$
+				; ici r1 = 0
+	moveq	#3,d0
+	bsr 	_getr
+	tst.l	d2
+	bpl.s 	2$
+	neg.l	d2
+	bfffo	d2{0:32},d0
+	move.l	4(a1),d1
+	add.l	#31,d1
+	sub.l	d0,d1
+	cmp.l	#$1000000,d1
+	bcc 	11$
+	move.l	d1,4(a0)
+	clr.l	8(a0)
+	move.l	a0,d0
+	bra 	mulsrf1
+2$  	move.w	2(a1),d0
+	bsr 	_getr		; allocation memoire pour resultat
+	move.l	a0,-4(a6)	; sauvegarde adr. resultat ds var.locale
+				; ici s2 et r1 <> 0
+	move.l	d2,d4
+	bpl.s 	3$
+	neg.l	d2		; d2.l contient |s2|
+3$  	cmp.l	#1,d2
+	bne.s 	4$
+				; ici |s2| = 1
+	addq.l	#4,a0
+	addq.l	#4,a1
+	subq.w	#2,d0
+5$  	move.l	(a1)+,(a0)+
+	dbra	d0,5$		; copie de r1 dans resultat
+	move.l	-4(a6),a0
+	tst.l	d4
+	bpl 	mulsrf
+	neg.b	4(a0)		; mise signe
+	bra 	mulsrf
+				; ici |s2| <> 1 et 0 , r1 <> 0
+4$  	move.b	4(a1),4(a0)
+	tst.l	d4
+	bpl.s 	6$
+	neg.b	4(a0)		; mise signe
+6$  	lea 	0(a0,d0.w*4),a0 ; a0 pointe apres resultat
+	lea 	0(a1,d0.w*4),a1 ; a1 pointe apres r1
+	subq.w	#3,d0		; d0.w contient L1-1
+	move.w	d0,d4		; d4.w idem
+	move.w	d4,d6
+	moveq	#0,d1		; d1 a 0 pour les addx
+	moveq	#0,d0		; initialisation retenue d0
+				; boucle de multiplication :
+7$  	move.l	-(a1),d5
+	mulu.l	d2,d3:d5
+	add.l	d0,d5
+	addx.l	d1,d3
+	move.l	d5,-(a0)
+	move.l	d3,d0		; nouvelle retenue d0
+	dbra	d6,7$
+	bfffo	d0{0:32},d1	; d1.l contient nb. de shifts
+	lsl.l	d1,d0		; normalisation de d0
+	moveq	#1,d6
+	lsl.l	d1,d6
+	subq.l	#1,d6		; masque de shift
+	neg.b	d1
+	add.b	#32,d1
+				; boucle de shift
+8$  	move.l	(a0),d2
+	ror.l	d1,d2
+	move.l	d2,d3
+	and.l	d6,d3
+	sub.l	d3,d2
+	add.l	d3,d0
+	move.l	d0,(a0)+
+	move.l	d2,d0
+	dbra	d4,8$
+	move.l	-4(a6),a0	; a0 pointe sur resultat
+	move.l	-4(a1),d0
+	and.l	#$ffffff,d0	; d0.l contient fexp1
+	add.l	d1,d0		; d0.l contient fexp resultat
+	btst	#24,d0
+	beq.s 	9$
+				; ici debordement
+11$ 	move.l	#muler2,-(sp)
+	jsr 	_err
+9$  	move.w	d0,6(a0)	; mise exposant
+	swap	d0
+	move.b	d0,5(a0)
+mulsrf  move.l	-4(a6),d0	; adresse du resultat
+mulsrf1 movem.l	(sp)+,d2-d6/a2
+	unlk	a6
+	rts
+	
+*===================================================================*
+*									*
+*		Multiplication : entier * entier = entier		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur i2 * i1 de type I (zone creee)	*
+*									*
+*===================================================================*
+
+_mulii  link	a6,#0
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	8(a6),a1
+	move.l	12(a6),a2	; a1,a2 pointent sur i1,i2
+	move.w	6(a1),d1	
+	move.w	6(a2),d2	; d1.w, d2.w contient l1,l2
+	cmp.w	d1,d2
+	bcc.s 	1$
+				; ici l1>l2 : echanger i1 et i2
+	exg 	a1,a2
+	exg 	d1,d2		; maintenant l1<=l2
+1$  	subq.w	#2,d1		; d1 recoit L1
+	bne.s 	2$
+				; ici L1=0	<==> i1*i2 = 0
+6$  	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)	; cree resultat nul de type I
+	bra 	muliif
+				; maintenant 1<=L1<=L2
+2$  	move.w	d2,d0		; d0 recoit l2
+	add.w	d1,d0		; d0 recoit l2 + L1 = L1 + L2 + 2
+	bvc.s 	3$
+	move.l	#muler1,-(sp)
+	jsr 	_err		; debordement
+	bra.s 	6$
+3$  	bsr 	_geti		; allocation memoire pour resultat
+	move.w	d0,6(a0)	; met long effect. (peutetre 1 de trop)
+	move.b	4(a1),d3
+	move.b	4(a2),d4
+	eor.b	d4,d3
+	addq.b	#1,d3
+	move.b	d3,4(a0)	; met signe du resultat
+	lea 	0(a0,d0.w*4),a4 ; a4 pointe apres fin resultat = z
+	lea 	8(a1,d1.w*4),a1 ; a1 pointe apres fin de i1 = y
+	lea 	0(a2,d2.w*4),a3 ; a3 pointe apres fin de i2 = x
+	subq.w	#1,d1		; d1 recoit L1-1 compt bcl externe
+	subq.w	#3,d2		; d2 recoit L2-1 compt bcl interne
+	move.w	d2,d0		; sauvegarde compt interne dans d0
+	moveq	#0,d7		; registre d7 fixe a 0
+				; Boucles de multiplication I*I :
+; x=x1x2...xn multiplicande (x=i2,n=L2) pointe par a2 et a3
+; y=y1...ym multiplicateur (y=i1,m=L1) pointe par a1
+; z=z1z2...z(n+m) resultat pointe par a0 et a4
+; a0 et a2 sont decrementes par la boucle interne (les valeurs initiales
+; etant conservees dans a4 et a3)
+*...................................................................*
+				; 1re boucle interne:initialise resultat
+				; (z recoit x*ym)
+	move.l	a3,a2		; a2 pointe apres xn
+	move.l	a4,a0		; a0 pointe apres z(n+m)
+	move.l	-(a1),d3 	; d3 recoit ym
+	sub.l	d4,d4		; d4 registre retenue k et X initialise a 0
+m1	move.l	d4,d6		; nouvelle retenue
+	move.l	d3,d5		; dupliquer multiplicateur
+	mulu.l	-(a2),d4:d5	; d4:d5 recoit x1*ym
+	addx.l	d5,d6
+	addx.l	d7,d4		; d4:d6 recoit xi*ym + k
+	move.l	d6,-(a0) 	; range z(i+m)
+	dbra	d2,m1		
+	bra.s 	bclf		; brancher fin de boucle externe
+mext 	subq.l	#4,a4		; a4 pointe apres z(n+i)
+	move.l	a3,a2		; a2 pointe apres xn
+	move.l	a4,a0		; a0 pointe apres z(n+i)
+	move.l	d0,d2		; d2 recoit n-1 compteur bcl interne
+	move.l	-(a1),d3 	; d3 recoit yj (j=m-1,m-2...1)
+	sub.l	d4,d4		; d4 recoit retenue initiale k et X=0
+mint  	move.l	d4,d6		; sauver nouvelle retenue
+	move.l	d3,d5		; dupliquer multiplicateur
+	mulu.l	-(a2),d4:d5	; d4:d5 recoit xi*yj
+	addx.l	d5,d6
+	addx.l	d7,d4		; d4:d5 recoit xi*yj + k
+	add.l	d6,-(a0) 	; ranger partie basse de xi*yj+z(i+j)+k
+	dbra	d2,mint		; fin de boucle interne
+	addx.l	d7,d4
+bclf 	move.l	d4,-(a0) 	; range derniere retenue
+	dbra	d1,mext 	; fin bcl externe
+*...................................................................*
+				; derniere retenue = 0 ?
+	beq.s 	4$
+	subq.l	#8,a0		; non : rien a faire
+				; a0 pointe sur resultat
+	bra.s 	muliif
+				; ici pas de retenue finale
+4$  	subq.w	#1,-2(a0)
+	subq.w	#1,-6(a0)	; rectifier longueurs
+	move.l	-4(a0),(a0) 	; deplacer mots codes
+	move.l	-8(a0),-(a0)	; a0 pointe sur resultat
+	add.l	#4,_avma
+muliif  move.l	a0,d0
+	movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Multiplication : reel * reel = reel 		*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur r2 * r1 de type R (zone creee)	*
+*									*
+*	precision : L = inf ( L1 , L2 ) 				*
+*									*
+*===================================================================*
+
+_mulrr  link	a6,#-20		; variables locales pour murr aussi
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	8(a6),a1	; a1 pointe sur r1
+	move.l	12(a6),a2	; a2 pointe sur r2
+	move.b	4(a1),d0
+	and.b	4(a2),d0
+	bne.s 	munzr
+				; ici r1 ou r2 = 0
+muzr 	moveq	#3,d0
+	bsr 	_getr
+	move.l	a0,-8(a6)
+	move.l	4(a1),d1	
+	and.l	#$ffffff,d1	; exposant de x1
+	move.l	4(a2),d2	
+	and.l	#$ffffff,d2	; exposant de y
+	add.l	d2,d1
+	sub.l	#$800000,d1
+	cmp.l	#$1000000,d1
+	bcs.s 	1$
+	move.l	#muler4,-(sp)	; debordement r*r
+	jsr 	_err
+1$  	tst.l	d1
+	bgt.s 	2$
+	move.l	#muler5,-(sp)	; underflow r*r
+	jsr 	_err
+2$  	move.l	d1,4(a0)
+	clr.l	8(a0)
+	bra.s 	mulrrf
+munzr   move.w  2(a2),d0
+	clr.l	-12(a6)		; Initialiser flag a 0
+        cmp.w   2(a1),d0
+        bls.s   1$
+        move.w  2(a1),d0	; d0.w contient L+2=inf(L1,L2)+2
+        exg     a1,a2           ; a2 pointe sur le + court
+	bra.s	2$
+1$	bne.s	2$
+        lea     0(a1,d0.w*4),a3 ; a3 pointe sur x[L+1]
+	move.l	a3,-12(a6)	; longueurs egales: flag egal adresse
+	move.l	(a3),-16(a6)	; sauvegarde de x[L+1]
+	clr.l	(a3)
+2$      bsr     getr
+        move.l  a0,-8(a6)
+        bsr.s   murr            ; effectuer la multiplication
+	tst.l	-12(a6)
+	beq.s	mulrrf
+	move.l	-12(a6),a3
+	move.l	-16(a6),(a3)	; remettre x[L+1]
+mulrrf  move.l	-8(a6),d0	; adresse du resultat
+	movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+
+*-------------------------------------------------------------------*
+*	module interne de multiplication r0=r1*r2			*
+*		( pour R*R et I*R)					*
+*	entree : a1 et a2 pointent sur 2 reels			*
+*	r1,r2  non nuls avec L1>=L2=m				*
+*		 a0 pointe sur une zone reelle de long l1		*
+*	sortie : le produit r0 est mis a l'addresse a0              *
+*									*
+*-------------------------------------------------------------------*
+
+; notation : r1 = x = x1x2...xmx(m+1)...  multiplicande
+;		 r2 = y = y1y2...ym 	  multiplicateur
+;	( le lgmot x(m+1) peut ne pas exister ! ( le1 >= le2 = m ) )
+;		  z = z0z1z2...zmz(m+1) resultat.
+;	( z0=0 ou 1 et z(m+1) a jeter)
+;	move.w  2(a2),d0 doit avoir ete fait avant.
+
+
+murr 	move.l	a1,a3
+	lea 	12(a3),a3	; a3 pointe sur x2 (2me lgmot mant.x)
+	lea 	0(a2,d0.w*4),a2 ; a2 pointe apres ym
+	lea 	0(a0,d0.w*4),a0 ; a0 pointe apres zm
+	move.l	(a0),-4(a6) 	; on sauvegarde le lg mot suivant z
+	clr.l	(a0)+		; z(m+1) recoit 0,a0 pointe apres z(m+1)
+	subq.w	#3,d0		; d0 recoit m-1 
+	move.l	d0,-20(a6)	; sauvegarde m-1 compt. bcl externe
+	clr.w	d3		; d3=0,val initiale compt bcl interne
+				; Boucles triangulaires mult. R*R
+*...................................................................*
+bext 	move.l	a0,a4		; a4 pointe apres z(m+1)
+	move.l	a3,a1		; a1 pointe sur x(j+1) (j=1,2...m)
+	move.w	d3,d2		; d3 recoit m-j compt bcl interne
+	move.l	-(a2),d4 	; d4 recoit yj
+	move.l	(a3)+,d5 	; d5 recoit x(j+1)
+	sub.l	d1,d1		; d1 et X a zero
+	mulu.l	d4,d7:d5	; init.retenue d7(ignorer poids faible)
+bint 	move.l	d7,d6		; sauver retenue
+	move.l	d4,d5		; dupliquer multiplicateur
+	mulu.l	-(a1),d7:d5	; d7:d5 recoit xi*yj
+	addx.l	d5,d6
+	addx.l	d1,d7		; d7:d6 recoit xi*yj + k
+	add.l	d6,-(a4) 	; nouveau z(i+j)
+	dbra	d2,bint
+	addx.l	d1,d7
+	move.l	d7,-(a4) 	; range derniere retenue
+	addq.w	#1,d3		; augmente de 1 long bcl interne
+	dbra	d0,bext 	; fin bcl externe
+*...................................................................*
+	move.l	-4(a1),d1	; a1 pointe sur x1 (1er mot mant de x)
+	and.l	#$ffffff,d1	; exposant de x1
+	move.l	-4(a2),d2	; a2 pointe sur y1
+	and.l	#$ffffff,d2	; exposant de y
+	add.l	d2,d1
+	sub.l	#$800000,d1
+	tst.l	(a4) 		; a4 pointe sur z1 : z normalise ?
+	bpl.s 	1$
+	add.l	#1,d1		; ici mantisse normalisee
+	bra.s 	2$
+				; ici il faut shifter de 1 a gauche
+1$  	move.l	a0,a4		; a4 pointe apres z(m+1)
+	subq.w	#2,a4
+	move.l	-20(a6),d0	; recuperer compteur m-1
+	roxl.w	-(a4)		; initialise le carry
+5$  	roxl.w	-(a4)		; shift par mots (d0 compteur=m-1)
+	roxl.w	-(a4)
+	dbra	d0,5$		; boucle de shift
+2$  	cmp.l	#$1000000,d1
+	bcs.s 	3$
+	move.l	#muler4,-(sp)	; debordement r*r
+	jsr 	_err
+3$  	tst.l	d1
+	bgt.s 	4$
+	move.l	#muler5,-(sp)	; underflow r*r
+	jsr 	_err
+4$  	move.l	d1,-(a4) 	; range exposant
+	move.b	-4(a1),d1
+	move.b	-4(a2),d2	; signes
+	eor.b	d2,d1
+	addq.b	#1,d1
+	move.b	d1,(a4)		; range signe resultat
+	move.l	-4(a6),-4(a0) ; remet en place mot sous z(m+1)
+murrf 	rts
+
+*===================================================================*
+*									*
+*		Multiplication : entier * reel = reel		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointeur sur i2 * r1 de type R (zone creee) 	*
+*									*
+*===================================================================*
+
+_mulir  link	a6,#-20
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	8(a6),a2	; a2 pointe sur i2
+	tst.b	4(a2)
+	bne.s 	1$
+				; ici i2 = 0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	a0,d0
+	bra.s 	mulirf1
+				; ici i2 <> 0
+1$  	move.l	12(a6),a1	; a1 pointe sur r1
+	tst.b	4(a1)
+	bne.s 	2$
+				; ici r1 = 0
+	moveq	#3,d0
+	bsr 	_getr
+	move.w	6(a2),d0
+	lsl.l	#5,d0
+	bfffo	8(a2){0:32},d1
+	sub.l	d1,d0
+	sub.l	#65,d0
+	add.l	4(a1),d0
+	cmp.l	#$1000000,d0
+	bcs.s 	3$
+	move.l	#muler6,-(sp)	; overflow I*R, R = 0
+	jsr 	_err
+3$  	move.l	d0,4(a0)
+	clr.l	8(a0)
+	move.l	a0,d0
+	bra.s 	mulirf1
+				; ici i2 <> 0 et r1<> 0
+2$  	move.w	2(a1),d0
+	bsr 	_getr		; allocation memoire pour resultat
+	move.l	a0,-8(a6)	; sauvegarde adresse resultat
+	move.w	2(a1),d0
+	bsr 	_getr		; allocation mem pour conversion i2->r2
+	move.l	a0,-(a7)
+	move.l	a2,-(a7)
+	bsr 	_affir
+	addq.l	#4,sp
+	move.l	(a7),a2		; a2 recoit adr de r2=i2 (reste en pile)
+	move.l	-8(a6),a0	; a0 recoit addresse du resultat
+	exg	a1,a2		; Il faut que a2 soit le plus court!
+	move.w	2(a2),d0	; Mettre l'inf des longueurs dans d0 pour murr
+	bsr 	murr
+	move.l	(a7)+,a0
+	bsr 	_giv
+mulirf  move.l	-8(a6),d0
+mulirf1 movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 		PROGRAMMES DE DIVISION AVEC RESTE		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*		Division avec reste (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I 			*
+*		 a7($8) pointe sur n1 de type I 			*
+*		 a7($12) pointe sur n3 de type I			*
+*		 a7($16) pointe sur n4 de type I			*
+*	sortie : la zone pointee par a7($12) contient n2 / n1	*
+*		 la zone pointee par a7($16) contient le reste (du	*
+*		 signe du dividende)				*
+*	interdit : type S et R					*
+*									*
+*===================================================================*
+
+_mpdvmdz lea	_dvmdii,a0
+	bra 	mpopii
+
+				; division avec reste S/S=(I et I)
+				; sinon erreur
+
+_dvmdssz lea	_dvmdss,a0
+	bra 	mpopii
+
+				; division avec reste S/I=(I et I)
+				; sinon erreur
+
+_dvmdsiz lea	_dvmdsi,a0
+	bra 	mpopii
+
+				; division avec reste I/S=(I et I)
+				; sinon erreur
+
+_dvmdisz lea	_dvmdis,a0
+	bra 	mpopii
+
+				; division avec reste I/I=(I et I)
+				; sinon erreur
+
+_dvmdiiz lea	_dvmdii,a0
+	bra 	mpopii
+
+*===================================================================*
+*									*
+*Division avec reste : entier court / entier court =(entier,entier) *
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : a7($12) pointe sur l'adresse du futur reste        *
+*		 d0 pointe sur s2 div s1 de type I			*
+*		 le reste est du signe de s2 (zone creee)		*
+*									*
+*===================================================================*
+
+_dvmdss link	a6,#0
+	move.l	d2,-(sp)
+	move.l	12(a6),-(sp)	; empilage s1
+	move.l	8(a6),-(sp) 	; empilage s2
+	bsr 	_divss
+dmd 	addq.l	#8,sp
+	tst.l	d1
+	bne.s 	1$
+				; ici reste nul
+	move.l	d0,d1
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	d1,d0
+	bra.s 	dvmdssf
+				; ici reste non nul
+1$  	move.l	d0,d2
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d1
+	bpl.s 	2$
+	neg.l	d1
+	move.b	#-1,4(a0)
+2$  	move.l	d1,8(a0)
+	move.l	d2,d0
+dvmdssf move.l	16(a6),a1
+	move.l	a0,(a1)
+	move.l	(sp),d2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	Division avec reste : entier court / entier = (entier,entier)	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*		 a7($12) pointe sur l'adresse du futur reste        *
+*	sortie : d0 pointe sur s2 div i1 de type I ;		*
+*		 reste du signe de s2 (zones creees)		*
+*									*
+*===================================================================*
+
+_dvmdsi move.l	8(a7),-(sp)
+	move.l	8(a7),-(sp)
+	bsr 	_divsi
+dmdi 	addq.l	#8,sp
+	move.l	d0,a1		; sauvegarde adresse quotient
+	tst.l	d1
+	bne.s 	1$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	3$
+				; ici reste non nul
+1$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d1
+	bpl.s 	2$
+	neg.l	d1
+	move.b	#-1,4(a0)
+2$  	move.l	d1,8(a0)
+3$  	move.l	a1,d0
+	move.l	a0,([12,sp])
+	rts
+
+*===================================================================*
+*									*
+*	Division avec reste : entier / entier court = (entier,entier)	*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient s1 de type S			*
+*		 a7($12) pointe sur l'adresse du futur reste        *
+*	sortie : d0 pointe sur i2 div s1 de type I			*
+*		 reste de type I du signe de s1 (zones creees)	*
+*									*
+*===================================================================*
+
+_dvmdis move.l	8(a7),-(sp)
+	move.l	8(a7),-(sp)
+	bsr 	_divis
+	bra.s 	dmdi
+
+*===================================================================*
+*									*
+*	Division avec reste : entier / entier = (entier,entier) 	*
+*									*
+*	entree : a7($4) pointe sur i2 de type I (dividende) 	*
+*		 a7($8) pointe sur i1 de type I (diviseur)		*
+*		 a7($12) contient un pointeur sur le reste si l'on  *
+*		 veut a la fois q et r, 0 si l'on ne veut que le    *
+*		 quotient, -1 si l'on ne veut que le reste          *
+*	sortie : d0 pointe sur q si celui-ci est attendu, et sinon	*
+*		 sur r. a7($12) pointe sur r si q et r sont attendus*
+*		 (toutes les zones sont creees) 			*
+*	remarque : il s'agit de la 'fausse division' ; le reste est *
+*		  du signe du dividende 				*
+*									*
+*									*
+*	variables locales (etat pile apres link):			*
+*  -16 -14 -12 -10 -8  -6	-4	  a6	4	 8	  12   16		*
+*  +---+---+---+---+---+---+------+----+----+----+----+----+	*
+*	n-m  k sgnq sgnr n	 m	ad(q,r) 	 ret  i2   i1 ^r/0/-1	*
+*									*
+*===================================================================*
+
+_dvmdii link	a6,#-32
+	movem.l	d2-d7/a2-a4,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur le diviseur i1
+	move.w	6(a1),d1	; d1.w contient le1
+	cmp.w	#2,d1
+	bne.s 	dv1
+				; ici i1 = 0
+	move.l	#dvmer1,-(sp)
+dvmerr  jsr 	_err
+				; ici i1 <> 0
+dv1 	move.l	8(a6),a2	; a2 pointe sur dividende i2
+	move.w	6(a2),d2	; d2.w contient le2
+	cmp.w	#2,d2
+	bne.s 	dv3
+				; ici quotient=reste=0
+dv2 	move.l	16(a6),d3
+	cmp.l	#-1,d3
+	beq.s 	1$
+				; ici quotient attendu (q=0)
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	a0,d0
+1$  	tst.l	d3
+	beq 	dvmiif
+				; ici reste attendu (r=0)
+	move.l	d0,d1
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	btst	#0,d3		; test si fonction mod
+	bne.s 	2$
+	move.l	d3,a1		; d3 pointe sur l'adr. du reste
+	move.l	a0,(a1)
+	move.l	d1,d0
+	bra 	dvmiif
+2$  	move.l	a0,d0
+	bra 	dvmiif
+				; ici i2 et i1 <> 0
+dv3 	move.w	d2,d0		; le2
+	sub.w	d1,d0		; d0.w contient L2-L1
+	bcc.s 	dv4
+				; ici q=0 , r=i2
+	move.l	16(a6),d3
+	cmp.l	#-1,d3
+	beq.s 	1$
+				; quotient attendu soit q=0
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	a0,d0
+	move.l	#2,4(a0)
+1$  	tst.l	d3
+	beq 	dvmiif
+				; reste attendu soit r=i1
+	move.l	d0,d1
+	move.w	d2,d0
+	bsr 	_geti
+	move.l	a0,a1
+	subq.w	#2,d0
+	addq.l	#4,a0
+	addq.l	#4,a2
+2$  	move.l	(a2)+,(a0)+
+	dbra	d0,2$
+	cmp.l	#-1,d3
+	beq.s 	3$
+	move.l	d3,a0
+	move.l	a1,(a0)
+	move.l	d1,d0
+	bra 	dvmiif
+3$  	move.l	a1,d0
+	bra 	dvmiif
+				; ici L2 >= L1
+dv4 	move.b	4(a1),d3	; d3.b contient signe de i1
+	move.b	4(a2),d4	; d4.b contient signe de i2
+	eor.b	d4,d3
+	addq.b	#1,d3		; d4.b contient signe de q
+	move.b	d3,-12(a6) 	; sauvegarde signe de q
+	move.b	d4,-10(a6) 	; sauvegarde signe de r
+	move.l	_avma,-20(a6)	; sauvegarde __avma initial
+	move.w	d2,d0		; d0 recoit l2
+	bsr 	_geti		; allocation memoire de travail :
+				; on va y former q0q1...q(n-m)r1r2...rm
+				; les memoires provisoires ne seront pas
+				; rendues par giv:on ecrase mot code
+	move.l	a0,-4(a6)	; sauvegarde addresse zone de travail
+	subq.w	#2,d1
+	subq.w	#2,d2
+	move.w	d1,-6(a6)	; sauvegarde L1 (=m)
+	move.w	d2,-8(a6)	; sauvegarde L2 (=n)
+	move.w	d2,-16(a6)
+	sub.w	d1,-16(a6) 	; n-m dans a6($-16)
+	addq.l	#8,a2
+	addq.l	#8,a1
+	move.l	(a1),d3		; d3.l=y1 (1er lgmot du diviseur i1)
+	subq.w	#1,d2		; d2 recoit n-1
+	subq.w	#1,d1		; d1 recoit m-1
+	bne.s 	divlon
+				; ici division simple (m = 1)
+divsim  clr.l	d4
+1$  	move.l	(a2)+,d5
+	divu.l	d3,d4:d5
+	move.l	d5,(a0)+
+	dbra	d2,1$
+	move.l	d4,(a0)		; reste mis derriere quotient
+	move.l	a0,a2		; a2 pointe sur reste
+	clr.w	-14(a6)	; on n'a pas fait de shift
+	bra 	ranger
+				; ici division longue (m > 1)
+divlon  bfffo	d3{0:32},d4	; d4 recoit nb de shift pour normaliser
+	move.w	d4,-14(a6) 	; sauvegarde du nb. de shifts = k
+	bne.s 	1$
+				; ici pas de normalisation
+	move.l	a0,a4
+	move.l	#0,(a4)+ 	; met a 0 1er lgmot soit x0
+4$  	move.l	(a2)+,(a4)+	; recopie x1x2...xn
+	dbra	d2,4$
+	move.l	a0,a2		; a2 pointe sur x0,a4 pointe apres xn
+	lea 	4(a1,d1.w*4),a3 ; a1 pointe sur y1,a3 pointe apres ym
+	bra.s 	nosh
+				; ici on normalise le diviseur i1=y
+				; et on decale autant le dividende:
+1$  	lsl.l	d4,d3		; normalisation de y1
+	move.w	-6(a6),d0	; on demande m lgmots
+	bsr 	_geti		; allocation pour copie normalisee de y
+	moveq	#1,d6
+	lsl.l	d4,d6
+	subq.l	#1,d6		; masque de shift
+	move.l	a0,a3
+	subq.w	#1,d0		; d0 compt. mis a m-1
+	addq.l	#4,a1		; a1 pointe sur y2 2me lg mot diviseur
+	bra.s 	3$
+2$  	move.l	(a1)+,d1 	; boucle shift vers la gauche ds copie
+	rol.l	d4,d1
+	move.l	d1,d5
+	and.l	d6,d1
+	add.l	d1,d3
+	move.l	d3,(a3)+
+	sub.l	d1,d5
+	move.l	d5,d3
+3$  	dbra	d0,2$
+	move.l	d3,(a3)+
+	move.l	a0,a1		; a1 pointe sur 1er lgmot y1 normalise
+				; a3 pointe apres ym
+				; transfert avec shift du dividende:
+	move.l	-4(a6),a4	; a4 pointe sur zone de travail
+	moveq	#0,d3
+	move.w	-8(a6),d0
+	subq.w	#1,d0		; d0 recoit n-1 compteur
+5$  	move.l	(a2)+,d1 	; boucle de shift du dividende i2
+	rol.l	d4,d1		; sur place
+	move.l	d1,d5		
+	and.l	d6,d1
+	add.l	d1,d3
+	move.l	d3,(a4)+
+	sub.l	d1,d5
+	move.l	d5,d3
+	dbra	d0,5$
+	move.l	d3,(a4)
+	move.l	-4(a6),a2	; a2 pointe sur x0 ;(a4 pointe sur xn)
+nosh 	move.w	-6(a6),d6	; d6 recoit m
+	lea 	4(a2,d6.w*4),a4 ; a4 pointe apres xm
+	subq.w	#1,d6		; d6 recoit m-1 compteur bcls internes
+	move.w	-16(a6),d7 	; d7 recoit n-m compteur bcl externe
+*-------------------------------------------------------------------*
+				; boucles de division I / I :
+	; a1 pointe sur y1, a3 pointe apres ym : diviseur y1y2...ym
+	; a2 pointe sur x0, a4 pointe apres xm : dividende x0x1...xn
+	; d7 contient n-m compt. boucle externe
+	; d6 contient m compt. boucles internes (n>=m>=2)
+	; la zone x0x1...xn recoit q0q1...q(n-m)r1r2...rm
+
+bclext  move.l	(a1),d0		; d0 recoit y1 (1er lgmot diviseur)
+	cmp.l	(a2),d0		; xi = y1 ? (i=0,1...n)
+	bne.s 	1$
+	moveq	#-1,d1		; oui: essayer q=2^32-1
+	add.l	4(a2),d0	; calcul du reste
+				; r=xix(i+1) mod y1 = xi+x(i+1)
+	bcs.s 	4$		; si r>=2^32 , q est ok
+	move.l	d0,d2		; sinon d2 recoit r
+	bra.s 2$			; rejoindre cas general
+1$  	move.l	(a2),d2		; si xi<y1 :
+	move.l	4(a2),d1	; d2:d1 recoit xix(i+1)
+	divu.l	d0,d2:d1	; d1 recoit q = xix(i+1) div y1
+				; d2 recoit r = xix(i+1) mod y1
+2$  	move.l	4(a1),d3	; d3 recoit y2
+	mulu.l	d1,d4:d3	; d4:d3 recoit q*y2
+	sub.l	8(a2),d3
+	subx.l	d2,d4		; d4:d3 recoit q*y2-(r,x(i+2))
+	bls.s 	4$		; si <= 0 alors q ok
+3$  	subq.l	#1,d1		; sinon diminuer q
+	sub.l	4(a1),d3	; corriger reste partiel:
+	subx.l	d0,d4		; d3:d4 recoit d3:d4-y1y2
+	bhi.s 	3$		; tant que q*y1y2>xix(i+1)x(i+2)
+				; recommencer q recoit q-1
+				; ici q*y1y2 <= xix(i+1)x(i+2)
+				; on va former le nouveau reste
+				; en remplacant x(i+1)...x(i+m) par
+				; x(i+1)...x(i+m) - q*y1...ym
+4$  	move.w	d6,d0		; d0 recoit m-1 compteur
+	move.l	a3,a1		; a1 pointe apres ym
+	move.l	a4,a2		; a2 pointe apres x(i+m)
+	moveq	#0,d2		; d2 fixe a 0 pour les addxl
+	sub.l	d3,d3		; d3 recoit k retenue initialisee a 0 et X=0
+5$  	move.l	-(a1),d5 	; d5 recoit x(i+j) j=m,m-1,...,1
+	mulu.l	d1,d4:d5
+	addx.l	d3,d5
+	addx.l	d2,d4
+	sub.l	d5,-(a2) 	; nouvel x(i+j)
+	move.l	d4,d3
+	dbra	d0,5$
+	addx.l	d2,d3
+	sub.l	d3,-4(a2)	; soustrait derniere retenue
+	bcc.s 	6$		; si pas carry q=qi est definitif
+	subq.l	#1,d1		; sinon encore 1 de trop
+	move.w	d6,d0		; repositionner compteur m-1
+	move.l	a3,a1
+	move.l	a4,a2		; repositionner pointeurs
+7$  	addx.l	-(a1),-(a2)
+	dbra	d0,7$		; boucle de remise a jour du reste
+				; il y a forcement carry final a ignorer
+6$  	move.l	d1,-4(a2)	; qi est range sur l'ancien xi
+	addq.l	#4,a4		; a4 pointe apres x(i+m+1)
+	dbra	d7,bclext	; boucler pour q0q1...q(n-m)
+				; fin des boucles de division I/I
+				; a2 pointe apres q(n-m),ie sur r1
+*-------------------------------------------------------------------*
+				; rangement des resultats
+
+ranger  clr.l	-28(a6)
+	clr.l	-32(a6)
+	move.l	_avma,-24(a6)	; actuel __avma
+	move.l	-20(a6),d7 	; __avma initial
+	sub.l	_avma,d7	; nb d'octets memoire provisoires
+				; offset:ajouter aux addresses fournies
+	move.l	16(a6),d3
+	cmp.l	#-1,d3
+	beq.s 	rngres
+				; ici quotient attendu
+	move.l	-4(a6),a0	; a0 pointe sur q0
+	move.w	-16(a6),d0 	; d0 recoit n-m
+	move.w	d0,d1
+	addq.w	#2,d0
+	tst.l	(a0)
+	beq.s 	1$
+	addq.w	#1,d0
+1$  	bsr 	_geti		; allocation memoire pour quotient
+	move.l	a0,-28(a6) 	; a6($-28) recoit adr. provisoire de q
+	add.l	d7,-28(a6) 	; ajoute offset memoires provisoires
+				; a6($-28) contient adr definitive de q
+	lea 	0(a0,d0.w*4),a1
+	move.l	a2,a3		; a2 et a3 pointe sur r1
+2$  	move.l	-(a3),-(a1)	; recopie q0,q1...q(n-m)
+	dbra	d1,2$
+	move.w	d0,6(a0)	; met long effective de q
+	move.b	-12(a6),4(a0) ; met signe de q
+	cmp.w	#2,d0
+	bne.s 	rngres
+	clr.b	4(a0)		; rectifier signe lorsque q=0
+rngres  tst.l	d3
+	beq 	rendre
+				; ici reste attendu
+	move.w	-6(a6),d0
+	subq.w	#1,d0		; d0 recoit m-1
+4$  	tst.l	(a2)+
+	dbne	d0,4$		; chasse les zeros
+	bne.s 	1$
+				; ici r=0 : ranger 0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	add.l	d7,a0		; ajoute offset
+	move.l	a0,-32(a6) 	; adr. definit. de r
+	bra.s 	rendre
+1$  	subq.l	#4,a2		; a2 pointe sur 1er ri non nul
+	move.w	d0,d1
+	addq.w	#3,d0
+	bsr 	_geti		; allocation memoire pour reste
+	move.l	a0,-32(a6)
+	add.l	d7,-32(a6) 	; ajoute offset memoires provisoires
+	move.b	-10(a6),4(a0) ; met signe de r
+	move.w	d0,6(a0)	; met long effect provisoire (si shift)
+	addq.l	#8,a0
+	move.w	-14(a6),d3 	; d3 recoit k nb de shifts
+	bne.s 	2$
+				; ici k=0 pas de shift
+5$  	move.l	(a2)+,(a0)+
+	dbra	d1,5$		; recopie des ri effectifs
+	bra.s 	rendre
+2$  	moveq	#-1,d6		; ici shift de r
+	lsr.l	d3,d6		; d6 recoit masque de shift
+	moveq	#0,d5
+	bset	d3,d5		; d5 recoit 2^k
+	moveq	#0,d2
+	cmp.l	(a2),d5		; comparer 1er ri a 2^k
+	bls.s 	3$
+	move.l	(a2)+,d2 	; ici ri < 2^k	: le shifter
+	ror.l	d3,d2
+	subq.w	#1,d0		; et diminuer de 1 la long de la boucle
+	subq.w	#1,-2(a0)	; ainsi que la long effective de r
+3$  	move.l	(a2)+,d5 	; boucle de shift de r
+	ror.l	d3,d5		; boucle jamais vide car r>=2^k
+	move.l	d5,d4
+	and.l	d6,d4
+	add.l	d4,d2
+	move.l	d2,(a0)+
+	sub.l	d4,d5
+	move.l	d5,d2
+	dbra	d1,3$
+rendre  move.l	-20(a6),a0 	; rendre memoires provisoires
+	move.l	-24(a6),a1 	; il faut rendre la zone entre a1 et a0
+	move.l	a1,d0
+	sub.l	_avma,d0
+	lsr.l	#2,d0		; nb de lgmots a deplacer
+	subq.w	#1,d0
+1$  	move.l	-(a1),-(a0)
+	dbra	d0,1$
+	move.l	a0,_avma		; nouvel __avma
+	move.l	-28(a6),d0
+	bne.s 	2$
+	move.l	-32(a6),d0
+	bra.s 	dvmiif
+2$  	tst.l	-32(a6)
+	beq.s 	dvmiif
+	move.l	16(a6),a1
+	move.l	-32(a6),(a1)
+dvmiif  movem.l	(sp)+,d2-d7/a2-a4
+	unlk	a6
+	rts
+
+
+
+*===================================================================*
+*									*
+*			Divisibilite de i2 par i1			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I 			*
+*		 a7($8) pointe sur n1 de type I 			*
+*		 a7($12) contient un pointeur ( pour quotient ) 	*
+*	sortie : d0 contient 1 si n1 divise n2			*
+*				 0 sinon
+*	a7($12) pointe sur n2 / n1 de type I  (zone creee)		*
+*	lorsque n1 divise n2,  sinon n'est pas affecte.             *
+*									*
+*===================================================================*
+
+_mpdivis link a6,#-8
+	move.l	_avma,-8(a6)
+	pea 	-4(a6)
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_dvmdii
+	lea 	12(sp),sp
+	tst.b	([-4,a6],4) 		; reste nul ?
+	beq.s 	1$
+					; ici reste non nul
+	moveq	#0,d0
+	move.l	-8(a6),_avma		; desallouer q et r
+	bra.s 	2$
+					; ici reste nul
+1$  	move.l	16(a6),-(sp)
+	move.l	d0,-(sp) 		; adresse du quotient
+	bsr 	_affii
+	moveq	#1,d0
+	move.l	-8(a6),_avma			; desallouer reste
+2$  	unlk	a6
+	rts
+
+
+*===================================================================*
+*									*
+*		Flag de divisibilite de i2 par i1			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I 			*
+*		 a7($8) pointe sur n1 de type I 			*
+*	sortie : d0 contient 1 si n1 divise n2			*
+*				 0 sinon				*
+*									*
+*===================================================================*
+
+_divise  move.l	#-1,-(sp)
+	move.l	12(sp),-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_dvmdii
+	lea 	12(sp),sp
+	move.l	d0,a0
+	moveq	#1,d0
+	tst.b	4(a0)			; reste nul ?
+	beq 	_giv
+					; ici reste non nul
+	moveq	#0,d0
+	bra 	_giv
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES DE DIVISION			  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Division generale				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*	sortie : d0 pointe sur n2 / n1 de type I ou R (zone creee)	*
+*		 Le reste est du signe du dividende 		*
+*	interdit : type S						*
+*	precision : voir routines specialisees			*
+*									*
+*===================================================================*
+
+_mpdiv  cmp.b	#1,([8,sp])
+	bne.s 	1$
+	cmp.b	#1,([4,sp])
+	beq 	_divii
+	bra 	_divri
+1$  	cmp.b	#1,([4,sp])
+	beq 	_divir
+	bra 	_divrr
+
+*===================================================================*
+*									*
+*			Division (par valeur)			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I ou R		*
+*		 a7($8) pointe sur n1 de type I ou R		*
+*		 a7($12) pointe sur n3 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient n2 / n1 de	*
+*		 type le type de n3 				*
+*	interdit : type S ainsi que les divisions suivantes :	*
+*		 R/I=I , I/R=I ,R/R=I				*
+*									*
+*===================================================================*
+
+_mpdivz move.l	a2,-(sp)
+	move.l	_avma,-(sp)
+	move.l	12(sp),a1
+	move.l	16(sp),a0
+	move.l	20(sp),a2	; a0,a1,a2 pointent sur n1,n2,n3
+	cmp.b	#1,(a2)
+	bne.s 	1$
+				; ici T3 = I
+	cmp.b	#1,(a1)
+	beq.s 	2$
+				; ici T3 = I et (T2 = R ou T1 = R)
+3$  	move.l	#divzer1,-(sp)
+	jsr 	_err
+				; ici T3 = I et T2 = I
+2$  	cmp.b	#1,(a0)
+	bne.s 	3$
+				; ici T3 = T2 = T1 = I
+	move.l	a0,-(sp)
+	move.l	a1,-(sp)
+	bsr 	_divii
+	move.l	a2,4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	addq.l	#8,sp
+	bra.s 	divzf
+				; ici T3 = R
+1$  	move.l	a0,-(sp)
+	cmp.b	#1,(a0)
+	beq.s 	4$
+				; ici T3 = R et T1 = R
+	move.l	a1,-(sp)
+	cmp.b	#1,(a1)
+	beq.s 	5$
+				; ici T3 =T2 = T1 = R
+	bsr 	_divrr
+	bra.s 	6$
+				; ici T3 = T1 = R et T2 = I
+5$  	bsr 	_divir
+	bra.s 	6$
+				; ici T3 = R et T1 = I
+4$  	cmp.b	#1,(a1)
+	beq.s 	7$
+				; ici T3 = T2 = R et T1 = I
+	move.l	a1,-(sp)
+	bsr 	_divri
+	bra.s 	6$
+				; ici T3 = R et T2 = T1 = I
+7$  	move.w	6(a1),d0
+	addq.w	#1,d0
+	bsr 	_getr
+	move.l	a0,-(sp)
+	move.l	a1,-(sp)
+	bsr 	_affir
+	move.l	4(sp),(sp)
+	move.l	a0,4(sp)
+	bsr 	_divrr
+6$  	move.l	a2,4(sp)
+	move.l	d0,(sp)
+	bsr 	_affrr
+	addq.l	#8,sp
+divzf 	move.l	(sp)+,_avma
+	move.l	(sp)+,a2
+	rts
+
+				; division S/R=R sinon erreur
+
+_divsrz lea 	_divsr,a0
+	bra 	mpopz
+
+				; division R/S=R sinon erreur
+
+_divrsz lea 	_divrs,a0
+	bra 	mpopz
+
+				; division I/R=R sinon erreur
+
+_divirz lea 	_divir,a0
+	bra 	mpopz
+
+				; division R/I=R sinon erreur
+
+_divriz lea 	_divri,a0
+	bra 	mpopz
+
+				; division R/R=R sinon erreur
+
+_divrrz lea 	_divrr,a0
+	bra 	mpopz
+*===================================================================*
+*									*
+*	Division par valeur : entier / entier = entier ou reel	*
+*									*
+*	entree : a7($4) contient i2 de type S			*
+*		 a7($8) contient i1 de type S			*
+*		 a7($12) pointe sur i3 ou r3 de type I ou R 	*
+*	sortie : a7($12) pointe sur i2 / i1 de type I ou R		*
+*									*
+*===================================================================*
+
+_divssz cmp.b	#1,([12,sp])
+	bne.s 	_divssr
+_divssi  move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr 	_divss
+	move.l	20(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+_divssr  move.l	_avma,-(sp)
+	move.w	([16,sp],2),d0
+	bsr 	_getr
+	move.l	a0,-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_affsr		; conversion dividende en R
+	move.l	4(sp),(sp)	; dividende converti
+	move.l	20(sp),4(sp)	; diviseur (type S)
+	bsr 	_divrs
+	move.l	24(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	(sp)+,_avma
+	rts
+
+*===================================================================*
+*									*
+*	Division par valeur : S / I = entier ou reel		*
+*									*
+*	entree : a7($4) contien i2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*		 a7($12) pointe sur i3 ou r3 de type I ou R 	*
+*	sortie : a7($12) pointe sur i2 / i1 de type I ou R		*
+*									*
+*===================================================================*
+
+_divsiz link	a6,#0
+	movem.l	a2-a4,-(sp)
+	move.l	16(a6),a3
+	cmp.b	#1,(a3)
+	bne.s 	_divsir
+_divsii  move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_divsi
+	move.l	16(a6),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bsr 	_giv
+divsizf movem.l	(sp)+,a2-a4
+	unlk	a6
+	rts
+_divsir  move.l	_avma,a2
+	move.w	2(a3),d0
+	addq.w	#1,d0
+	bsr 	_getr
+	move.l	a0,a4
+	move.l	a0,-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_affsr		; conversion dividende en R
+	addq.l	#2,d0
+	bsr 	_getr
+	move.l	a0,4(sp)
+	move.l	12(a6),(sp)
+	bsr 	_affir		; conversion diviseur en R
+	move.l	a4,(sp)
+	bsr 	_divrr
+	move.l	a3,4(sp)
+	move.l	d0,(sp)
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	a2,_avma
+	bra.s 	divsizf
+
+*===================================================================*
+*									*
+*	Division par valeur : I / S = entier ou reel		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient i1 de type S			*
+*		 a7($12) pointe sur i3 ou r3 de type I ou R 	*
+*	sortie : a7($12) pointe sur i2 / i1 de type I ou R		*
+*									*
+*===================================================================*
+
+_divisz cmp.b	#1,([12,sp])
+	bne.s 	_divisr
+_divisi  move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr 	_divis
+	move.l	20(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+_divisr  move.l	_avma,-(sp)
+	move.w	([16,sp],2),d0
+	bsr 	_getr
+	move.l	a0,-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_affir		; conversion dividende en R
+	move.l	4(sp),(sp)	; dividende converti
+	move.l	20(sp),4(sp)	; diviseur (type S)
+	bsr 	_divrs
+	move.l	24(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	(sp)+,_avma
+	rts
+
+*===================================================================*
+*									*
+*	Division par valeur : entier / entier = entier ou reel	*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*		 a7($12) pointe sur i3 ou r3 de type I ou R 	*
+*	sortie : a7($12) pointe sur i2 / i1 de type I ou R		*
+*									*
+*===================================================================*
+
+_diviiz link	a6,#0
+	movem.l	a2-a4,-(sp)
+	move.l	16(a6),a3
+	cmp.b	#1,(a3)
+	bne.s 	_diviir
+_diviii  move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_divii
+	move.l	16(a6),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bsr 	_giv
+diviizf movem.l	(sp)+,a2-a4
+	unlk	a6
+	rts
+_diviir  move.l	_avma,a2
+	move.w	2(a3),d0
+	bsr 	_getr
+	move.l	a0,a4
+	move.l	a0,-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_affir		; conversion dividende en R
+	addq.l	#2,d0
+	bsr 	_getr
+	move.l	a0,4(sp)
+	move.l	12(a6),(sp)
+	bsr 	_affir		; conversion diviseur en R
+	move.l	a4,(sp)
+	bsr 	_divrr
+	move.l	a3,4(sp)
+	move.l	d0,(sp)
+	bsr 	_affrr
+	addq.l	#8,sp
+	move.l	a2,_avma
+	bra.s 	diviizf
+
+
+*===================================================================*
+*									*
+*		Division : entier court / entier court = entier 	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur s2 div s1 de type I (zone creee) 	*
+*		 d1.l contient le reste(du signe du dividende)	*
+*									*
+*===================================================================*
+
+_divss  link	a6,#0
+	movem.l	d2-d3,-(sp)
+	moveq	#0,d3
+	move.l	12(a6),d1	; d1.l recoit s1
+	bne.s 	1$
+				; ici s1 = 0
+	move.l	#diver1,-(sp)
+	jsr 	_err
+				; ici s1 <> 0
+1$  	move.l	8(a6),d2	; d2.l recoit s2
+	bpl	9$
+	moveq	#-1,d3
+9$	divs.l	d1,d3:d2
+	bne.s 	2$
+				; ici quotient nul
+3$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	d3,d1
+	bra.s 	divssf
+				; ici quotient non nul
+2$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d2
+	bpl.s 	4$
+	neg.l	d2
+	move.b	#-1,4(a0)
+4$  	move.l	d2,8(a0)
+	move.l	d3,d1
+divssf  move.l	a0,d0
+	movem.l	(sp)+,d2-d3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : entier court / entier = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient i1 de type I			*
+*	sortie : d0 pointe sur s2 div i1 de type I (zone creee) 	*
+*		 d1.l contient le reste (du signe du dividende) 	*
+*									*
+*===================================================================*
+
+_divsi  link	a6,#0
+	movem.l	d2-d4,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur le diviseur i1
+	tst.b	4(a1)
+	bne.s 	1$
+				; ici i1 = 0
+	move.l	#diver2,-(sp)
+	jsr 	_err
+				; ici i1 <> 0
+1$  	move.l	8(a6),d2	; d2.l contient le dividende s2
+	bne.s 	3$
+				; ici quotient et reste nuls
+2$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	moveq	#0,d1
+	bra.s 	divsif
+				; ici i1 et s2 <> 0
+3$  	move.w	6(a1),d1	; d1.w contient le1
+	cmp.w	#3,d1
+	beq.s 	4$
+				; ici quotient nul et reste=s2
+6$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	d2,d1
+	bra.s 	divsif
+				; ici L1 = 1
+4$  	move.l	8(a1),d1	; d1.l contient |i1|
+	move.l	d2,d3		; d3.l contient s2
+	bpl.s 	5$
+	neg.l	d3		; d3.l contient |s2|
+5$  	moveq	#0,d4
+	divu.l	d1,d4:d3
+	beq.s 	6$
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	d3,8(a0)	; ranger mantisse
+	move.l	4(a1),4(a0)
+	tst.l	d2
+	bpl.s 	7$
+	move.b	#-1,4(a0)	; mise a jour du signe
+7$  	move.l	d4,d1
+	tst.b	4(a1)
+	bpl.s 	divsif
+	neg.l	d1		; mise a jour reste
+divsif  move.l	a0,d0
+	movem.l	(sp)+,d2-d4
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : entier court / reel = reel		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur s2 / r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_divsr  link	a6,#-32
+	movem.l	d2/a2-a4,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur r1
+	tst.b	4(a1)
+	bne.s 	2$
+				; ici r1 = 0
+	move.l	#diver3,-(sp)
+	jsr 	_err
+				; ici r1 <> 0
+2$  	tst.l	8(a6)
+	bne.s 	1$
+				; ici s2 = 0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	a0,d0
+	bra.s 	divsrf
+				; ici s2 et r1 <> 0
+1$  	moveq	#0,d0
+	move.w	2(a1),d0
+	bsr 	_getr		; allocation pour resultat
+	move.l	8(a6),d2	; d2.l recoit s2
+	move.l	a0,a4
+	addq.w	#1,d0
+	bsr 	_getr
+	move.l	a0,-(sp) 	; sauvegarde adr. copie
+	move.l	d2,-(sp)
+	bsr 	_affsr
+	addq.l	#4,sp
+	move.l	a0,a2		; a2 pointe sur copie s2
+	move.l	a4,a0		; a0 pointe sur resultat
+	bsr 	dvrr
+	move.l	(sp)+,a0
+	bsr 	_giv 		; desallouer copie
+	move.l	a4,d0
+divsrf  movem.l	(sp)+,d2/a2-a4	
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : entier / entier court = entier		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur i2 / s1 de type I (zone creee)	*
+*		le reste est dans d1.l (du signe du dividende)	*
+*									*
+*===================================================================*
+
+_divis  link	a6,#0
+	movem.l	d2-d6/a2,-(sp)
+	move.l	12(a6),d1	; d1 recoit s1 diviseur
+	bne.s 	1$
+	move.l	#diver4,-(sp)
+	jsr 	_err
+1$  	bpl.s 	2$
+	neg.l	d1
+				; ici d1 contient |s1|
+2$  	move.l	8(a6),a2	; a2 pointe sur i2 dividende
+	move.w	6(a2),d2	; d2 recoit le2
+	move.w	4(a2),d5	; signe de i2
+	bne.s 	4$
+				; ici i2=0 : q=0 , r=0
+3$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	moveq	#0,d1		; reste nul
+	bra.s 	divisf
+				; ici i2 et s1 <>0
+4$  	move.w	d2,d0		; d0 recoit le2
+	addq.l	#8,a2
+	move.l	(a2)+,d4
+	moveq	#0,d3
+	divu.l	d1,d3:d4	; calcul de q0
+	bne.s 	5$
+				; ici q0 = 0
+	subq.w	#1,d0		; diminuer long. effective
+	cmp.w	#2,d0
+	bne.s 	5$
+				; ici q=0 , reste dans d3
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	10$
+				; ici q <> 0
+5$  	bsr 	_geti
+	move.l	a0,a1
+	move.w	d0,6(a0)	; met long. effect.
+	move.b	#1,4(a0)
+	move.w	12(a6),d6	; 'signe de s1'
+	eor.w	d5,d6
+	bpl.s 	6$		; si de meme signe
+	move.b	#-1,4(a0)	; si de signes contraires
+6$  	addq.l	#8,a1
+	tst.l	d4		; q0 = 0 ?
+	beq.s 	7$
+	move.l	d4,(a1)+ 	; non: ranger q0
+7$  	subq.w	#3,d2		; d2 recoit L1 -1 compteur
+	bra.s 	9$
+8$  	move.l	(a2)+,d4 	; boucle de division
+	divu.l	d1,d3:d4
+	move.l	d4,(a1)+
+9$  	dbra	d2,8$
+10$ 	move.l	d3,d1		; le reste est mis dans d1
+	tst.w	d5		; i1 > 0 ?
+	bpl.s 	divisf
+	neg.l	d1		; non : changer signe de r
+divisf  move.l	a0,d0		; met addresse resultat
+	movem.l	(sp)+,d2-d6/a2
+	unlk a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : entier / entier = entier 		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur i2 / i1 de type I (zone creee)	*
+*		 Le reste est du signe du dividende 		*
+*									*
+*===================================================================*
+
+_divii  clr.l	-(sp)
+	move.l	12(sp),-(sp)	; empilage de i1
+	move.l	12(sp),-(sp)	; empilage de i2
+	bsr 	_dvmdii
+	lea 	12(sp),sp	; depilage
+	rts
+
+*===================================================================*
+*									*
+*		Division : entier / reel = reel 			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur i2 / r1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_divir  link	a6,#-32 	; var. locales pour appel dvrr
+	movem.l	a2-a3,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur r1
+	tst.b	4(a1)
+	bne.s 	1$
+				; ici r1 = 0
+	move.l	#diver5,-(sp)
+	jsr 	_err
+				; ici r1 <> 0
+1$  	move.l	8(a6),a2	; a2 pointe sur i2
+	tst.b	4(a2)
+	bne.s 	2$
+				; ici i2 = 0
+	move.w	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	move.l	a0,d0
+	bra.s 	divirf
+2$  	moveq	#0,d0		; ici i2 et r1 <> 0
+	move.w	2(a1),d0	; d0.w contient l1
+	bsr 	_getr		; allocation pour resultat
+	move.l	a0,a3
+	addq.w	#1,d0
+	bsr 	_getr		; allocation pour conversion i2 type R
+	move.l	a0,-16(a6) 	; sauvegarde adr. du transforme i2'
+	move.l	a0,-(sp)
+	move.l	a2,-(sp)
+	bsr 	_affir
+	addq.l	#8,sp
+	move.l	a0,a2		; a2 pointe sur i2'
+	move.l	a3,a0		; a0 pointe sur resultat
+	bsr 	dvrr
+	move.l	-16(a6),a0
+	bsr 	_giv 		; desallouer i2'
+	move.l	a3,d0
+divirf  movem.l	(sp)+,a2-a3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : reel / entier court = reel		*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur s1 de type S 			*
+*	sortie : d0 pointe sur r2 / s1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_divrs  link	a6,#0
+	movem.l	d2-d6/a2,-(sp)
+	move.l	12(a6),d1	; d1 recoit s1 diviseur
+	bne.s 	1$
+				; ici s1 = 0
+	move.l	#diver6,-(sp)
+	jsr 	_err
+				; ici diviseur s1 <> 0
+1$  	move.l	8(a6),a2	; a2 pointe sur r2 dividende
+	tst.b	4(a2)
+	bne.s 	2$
+				; ici r2 = 0
+	moveq	#3,d0
+	bsr 	_getr
+	tst.l	d1
+	bpl.s 	11$
+	neg.l	d1
+11$ 	bfffo	d1{0:32},d0
+	add.l	4(a2),d0
+	sub.l	#31,d0
+	bmi 	9$
+	move.l	d0,4(a0)
+	clr.l	8(a0)
+	bra 	divrsf
+				; ici r2 et s1 <> 0
+2$  	move.w	2(a2),d0	; d0 recoit l2
+	bsr 	_getr		; allocation pour resultat
+	move.b	4(a2),4(a0)	; signe de r2
+	tst.l	d1
+	bpl.s 	3$
+	neg.l	d1		; d1 recoit |s1| <= 2^31
+				; s1 est tjrs <= 1er mot mantisse
+				; le 1er quotient partiel est non nul
+	neg.b	4(a0)
+3$  	move.l	a0,a1
+	addq.l	#8,a1
+	addq.l	#8,a2
+	subq.w	#3,d0		; d0 recoit L2-1 compteur
+	move.l	d0,d2		; conserve dans d2
+	moveq	#0,d3		; 1er reste
+4$  	move.l	(a2)+,d4
+	divu.l	d1,d3:d4
+	move.l	d4,(a1)+
+	dbra	d0,4$		; boucle de division
+
+	move.l	8(a0),d0	; resultat normalise ?
+	bpl.s 	10$
+	moveq	#0,d1		; ici normalise ; nb shift = 0
+	bra.s 	5$
+				; ici il faut normaliser
+
+10$ 	moveq	#0,d4
+	divu.l	d1,d3:d4	; traite dernier reste: quotient
+				; a recuperer par le shift
+	bfffo	d0{0:32},d1	; nb de shift dans d1
+	lsl.l	d1,d0		; shift 1er lg mot d0
+	move.l	a0,a1
+	addq.l	#8,a1
+	moveq	#1,d6
+	lsl.l	d1,d6
+	subq.l	#1,d6		; d6 masque de shift
+	bra.s 	7$
+6$  	move.l	4(a1),d3
+	rol.l	d1,d3
+	move.l	d3,d5
+	and.l	d6,d3
+	add.l	d3,d0
+	move.l	d0,(a1)+
+	sub.l	d3,d5
+	move.l	d5,d0
+7$  	dbra	d2,6$
+	rol.l	d1,d4		; shifter dernier quotient
+	and.l	d6,d4
+	add.l	d4,d0
+	move.l	d0,(a1)
+5$  	move.l	8(a6),a2	; a2 pointe sur r2 dividende
+	move.l	4(a2),d2
+	and.l	#$ffffff,d2	; exposant biaise de r2
+	sub.l	d1,d2		; exposant resultat
+	bpl.s 	8$
+				; ici underflow
+9$  	move.l	#diver7,-(sp)
+	jsr 	_err
+8$  	move.w	d2,6(a0)
+	swap	d2
+	move.b	d2,5(a0)	; range exposant
+divrsf  move.l	a0,d0
+	movem.l	(sp)+,d2-d6/a2
+	unlk	a6
+	rts
+
+
+*===================================================================*
+*									*
+*		Division : reel / entier = reel 			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur r2 / i1 de type R (zone creee)	*
+*									*
+*===================================================================*
+
+_divri  link	a6,#-32 	; var. locales pour appel dvrr
+	movem.l	d2-d3/a2-a3,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur le diviseur i1
+	tst.b	4(a1)
+	bne.s 	1$
+				; ici i1 = 0
+	move.l	#diver8,-(sp)
+	jsr 	_err
+				; ici i1 <> 0
+1$  	move.l	8(a6),a2	; a2 pointe sur le dividende r2
+	tst.b	4(a2)
+	bne.s 	2$
+				; ici r2 = 0
+	moveq	#3,d0
+	bsr 	_getr
+	move.w	6(a1),d0
+	lsl.l	#5,d0
+	bfffo	8(a1){0:32},d1
+	add.l	4(a2),d1
+	add.l	#65,d1
+	sub.l	d0,d1
+	bpl.s 	3$
+	move.l	#diver12,-(sp)	; underflow R/I avec R = 0
+	jsr 	_err
+3$  	move.l	d1,4(a0)	
+	clr.l	8(a0)
+	move.l	a0,d0
+	bra.s 	divrif
+				; ici r2 et i1 <> 0
+2$  	moveq	#0,d0
+	move.w	2(a2),d0
+	bsr 	_getr		; allocation pour resultat
+	move.l	_avma,a3	; eviter le chevauchement
+	subq.l	#8,a3
+	move.l	a3,_avma
+	move.l	#2,(a3)		; hack pour que giv rende ceci
+	move.l	a0,a3		; sauvegarde adr. resultat
+	addq.w	#1,d0
+	bsr 	_getr		; allocation pour conversion i1 type R
+	move.l	a0,-16(a6) 	; sauvegarde adr. copie
+	move.l	a0,-(sp)
+	move.l	a1,-(sp)
+	bsr 	_affir
+	addq.l	#8,sp
+	move.l	a0,a1		; a1 pointe sur copie i1
+	move.l	a3,a0		; a0 pointe sur resultat
+	bsr 	dvrr
+	move.l	-16(a6),a0
+	bsr 	_giv 		; desallouer copie
+	move.l	a3,d0
+divrif  movem.l	(sp)+,d2-d3/a2-a3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Division : reel / reel = reel			*
+*									*
+*	entree : a7($4) pointe sur r2 de type R 			*
+*		 a7($8) pointe sur r1 de type R 			*
+*	sortie : d0 pointe sur r2 / r1 de type R (zone creee)	*
+*	precision : L = inf ( L1 , L2 ) 				*
+*									*
+*===================================================================*
+
+_divrr  link	a6,#-32 	; var. locales pour appel dvrr
+	move.l	a2,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur r1=y diviseur
+	move.l	8(a6),a2	; a2 pointe sur r2=x dividende
+	tst.b	4(a1)		; r1 = 0 ?
+	bne.s 	1$
+				; ici r1 = 0
+	move.l	#diver9,-(sp)
+	jsr 	_err
+1$  	tst.b	4(a2)		; r2 = 0 ?
+	bne.s 	3$
+				; ici r2=0, r1<>0 : resultat nul
+	moveq	#3,d0
+	bsr 	_getr
+	move.l	4(a1),d0	
+	and.l	#$ffffff,d0	; exposant de r1
+	sub.l	4(a2),d0
+	neg.l	d0
+	add.l	#$800000,d0
+	cmp.l	#$1000000,d0
+	bcs.s 	4$
+	move.l	#diver11,-(sp)	; debordement r/r
+	jsr 	_err
+4$  	tst.l	d0
+	bgt.s 	5$
+	move.l	#diver10,-(sp)	; underflow r/r
+	jsr 	_err
+5$  	move.l	d0,4(a0)
+	clr.l	8(a0)
+	bra.s 	divrrf
+3$  	move.w	2(a1),d0
+	cmp.w	2(a2),d0
+	bls.s 	2$
+	move.w	2(a2),d0	; d0 recoit l=inf(l1,l2)
+2$  	bsr 	_getr
+	bsr.s 	dvrr		; effectuer la division !
+divrrf  move.l	a0,d0
+	move.l	(sp),a2
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*	module interne de division r/r (pour R/R,R/I,I/R et S/R)	*
+*	--------------------------------------------------------	*
+*	entree : a1 et a2 pointent sur 2 reels r1 et r2 		*
+*	tous 2 non nuls.						*
+*	a0 pointe sur un type reel de longueur l=inf(l1,l2) 	*
+*	ce module a besoin de variables locales reservees et	*
+*	pointees par a6 dans le programme appelant. 		*
+*	sortie : le quotient r2/r1 est mis a l'addresse initiale a0 *
+*	(qui n'est pas affectee)                                    *
+*===================================================================*
+
+dvrr 	movem.l	d2-d7/a2-a4,-(sp)
+	move.b	4(a1),d1	; signe de r1
+	move.b	4(a2),d2	; signe de r2
+	eor.b	d2,d1					
+	addq.b	#1,d1
+	move.b	d1,-2(a6)	; sauvegarde signe resultat
+	move.l	4(a2),d2
+	and.l	#$ffffff,d2
+	move.l	4(a1),d1
+	and.l	#$ffffff,d1
+	sub.l	d1,d2		; exposant provisoire sans offset
+	add.l	#$800000,d0	; ajouter offset
+	move.l	d2,-6(a6)	; sauvegarde
+	move.w	2(a0),d0	; d0.w recoit longueur resultat ( inf(l1,l2) )
+	move.w	2(a1),d1
+	cmp.w	#3,d1
+	bne.s	5$
+	move.l	8(a1),d1
+	move.l	8(a2),d3
+	clr.l	d2
+	cmp.w	#3,2(a2)
+	beq.s	7$
+	move.l	12(a2),d2
+7$	cmp.l	d3,d1
+	bls.s	6$
+	divu.l	d1,d3:d2
+	move.l	d2,8(a0)
+	move.l	-6(a6),d0
+	subq.l	#1,d0
+	bra	comd2
+6$	lsr.l	#1,d3
+	roxr.l	#1,d2
+	divu.l	d1,d3:d2
+	move.l	d2,8(a0)
+	move.l	-6(a6),d0
+	bra	comd2
+5$	sub.w	d0,d1		; flag nombre de mots du diviseur
+	move.w	d1,-28(a6) 	; a sauvegarder.
+	subq.w	#2,d0
+	move.w	d0,d7		; d0 et d7 recoit m=inf(l1,l2)-2
+	move.w	d7,-12(a6) 	; d7 sera compt boucle externe
+	move.l	(a0),-10(a6)	; sauvegarde 1er lg mot code resultat
+				; (on a besoin de toute la place)
+	move.w	2(a2),d6
+	subq.w	#2,d6
+	addq.l	#8,a2		; a2 pointe sur y1 (1er mot dividende
+				; on note y=y1y2...ym le dividende
+	move.l	a0,a4
+	clr.l	(a4)+
+1$  	move.l	(a2)+,(a4)+	; on recopie m+1 lgmots mantisse de y
+	dbra	d0,1$		; precede par un zero
+				; y(m+1) peut ne pas exister
+				; c'est alors n'importe quoi !
+	cmp.w	d7,d6		; l2>l1 ?
+	bgt.s	4$
+	clr.l	-4(a4)		; Si l2<=l1, y(m+1) n'existe pas
+				; a4 pointe apres y(m+1)
+4$	move.l	a0,a2		; a2 pointe sur y0=0 1er mot dividende
+	addq.l	#8,a1		; a1 pointe sur x1 1er mot diviseur
+	lea 	8(a1,d7.w*4),a3 ; a3 pointe apres x(m+2)
+	move.l	a3,-32(a6)
+	move.w	-28(a6),d6 	; (peut etre n'importe quoi mais va etre
+	bne.s 	2$		; corrige)
+	move.l	-8(a3),-20(a6)
+	clr.l	-8(a3)
+2$  	subq.w	#1,d6
+	bgt.s 	3$
+	move.l	-4(a3),-24(a6)
+	clr.l	-4(a3)
+3$  	moveq	#0,d6		; d6 recoit 0 pour les addx
+
+				; Boucles de division R/R
+				; d7 compt bcl externe initialise a m
+				; pour trouver q0q1...qm
+				; d0 compt bcl interne initialise
+				; par d7 a chaque tour
+*...................................................................*
+dext 	move.l	(a1),d0		; d0 recoit x1 (1er mot diviseur)
+	cmp.l	(a2),d0		; compare a yi
+	bne.s 	1$
+	move.l	#-1,d1		; essayer q=2^32-1
+	add.l	4(a2),d0
+	bcs.s 	4$
+	move.l	d0,d2
+	bra.s 	2$
+1$  	move.l	(a2),d2		; d2 recoit yi
+	move.l	4(a2),d1	; d2:d1 recoit yiy(i+1)
+	divu.l	d0,d2:d1	; d1 recoit q = yiy(i+1) div x1
+				; d2 recoit r = yiy(i+1) mod x1
+2$  	move.l	4(a1),d3	; d3 recoit x2
+	mulu.l	d1,d4:d3	; d4:d3 recoit q*x2
+	sub.l	8(a2),d3
+	subx.l	d2,d4		; d4:d3 recoit q*x2-(r,y(i+2))
+	bls.s 	4$
+	
+3$  	subq.l	#1,d1		; ici q est trop grand : q-1
+	sub.l	4(a1),d3
+	subx.l	d0,d4		; correction du reste partiel
+	bhi.s 	3$		; boucler tant que trop
+				; ici q =yiy(i+1)y(i+2) div x1x2 correct
+				; on va calculer le reste partiel
+4$  	move.w	d7,d0		; d0  recoit m-i compteur
+	move.l	a3,a1		; a3,a1 pointent apres y(m+2-i)
+	move.l	a4,a2		; a4,a2 pointent apres y(m+1)
+	move.l	-(a1),d2
+	mulu.l	d1,d3:d2	; initialise retenue d3 par
+	sub.l	d2,d2		; poids fort de q*y(m+2-i). d2=X=0
+5$  	move.l	-(a1),d5
+	mulu.l	d1,d4:d5	; boucle interne de multiplication et
+	addx.l	d3,d5		; soustraction :
+	addx.l	d2,d4		; yi...y(m+1) recoit yi...y(m+1)-
+	sub.l	d5,-(a2) 	;	   q*x1...x(m+1-i)
+	move.l	d4,d3
+	dbra	d0,5$
+	addx.l	d2,d3
+	sub.l	d3,-4(a2)
+	bcc.s 	6$
+				; ici carry: q encore 1 de trop
+	subq.l	#1,d1
+	move.w	d7,d0
+	move.l	a3,a1
+	move.l	a4,a2
+	subq.l	#4,a1		; correction sur a1 (car on avait prevu
+				; d'initialiser la retenue)
+7$  	addx.l	-(a1),-(a2)
+	dbra	d0,7$		; boucle de readdition(met reste a jour)
+6$  	move.l	d1,-4(a2)	; qi correct ! ranger a la place de xi
+	subq.l	#4,a3		; a3 p. un mot de moins pour bcle suiv.
+				; a3 pointe sur x(m-i+1)
+bcdf 	dbra	d7,dext 	; fin de boucle externe de division
+*...................................................................*
+	move.l	-32(a6),a3
+	move.w	-28(a6),d5 	; remise eventuelle de xm+1 et xm+2
+	bne.s 	7$
+	move.l	-20(a6),-8(a3)
+7$  	subq.w	#1,d5
+	bgt.s 	8$
+	move.l	-24(a6),-4(a3)
+8$  	move.w	-12(a6),d5
+	move.w	d5,d4		; d4 recoit m
+6$  	move.l	-(a2),4(a2)
+	dbra	d5,6$
+	move.l	-10(a6),(a2)+	; 1er lg mot code;a2 pointe sur q1
+	move.l	-6(a6),d0	; exposant non biaise
+	move.l	(a2),d1		; d1 recoit q0=0 ou 1
+	bne.s 	1$
+				; ici q0=0 : mantisse correcte
+	subq.l	#1,d0		; retrancher 1 a l'exposant
+	bra.s 	comd2
+1$  	addq.l	#4,a2		; ici q0=1 : shifter de 1 a droite
+	subq.w	#1,d4		; d4 recoit m-1
+	asr.w	#1,d1		; met carry flag
+5$  	roxr.w	(a2)+
+	roxr.w	(a2)+
+	dbra	d4,5$		; boucle de normalisation
+comd2  	cmp.l	#$1000000,d0
+	ble.s 	3$
+	move.l	#diver10,-(sp)	; underflow
+	jsr 	_err
+3$  	bcs.s 	4$
+	move.l	#diver11,-(sp)	; overflow
+	jsr 	_err
+4$  	move.l	d0,4(a0)	; range exposant
+	move.b	-2(a6),4(a0)	; range signe
+	movem.l	(sp)+,d2-d7/a2-a5
+dvrrf 	rts
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES D ' INVERSION                  ***
+*** 		( programmes par valeurs : le resultat est	  ***
+**			mis dans un REEL existant deja	)	  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+_mpinvsr move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	pea 	1
+	bsr 	_divssr
+	lea 	12(sp),sp
+	rts
+
+_mpinvz cmp.b	#1,([4,sp])
+	bne.s 	_mpinvrr
+
+_mpinvir move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	pea 	1
+	bsr 	_divsiz
+	lea 	12(sp),sp
+	rts
+
+_mpinvrr move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	pea 	1
+	bsr 	_divsrz
+	lea 	12(sp),sp
+	rts
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 			PROGRAMMES MODULO			  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+
+*===================================================================*
+*									*
+*			Modulo (par valeur) 			*
+*									*
+*	entree : a7($4) pointe sur n2 de type I 			*
+*		 a7($8) pointe sur n1 de type I 			*
+*		 a7($12) pointe sur n3 de type I			*
+*	sortie : la zone pointee par a7($12) contient le reste de	*
+*		 la division de n2 par n1				*
+*		 compris entre 0 et abs(n1)-1			*
+*	interdit : type S et R					*
+*									*
+*===================================================================*
+
+_mpmodz lea 	_modii,a0
+	bra 	mpopi
+
+				; modulo S mod S = I sinon erreur
+
+_modssz lea 	_modss,a0
+	bra 	mpopi
+
+				; modulo S mod I = I sinon erreur
+
+_modsiz lea 	_modsi,a0
+	bra 	mpopi
+
+				; modulo I mod S = I sinon erreur
+
+_modisz lea 	_modis,a0
+	bra 	mpopi
+
+				; modulo I mod I = I sinon erreur
+
+_modiiz lea 	_modii,a0
+	bra 	mpopi
+
+*===================================================================*
+*									*
+*		entier court Modulo entier court = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur s2 mod s1 de type I (zone creee) 	*
+*		 compris entre 0 et abs(s1)-1			*
+*									*
+*===================================================================*
+
+_modss  link	a6,#0
+	movem.l	d2-d3,-(sp)
+	moveq	#0,d3
+	move.l	12(a6),d1	; d1.l contient s1
+	bne.s 	1$
+				; ici s1 = 0
+	move.l	#moder1,-(sp)
+	jsr 	_err
+				; ici s1 <> 0
+1$  	move.l	8(a6),d2	; d2.l contient s2
+	bpl	9$
+	moveq	#-1,d3
+9$	divs.l	d1,d3:d2
+	tst.l	d3
+	bne.s 	2$
+				; ici reste nul
+3$  	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	7$
+				; ici reste non nul
+2$  	bmi.s 	5$
+				; ici reste > 0
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	move.l	d3,8(a0)
+	bra.s 7$
+				; ici reste < 0
+5$  	move.l	12(a6),-(sp)
+	move.l	d3,-(sp)
+	tst.l	d1
+	bpl.s 	6$
+				; ici s1 < 0
+	bsr 	_subss
+	addq.l	#8,sp
+	bra.s 	modssf
+				; ici s1 > 0
+6$  	bsr 	_addss
+	addq.l	#8,sp
+	bra.s 	modssf
+7$  	move.l	a0,d0
+modssf  movem.l	(sp)+,d2-d3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		entier court Modulo entier = entier 		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) ppinte sur i1 de type I 			*
+*	sortie : d0 pointe sur s2 mod i1 de type I (zone creee) 	*
+*		 compris entre 0 et abs(i1)-1			*
+*									*
+*===================================================================*
+
+_modsi  link	a6,#0
+	movem.l	d2-d3,-(sp)
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_divsi
+	addq.l	#8,sp
+	move.l	d0,a0
+	bsr 	_giv 		; desallouer memoire provisoire
+	tst.l	d1		; tester le reste
+	bne.s 	1$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	2$
+				; ici reste non nul
+1$  	bmi.s 	3$
+				; ici reste > 0
+	move.l	d1,d3		; d3.l recoit le reste
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	move.l	d3,8(a0)
+	bra.s 	2$
+				; ici reste < 0
+3$  	move.l	12(a6),-(sp)
+	move.l	d1,-(sp)
+	move.l	12(a6),a1	; a1 pointe sur i1
+	tst.b	4(a1)
+	bpl.s 	5$
+				; ici i1 < 0
+	bsr 	_subsi
+	bra.s 	6$
+				; ici i1 > 0
+5$  	bsr 	_addsi
+6$  	addq.l	#8,sp
+	bra.s 	modsif
+2$  	move.l	a0,d0
+modsif  movem.l	(sp)+,d2-d3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		entier Modulo entier court = entier 		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur i2 mod s1 de type I (zone creee) 	*
+*		 compris entre 0 et abs(s1)-1			*
+*									*
+*===================================================================*
+
+_modis  link	a6,#0
+	movem.l	d2-d3,-(sp)
+	move.l	12(a6),-(sp)
+	move.l	8(a6),-(sp)
+	bsr 	_divis
+	addq.l	#8,sp
+	move.l	d0,a0
+	bsr 	_giv
+	tst.l	d1
+	bne.s 	1$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	2$
+				; ici reste non nul
+1$  	bmi.s 	3$
+				; ici reste > 0
+	move.l	d1,d3
+	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	move.l	d3,8(a0)
+	bra.s 	2$
+				; ici reste < 0
+3$  	move.l	12(a6),-(sp)
+	move.l	d1,-(sp)
+	move.l	12(a6),d1	; d1.l contient s1
+	bpl.s 	5$
+	bsr 	_subss
+	bra.s 	6$
+5$  	bsr 	_addss
+6$  	addq.l	#8,sp
+	bra.s 	modisf
+2$  	move.l	a0,d0
+modisf  movem.l	(sp)+,d2-d3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		entier Modulo entier = entier			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur i2 mod i1 de type I			*
+*		 compris entre 0 et abs(i1)-1(zone creee)		*
+*									*
+*===================================================================*
+
+_modii  link	a6,#-4
+	move.l	#-1,-(sp)
+	move.l	12(a6),-(sp)	; empilage adresse i1
+	move.l	8(a6),-(sp) 	; empilage adresse i2
+	move.l	_avma,-4(a6)	; sauvegarde adr. tete pile PARI
+	bsr 	_dvmdii
+	move.l	d0,a1		; a1 pointe sur resultat
+	tst.b	4(a1)
+	bpl.s 	modiif
+				; ici reste negatif
+	move.l	a1,(sp)		; empilage adr. du reste
+	tst.b	([12,a6],4) 	; test signe du modulo
+	bpl.s 	1$
+	bsr 	_subii
+	bra.s 	2$
+1$  	bsr 	_addii
+2$  	move.l	(sp)+,a1
+	move.l	_avma,a0
+	move.w	2(a0),d0
+	subq.w	#1,d0
+	move.l	-4(a6),a0	; a0 pointe sur pile initiale
+3$  	move.l	-(a1),-(a0)
+	dbra	d0,3$		; ecraser resultat intermediaire
+	move.l	a0,_avma
+	move.l	a0,d0		; nouvelle adresse resultat
+modiif  unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 	PROGRAMMES DE RESTE DES DIVISIONS ENTIERES		  ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*			Reste (par valeur)				*
+*									*
+*	entree : a7($4) pointe sur n2 de type I 			*
+*		 a7($8) pointe sur n1 de type I 			*
+*		 a7($12) pointe sur n3 de type I			*
+*	sortie : la zone pointee par a7($12) contient le reste de	*
+*		 la division de n2 par n1 (du signe du dividende)	*
+*	interdit : type S et R					*
+*									*
+*===================================================================*
+
+_mpresz lea 	_resii,a0
+	bra 	mpopi
+
+				; reste de S/S = I sinon erreur
+
+_resssz lea 	_resss,a0
+	bra 	mpopi
+
+				; reste de S/I = I sinon erreur
+
+_ressiz lea 	_ressi,a0
+	bra 	mpopi
+
+				; reste de I/S = I sinon erreur
+
+_resisz lea 	_resis,a0
+	bra 	mpopi
+
+				; reste de I/I = I sinon erreur
+
+_resiiz lea 	_resii,a0
+	bra 	mpopi
+
+*===================================================================*
+*									*
+*		Reste : entier court / entier court = entier	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur le reste de la division s2 / s1	*
+*		 de type I (zone creee) 				*
+*		 Le reste est du signe du dividende 		*
+*									*
+*===================================================================*
+
+_resss  link	a6,#0
+	movem.l	d2-d3,-(sp)
+	moveq	#0,d3
+	move.l	12(a6),d1	; d1.l contient le diviseur s1
+	bne.s 	1$
+				; ici s1 = 0
+	move.l	#reser1,-(sp)
+	jsr 	_err
+				; ici s1 <> 0
+1$  	move.l	8(a6),d2	; d2.l contient s2
+	bpl	9$
+	moveq	#-1,d3
+9$	divs.l	d1,d3:d2
+	tst.l	d3
+	bne.s 	2$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	resssf
+				; ici reste non nul
+2$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d3
+	bpl.s 	3$
+	neg.l	d3
+	move.b	#-1,4(a0)
+3$  	move.l	d3,8(a0)
+resssf  move.l	a0,d0
+	movem.l	(sp)+,d2-d3
+	unlk	a6
+	rts
+
+*===================================================================*
+*									*
+*		Reste : entier court / entier = entier		*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur le reste de la division s2 / i1	*
+*		 de type I (zone creee) 				*
+*		 Le reste est du signe du dividende 		*
+*									*
+*===================================================================*
+
+_ressi  move.l	8(sp),-(sp) 	; empilage adr. i1
+	move.l	8(sp),-(sp) 	; empilage s2
+	bsr 	_divsi
+	move.l	d0,a0		; a0 pointe sur resultat prov.
+	bsr 	_giv
+	tst.l	d1		; d1.l contient le reste
+	bne.s 	1$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	ressif
+				; ici reste non nul
+1$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d1
+	bpl.s 	2$
+	neg.l	d1
+	move.b	#-1,4(a0)
+2$  	move.l	d1,8(a0)
+ressif  move.l	a0,d0
+	addq.l	#8,sp
+	rts
+
+*===================================================================*
+*									*
+*		Reste : entier / entier court = entier		*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) contient s1 de type S			*
+*	sortie : d0 pointe sur le reste de la division i2 / s1	*
+*		 (zone creee)					*
+*		 Le reste est du signe du dividende 		*
+*									*
+*===================================================================*
+
+_resis  move.l	8(sp),-(sp) 	; empilage s1
+	move.l	8(sp),-(sp) 	; empilage adr.i2
+	bsr 	_divis
+	move.l	d0,a0
+	bsr 	_giv 		; desallouer memoire provisoire
+	tst.l	d1		; le reste est dans d1.l
+	bne.s 	1$
+				; ici reste nul
+	moveq	#2,d0
+	bsr 	_geti
+	move.l	#2,4(a0)
+	bra.s 	resisf
+				; ici reste non nul
+1$  	moveq	#3,d0
+	bsr 	_geti
+	move.l	#$1000003,4(a0)
+	tst.l	d1
+	bpl.s 	2$
+	neg.l	d1
+	move.b	#-1,4(a0)
+2$  	move.l	d1,8(a0)
+resisf  move.l	a0,d0
+	addq.l	#8,sp
+	rts
+
+*===================================================================*
+*									*
+*		Reste : entier / entier = entier			*
+*									*
+*	entree : a7($4) pointe sur i2 de type I 			*
+*		 a7($8) pointe sur i1 de type I 			*
+*	sortie : d0 pointe sur le reste de la division i2 / i1	*
+*		 de type I (zone creee) 				*
+*		 ( du signe du dividende)				*
+*									*
+*===================================================================*
+
+_resii  move.l	#-1,-(sp)
+	move.l	12(sp),-(sp)
+	move.l	12(sp),-(sp)
+	bsr 	_dvmdii
+	lea 	12(sp),sp
+	rts
+
+*===================================================================*
+*									*
+*			Operations par valeur			*
+*									*
+*	entree : a7($4) contient n2 de type S ou pointe sur n2	*
+*		 de type I ou R 					*
+*		 a7($8) contient n1 de type S ou pointe sur n1	*
+*		 de type I ou R 					*
+*		 a7($12) pointe sur n3 de type I ou R		*
+*	sortie : la zone pointee par a7($12) contient n2 op n1	*
+*	remarque : les erreurs de type sont detectees dans l'       *
+*		   affectation du resultat				*
+*									*
+*===================================================================*
+
+				; operation a trois operandes
+				; les trois operandes sont de type I
+
+mpariz  move.b	([12,sp]),d0
+	add.b	([8,sp]),d0
+	add.b	([4,sp]),d0
+	cmp.b	#3,d0
+	beq.s 	mpopz
+	move.l	#arier1,-(sp)
+	jsr 	_err	
+
+				; le troisieme operande est de type I
+
+mpopi 	cmp.b	#1,([12,sp])
+	beq.s 	mpopz
+	move.l	#arier2,-(sp)
+	jsr 	_err
+				; operation quelconque
+
+mpopz 	move.l	8(sp),-(sp) 	; 2eme operande
+	move.l	8(sp),-(sp) 	; 1er operande
+	jsr 	(a0)
+	move.l	20(sp),4(sp)	; 3eme operande
+	move.l	d0,(sp)		; resultat operation
+	jsr 	_mpaff
+	addq.l	#8,sp
+	move.l	d0,a0
+	bra 	_giv
+
+				; operation a quatre operandes
+				; avec deux resultats de type I
+
+mpopii  move.b	([16,sp]),d0
+	add.b	([12,sp]),d0
+	cmp.b	#2,d0
+	beq.s 	mpopz2
+	move.l	#arier2,-(sp)
+	jsr 	_err
+
+				; operation a quatre operande
+
+mpopz2  link	a6,#-8
+	move.l	_avma,-8(a6)
+	pea 	-4(a6)
+	move.l	12(a6),-(sp)	; 2eme operande
+	move.l	8(a6),-(sp) 	; 1er operande
+	jsr 	(a0)
+	addq.l	#4,sp
+	move.l	-4(a6),(sp)
+	move.l	20(a6),4(sp)
+	bsr 	_mpaff		; rangement 2 eme resultat
+	move.l	d0,(sp)
+	move.l	16(a6),4(sp)
+	bsr 	_mpaff		; rangement 1 er resultat
+	addq.l	#8,sp
+	move.l	-8(a6),_avma
+	unlk	a6
+	rts
+
+
+
+
+
+*********************************************************************
+*********************************************************************
+*** 								  ***
+*** 	PROGRAMMES PAR VALEUR UTILISES POUR LA LECTURE-ECRITURE   ***
+*** 								  ***
+*********************************************************************
+*********************************************************************
+
+
+
+
+
+*===================================================================*
+*									*
+*	Multiplication par valeur : entier court * entier = entier	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*		 a7($12) pointe sur i3 de type I			*
+*	sortie : i3 pointe sur s2 * i1				*
+*									*
+*===================================================================*
+
+_mulsii move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr 	_mulsi
+	move.l	20(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*	Addition par valeur : entier court + entier = entier	*
+*									*
+*	entree : a7($4) contient s2 de type S			*
+*		 a7($8) pointe sur i1 de type I 			*
+*		 a7($12) pointe sur i3 de type I			*
+*	sortie : i3 pointe sur s2 + i1				*
+*									*
+*===================================================================*
+
+_addsii move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr 	_addsi
+	move.l	20(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+*===================================================================*
+*									*
+*			division I / S = I				*
+*									*
+*	entree: a7($4) pointe sur i2, a7($8) contient s1		*
+*		a7($12) pointe sur un type I			*
+*	sortie: a7($12) pointe sur i2 div s1			*
+*		d1 contient i2 mod s1				*
+*									*
+*===================================================================*
+
+_divisii move.l	8(sp),-(sp)
+	move.l	8(sp),-(sp)
+	bsr 	_divis
+	move.l	20(sp),4(sp)
+	move.l	d0,(sp)
+	bsr 	_affii
+	move.l	(sp),a0
+	addq.l	#8,sp
+	bra 	_giv
+
+	
+*===================================================================*
+*									*
+*	Conversion	type I --> base 10^9				*
+*									*
+*	entree : a7($4) pointe sur un type I			*
+*	sortie : le resultat recoit I converti en base 10^9,	*
+*		 sans signe, avec un -1 artificiel au debut 	*
+*		 d0 pointe apres la zone du resultat		*
+*									*
+*===================================================================*
+
+_convi  link	a6,#0
+	movem.l	d2/a2-a3,-(sp)
+	move.l	_avma,d2
+	move.l	8(a6),-(sp)
+	bsr 	_absi
+	move.l	d0,a3
+	move.w	6(a3),d0
+	subq.w	#2,d0
+	mulu	#15,d0
+	divu	#14,d0
+	addq.w	#3,d0
+	bsr 	_geti
+	move.l	a0,a2
+	addq.l	#4,a2
+	move.l	#-1,(a2)+
+	move.l	a3,-(sp)
+	move.l	#1000000000,-(sp)
+	move.l	a3,-(sp)
+	tst.b	4(a3)
+	bne.s 	1$
+	clr.l	(a2)+		; ici entier nul
+	bra.s 	2$		
+1$  	bsr.s 	_divisii
+	move.l	d1,(a2)+
+	tst.b	4(a3)
+	bne.s 	1$
+2$  	lea 	16(sp),sp
+	move.l	a2,d0
+	move.l	d2,_avma
+	movem.l	(sp)+,d2/a2-a3
+	unlk	a6
+convif  rts
+
+*===================================================================*
+*									*
+*	Conversion partie fractionnaire --> base 10^9		*
+*									*
+*	entree : a7($4) pointe sur un type R de module < 1		*
+*	sortie : le resultat en base 10^9 precede par nb de dec.	*
+*		 d0 pointe sur le resultat				*
+*									*
+*===================================================================*
+
+_confrac link	a6,#-12
+	movem.l	d2-d7/a2-a3,-(sp)
+	move.l	_avma,-8(a6)
+	move.l	8(a6),a1
+	clr.l	d0
+	move.w	2(a1),d0
+	move.l	4(a1),d1
+	and.l	#$ffffff,d1
+	sub.l	#$800000,d1
+	not.l	d1
+	move.l	d1,d7		; d1 et d7 recoivent -e-1
+	subq.l	#2,d0		; d0 recoit L
+	lsl.l	#5,d0
+	add.l	d1,d0
+	move.l	d0,d2		; d0 et d2 recoivent 32*L-e-1
+	add.l	#95,d0		; 95=3*32-1
+	lsr.l	#5,d0
+	bsr 	_geti		; alloc. pour mantisse denormalisee
+	move.l	d0,-4(a6)
+	lsr.l	#5,d7		; d7 recoit -e-1 div 32
+	move.l	a0,a2
+	bra.s 	1$
+2$  	clr.l	(a0)+
+1$  	dbra	d7,2$
+	move.w	2(a1),d3
+	subq.l	#3,d3		; d3 recoit L-1 compteur
+	addq.l	#8,a1
+	and.l	#31,d1		; d1 recoit -e-1 mod 32 = nb de shifts
+	bne.s 	3$
+				; ici pas de shift
+4$  	move.l	(a1)+,(a0)+
+	dbra	d3,4$
+	bra.s 	5$
+3$  	moveq	#-1,d6
+	lsr.l	d1,d6		; masque de shift
+	moveq	#0,d4
+6$  	move.l	(a1)+,d0
+	ror.l	d1,d0
+	move.l	d0,d5
+	and.l	d6,d5
+	sub.l	d5,d0
+	add.l	d4,d5
+	move.l	d5,(a0)+
+	move.l	d0,d4
+	dbra	d3,6$
+	move.l	d4,(a0)+
+5$  	clr.l	(a0)
+	mulu.l	#8651,d3:d2
+	divu.l	#28738,d3:d2	; on mult par Log(2)/Log(10)=0.30103
+	move.l	d2,d0
+	addq.l	#1,d0
+	move.l	d0,d7		; d0,d7 <-- ndecfrac=nb de decimales
+	add.l	#17,d0		; 17=2*9-1
+	divu	#9,d0
+	bsr 	_geti		; alloc memoire pour resultats
+	move.l	a0,-12(a6) 	; adresse resultats
+	move.l	d7,(a0)+ 	; ndecfrac est passe au prog C
+	subq.w	#2,d0		; d0 recoit compteur nb de mult.
+	move.l	-4(a6),d1	; longueur mantisse denormalisee
+	lea 	0(a2,d1.w*4),a2
+	subq.l	#1,d1
+	move.l	a2,a3		; a2 et a3 pointent apres mant.denorm.
+	move.l	d1,d3
+	move.l	#1000000000,d6
+	clr.l	d7
+boext 	clr.l	d2
+1$  	move.l	-(a2),d5
+	mulu.l	d6,d4:d5
+	add.l	d2,d5
+	addx.l	d7,d4
+	move.l	d5,(a2)
+	move.l	d4,d2
+	dbra	d1,1$	
+	move.l	d2,(a0)+
+	move.l	a3,a2		; adr apres fin mantisse denorm.
+	move.l	d3,d1
+	dbra	d0,boext
+	move.l	-12(a6),d0 	; d0 pointe sur le resultat
+	movem.l	(sp)+,d2-d7/a2-a3
+	move.l	-8(a6),_avma
+	unlk	a6
+	rts
+
+
+
+
+
+*===================================================================*
+*									*
+*		Reservations memoire pour systeme PARI		*
+*									*
+*===================================================================*
+
+
+	even
+*	.lcomm	_bot,4		; pile PARI
+*	.lcomm	_top,4		; tete pile PARI
+*	.lcomm	__avma,4 	; memoire contenant adr. sommet pile PARI
+	END

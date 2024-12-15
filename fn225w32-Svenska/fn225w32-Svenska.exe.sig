@@ -1,0 +1,12 @@
+-----BEGIN PGP SIGNATURE-----
+Version: PGPfreeware 5.0i for non-commercial use
+MessageID: o2l1H8nFVH2Yp4au+eWdpTYBDdIvqkx9
+
+iQEVAwUAOLpn2Hzj3pmWr5vHAQHbWwf+IBXOzanxzRVK4PJC/d4hrDHIOQ9YWXJW
+iMaSGwW0/eAr3Klj104VRXo85sYtmTfSuCxiR1SfEmv2lrGGhxVQeAaafCrHAJIs
+OMj7HEKLa9rtMKUBPkRHsVFI1b8ZL2FK/ub5JLChHrBZW0u486QyW2DYqGBpFzIV
+MFucgE5bSlKHWjgCC/GorH0rbiBihIW7+0bmnyPvLnjnSgm+Apfsp4spIcDX36gN
+Skto8dkVEgeFI1jK7iDlSlzZBZOwiTTtNIQ6FeeZX5midVjnzdk6CmToOzsjLVhr
+Xfbkmw9JsBXgcMXJA11TFAYGMW5uHUd25kxGKqaDrgI2arGobYBiHQ==
+=AvDC
+-----END PGP SIGNATURE-----

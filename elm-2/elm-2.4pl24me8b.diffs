@@ -1,0 +1,2118 @@
+This is a patch for elm-2.4pl24me8b against elm-2.4pl24me8a.
+Use patch -p1 < this_file to apply it.
+
+
+diff -c elm-2.4pl24me8a/ChangeLog.ME elm-2.4pl24me8b/ChangeLog.ME
+*** elm-2.4pl24me8a/ChangeLog.ME	Tue Sep 26 15:16:38 1995
+--- elm-2.4pl24me8b/ChangeLog.ME	Wed Oct  4 12:49:19 1995
+***************
+*** 1,3 ****
+--- 1,61 ----
++ -----------------
++ Changes from ME8a
++ -----------------
++ When checking to see if the subject line should be centered when displaying
++ a mail message, the weedlist check should be for "subject:", not "subject".
++ This case is more general.
++ 
++ control-F in the main menu now causes Elm to forget your passphrase.  Useful
++ for when you screw up so you don't have to exit Elm before using PGP
++ again.
++ 
++ Added a "metoo" argument in pgp_encrypt to decide whether or not the
++ +encrypttoself=on flag should be passed to pgp.  This was needed so that
++ the value of auto_cc can be overidden when remailing.
++ 
++ Added support for decoding of RFC1522 style encoded headers.  This should
++ work in the index menu, the pager, and when replying (the "attribution").
++ 
++ metapager will now recover if pgp fails by displaying the message "as is"
++ in the case where the message is only signed.
++ 
++ Simplified "pager" check in metapager since there are two pagers now.
++ 
++ Fixed problem in copy_message where the rfc822 newline at the end of the
++ headers was missing.
++ 
++ Fixed bug in menu2.c:generic_menu (used by the remailer) which caused
++ Elm to segfault when not compiled with gcc.
++ From: Andrey A. Chernov <ache@astral.msk.su>
++ 
++ Fixed problem where trailing MMDF separator was still being printed.
++ 
++ The default filename for the Content-Disposition header was not getting
++ set if the included file did not have an extension.
++ 
++ text/plain => application/pgp conversion is now NOT done for public key
++ blocks.
++ 
++ Configure now figures out where "finger" is instead of hardcoding a path
++ in remailer.c
++ 
++ Hopefully fixed definition for sleep() in defs.h.
++ 
++ Fixed bug where elm would segfault when typing ^E when there are no messages
++ in the mailbox.
++ 
++ Fixed bug where a leading space could be inserted before the real name when
++ looking up a PGP public key from the return address.
++ 
++ Fixed some of the movement commands in builtin++ so that they work now.
++ 
++ Convert application/x-pgp-* => application/pgp to decode messages generated
++ by pgpelm.
++ 
++ Fixed problem where if the signature was added after editing the message,
++ it would be written over the message right after the content length.  Fixed
++ by seeking to the end of the file after writing the content length field.
++ 
+  ----------------
+  Changes from ME8
+  ----------------
+
+diff -c elm-2.4pl24me8a/Configure elm-2.4pl24me8b/Configure
+*** elm-2.4pl24me8a/Configure	Tue Sep 19 10:45:20 1995
+--- elm-2.4pl24me8b/Configure	Fri Sep 29 12:34:11 1995
+***************
+*** 273,278 ****
+--- 273,280 ----
+  pgp=''
+  pgp_path=''
+  d_remailer=''
++ finger=''
++ finger_path=''
+  CONFIG=''
+  : set package name
+  package=elm2
+***************
+*** 597,602 ****
+--- 599,605 ----
+  date
+  emacs
+  execmail
++ finger
+  ispell
+  line
+  lint
+***************
+*** 3452,3457 ****
+--- 3455,3483 ----
+  . myread
+  if $test "$ans" = "y"; then
+  	d_remailer="$define"
++ 	dflt=$finger
++ 	cont=true
++ 	while $test "$cont"; do
++ 		rp="Where is the finger binary located? [$dflt]"
++ 		echo $n "$rp $c"	
++ 		. myread
++ 		finger_path=$ans
++ 		if $test -f $ans; then
++ 			cont=''
++ 		else
++ 			if $test "$fastread" = yes; then
++ 				dflt=y
++ 			else
++ 				dflt=n
++ 			fi
++ 			rp="File $ans doesn't exist.  Use that name anyway? [$dflt]"
++ 			echo $n "$rp $c"
++ 			. myread
++ 			case "$ans" in
++ 			y*) cont='';;
++ 			esac;
++ 		fi
++ 	done
+  else
+  	d_remailer="$undef"
+  fi
+***************
+*** 5083,5088 ****
+--- 5109,5116 ----
+  pgp='$pgp'
+  pgp_path='$pgp_path'
+  d_remailer='$d_remailer'
++ finger='$finger'
++ finger_path='$finger_path'
+  CONFIG=true
+  EOT
+  
+
+diff -c elm-2.4pl24me8a/MANIFEST elm-2.4pl24me8b/MANIFEST
+*** elm-2.4pl24me8a/MANIFEST	Thu Sep 14 19:56:12 1995
+--- elm-2.4pl24me8b/MANIFEST	Thu Sep 28 23:26:50 1995
+***************
+*** 224,229 ****
+--- 224,230 ----
+  src/signals.c
+  src/softkeys.c
+  src/sort.c
++ src/state.c
+  src/string2.c
+  src/strings.c
+  src/syscall.c
+
+diff -c elm-2.4pl24me8a/config.h.SH elm-2.4pl24me8b/config.h.SH
+*** elm-2.4pl24me8a/config.h.SH	Mon Sep 11 10:09:38 1995
+--- elm-2.4pl24me8b/config.h.SH	Fri Sep 29 12:32:48 1995
+***************
+*** 644,649 ****
+--- 644,655 ----
+  /* USE_REMAILER:
+   *	If defined, includes support for anonymous remailing, chaining, and
+   *      if USE_PGP is defined, encryption.
++  *
++  * FINGER_PATH:
++  *      Path to the finger binary.
+   */
+  #$d_remailer USE_REMAILER /**/
++ #ifdef USE_REMAILER
++ #define FINGER_PATH "$finger_path"
++ #endif
+  !GROK!THIS!
+
+diff -c elm-2.4pl24me8a/hdrs/defs.h elm-2.4pl24me8b/hdrs/defs.h
+*** elm-2.4pl24me8a/hdrs/defs.h	Thu Sep 21 15:41:21 1995
+--- elm-2.4pl24me8b/hdrs/defs.h	Mon Oct  9 14:48:16 1995
+***************
+*** 664,688 ****
+  #  endif
+  #endif
+  
+! #ifndef ANSI_C   /* ANSI puts these in string.h */
+  char *index(), *rindex(); /* names will be traslated by define in config.h */
+  char *strtok(), *strcpy(), *strcat(), *strncpy(); /* more in string.h in ANSI */
+  long lseek();
+  int fseek();
+- #if defined(__convexc__)
+- unsigned sleep();
+- #else
+- unsigned long sleep();
+  #endif
+! #else
+! #  ifdef I_UNISTD /* unistd.h available */
+! #    include <unistd.h> /* ansi C puts sleep, lseek and fseek in unistd.h */
+! #  else /* I_UNISTD */
+! long lseek();
+! int fseek();
+! unsigned long sleep();
+! #  endif /* I_UNISTD */
+! #endif
+  char *strtokq(); /* our own quote minding strtok */
+  
+  #ifndef STRSTR
+--- 664,679 ----
+  #  endif
+  #endif
+  
+! #ifdef ANSI_C
+! #include <unistd.h>
+! #else
+! unsigned sleep();
+  char *index(), *rindex(); /* names will be traslated by define in config.h */
+  char *strtok(), *strcpy(), *strcat(), *strncpy(); /* more in string.h in ANSI */
+  long lseek();
+  int fseek();
+  #endif
+! 
+  char *strtokq(); /* our own quote minding strtok */
+  
+  #ifndef STRSTR
+
+diff -c elm-2.4pl24me8a/hdrs/me.h elm-2.4pl24me8b/hdrs/me.h
+*** elm-2.4pl24me8a/hdrs/me.h	Fri Sep 22 14:21:47 1995
+--- elm-2.4pl24me8b/hdrs/me.h	Fri Sep 29 14:47:15 1995
+***************
+*** 1,114 ****
+  #ifdef MIME
+  
+  /** Definitions for state operations **/
+  typedef struct state {
+    FILE *fpin;
+    FILE *fpout;
+!   char *prefix;
+!   unsigned int displaying : 1;
+  } state_t;
+  
+  #define state_put(x,y,z) fwrite(x,1,y,z->fpout)
+- #define state_putc(c,s) fputc(c,s->fpout)
+- #define state_puts(x,y) fputs(x,y->fpout)
+  #define state_add_prefix(x) if(x->prefix)state_puts(x->prefix,x)
+  
+! #endif
+  
+! #undef PARAM
+! #ifdef __STDC__
+! #define PARAM(x) x
+! #else
+! #define PARAM(x) ()
+! #endif
+  
+- /* Function prototypes */
+- 
+  /* lib/strmcpy.c */
+- extern char *strmcpy PARAM((char *, char *));
+  
+  #ifdef USE_REMAILER
+  #ifdef MIME
+! extern int remailer_copy_message_across PARAM((FILE *, FILE *, int, mime_send_t *));
+  #else
+! extern int remailer_copy_message_across PARAM((FILE *, FILE *, int));
+  #endif
+! extern void remailer_proc PARAM((void));
+  #endif
+  
+  #ifdef USE_PGP
+! extern int pgp_decrypt_init		PARAM((FILE **, FILE **, int));
+! extern int pgp_encrypt			PARAM((char *, char *, int));
+! extern int pgp_menu			PARAM((char *));
+! extern int pgp_extract_public_key	PARAM((void));
+  #ifdef MIME
+! extern void pgp_decode  		PARAM((mime_t *, state_t *));
+  #endif
+  #endif
+  
+! extern int metapager		PARAM((FILE *, struct header_rec *, int));
+! extern int builtinplusplus	PARAM((FILE *, long, int, char **, int));
+  
+  #ifdef MIME
+! extern int save_copy		PARAM((char *, char *, char *, char *, 
+  				       char *, int, mime_send_t *));
+! extern int append_copy_to_file	PARAM((char *, char *, char *, char *, 
+  				       char *, int, mime_send_t *));
+! extern FILE *write_header_info	PARAM((char *, char *, char *, char *, 
+  				       int, int, mime_send_t *));
+! extern int copy_message_across	PARAM((FILE *, FILE *, int, mime_send_t *));
+! extern int check_for_multipart	PARAM((FILE *, mime_send_t *));
+! extern int Include_Part		PARAM((FILE *, char *, int, mime_send_t *, 
+! 				       int));
+  
+  /* mime_decode.c */
+- extern void Xbit_decode			PARAM((state_t *, int));
+- extern void base64_decode		PARAM((state_t *, int, int));
+- extern void quoted_printable_decode	PARAM((state_t *, int, int));
+- extern void multipart_decode		PARAM((mime_t *, state_t *));
+- extern void multipart_0_decode          PARAM((mime_t *, state_t *));
+- extern void rfc822_decode		PARAM((mime_t *, state_t *));
+- extern void text_decode			PARAM((mime_t *, state_t *));
+- extern void text_unsupported_decode	PARAM((mime_t *, state_t *));
+- extern void null_decode			PARAM((mime_t *, state_t *));
+- extern void mime_decode			PARAM((mime_t *, state_t *));
+  
+! typedef void CT_decoder			PARAM((mime_t *, state_t *));
+  typedef CT_decoder *CT_decoder_t;
+! extern CT_decoder_t select_CT_decoder	PARAM((mime_t *));
+  
+  /* mime_encode.c */
+- extern void attach_generate_message		PARAM((mime_t *, FILE *, int,
+- 						       mime_send_t *));
+- extern void base64_encode	PARAM((FILE *, FILE *, int, mime_send_t *));
+- extern void line_quoted_printable_encode	PARAM((char *, FILE *, int, int,
+- 						       int, mime_send_t *));
+- extern void quoted_printable_encode		PARAM((FILE *, FILE *, int,
+- 						       int, mime_send_t *));
+- extern int is_text_type				PARAM((char *, char *, int));
+- extern char *mime_generate_boundary		PARAM((char *));
+- extern void add_parameter		PARAM((char *,char *,char *,int, int));
+- extern void print_EOLN				PARAM((FILE *,int));
+- extern int update_encoding			PARAM((int *,int));
+- extern void write_encoded PARAM((FILE *, FILE *, int, int, int,mime_send_t *));
+- extern void mime_write_header			PARAM((FILE *, mime_send_t *));
+  
+  /* mime_parse.c */
+- extern mime_t *mime_t_alloc             PARAM((void));
+- extern void mime_t_zero                 PARAM((mime_t *));
+- extern void mime_destroy		PARAM((mime_t *));
+- extern void mime_get_disposition        PARAM((char *, mime_t *));
+- extern void mime_get_content		PARAM((char *, mime_t *));
+- extern int mime_get_charset             PARAM((char *, char *, int));
+- extern char * mime_parse_content_opts	PARAM((char *));
+- extern void rfc822_reap_comments        PARAM((char *, char *, int));
+- extern int read_header_line             PARAM((FILE *,char *,int));
+- extern int mime_get_param               PARAM((char *,char *,char *,int));
+- extern void mime_warnings		PARAM((struct header_rec *));
+- extern mime_t *rfc822_parse		PARAM((FILE *, int));
+- extern void attach_parse		PARAM((struct header_rec *,FILE *));
+- extern mime_t *mime_read_header         PARAM((FILE *, int));
+  
+  /* attach_menu.c */
+! extern mime_t *attach_menu		PARAM((mime_t *, int));
+  #endif
+--- 1,134 ----
++ #define PUBLIC 
++ 
++ #undef P_
++ #ifdef __STDC__
++ #define P_(x) x
++ #else
++ #define P_(x) ()
++ #endif
++ 
+  #ifdef MIME
+  
+  /** Definitions for state operations **/
+  typedef struct state {
++   unsigned int displaying : 1;
++   char *prefix;
++ 
+    FILE *fpin;
+    FILE *fpout;
+! 
+!   char *inbuf;
+!   char *inreadp;
+! 
+!   char *outbuf;
+!   char *outwritep;
+!   int outbufsize;
+  } state_t;
+  
+  #define state_put(x,y,z) fwrite(x,1,y,z->fpout)
+  #define state_add_prefix(x) if(x->prefix)state_puts(x->prefix,x)
+  
+! extern char *state_gets P_((char *, int, state_t *));
+! extern void state_buffer P_((char *s, state_t *));
+! extern int state_getc P_((state_t *s));
+  
+! #endif /* MIME */
+  
+  /* lib/strmcpy.c */
+  
++ extern char *strmcpy P_((char *, char *));
++ 
++ /* src/remailer.c */
++ 
+  #ifdef USE_REMAILER
+  #ifdef MIME
+! extern int remailer_copy_message_across P_((FILE *, FILE *, int, mime_send_t *));
+  #else
+! extern int remailer_copy_message_across P_((FILE *, FILE *, int));
+  #endif
+! extern void remailer_proc P_((void));
+  #endif
+  
+  #ifdef USE_PGP
+! extern int pgp_decrypt_init		P_((FILE **, FILE **, int));
+! extern int pgp_encrypt			P_((char *, char *, int, int));
+! extern int pgp_menu			P_((char *));
+! extern int pgp_extract_public_key	P_((void));
+  #ifdef MIME
+! extern void pgp_decode  		P_((mime_t *, state_t *));
+  #endif
+  #endif
+  
+! extern int metapager		P_((FILE *, struct header_rec *, int));
+! extern int builtinplusplus	P_((FILE *, long, int, char **, int));
+  
+  #ifdef MIME
+! extern int save_copy		P_((char *, char *, char *, char *, 
+  				       char *, int, mime_send_t *));
+! extern int append_copy_to_file	P_((char *, char *, char *, char *, 
+  				       char *, int, mime_send_t *));
+! extern FILE *write_header_info	P_((char *, char *, char *, char *, 
+  				       int, int, mime_send_t *));
+! extern int copy_message_across	P_((FILE *, FILE *, int, mime_send_t *));
+! extern int check_for_multipart	P_((FILE *, mime_send_t *));
+! extern int Include_Part		P_((FILE *, char *, int, mime_send_t *, int));
+  
+  /* mime_decode.c */
+  
+! #if 0
+! extern void Xbit_decode			P_((state_t *, int));
+! extern void base64_decode		P_((state_t *, int, int));
+! extern void quoted_printable_decode	P_((state_t *, int, int));
+! extern void multipart_decode		P_((mime_t *, state_t *));
+! extern void multipart_0_decode          P_((mime_t *, state_t *));
+! extern void rfc822_decode		P_((mime_t *, state_t *));
+! extern void text_decode			P_((mime_t *, state_t *));
+! extern void text_unsupported_decode	P_((mime_t *, state_t *));
+! extern void null_decode			P_((mime_t *, state_t *));
+! #endif
+! extern void mime_decode			P_((mime_t *, state_t *));
+! extern void rfc1522_decode P_((char *, int));
+! extern int is_rfc1522 P_((char *));
+! 
+! typedef void CT_decoder			P_((mime_t *, state_t *));
+  typedef CT_decoder *CT_decoder_t;
+! extern CT_decoder_t select_CT_decoder	P_((mime_t *));
+  
+  /* mime_encode.c */
+  
++ extern void attach_generate_message P_((mime_t *, FILE *, int, mime_send_t *));
++ extern void base64_encode	    P_((FILE *, FILE *, int, mime_send_t *));
++ extern void line_quoted_printable_encode P_((char *, FILE *, int, int,
++ 					       int, mime_send_t *));
++ extern void quoted_printable_encode	P_((FILE *, FILE *, int, int,
++ 						mime_send_t *));
++ extern int is_text_type			P_((char *, char *, int));
++ extern char *mime_generate_boundary	P_((char *));
++ extern void add_parameter		P_((char *,char *,char *,int, int));
++ extern void print_EOLN			P_((FILE *,int));
++ extern int update_encoding		P_((int *,int));
++ extern void write_encoded   P_((FILE *, FILE *, int, int, int, mime_send_t *));
++ extern void mime_write_header		P_((FILE *, mime_send_t *));
++ 
+  /* mime_parse.c */
+  
++ extern mime_t *mime_t_alloc             P_((void));
++ extern void mime_t_zero                 P_((mime_t *));
++ extern void mime_destroy		P_((mime_t *));
++ extern void mime_get_disposition        P_((char *, mime_t *));
++ extern void mime_get_content		P_((char *, mime_t *));
++ extern int mime_get_charset             P_((char *, char *, int));
++ extern char * mime_parse_content_opts	P_((char *));
++ extern void rfc822_reap_comments        P_((char *, char *, int));
++ extern int read_header_line             P_((FILE *,char *,int));
++ extern int mime_get_param               P_((char *,char *,char *,int));
++ extern void mime_warnings		P_((struct header_rec *));
++ extern mime_t *rfc822_parse		P_((FILE *, int));
++ extern void attach_parse		P_((struct header_rec *,FILE *));
++ extern mime_t *mime_read_header         P_((FILE *, int));
++ 
+  /* attach_menu.c */
+! 
+! extern mime_t *attach_menu		P_((mime_t *, int));
+! 
+  #endif
+
+diff -c elm-2.4pl24me8a/hdrs/patchlevel.h elm-2.4pl24me8b/hdrs/patchlevel.h
+*** elm-2.4pl24me8a/hdrs/patchlevel.h	Tue Sep 26 12:30:39 1995
+--- elm-2.4pl24me8b/hdrs/patchlevel.h	Thu Sep 28 13:53:58 1995
+***************
+*** 1 ****
+! #define PATCHLEVEL "24 ME8a"
+--- 1 ----
+! #define PATCHLEVEL "24 ME8b"
+
+diff -c elm-2.4pl24me8a/src/Makefile.SH elm-2.4pl24me8b/src/Makefile.SH
+*** elm-2.4pl24me8a/src/Makefile.SH	Thu Sep 14 22:05:06 1995
+--- elm-2.4pl24me8b/src/Makefile.SH	Wed Sep 27 12:23:42 1995
+***************
+*** 147,152 ****
+--- 147,153 ----
+  			signals.c	\
+  			softkeys.c	\
+  			sort.c		\
++ 			state.c		\
+  			string2.c	\
+  			strings.c	\
+  			syscall.c	\
+***************
+*** 217,222 ****
+--- 218,224 ----
+  			signals.o	\
+  			softkeys.o	\
+  			sort.o		\
++ 			state.o		\
+  			string2.o	\
+  			strings.o	\
+  			syscall.o	\
+***************
+*** 338,343 ****
+--- 340,346 ----
+  signals.o:	$(INCLDIR)/headers.h $(INCLDIR)/s_elm.h
+  softkeys.o:	$(INCLDIR)/headers.h $(INCLDIR)/s_elm.h
+  sort.o:		$(INCLDIR)/headers.h $(INCLDIR)/s_elm.h
++ state.o:	$(INCLDIR)/headers.h $(INCLDIR)/me.h
+  string2.o:	$(INCLDIR)/headers.h
+  strings.o:	$(INCLDIR)/headers.h $(INCLDIR)/s_elm.h
+  syscall.o:	$(INCLDIR)/headers.h $(INCLDIR)/s_elm.h
+
+diff -c elm-2.4pl24me8a/src/attach_menu.c elm-2.4pl24me8b/src/attach_menu.c
+*** elm-2.4pl24me8a/src/attach_menu.c	Thu Sep 21 10:05:47 1995
+--- elm-2.4pl24me8b/src/attach_menu.c	Mon Oct  9 14:54:17 1995
+***************
+*** 152,161 ****
+  attach_save (a)
+       mime_t *a;
+  {
+!   char savefile[STRING] = {0}, buf[VERY_LONG_STRING], tmp[STRING];
+    int bytes=0, err, is_text;
+    state_t state;
+    
+    if (a->type == MIME_TYPE_APPLICATION &&
+        istrcmp (a->subtype, "octet-stream") == 0) {
+  
+--- 152,162 ----
+  attach_save (a)
+       mime_t *a;
+  {
+!   char savefile[STRING], buf[VERY_LONG_STRING], tmp[STRING];
+    int bytes=0, err, is_text;
+    state_t state;
+    
++   savefile[0] = '\0';
+    if (a->type == MIME_TYPE_APPLICATION &&
+        istrcmp (a->subtype, "octet-stream") == 0) {
+  
+***************
+*** 334,340 ****
+      tmp.mime_rec.type_opts = a->type_opts;
+      tmp.mime_rec.disposition = DISP_INLINE;  /* Show it ! */
+  #ifdef USE_PGP
+!     tmp.pgp = headers[current-1]->pgp;
+  #endif
+  
+      if (a->pathname) {
+--- 335,342 ----
+      tmp.mime_rec.type_opts = a->type_opts;
+      tmp.mime_rec.disposition = DISP_INLINE;  /* Show it ! */
+  #ifdef USE_PGP
+!     if (headers)
+!       tmp.pgp = headers[current-1]->pgp;
+  #endif
+  
+      if (a->pathname) {
+***************
+*** 416,428 ****
+       mime_t *att;
+       int new;
+  {
+!   char buf[STRING]={0}, ch;
+    int update = TRUE, prompt = TRUE, need_enc = 0;
+    int is_text = -1;
+  
+    if (new) {
+      /* set the default charset */
+-     buf[0] = '\0';
+      add_parameter (buf, "charset", charset, sizeof (buf), 0);
+      att->type_opts = strmcpy (att->type_opts, buf);
+  
+--- 418,431 ----
+       mime_t *att;
+       int new;
+  {
+!   char buf[STRING], ch;
+    int update = TRUE, prompt = TRUE, need_enc = 0;
+    int is_text = -1;
+  
++   buf[0] = '\0';
++ 
+    if (new) {
+      /* set the default charset */
+      add_parameter (buf, "charset", charset, sizeof (buf), 0);
+      att->type_opts = strmcpy (att->type_opts, buf);
+  
+***************
+*** 730,741 ****
+    dprint (3, (debugfile, "mime_guess_content_type: pathname=%s\n",
+  	      ptr->pathname));
+  
+!   p = (char *) strrchr (ptr->pathname, '.');
+    if (! p)
+      return;
+- 
+    p++;
+- 
+    for (i = 0; i < 3; i++) {
+    dprint (3, (debugfile, 
+  	      "mime_guess_content_type: searching \"%s\", i=%d\n",
+--- 733,753 ----
+    dprint (3, (debugfile, "mime_guess_content_type: pathname=%s\n",
+  	      ptr->pathname));
+  
+!   /* Set the "filename" field for content-disposition */
+!   p = strrchr (ptr->pathname, '/');
+!   if (p)
+!     p++;
+!   else
+!     p = ptr->pathname;
+!   buf[0] = '\0';
+!   add_parameter (buf, "filename", p, sizeof (buf), 0);
+!   ptr->disposition_opts = strmcpy (ptr->disposition_opts, buf);
+! 
+!   /* Try to guess the content type of the data by the filename extension */
+!   p = strrchr (ptr->pathname, '.');
+    if (! p)
+      return;
+    p++;
+    for (i = 0; i < 3; i++) {
+    dprint (3, (debugfile, 
+  	      "mime_guess_content_type: searching \"%s\", i=%d\n",
+***************
+*** 764,778 ****
+        if (istrcmp (p, "ps") == 0) {
+  	ptr->type = MIME_TYPE_APPLICATION;
+  	strcpy (ptr->subtype, "postscript");
+!         if (ptr->type_opts)
+            free (ptr->type_opts);
+        }
+        else if (istrcmp (p, "gif") == 0 || istrcmp (p, "jpeg") == 0 ||
+  	       istrcmp (p, "tiff") == 0) {
+  	ptr->type = MIME_TYPE_IMAGE;
+  	strcpy (ptr->subtype, p);
+!         if (ptr->type_opts)
+            free (ptr->type_opts);
+        }
+        dprint (3, (debugfile, 
+  		  "mime_guess_content_type: built-in default \"%s\" as \"%s/%s\"\n", 
+--- 776,794 ----
+        if (istrcmp (p, "ps") == 0) {
+  	ptr->type = MIME_TYPE_APPLICATION;
+  	strcpy (ptr->subtype, "postscript");
+!         if (ptr->type_opts) {
+            free (ptr->type_opts);
++           ptr->type_opts = NULL;
++         }
+        }
+        else if (istrcmp (p, "gif") == 0 || istrcmp (p, "jpeg") == 0 ||
+  	       istrcmp (p, "tiff") == 0) {
+  	ptr->type = MIME_TYPE_IMAGE;
+  	strcpy (ptr->subtype, p);
+!         if (ptr->type_opts) {
+            free (ptr->type_opts);
++           ptr->type_opts = NULL;
++         }
+        }
+        dprint (3, (debugfile, 
+  		  "mime_guess_content_type: built-in default \"%s\" as \"%s/%s\"\n", 
+***************
+*** 801,819 ****
+  	break;
+      }
+    }
+- 
+-   p = strrchr (ptr->pathname, '/');
+-   if (p)
+-     p++;
+-   else
+-     p = ptr->pathname;
+-   
+-   /* Set the "filename" field for content-disposition */
+-   buf[0] = '\0';
+-   add_parameter(buf,"filename",p,
+- 		sizeof(buf),0);
+-   ptr->disposition_opts = strmcpy (ptr->disposition_opts, buf);
+- 
+    return;
+  }
+  
+--- 817,822 ----
+***************
+*** 1146,1152 ****
+        error1 ("Unknown command: %c", ch);
+      }
+    }
+- 
+-   return;
+  }
+  #endif /* MIME */
+--- 1149,1153 ----
+
+diff -c elm-2.4pl24me8a/src/builtin++.c elm-2.4pl24me8b/src/builtin++.c
+*** elm-2.4pl24me8a/src/builtin++.c	Tue Sep 26 10:38:38 1995
+--- elm-2.4pl24me8b/src/builtin++.c	Mon Oct  9 14:33:35 1995
+***************
+*** 164,170 ****
+  	  chars += tabspacing;
+  	}
+  #ifdef ASCII_CTYPE
+!         else if (!isascii(*pending)) {
+            Writechar('?');
+            chars++;
+          }
+--- 164,170 ----
+  	  chars += tabspacing;
+  	}
+  #ifdef ASCII_CTYPE
+!         else if (!isascii((unsigned char)*pending)) {
+            Writechar('?');
+            chars++;
+          }
+***************
+*** 180,187 ****
+              chars += 2;
+  
+              /* Honor the formfeed character */
+!             if (*pending == ctrl('L'))
+                break;
+            }
+            else {
+              Writechar('?');
+--- 180,188 ----
+              chars += 2;
+  
+              /* Honor the formfeed character */
+!             if (*pending == ctrl('L')) {
+                break;
++             }
+            }
+            else {
+              Writechar('?');
+***************
+*** 197,206 ****
+--- 198,222 ----
+        NewLine();
+        lines++;
+  
++       if (*pending == ctrl('L')) {
++         pending++;
++         if (*pending == '\0')
++           pending = NULL;
++         break;
++       }
++ 
+        /* Check to see if we are finished with this line */
+        if (*pending == '\0')
+  	pending = NULL;
+      }
++     if (slurping){
++       slurping = FALSE;
++       idx -= LINES;
++       if (idx < -textlen)
++         idx = -textlen;
++       fseek (fp, *offsets[idx>0 ? idx : 0], 0);
++       continue;
++     }
+  
+      StartBold();
+      if (idx < 0) {
+***************
+*** 274,279 ****
+--- 290,296 ----
+        idx -= LINES + 1;
+        if (idx < -textlen)
+  	idx = -textlen;
++       fseek (fp, *offsets[idx > 0 ? idx : 0], 0);
+        lines = 0;
+        ClearScreen();
+        break;
+***************
+*** 285,290 ****
+--- 302,308 ----
+        idx -= LINES + (LINES / 2);
+        if (idx < -textlen)
+  	idx = -textlen;
++       fseek (fp, *offsets[idx > 0 ? idx : 0], 0);
+        lines = 0;
+        ClearScreen ();
+        break;      
+
+diff -c elm-2.4pl24me8a/src/elm.c elm-2.4pl24me8b/src/elm.c
+*** elm-2.4pl24me8a/src/elm.c	Thu Sep 14 22:08:51 1995
+--- elm-2.4pl24me8b/src/elm.c	Mon Oct  2 22:36:53 1995
+***************
+*** 408,419 ****
+  #endif
+  #ifdef USE_PGP
+  	    case ctrl('E'):
+! 	      Write_to_screen("Extract PGP public key",0);
+! 	      if (headers[current-1]->pgp & PGP_PUBLIC_KEY)
+! 		redraw = pgp_extract_public_key();
+! 	      else
+! 		error("This message does not contain PGP public keys!");
+  	      break;
+  #endif
+  
+  	    case 'f'    :  PutLine0(LINES-3, strlen(Prompt),
+--- 408,429 ----
+  #endif
+  #ifdef USE_PGP
+  	    case ctrl('E'):
+!               if (message_count < 1)
+!                 error(catgets(elm_msg_cat, ElmSet, ElmNoMailInFolder,
+! 			"There is no mail in this folder!"));
+!               else {
+!   	        Write_to_screen("Extract PGP public key",0);
+! 	        if (headers[current-1]->pgp & PGP_PUBLIC_KEY)
+! 	  	  redraw = pgp_extract_public_key();
+! 	        else
+! 		  error("This message does not contain PGP public keys!");
+!               }
+  	      break;
++ 
++            case ctrl('F'):
++               pgp_void_passphrase();
++               error("Passphrase forgotten!");
++               break;
+  #endif
+  
+  	    case 'f'    :  PutLine0(LINES-3, strlen(Prompt),
+
+diff -c elm-2.4pl24me8a/src/fileio.c elm-2.4pl24me8b/src/fileio.c
+*** elm-2.4pl24me8a/src/fileio.c	Wed Sep 20 15:02:44 1995
+--- elm-2.4pl24me8b/src/fileio.c	Fri Sep 29 14:51:28 1995
+***************
+*** 230,240 ****
+  	if (buf_len < 2 
+  	    /* Following is support for BINARYMIME: */
+  	    || buffer[0] == '\r' && buffer[1] == '\n') {
+! 	  was_binary = 
+! 	    (buffer[0] == '\r' && buffer[1] == '\n');
+  	  in_header = 0;
+  	  bytes_seen = 0;
+! 	  end_header = -1;
+  	  if (remail && !sender_added) {
+  	    if (fprintf(dest_file, "%sSender: %s\n", prefix, username) == EOF) {
+  	      copy_write_error_exit();
+--- 230,239 ----
+  	if (buf_len < 2 
+  	    /* Following is support for BINARYMIME: */
+  	    || buffer[0] == '\r' && buffer[1] == '\n') {
+! 	  was_binary = (buffer[0] == '\r' && buffer[1] == '\n');
+  	  in_header = 0;
+  	  bytes_seen = 0;
+! 	  end_header = 1;
+  	  if (remail && !sender_added) {
+  	    if (fprintf(dest_file, "%sSender: %s\n", prefix, username) == EOF) {
+  	      copy_write_error_exit();
+***************
+*** 297,304 ****
+                          copy_write_error_exit ();
+                    }
+  
+-                 if (fprintf (dest_file, was_binary ? "\r\n" : "\n") == EOF)
+-                   copy_write_error_exit ();
+  		update_status = FALSE; /* do it only once */
+  	      }	/* else if NEW - indicate NEW with no Status: line. This is
+  		 * important if we resync a mailfile - we don't want
+--- 296,301 ----
+***************
+*** 307,322 ****
+  		 * this function to unset NEW as appropriate to its
+  		 * reason for using this function to copy a message
+  		 */
+! 
+! 		/*
+! 		 * add the missing newline for RFC 822
+! 		 */
+! 	      if (end_header > 0) {
+! 		/* add the missing newline for RFC 822 */
+! 		if (fprintf(dest_file, was_binary ? "\r\n" : "\n") == EOF) {
+! 		  copy_write_error_exit();
+! 		}
+! 	      }
+  	  }
+  	}
+        }
+--- 304,318 ----
+  		 * this function to unset NEW as appropriate to its
+  		 * reason for using this function to copy a message
+  		 */
+! 	    }
+! 	  else
+! 	    fputs (prefix, dest_file);
+! 	  
+! 	  /*
+! 	   * add the missing newline for RFC 822
+! 	   */
+! 	  if (fprintf(dest_file, was_binary ? "\r\n" : "\n") == EOF) {
+! 	    copy_write_error_exit();
+  	  }
+  	}
+        }
+***************
+*** 355,363 ****
+  
+  	if (!forwarding) {
+  	  if(! header_cmp(buffer, "Status", NULL)) {
+  	    if (fprintf(dest_file, "%s%s", prefix, buffer) == EOF) {
+  	      copy_write_error_exit();
+! 	      }
+  	    continue;
+  	  } else {
+  	    ignoring = TRUE;
+--- 351,363 ----
+  
+  	if (!forwarding) {
+  	  if(! header_cmp(buffer, "Status", NULL)) {
++ #ifdef MIME
++ 	    if (decode && is_rfc1522 (buffer))
++ 	      rfc1522_decode (buffer, sizeof (buffer));
++ #endif
+  	    if (fprintf(dest_file, "%s%s", prefix, buffer) == EOF) {
+  	      copy_write_error_exit();
+! 	    }
+  	    continue;
+  	  } else {
+  	    ignoring = TRUE;
+
+diff -c elm-2.4pl24me8a/src/mailmsg2.c elm-2.4pl24me8b/src/mailmsg2.c
+*** elm-2.4pl24me8a/src/mailmsg2.c	Wed Sep 20 16:49:01 1995
+--- elm-2.4pl24me8b/src/mailmsg2.c	Wed Oct  4 12:48:15 1995
+***************
+*** 469,475 ****
+--- 469,483 ----
+  		       headers[current-1]->from);
+  	    }
+  	    else if (attribution[0]) {
++ #ifdef MIME
++ 	      strfcpy (very_long_buffer, headers[current-1]->from,
++ 		       sizeof (very_long_buffer));
++               if (is_rfc1522 (very_long_buffer))
++ 	        rfc1522_decode (very_long_buffer, sizeof (very_long_buffer));
++ 	      fprintf(reply, attribution, very_long_buffer);
++ #else
+  	      fprintf(reply, attribution, headers[current-1]->from);
++ #endif
+  	      fputc('\n', reply);
+  	    }
+  	    if (edit_message) {
+***************
+*** 933,938 ****
+--- 941,949 ----
+  	  cl_end = ftell(real_reply);	    
+  	  fseek(real_reply, cl_offset, 0);
+  	  fprintf(real_reply, "%d", cl_end - cl_start);
++ 
++           /* Return to the end of the file! */
++           fseek (real_reply, 0, 2);
+  
+            /* Append signature if not done earlier */
+  
+
+diff -c elm-2.4pl24me8a/src/menu2.c elm-2.4pl24me8b/src/menu2.c
+*** elm-2.4pl24me8a/src/menu2.c	Sun Aug 27 19:10:02 1995
+--- elm-2.4pl24me8b/src/menu2.c	Thu Sep 28 14:44:47 1995
+***************
+*** 93,99 ****
+      default:
+        for (i = 0; i < max ; i++) {
+  	if (ch == items[i].key) {
+! 	  do_item (items[i]);
+  	  update = TRUE;
+  	  break;
+  	}
+--- 93,99 ----
+      default:
+        for (i = 0; i < max ; i++) {
+  	if (ch == items[i].key) {
+! 	  do_item (&items[i]);
+  	  update = TRUE;
+  	  break;
+  	}
+
+diff -c elm-2.4pl24me8a/src/metapager.c elm-2.4pl24me8b/src/metapager.c
+*** elm-2.4pl24me8a/src/metapager.c	Tue Sep 26 10:45:36 1995
+--- elm-2.4pl24me8b/src/metapager.c	Fri Sep 29 14:26:25 1995
+***************
+*** 62,71 ****
+  #endif
+  
+    /* check to see if we want the internal pager */
+!   if ((strncmp(pager, "builtin", 7) == 0 && (pager[7]=='\0' || pager[7]=='+'))
+!     || (strncmp(pager, "internal", 8) == 0 && (pager[8]=='\0' || pager[8]=='+'))
+!     || (builtin_lines < 0 ? hdr->lines < LINES + builtin_lines :
+! 	    hdr->lines < builtin_lines)) {
+  
+      builtin++;
+  
+--- 62,70 ----
+  #endif
+  
+    /* check to see if we want the internal pager */
+!   if (strincmp(pager, "builtin", 7) == 0 ||
+!       strincmp(pager, "internal", 8) == 0 ||
+!       (builtin_lines < 0 ? hdr->lines < LINES + builtin_lines : hdr->lines < builtin_lines)) {
+  
+      builtin++;
+  
+***************
+*** 189,195 ****
+--- 188,201 ----
+    if (do_headers) {
+      if (title_messages) {
+        char buf2[STRING], buf3[STRING];
++ #ifdef MIME
++       char buf4[STRING];
+  
++       strfcpy (buf4, hdr->from, sizeof (buf4));
++       if (is_rfc1522 (hdr->from))
++ 	rfc1522_decode (buf4, sizeof (buf4));
++ #endif
++ 
+        /* first print a title line */
+  
+        elm_date_str(buf2, hdr->time_sent + hdr->tz_offset);
+***************
+*** 204,210 ****
+--- 210,220 ----
+  	      buf,
+  	      len,
+  	      len,
++ #ifdef MIME
++ 	      buf4,
++ #else
+  	      hdr->from,
++ #endif
+  	      buf2);
+        
+        if (builtin > 1) {
+***************
+*** 219,225 ****
+        }
+  
+        /** Print the subject line centered if there is enough room **/
+!       if ((len = strlen(hdr->subject)) > 0 && matches_weedlist("subject")) {
+          len = (COLUMNS-len)/2;
+          if (len < 0)
+            len = 0;
+--- 229,235 ----
+        }
+  
+        /** Print the subject line centered if there is enough room **/
+!       if ((len = strlen(hdr->subject)) > 0 && matches_weedlist("subject:")) {
+          len = (COLUMNS-len)/2;
+          if (len < 0)
+            len = 0;
+***************
+*** 315,327 ****
+  	    buf[line_len-2] = '\0';
+  	}
+  
+  	if (text_idx >= text_len - 1)
+  	  text = (char **) DynamicArray (text, sizeof (char *), &text_len, 5);
+  	text[text_idx] = strmcpy (text[text_idx], buf);
+  	text_idx++;
+        }
+!       else 
+  	fputs (buf, fpout);
+        
+        if (is_end) {
+  #ifndef MIME
+--- 325,347 ----
+  	    buf[line_len-2] = '\0';
+  	}
+  
++ #ifdef MIME
++ 	if (is_rfc1522 (buf))
++ 	  rfc1522_decode (buf, sizeof (buf));
++ #endif
++ 
+  	if (text_idx >= text_len - 1)
+  	  text = (char **) DynamicArray (text, sizeof (char *), &text_len, 5);
+  	text[text_idx] = strmcpy (text[text_idx], buf);
+  	text_idx++;
+        }
+!       else {
+! #ifdef MIME
+! 	if (is_rfc1522 (buf))
+! 	  rfc1522_decode (buf, sizeof (buf));
+! #endif
+  	fputs (buf, fpout);
++       }
+        
+        if (is_end) {
+  #ifndef MIME
+***************
+*** 346,352 ****
+  
+      /* No special processing needs to take place, so just start the pager! */
+      
+!     ch = builtinplusplus (fp, start_offset, hdr->content_length, text, text_idx);
+      DestroyDynamicArray (text);
+      return ch;
+    }
+--- 366,381 ----
+  
+      /* No special processing needs to take place, so just start the pager! */
+      
+! #ifdef MMDF
+!     /* Shorten the size of the message such that it does not include the
+!      * trailing separator.
+!      */
+!     ch = builtinplusplus (fp, start_offset, hdr->content_length - 5,
+!                           text, text_idx);
+! #else
+!     ch = builtinplusplus (fp, start_offset, hdr->content_length, text,
+!                           text_idx);
+! #endif
+      DestroyDynamicArray (text);
+      return ch;
+    }
+***************
+*** 375,380 ****
+--- 404,411 ----
+      state.fpout =  fpout;
+      state.displaying = TRUE;
+      state.prefix = NULL;
++     state.inbuf = state.outbuf = state.inreadp = state.outwritep = NULL;
++     state.outbufsize = 0;
+  
+      attach_parse(hdr, fp);
+      mime_decode(&hdr->mime_rec, &state);
+***************
+*** 382,405 ****
+    else {
+  #endif /* MIME */
+  #ifdef USE_PGP
+      if (pgp) {
+        /* for a PGP message, just pipe everything to the child process */
+        
+        while (ftell(fp) < end_offset) {
+  	if (fgets (buf, VERY_LONG_STRING, fp) == NULL)
+  	  break;
+! 	
+  	fputs(buf, tfpout);
+! 	fflush (tfpout);
+! 	
+        }
+        fclose (tfpout);
+!       while (fgets(buf,VERY_LONG_STRING,fpin)!=NULL)
+  	fputs(buf,fpout);
+        fclose(fpin);
+        PressAnyKeyToContinue();
+        if (builtin)
+  	Raw(ON);
+      }
+      else
+  #endif
+--- 413,453 ----
+    else {
+  #endif /* MIME */
+  #ifdef USE_PGP
++   DOBODY:
+      if (pgp) {
+        /* for a PGP message, just pipe everything to the child process */
+        
++       int lines = 0;
++ 
+        while (ftell(fp) < end_offset) {
+  	if (fgets (buf, VERY_LONG_STRING, fp) == NULL)
+  	  break;
+! #ifdef MMDF
+!         /* Don't display the trailing separator! */
+!         if (strncmp (buf, MSG_SEPARATOR, 4) == 0)
+!           break;
+! #endif
+  	fputs(buf, tfpout);
+! 	fflush (tfpout);	
+        }
+        fclose (tfpout);
+!       while (fgets (buf,VERY_LONG_STRING,fpin) != NULL) {
+  	fputs(buf,fpout);
++ 	lines++;
++       }
+        fclose(fpin);
+        PressAnyKeyToContinue();
+        if (builtin)
+  	Raw(ON);
++       if (lines == 0 && hdr->pgp == PGP_SIGNED_MESSAGE) {
++ 	/* Something went wrong with PGP.  If it is a signed message, try
++ 	 * and recover by printing the message "as is."
++ 	 */
++ 	dprint (1, (debugfile, "metapager: pgp failed, attempting to recover!\n"));
++ 	pgp = 0;
++ 	fseek (fp, start_offset, 0);
++ 	goto DOBODY;
++       }
+      }
+      else
+  #endif
+***************
+*** 406,411 ****
+--- 454,464 ----
+        while (ftell(fp) < end_offset) {
+  	if (fgets (buf, VERY_LONG_STRING, fp) == NULL)
+  	  break;
++ #ifdef MMDF
++         /* Don't display the trailing separator! */
++         if (strncmp (buf, MSG_SEPARATOR, 4) == 0)
++           break;
++ #endif
+  	fputs(buf, fpout);
+        }
+  #ifdef MIME
+
+diff -c elm-2.4pl24me8a/src/mime_decode.c elm-2.4pl24me8b/src/mime_decode.c
+*** elm-2.4pl24me8a/src/mime_decode.c	Fri Sep 22 14:16:01 1995
+--- elm-2.4pl24me8b/src/mime_decode.c	Fri Sep 29 15:15:10 1995
+***************
+*** 2,7 ****
+--- 2,8 ----
+  #include "me.h"
+  
+  #ifdef MIME
++ 
+  static int index_hex[128] = {
+      -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
+      -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1, -1,-1,-1,-1,
+***************
+*** 27,34 ****
+  #define base64(c) ((((c) > 0) && ((c) < 127)) ? index_64[ (c) ] : -1)
+  #define hex(c) ((((c) > 0) && ((c) < 127)) ? index_hex[ (c) ] : -1)
+  
+! void
+! Xbit_decode (s, len)
+       state_t *s;
+       int len;
+  {
+--- 28,34 ----
+  #define base64(c) ((((c) > 0) && ((c) < 127)) ? index_64[ (c) ] : -1)
+  #define hex(c) ((((c) > 0) && ((c) < 127)) ? index_hex[ (c) ] : -1)
+  
+! static void Xbit_decode (s, len)
+       state_t *s;
+       int len;
+  {
+***************
+*** 58,67 ****
+    }
+  }
+  
+! void mime_decode ();
+! 
+! void
+! base64_decode (s, length, astext)
+       state_t *s;
+       int length;
+       int astext;
+--- 58,64 ----
+    }
+  }
+  
+! PUBLIC void base64_decode (s, length, astext)
+       state_t *s;
+       int length;
+       int astext;
+***************
+*** 89,100 ****
+  
+    /* Make sure to quote the first line! */
+    state_add_prefix(s);
+!       
+    while (! terminate) {
+      if (bytes >= length)
+        break;
+  
+!     if (fgets (buf, VERY_LONG_STRING, s->fpin) == NULL)
+        break;
+  
+      bytes += strlen (buf);
+--- 86,97 ----
+  
+    /* Make sure to quote the first line! */
+    state_add_prefix(s);
+! 
+    while (! terminate) {
+      if (bytes >= length)
+        break;
+  
+!     if (state_gets (buf, VERY_LONG_STRING, s) == NULL)
+        break;
+  
+      bytes += strlen (buf);
+***************
+*** 211,218 ****
+    return;
+  }
+  
+! void
+! quoted_printable_decode (s, length, astext)
+       state_t *s;
+       int length;
+       int astext;
+--- 208,214 ----
+    return;
+  }
+  
+! PUBLIC void quoted_printable_decode (s, length, astext)
+       state_t *s;
+       int length;
+       int astext;
+***************
+*** 235,241 ****
+      if (length && length - bytes <= 0)
+        break;
+  
+!     if (fgets (buf, VERY_LONG_STRING, s->fpin) == NULL)
+        break;
+      bytes += strlen (buf);
+  
+--- 231,237 ----
+      if (length && length - bytes <= 0)
+        break;
+  
+!     if (state_gets (buf, VERY_LONG_STRING, s) == NULL)
+        break;
+      bytes += strlen (buf);
+  
+***************
+*** 319,326 ****
+    return;
+  }
+  
+! void
+! multipart_decode (att, state)
+       mime_t *att; /* The list of attachments for this MULTIPART data */
+       state_t *state;
+  {
+--- 315,321 ----
+    return;
+  }
+  
+! static void multipart_decode (att, state)
+       mime_t *att; /* The list of attachments for this MULTIPART data */
+       state_t *state;
+  {
+***************
+*** 362,369 ****
+    }
+  }
+  
+! void
+! multipart_0_decode (ptr, state)
+       mime_t *ptr;
+       state_t *state;
+  {
+--- 357,363 ----
+    }
+  }
+  
+! static void multipart_0_decode (ptr, state)
+       mime_t *ptr;
+       state_t *state;
+  {
+***************
+*** 373,380 ****
+      state_puts ("[Content-Type: multipart/*, internal error]\n", state);
+  }
+  
+! void
+! rfc822_decode (mt, state)
+       mime_t *mt;
+       state_t *state;
+  {
+--- 367,373 ----
+      state_puts ("[Content-Type: multipart/*, internal error]\n", state);
+  }
+  
+! static void rfc822_decode (mt, state)
+       mime_t *mt;
+       state_t *state;
+  {
+***************
+*** 414,421 ****
+    return;
+  }
+  
+! void 
+! text_decode(ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+--- 407,413 ----
+    return;
+  }
+  
+! static void text_decode (ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+***************
+*** 457,464 ****
+  
+  }
+  
+! void 
+! text_unsupported_decode(ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+--- 449,455 ----
+  
+  }
+  
+! static void text_unsupported_decode (ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+***************
+*** 471,478 ****
+  
+    sprintf (buf, "[%s/%.30s is unsupported, treating like TEXT/PLAIN]\n\n", 
+  	   TYPE(ptr->type), ptr->subtype);
+!   state_puts(buf,state);
+!   text_decode(ptr,state);
+  
+    dprint(12,(debugfile,
+  	     "text_unsupported_decode <- END; ftell=%ld\n",
+--- 462,469 ----
+  
+    sprintf (buf, "[%s/%.30s is unsupported, treating like TEXT/PLAIN]\n\n", 
+  	   TYPE(ptr->type), ptr->subtype);
+!   state_puts (buf,state);
+!   text_decode (ptr,state);
+  
+    dprint(12,(debugfile,
+  	     "text_unsupported_decode <- END; ftell=%ld\n",
+***************
+*** 479,486 ****
+  	     ftell(state->fpin)));
+  }
+  
+! void 
+! null_decode(ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+--- 470,476 ----
+  	     ftell(state->fpin)));
+  }
+  
+! PUBLIC void null_decode (ptr, state) 
+       mime_t *ptr;
+       state_t *state;
+  {
+***************
+*** 493,503 ****
+  
+    sprintf (buf, "[%.15s/%.30s is not supported, skipping...]\n",
+  	   TYPE(ptr->type),ptr->subtype);
+!   state_puts(buf,state);
+  }
+  
+! CT_decoder_t 
+! select_CT_decoder (ptr) 
+       mime_t *ptr;
+  {
+      if (ptr->type == MIME_TYPE_MULTIPART)
+--- 483,492 ----
+  
+    sprintf (buf, "[%.15s/%.30s is not supported, skipping...]\n",
+  	   TYPE(ptr->type),ptr->subtype);
+!   state_puts (buf,state);
+  }
+  
+! PUBLIC CT_decoder_t select_CT_decoder (ptr) 
+       mime_t *ptr;
+  {
+      if (ptr->type == MIME_TYPE_MULTIPART)
+***************
+*** 525,532 ****
+  }
+  
+  
+! void
+! mime_decode (ptr, state)
+       mime_t *ptr;
+       state_t *state;
+  {
+--- 514,520 ----
+  }
+  
+  
+! PUBLIC void mime_decode (ptr, state)
+       mime_t *ptr;
+       state_t *state;
+  {
+***************
+*** 550,553 ****
+--- 538,673 ----
+    dprint(12,(debugfile,"mime_decode <- END\n"));
+  
+  }
++ 
++ static int rfc1522_decode_real (p, state)
++      char *p;
++      state_t *state;
++ {
++   /* This routine decodes RFC1522 compliant headers */
++ 
++   char *ptr = p;
++   char charset[STRING];
++   char *buffer = NULL;
++   char *c;
++   int encoding;
++   int count;
++ 
++   while (*ptr) {
++     if (ptr[0] == '=' && ptr[1] == '?') {
++       ptr += 2;
++       count = 0;
++ 
++       /* Make a copy so the original is not destroyed */
++       c = buffer = strmcpy (buffer, ptr);
++ 
++       while ((c = strtok (c, "?")) != NULL) {
++ 	if (count == 0)
++ 	  /* get the charset */
++ 	  strfcpy (charset, c, sizeof (charset));
++ 	else if (count == 1) {
++ 	  /* Check the encoding */
++ 	  if (toupper (*c) == 'Q')
++ 	    encoding = ENCODING_QUOTED;
++ 	  else if (toupper (*c) == 'B')
++ 	    encoding = ENCODING_BASE64;
++ 	}
++ 	else if (count == 2) {
++ 	  state_buffer (c, state);
++ 	  if (encoding == ENCODING_QUOTED)
++ 	    quoted_printable_decode (state, strlen (c), TRUE);
++ 	  else if (encoding == ENCODING_BASE64)
++ 	    base64_decode (state, strlen (c), TRUE);
++ 	  break;
++ 	}
++ 	count++;
++ 	c = NULL;
++       }
++       free (buffer);
++       buffer = NULL;
++ 
++       /* ptr needs to be ffwd to the appropriate position */
++       for (count = 0; *ptr && count < 3; ptr++)
++ 	if (*ptr == '?')
++ 	  count++;
++       if (! *ptr || *ptr != '=') {
++ 	dprint (1, (debugfile, "mime_header_decode: could not reset \"ptr\" to end of encoded block!\n"));
++ 	if (! *ptr)
++ 	  return -1;
++       }
++     }
++     else
++       state_putc (*ptr, state);
++     ptr++;
++   }
++ } 
++ 
++ PUBLIC int is_rfc1522 (s)
++      char *s;
++ {
++   /* Returns TRUE if the string contains RFC 1522 format encoded data */
++ 
++   while ((s = strchr (s, '=')) != NULL) {
++     s++;
++     if (*s == '?')
++       return TRUE;
++   }
++   return FALSE;
++ }
++ 
++ PUBLIC void rfc1522_decode (ptr, len)
++      char *ptr;
++      int len; /* size of "ptr" */
++ {
++   /* Support for RFC 1522, which allows for encoding of non-ASCII characters
++    * in RFC 822 headers.
++    */
++   char *tmp = safe_malloc (len + 1);
++   state_t state;
++ 
++   /* Make a working copy of the header */
++   strncpy (tmp, ptr, len);
++ 
++   /* The output from the decoding should be put back into the memory area
++    * which was passed into this routine.
++    */
++   state_clear (&state);  
++   state.outwritep = state.outbuf = ptr;
++   state.outbufsize = len;
++ 
++   if (rfc1522_decode_real (tmp, &state) == -1) {
++     /* An error occured.  Restore the original value. */    
++ 
++     strncpy (ptr, tmp, len);
++   }
++ 
++   free (tmp);
++ }
++ 
++ PUBLIC int mime_notplain (p)
++      mime_t *p;
++ {
++   CT_decoder_t decoder = select_CT_decoder(p);
++   char buf[STRING];
++  
++   if (decoder == rfc822_decode)
++     return FALSE;
++  
++   /* Notice: if (decoder == text_unsupported_decode)
++    *         we return TRUE, because we want call metamail
++    *         if it is available
++    */
++  
++   if (decoder == text_decode) {
++     if (mime_get_charset(buf,p->type_opts,sizeof(buf)))
++       return FALSE;
++   }
++   else if (p->type == MIME_TYPE_MULTIPART && pagemultipart)
++     return FALSE;
++ #ifdef USE_PGP
++   else if (decoder == pgp_decode)
++     return FALSE;
++ #endif
++   return TRUE;
++ }
++ 
+  #endif /* MIME */
+
+diff -c elm-2.4pl24me8a/src/mime_parse.c elm-2.4pl24me8b/src/mime_parse.c
+*** elm-2.4pl24me8a/src/mime_parse.c	Fri Sep 22 14:18:37 1995
+--- elm-2.4pl24me8b/src/mime_parse.c	Fri Sep 29 14:49:42 1995
+***************
+*** 44,77 ****
+    return FALSE;
+  }
+  
+- int
+- mime_notplain (p)
+-      mime_t *p;
+- {
+-   CT_decoder_t d = select_CT_decoder(p);
+-   char buf[STRING];
+-   
+-   if (d == rfc822_decode)
+-     return FALSE;
+-   
+-   /* Notice: if (d == text_unsupported_decode)
+-    *         we return TRUE, because we want call metamail
+-    *         if it is available
+-    */
+-   
+-   if (d == text_decode) {
+-     if (mime_get_charset(buf,p->type_opts,sizeof(buf)))
+-       return FALSE;
+-   }
+-   else if (p->type == MIME_TYPE_MULTIPART && pagemultipart)
+-     return FALSE;
+- #ifdef USE_PGP
+-   else if (d == pgp_decode)
+-     return FALSE;
+- #endif
+-   return TRUE;
+- }
+- 
+  char *
+  mime_parse_content_opts (str)
+       char *str;
+--- 44,49 ----
+
+diff -c elm-2.4pl24me8a/src/newmbox.c elm-2.4pl24me8b/src/newmbox.c
+*** elm-2.4pl24me8a/src/newmbox.c	Tue Sep 26 10:25:39 1995
+--- elm-2.4pl24me8b/src/newmbox.c	Wed Oct  4 12:24:36 1995
+***************
+*** 1169,1251 ****
+  	      current_header->encrypted = 1;
+  #ifdef USE_PGP
+  	    if (strncmp(buffer, "-----BEGIN PGP", 14) == 0) {
+! #ifdef MIME
+! 	      char pgpbuffer[STRING];
+! 
+! 	      /* Text/plain can be converted to application/pgp.  There will
+! 	       * a possible loss of surrounding text, but there is no way
+! 	       * to get around this without having the sender use the proper
+! 	       * MIME type.
+! 	       */
+! 	      if (current_header->mime_rec.type == MIME_TYPE_TEXT &&
+! 		  (istrcmp(current_header->mime_rec.subtype,"plain")==0)) {
+! 		current_header->mime_rec.type = MIME_TYPE_APPLICATION;
+! 		strcpy(current_header->mime_rec.subtype, "pgp");
+! 		if (current_header->mime_rec.type_opts) {
+! 		  free(current_header->mime_rec.type_opts);
+! 		  current_header->mime_rec.type_opts = NULL;
+!                 }
+! 	      }
+! #endif
+! 	      if (strncmp(buffer + 15, "PUBLIC", 6) == 0) {
+  		current_header->pgp |= PGP_PUBLIC_KEY;
+  #ifdef MIME
+!                 if (current_header->mime_rec.type_opts) {
+! 		  if (!mime_get_param("format",pgpbuffer,current_header->mime_rec.type_opts,sizeof(pgpbuffer))) {
+! 		    strcpy(pgpbuffer,current_header->mime_rec.type_opts);
+! 		    add_parameter(pgpbuffer, "format",
+! 				  "keys-only", sizeof(pgpbuffer), FALSE);
+! 		    current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+  		  }
+  		}
+- 		else {
+- 		  pgpbuffer[0] = '\0';
+- 		  add_parameter(pgpbuffer,"format","keys-only",
+- 				sizeof(pgpbuffer), FALSE);
+- 		  current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+- 		}
+  #endif
+!               }
+! 	      else if (strncmp(buffer + 15, "SIG", 3) == 0) {
+! 		current_header->pgp |= PGP_SIGNED_MESSAGE;
+  #ifdef MIME
+! 		if (current_header->mime_rec.type_opts) {
+! 		  if (!mime_get_param("x-action",pgpbuffer,current_header->mime_rec.type_opts,sizeof(pgpbuffer))) {
+! 		    strcpy(pgpbuffer,current_header->mime_rec.type_opts);
+! 		    add_parameter(current_header->mime_rec.type_opts,
+! 				  "x-action", "sign",
+! 				  sizeof(current_header->mime_rec.type_opts),
+! 				  FALSE);
+  		    current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+  		  }
+  		}
+  		else {
+! 		  pgpbuffer[0] = '\0';
+! 		  add_parameter(pgpbuffer,"x-action","sign",
+! 				sizeof(pgpbuffer), FALSE);
+! 		  current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+! 		}
+! #endif
+!               }
+! 	      else {
+! 		current_header->pgp |= PGP_MESSAGE;
+  #ifdef MIME
+! 		if (current_header->mime_rec.type_opts) {
+! 		  if (!mime_get_param("x-action",pgpbuffer,current_header->mime_rec.type_opts,sizeof(pgpbuffer))) {
+! 		    strcpy(pgpbuffer,current_header->mime_rec.type_opts);
+! 		    add_parameter(pgpbuffer, "x-action", "encrypt",
+  				  sizeof(pgpbuffer), FALSE);
+  		    current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+  		  }
+- 		}
+- 		else {
+- 		  pgpbuffer[0] = '\0';
+- 		  add_parameter(pgpbuffer,"x-action","sign",
+- 				sizeof(pgpbuffer), FALSE);
+- 		  current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+- 		}
+  #endif
+! 	      }
+  	    }
+  #endif /* USE_PGP */
+  	  }
+--- 1169,1238 ----
+  	      current_header->encrypted = 1;
+  #ifdef USE_PGP
+  	    if (strncmp(buffer, "-----BEGIN PGP", 14) == 0) {
+! 	      if (strncmp(buffer + 15, "PUBLIC", 6) == 0)
+  		current_header->pgp |= PGP_PUBLIC_KEY;
++               else {
+  #ifdef MIME
+! 		char pgpbuffer[STRING];
+! 
+! 		/* Text/plain can be converted to application/pgp.  There will
+! 		 * a possible loss of surrounding text, but there is no way
+! 		 * to get around this without having the sender use the proper
+! 		 * MIME type.
+!                  *
+!                  * Also convert application/x-pgp-* to applicaton/pgp.
+! 		 */
+! 		if ((current_header->mime_rec.type == MIME_TYPE_TEXT && (istrcmp(current_header->mime_rec.subtype,"plain")==0)) ||
+!                     (current_header->mime_rec.type == MIME_TYPE_APPLICATION && (strincmp (current_header->mime_rec.subtype, "x-pgp", 5) == 0))) {
+! 		  current_header->mime_rec.type = MIME_TYPE_APPLICATION;
+! 		  strcpy(current_header->mime_rec.subtype, "pgp");
+! 		  if (current_header->mime_rec.type_opts) {
+! 		    free(current_header->mime_rec.type_opts);
+! 		    current_header->mime_rec.type_opts = NULL;
+  		  }
+  		}
+  #endif
+! 		if (strncmp(buffer + 15, "SIG", 3) == 0) {
+! 		  current_header->pgp |= PGP_SIGNED_MESSAGE;
+  #ifdef MIME
+! 		  if (current_header->mime_rec.type_opts) {
+! 		    if (!mime_get_param("x-action",pgpbuffer,current_header->mime_rec.type_opts,sizeof(pgpbuffer))) {
+! 		      strcpy(pgpbuffer,current_header->mime_rec.type_opts);
+! 		      add_parameter(current_header->mime_rec.type_opts,
+! 				    "x-action", "sign",
+! 				    sizeof(current_header->mime_rec.type_opts),
+! 				    FALSE);
+! 		      current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+! 		    }
+! 		  }
+! 		  else {
+! 		    pgpbuffer[0] = '\0';
+! 		    add_parameter(pgpbuffer,"x-action","sign",
+! 				  sizeof(pgpbuffer), FALSE);
+  		    current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+  		  }
++ #endif
+  		}
+  		else {
+! 		  current_header->pgp |= PGP_MESSAGE;
+  #ifdef MIME
+! 		  if (current_header->mime_rec.type_opts) {
+! 		    if (!mime_get_param("x-action",pgpbuffer,current_header->mime_rec.type_opts,sizeof(pgpbuffer))) {
+! 		      strcpy(pgpbuffer,current_header->mime_rec.type_opts);
+! 		      add_parameter(pgpbuffer, "x-action", "encrypt",
+! 				    sizeof(pgpbuffer), FALSE);
+! 		      current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+! 		    }
+! 		  }
+! 		  else {
+! 		    pgpbuffer[0] = '\0';
+! 		    add_parameter(pgpbuffer,"x-action","sign",
+  				  sizeof(pgpbuffer), FALSE);
+  		    current_header->mime_rec.type_opts = strmcpy(current_header->mime_rec.type_opts, pgpbuffer);
+  		  }
+  #endif
+! 		}
+!               }
+  	    }
+  #endif /* USE_PGP */
+  	  }
+
+diff -c elm-2.4pl24me8a/src/pgp.c elm-2.4pl24me8b/src/pgp.c
+*** elm-2.4pl24me8a/src/pgp.c	Fri Sep 22 14:43:40 1995
+--- elm-2.4pl24me8b/src/pgp.c	Mon Oct  2 23:16:45 1995
+***************
+*** 120,125 ****
+--- 120,126 ----
+       address, or real name, or finally the username exist */
+  
+    for (;;) {
++     while (*c && isspace (*c)) c++; /* move past any leading space! */
+      sprintf(buf, "%s +verbose=0 -kv '%s'", PGP_PATH, c);
+      p = popen(buf, "r");
+      if (!p)
+***************
+*** 211,223 ****
+      if (optionally_enter (tobuf, LINES-2, 4, TRUE, FALSE) < 0 || tobuf[0] == '\0')
+        return FALSE;
+    }
+!   return (pgp_encrypt (filename, tobuf, opts));
+  }
+  
+  int
+! pgp_encrypt (filename, ids, opts)
+  	char *filename, *ids;
+! 	int opts;
+  {
+    int i, id_len=0, id_max=0, st, usepgppass=FALSE, fd[2];
+    char
+--- 212,224 ----
+      if (optionally_enter (tobuf, LINES-2, 4, TRUE, FALSE) < 0 || tobuf[0] == '\0')
+        return FALSE;
+    }
+!   return (pgp_encrypt (filename, tobuf, opts, auto_cc));
+  }
+  
+  int
+! pgp_encrypt (filename, ids, opts, metoo)
+  	char *filename, *ids;
+! 	int opts, metoo;
+  {
+    int i, id_len=0, id_max=0, st, usepgppass=FALSE, fd[2];
+    char
+***************
+*** 258,264 ****
+      strcat(buf, buf2);
+    }
+    strcat(buf, PGP_PATH);
+!   if (auto_cc)
+      strcat(buf, " +encrypttoself=on");
+    if (usepgppass)
+      strcat(buf, " +batchmode");
+--- 259,265 ----
+      strcat(buf, buf2);
+    }
+    strcat(buf, PGP_PATH);
+!   if (metoo)
+      strcat(buf, " +encrypttoself=on");
+    if (usepgppass)
+      strcat(buf, " +batchmode");
+
+diff -c elm-2.4pl24me8a/src/remailer.c elm-2.4pl24me8b/src/remailer.c
+*** elm-2.4pl24me8a/src/remailer.c	Tue Sep 26 10:41:32 1995
+--- elm-2.4pl24me8b/src/remailer.c	Fri Sep 29 12:37:12 1995
+***************
+*** 208,218 ****
+        close (1);
+        dup (fd[1]);
+        close (fd[1]);
+! #ifdef __FreeBSD__
+!       sprintf (buf, "/usr/bin/finger %s", REMAILER_SITE);
+! #else
+!       sprintf (buf, "/usr/ucb/finger %s", REMAILER_SITE);
+! #endif
+        _exit (system (buf));
+      }
+    
+--- 208,214 ----
+        close (1);
+        dup (fd[1]);
+        close (fd[1]);
+!       sprintf (buf, "%s %s", FINGER_PATH, REMAILER_SITE);
+        _exit (system (buf));
+      }
+    
+***************
+*** 344,350 ****
+    fclose (fpout);
+  #ifdef USE_PGP
+    if (pgp && pdb->pgp) {
+!     pgp_encrypt (tmpfn, pdb->path, PGP_MESSAGE);
+      fpin = fopen (tmpfn, "r");
+      fpout = fopen (src, "w");
+      fputs ("::\nEncrypted: PGP\n\n", fpout);
+--- 340,346 ----
+    fclose (fpout);
+  #ifdef USE_PGP
+    if (pgp && pdb->pgp) {
+!     pgp_encrypt (tmpfn, pdb->path, PGP_MESSAGE, FALSE);
+      fpin = fopen (tmpfn, "r");
+      fpout = fopen (src, "w");
+      fputs ("::\nEncrypted: PGP\n\n", fpout);
+
+diff -c elm-2.4pl24me8a/src/screen.c elm-2.4pl24me8b/src/screen.c
+*** elm-2.4pl24me8a/src/screen.c	Thu Sep 21 14:20:23 1995
+--- elm-2.4pl24me8b/src/screen.c	Fri Sep 29 14:27:29 1995
+***************
+*** 181,186 ****
+--- 181,190 ----
+  	  }
+  	  else {
+  	    using_to = DisplayAddress(headers[this_msg], newfrom);
++ #ifdef MIME
++ 	    if (is_rfc1522 (newfrom))
++ 	      rfc1522_decode (newfrom, sizeof (newfrom));
++ #endif
+  	  if (this_msg == current-1) 
+  	    build_header_line(buffer, headers[this_msg], this_msg+1,
+  			    TRUE, newfrom, using_to);
+***************
+*** 276,283 ****
+  			     TRUE);
+  	  else {
+  	    using_to = DisplayAddress(headers[current-1], newfrom);
+! 	  build_header_line(new_buffer, headers[current-1],  current,
+! 		  TRUE, newfrom, using_to);
+  	  }
+  
+  	  /* clear last current if it's in proper range */
+--- 280,291 ----
+  			     TRUE);
+  	  else {
+  	    using_to = DisplayAddress(headers[current-1], newfrom);
+! #ifdef MIME
+! 	    if (is_rfc1522 (newfrom))
+! 	      rfc1522_decode (newfrom, sizeof (newfrom));
+! #endif
+! 	    build_header_line(new_buffer, headers[current-1],  current,
+! 			      TRUE, newfrom, using_to);
+  	  }
+  
+  	  /* clear last current if it's in proper range */
+***************
+*** 296,303 ****
+  	                       last_current, FALSE);
+  	    else {
+  	      using_to = DisplayAddress(headers[last_current-1], newfrom);
+! 	    build_header_line(old_buffer, headers[last_current-1], 
+! 		 last_current, FALSE, newfrom, using_to);
+  	    }
+  
+  	    ClearLine(last_line);
+--- 304,315 ----
+  	                       last_current, FALSE);
+  	    else {
+  	      using_to = DisplayAddress(headers[last_current-1], newfrom);
+! #ifdef MIME
+! 	      if (is_rfc1522 (newfrom))
+! 		rfc1522_decode (newfrom, sizeof (newfrom));
+! #endif
+! 	      build_header_line(old_buffer, headers[last_current-1], 
+! 				last_current, FALSE, newfrom, using_to);
+  	    }
+  
+  	    ClearLine(last_line);
+
+diff -c /dev/null elm-2.4pl24me8b/src/state.c
+*** /dev/null	Tue Oct 10 10:02:37 1995
+--- elm-2.4pl24me8b/src/state.c	Fri Sep 29 14:52:48 1995
+***************
+*** 0 ****
+--- 1,109 ----
++ #include "headers.h"
++ #include "me.h"
++ 
++ #ifdef MIME
++ 
++ PUBLIC void state_clear (s)
++      state_t *s;
++ {
++   s->fpin = s->fpout = NULL;
++   s->inbuf = s->outbuf = s->inreadp = s->outwritep = s->prefix = NULL;
++   s->outbufsize = 0;
++   s->displaying = 0;
++ }
++ 
++ PUBLIC void state_buffer (c, s)
++      char *c;
++      state_t *s;
++ {
++   s->inreadp = s->inbuf = strmcpy (s->inbuf, c);
++ }
++ 
++ PUBLIC int state_getc (s)
++      state_t *s;
++ {
++   if (s->inbuf) {
++     char ret;
++ 
++     if (*s->inreadp)
++       ret = *s->inreadp++;
++     if (! *s->inreadp) {
++       /* No more data left in the buffer, so clean up... */
++       s->inreadp = NULL;
++       free (s->inbuf);
++       s->inbuf = NULL;
++     }
++     return ret;
++   }
++   else if (s->fpin)
++     return fgetc (s->fpin);
++   else {
++     dprint(1, (debugfile, "state_getc: inbuf==NULL and fpin==NULL!\n"));
++     return EOF;
++   }
++ }
++ 
++ PUBLIC char *state_gets (dest, length, state)
++      char *dest;
++      int length;
++      state_t *state;
++ {
++   int i = 0, ch;
++   
++   if (state->inbuf) {
++     while (length > 0) {
++       ch = state_getc (state);
++       if (ch == EOF)
++ 	break;
++       else if (ch == '\n') {
++ 	dest[i++] = '\n';
++ 	break;
++       }
++       else
++ 	dest[i++] = ch;
++       length--;
++     }
++     dest[i] = '\0';
++     if (i > 0)
++       return dest;
++     else
++       return NULL;
++   }
++   else
++     return (fgets (dest, length, state->fpin));
++ }
++ 
++ PUBLIC int state_putc (ch, state)
++      char ch;
++      state_t *state;
++ {
++   if (state->fpout)
++     return (fputc (ch, state->fpout));
++   else {
++     if (state->outwritep - state->outbuf < state->outbufsize) {
++       *state->outwritep++ = ch;
++       *state->outwritep = '\0';
++     }
++     else
++       return EOF;
++   }
++ }
++ 
++ PUBLIC int state_puts (string, state)
++      char *string;
++      state_t *state;
++ {
++   if (state->fpout)
++     return fputs (string, state->fpout);
++   else {
++     int count;
++   
++     for (count = 0; *string; count++) {
++       if (state_putc (*string, state) == EOF)
++ 	return (count > 0 ? count : EOF);
++     }
++     return count;
++   }
++ }
++ 
++ #endif

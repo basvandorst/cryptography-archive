@@ -1,0 +1,278 @@
+
+mkpgp features: encryption (with or without signing), signing (with or without
+encryption), encrypted attachments selected via browser, effortless public key
+additions (from an alternate keyring, finger, lynx, or e-mail), decryption & 
+signature verification, effortless encrypted attachment extraction, external 
+editor of your choice, external spell checker of your choice, mixmaster
+remailer support and more.  (The "alternate-editor" hook was the only one
+I used, so I hung a lot on it.)
+
+Assume that old versions of ancillary scripts will not work with the new
+mkpgp.
+
+===============
+ Setting it up
+===============
+
+There are only a few things you need to do to use mkpgp.  First, you must
+move it to a permanent place.  Second, you need to tell Pine to use it.  
+Last, you may want to change what it does; in particular, beware of the 
+"mkdirs" command.  In what follows, the commands required to accomplish the
+various tasks are set off with { }. 
+
+
+(1) Set the environment variable "PGPPATH" in a login file.
+
+Put a line like:
+	setenv PGPPATH ~/.pgp
+in ~/.cshrc or ~/.login if you use csh.   { pico .cshrc }
+
+mkpgp might recover if PGPPATH is not set, but it will nag you each time it is
+used.
+
+(2) Put the script somewhere out of the way. { mv mkpgp /home/someDir }
+
+(3) Configure Pine to use mkpgp.
+
+This is easily accomplished from the Pine setup menu if you are running one of
+the recent versions.
+
+Point Pine's alternate editor to this version of mkpgp using the path mentioned
+in (2), put your signature at the bottom of the message, and include text in
+replies.  Other Pine options you may wish to use are mentioned in the
+configuration file.
+
+If your version of Pine does not have a setup menu, edit .pinerc, and find
+the "editor=" line. Change it to "editor=/home/someDir/mkpgp". { pico .pinerc } 
+
+Make similar changes in .pinerc to select the other two options.
+
+(4) Run mkpgp to configure it.
+
+This part can be done from the command line { mkpgp } or Pine { ^_ }.
+
+The first time you run mkpgp it will create $PGPPATH/mkpgp.rc and $PGPPATH/tmp.
+You are immediately given a chance to edit $PGPPATH/mkpgp.rc. Set the variables
+to your liking.  If the signature file mentioned in mkpgp.rc doesn't exist, an
+empty one is created.  $PGPPATH/tmp is a directory used to store temporary files
+created by pgp when called from mkpgp. Clearly, the environment variable PGPPATH
+should point to your pgp directory before you try to run mkpgp.  If PGPPATH is
+not set, mkpgp will nag you and set it to ~/.pgp provided ~/.pgp exists.  If 
+PGPPATH is not set and ~/.pgp does not exist, then you may need read the pgp
+documentation before proceeding further.
+
+WARNING: Read all of the comments in $PGPPATH/mkpgp.rc as most of the real
+documentation is there.
+
+If you use Pine v3.9.x, 
+ 
+	[X]  enable-alternate-editor-implicitly
+	[X]  include-header-in-reply 
+	[X]  include-text-in-reply
+
+with
+
+	set IMPLICITALTEDIT = yes
+	set ASKTORUN = no
+	set AUTORECRYPT = yes 
+
+in the configuration file may be best when most of your mail is sent encrypted.
+mkpgp runs between Pine and your editor to decrypt the message.  On exiting 
+your editor, mkpgp asks to run again (with "no" as the default) to re-encrypt
+the message.
+
+============
+ Encryption
+============
+
+If you use the defaults:
+
+Compose a message and invoke the alternate editor with <control> _ . mkpgp will
+ask to:
+
+	Include encrypted attachment(s)? [n]
+
+At any prompt, simply hit the <return> key if you want what's in [ ].  (This can
+be important; don't give mkpgp needless input.)
+
+Enter y and hit <return> if you want to include attachments in the message text
+(thereby encrypting them).  A primitive browser will let you navigate the file
+system and attach files and directories.  Unlike Pine's notion of MIME, whole
+directories can be attached since mkpgp uses the standard Unix tools: tar,
+compress, and uuencode. 
+
+Select attachments by number.  Hit <return> on a blank line to move up one
+directory.  Selecting a single directory is ambiguous (since you are navigating
+the file system  with the same browser), so you are further prompted to:
+
+	Enter or Attach? [e]
+
+it.  Hit <return> to enter it, enter "a" and hit <return> to attach it. If a
+directory is a member of a list, mkpgp attaches it.  After collecting all the
+attachments, enter f and hit <return>.  $PGPPATH/tmp/mkpgpAttach is listed and
+you are a given a chance change it. If you elect to do so, mkpgp will cd to 
+$PGPPATH/tmp/mkpgpAttach and start a shell. Do what you will, and use "exit" or
+<control> d to exit the shell and return to mkpgp. 
+
+$PGPPATH/tmp/mkpgpAttach is tar'ed, compressed, uuencoded and appended to the
+message text as ascii.  The uuencode is wrapped in enough csh code (with
+instructions) to self-extract if the recipient's mailer won't unpack it.
+$PGPPATH/tmp/mkpgpAttach is then removed (*not* wiped and deleted by pgp).
+
+   Note: Sun Release 4.1 runs both uuencode and uudecode with user ID set to
+   uucp.  If you get a "broken pipe" error when attaching files, this is the
+   likely culprit.  A work around is to make copies of /usr/bin/uuencode and 
+   /usr/bin/uudecode in a personal bin directory.  Your copies will run with
+   your user ID.
+
+Next, pgp will show a public key ring and mkpgp will ask you to:
+
+	Enter recipient key id(s). [none]
+
+List the recipient key id(s) separated by blanks, or hit <return> if you don't
+want to encrypt the message.  Since keyids are to be separated by blanks, it
+should be clear that (a unique sub-string of) an e-mail address is preferred
+over a user name.  If, like me, you can't remember the e-mail address, hit = 
+and <return>.  mkpgp will build a searchable menu from you public key ring.  Add
+keys by line number.
+
+If the string
+
+	FOR-YOUR-EYES-ONLY
+
+appears anywhere in the text of the message, pgp uses the -m option. (This can
+hose automatic decryption on the other end, so be careful with it.  Also, mkpgp
+disallows attachments in an "eyes only" message.
+
+Next, pgp will show $PGPPATH/secring.pgp secret key ring and mkpgp will ask to:
+
+	Sign the message with which secret key? [n]
+
+y <return> selects the key defined by MyName in $PGPPATH/config.txt.  You
+can select an alternate by giving a keyid (e-mail address). If you enter n,
+mkpgp will look for a key with "n" in it; bad news...  Also, beware of the
+ENCRYPTTOSELF option if you select an alternate key.  I don't know if it causes
+problems; just beware.
+
+If you elect to sign the message, pgp will require a pass phrase. pgp goes to 
+work on the message. There is a 5 second delay when pgp is finished so you
+can see what happened.  After that, you should be looking at the message in
+the Pine window. Send it.  If ENCRYPTTOSELF = on, you can decrypt the copy of
+the message in sent-mail.  If ENCRYPTTOSELF = off and you didn't include
+yourself as a recipient, you might as well delete it.  If, instead of sending
+it, you run mkpgp again, the message will be processed by pgp, but the 
+attachments will not be unpacked.
+
+The pgp encryption/signing command options used by mkpgp are:
+
+pgp -set[m] $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" \ 
++armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys $sign
+
+pgp -sat $LEGALKLUGE +clearsig=on +comment="$COMMENT" +keepbinary=off \ 
++tmp=$PGPPATH/tmp $1 $sign
+
+pgp -et[m] $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" \ 
++armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys
+
+$1 is /tmp/pico.xxxx, $keys is the list of keys, $sign is " " or -u followed by
+the keyid used to sign the message.  If LEGALKLUGE = yes in $PGPPATH/mkpgp.rc 
+then LEGALKLUGE is reset to "+ce=0 +le" and mkpgp exploits a bug in pgp2.6[.1]
+that creates ciphertext readable by 2.3a.  If LEGALKLUGE = no in
+$PGPPATH/mkpgp.rc, then LEGALKLUGE is reset to " " (thus ignored).  
+
+If /tmp/pico.xxxx.asc is created by the pgp command, /tmp/pico.xxxx is immediately 
+wiped and deleted.  Previous incarnations of mkpgp used the -w on the encryption
+command with some annoying side effects.
+
+There are several other calls to pgp to wipe and delete temporary files.  Again,
+FOR-YOUR-EYES-ONLY anywhere in the message text translates to the -m option.
+
+============
+ Decryption
+============
+
+The only way to decrypt using mkpgp is in a "Reply" or "Forward" since that
+is your only access to the alternate editor. 
+
+If mkpgp finds a line beginning with one of the the strings:
+
+	-----BEGIN PGP MESSAGE-----
+	> -----BEGIN PGP MESSAGE-----
+	-----BEGIN PGP SIGNED MESSAGE-----
+	> -----BEGIN PGP SIGNED MESSAGE----- 
+	-----BEGIN PGP PUBLIC KEY BLOCK-----
+	> -----BEGIN PGP PUBLIC KEY BLOCK-----
+                        
+
+it will strip the leading "> " and run the command:
+
+	pgp +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off 
+
+attempting to mimic the forward/reply behavior of Pine.  The "> " can be
+redefined in the configuration file (see PINEQUOTE) if your hack of Pine uses 
+something else.
+
+If a line beginning with:
+
+	begin 600 mkpgpAttach.tar.Z
+
+is found in the message text, mkpgp will list the attachments and ask to unpack
+them.  If you choose to do so, the mkpgpAttach directory is moved into $PGPPATH
+(renaming if needed). You are given a chance to shell out to the system to
+examine or delete the attachments.  Use the "exit" command or <control> d to
+return to mkpgp.  The mkpgpAttach.tar.Z file is wiped & deleted.  The uuencode
+of mkpgpAttach.tar.Z is clipped from a reply, but retained in a forward. 
+
+   Note: Sun Release 4.1 runs both uuencode and uudecode with user ID set to
+   uucp.  If you get a "broken pipe" error when extracting files, this is the
+   likely culprit.  A work around is to make copies of /usr/bin/uuencode and 
+   /usr/bin/uudecode in a personal bin directory.  Your copies will run with
+   your user ID.
+
+   Note: In order to list/unpack the attachments, mkpgp must uudecode the 
+   message.  This will deposit a file named mkpgpAttach.tar.Z in your current 
+   working directory or your home directory depending on the version of Pine and
+   its configuration.  mkpgp is expecting mkpgpAttach.tar.Z to end up in the
+   current working directory.  If mkpgpAttach.tar.Z is ending up in your home 
+   directory, either select the
+
+	[X]  use-current-dir
+
+   option from Pine's menu or start Pine from your home directory.
+
+====================
+ Emerging Confusion^H^H^H^H^H^H^H^H^HStandards
+====================
+
+I recently received a Application/PGP MIME attachment.  Pine displayed:
+
+      [Part 1, Application/PGP  1.8KB]
+      [Can not display this part. Use the "V" command to save in a file]
+
+I found that mkpgp would decrypt the message in a "Reply" provided that
+Pine's "include-attachments-in-reply" was disabled.  When Pine's
+"include-attachments-in-reply" option was enabled, mkpgp didn't notice the
+ciphertext.  mkpgp would not decrypt the message in a "Forward" in either case.
+
+=========
+ Updates
+=========
+
+I work on mkpgp as ideas occur and time permits.  
+
+If you send blank e-mail to slutsky@lipschitz.sfasu.edu with 
+	Subject: mkpgp
+the latest mkpgp will be e-mailed to you within the hour,
+	Subject: addtomkpgplist 
+mkpgp will be e-mailed to you each time it is updated,
+	Subject: removefrommkpgplist 
+you will be removed from the update list,
+	Subject: mkpgpsuggestion
+will archive a suggestion, bug report, etc.
+
+                             J. Kelly Cunningham <deviate@lipschitz.sfasu.edu>
+
+     "The  strongest reason for the people to retain their right to keep
+     and bear arms is,  as a last resort,  to protect themselves against 
+     tyranny in government."                         -- Thomas Jefferson
+

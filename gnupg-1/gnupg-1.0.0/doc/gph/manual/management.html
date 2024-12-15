@@ -1,0 +1,763 @@
+<HTML
+><HEAD
+><TITLE
+>Key Management</TITLE
+><META
+NAME="GENERATOR"
+CONTENT="Modular DocBook HTML Stylesheet Version 1.44"><LINK
+REL="HOME"
+TITLE="The GNU Privacy Handbook"
+HREF="book1.html"><LINK
+REL="PREVIOUS"
+TITLE="Digital signatures"
+HREF="x211.html"><LINK
+REL="NEXT"
+TITLE="Validating other keys on your public keyring"
+HREF="x330.html"></HEAD
+><BODY
+><DIV
+CLASS="NAVHEADER"
+><TABLE
+WIDTH="100%"
+BORDER="0"
+CELLPADDING="0"
+CELLSPACING="0"
+><TR
+><TH
+COLSPAN="3"
+ALIGN="center"
+>The GNU Privacy Handbook</TH
+></TR
+><TR
+><TD
+WIDTH="10%"
+ALIGN="left"
+VALIGN="bottom"
+><A
+HREF="x211.html"
+>Prev</A
+></TD
+><TD
+WIDTH="80%"
+ALIGN="center"
+VALIGN="bottom"
+></TD
+><TD
+WIDTH="10%"
+ALIGN="right"
+VALIGN="bottom"
+><A
+HREF="x330.html"
+>Next</A
+></TD
+></TR
+></TABLE
+><HR
+ALIGN="LEFT"
+WIDTH="100%"></DIV
+><DIV
+CLASS="CHAPTER"
+><H1
+><A
+NAME="MANAGEMENT"
+>Chapter 3. Key Management</A
+></H1
+><DIV
+CLASS="TOC"
+><DL
+><DT
+><B
+>Table of Contents</B
+></DT
+><DT
+><A
+HREF="management.html#AEN239"
+>Managing your own keypair</A
+></DT
+><DT
+><A
+HREF="x330.html"
+>Validating other keys on your public keyring</A
+></DT
+><DT
+><A
+HREF="x454.html"
+>Distributing keys</A
+></DT
+></DL
+></DIV
+><P
+>Key tampering is a major security weakness with public-key cryptography.
+An eavesdropper may tamper with a user's keyrings or forge a
+user's public key and post it for others to download and use.
+For example, suppose Chloe wants to monitor the messages that Alice
+sends to Blake.
+She could mount what is called a <I
+CLASS="FIRSTTERM"
+>man in the 
+middle</I
+> attack.
+In this attack, Chloe creates a new public/private keypair.
+She replaces Alice's copy of Blake's public key with the new public key.
+She then intercepts the messages that Alice sends to Blake.
+For each intercept, she decrypts it using the new private key, reencrypts
+it using Blake's true public key, and forwards the reencrypted
+message to Blake.
+All messages sent from Alice to Blake can now be read by Chloe.</P
+><P
+>Good key management is crucial in order to ensure not just the integrity
+of your keyrings but the integrity of other users' keyrings as well.
+The core of key management in GnuPG is the notion of signing keys.
+Key signing has two main purposes: it permits you to detect tampering
+on your keyring, and it allows you to certify that a key truly belongs
+to the person named by a user ID on the key.
+Key signatures are also used in a scheme known as the <I
+CLASS="FIRSTTERM"
+>web of 
+trust</I
+> to extend certification to keys not directly signed by you 
+but signed by others you trust.
+Responsible users who practice good key management can defeat key
+tampering as a practical attack on secure communication with GnuPG.</P
+><DIV
+CLASS="SECT1"
+><H1
+CLASS="SECT1"
+><A
+NAME="AEN239"
+>Managing your own keypair</A
+></H1
+><P
+>A keypair has a public key and a private key.
+A public key consists of 
+the public portion of the master signing key,
+the public portions of the subordinate signing and encryption subkeys, and 
+a set of user IDs used to associate the public key with a real person.
+Each piece has data about itself.
+For a key, this data includes its ID, when it was created, when it
+will expire, etc.
+For a user ID, this data includes the name of the real person it identifies,
+an optional comment, and an email address.
+The structure of the private key is similar, except that it contains only
+the private portions of the keys, and there is no user ID information.</P
+><P
+>The command-line option 
+<A
+HREF="edit-key.html"
+><TT
+CLASS="OPTION"
+>--edit-key</TT
+></A
+>
+may be used to view a keypair.
+For example,
+
+<TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>chloe%</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>gpg --edit-key chloe@cyb.org</B
+></TT
+>
+Secret key is available.
+
+pub  1024D/26B6AAE1  created: 1999-06-15 expires: never      trust: -/u
+sub  2048g/0CF8CB7A  created: 1999-06-15 expires: never     
+sub  1792G/08224617  created: 1999-06-15 expires: 2002-06-14
+sub   960D/B1F423E7  created: 1999-06-15 expires: 2002-06-14
+(1)  Chloe (Jester) &#60;chloe@cyb.org&#62;
+(2)  Chloe (Plebian) &#60;chloe@tel.net&#62;
+<TT
+CLASS="PROMPT"
+>Command&#62;</TT
+></PRE
+></TD
+></TR
+></TABLE
+>
+
+The public key is displayed along with an indication of whether
+or not the private key is available.
+Information about each component of the public key is then listed.
+The first column indicates the type of the key.
+The keyword <TT
+CLASS="LITERAL"
+>pub</TT
+> identifies the public master signing key,
+and the keyword <TT
+CLASS="LITERAL"
+>sub</TT
+> identifies a public subordinate key.
+The second column indicates the key's bit length, type, and ID.
+The type is <TT
+CLASS="LITERAL"
+>D</TT
+> for a DSA key, <TT
+CLASS="LITERAL"
+>g</TT
+> for an 
+encryption-only
+ElGamal key, and <TT
+CLASS="LITERAL"
+>G</TT
+> for an ElGamal key that may be used for
+both encryption and signing.
+The creation date and expiration date are given in columns three and four.
+The user IDs are listed following the keys.</P
+><P
+>More information about the key can be obtained with interactive commands.
+The command <A
+HREF="edit-key.html#TOGGLE"
+><B
+CLASS="COMMAND"
+>toggle</B
+></A
+> 
+switches between the public and private
+components of a keypair if indeed both components are available.
+
+<TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>Command&#62;</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>toggle</B
+></TT
+>
+               
+sec  1024D/26B6AAE1  created: 1999-06-15 expires: never     
+sbb  2048g/0CF8CB7A  created: 1999-06-15 expires: never     
+sbb  1792G/08224617  created: 1999-06-15 expires: 2002-06-14
+sbb   960D/B1F423E7  created: 1999-06-15 expires: 2002-06-14
+(1)  Chloe (Jester) &#60;chloe@cyb.org&#62;
+(2)  Chloe (Plebian) &#60;chloe@tel.net&#62;</PRE
+></TD
+></TR
+></TABLE
+>
+
+The information provided is similar to the listing for the public-key
+component.
+The keyword <TT
+CLASS="LITERAL"
+>sec</TT
+> identifies the private master signing key,
+and the keyword <TT
+CLASS="LITERAL"
+>sbb</TT
+> identifies the private subordinates keys.
+The user IDs from the public key are also listed for convenience.</P
+><DIV
+CLASS="SECT2"
+><H2
+CLASS="SECT2"
+><A
+NAME="AEN262"
+>Key integrity</A
+></H2
+><P
+>When you distribute your public key, you are distributing the public
+components of your master and subordinate keys as well as the user IDs.
+Distributing this material alone, however, is a security risk since
+it is possible for an attacker to tamper with the key.
+The public key can be modified by adding or substituting keys, or by
+adding or changing user IDs.
+By tampering with a user ID, the attacker could change the user ID's email
+address to have email redirected to himself.
+By changing one of the encryption keys, the attacker would
+also be able to decrypt the messages redirected to him.</P
+><P
+>Using digital signatures is a solution to this problem.
+When data is signed by a private key, the corresponding public key
+is bound to the signed data.
+In other words, only the corresponding public key can be used to
+verify the signature and ensure that the data has not been modified.
+A public key can be protected from tampering by using its corresponding
+private master key to sign the public key components and user IDs, thus
+binding the components to the public master key.
+Signing public key components with the corresponding private master
+signing key is called <I
+CLASS="FIRSTTERM"
+>self-signing</I
+>, and a public key that has
+self-signed user IDs bound to it is called a <I
+CLASS="FIRSTTERM"
+>certificate</I
+>.</P
+><P
+>As an example, Chloe has two user IDs and three subkeys.
+The signatures on the user IDs can be checked with the command
+<A
+HREF="edit-key.html#CHECK"
+><B
+CLASS="COMMAND"
+>check</B
+></A
+> from the key edit menu.
+
+<TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>chloe%</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>gpg --edit-key chloe</B
+></TT
+>
+Secret key is available.
+
+pub  1024D/26B6AAE1  created: 1999-06-15 expires: never      trust: -/u
+sub  2048g/0CF8CB7A  created: 1999-06-15 expires: never     
+sub  1792G/08224617  created: 1999-06-15 expires: 2002-06-14
+sub   960D/B1F423E7  created: 1999-06-15 expires: 2002-06-14
+(1)  Chloe (Jester) &#60;chloe@cyb.org&#62;
+(2)  Chloe (Plebian) &#60;chloe@tel.net&#62;
+
+<TT
+CLASS="PROMPT"
+>Command&#62;</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>check</B
+></TT
+>
+uid  Chloe (Jester) &#60;chloe@cyb.org&#62;
+sig!       26B6AAE1 1999-06-15   [self-signature]
+uid  Chloe (Plebian) &#60;chloe@tel.net&#62;
+sig!       26B6AAE1 1999-06-15   [self-signature]</PRE
+></TD
+></TR
+></TABLE
+>
+
+As expected, the signing key for each signature is the master signing
+key with key ID <TT
+CLASS="LITERAL"
+>0x26B6AAE1</TT
+>.
+The self-signatures on the subkeys are present in the public key, but
+they are not shown by the GnuPG interface.</P
+></DIV
+><DIV
+CLASS="SECT2"
+><H2
+CLASS="SECT2"
+><A
+NAME="AEN277"
+>Adding and deleting key components</A
+></H2
+><P
+>Both new subkeys and new user IDs may be added to your keypair after
+it has been created.
+A user ID is added using the command 
+<A
+HREF="edit-key.html#ADDUID"
+><B
+CLASS="COMMAND"
+>adduid</B
+></A
+>.
+You are prompted for a real name, email address, and comment just
+as when you create an initial keypair.
+A subkey is added using the command 
+<A
+HREF="edit-key.html#ADDKEY"
+><B
+CLASS="COMMAND"
+>addkey</B
+></A
+>.
+The interface is similar to the interface used when creating an initial
+keypair.
+The subkey may be a DSA signing key, and encrypt-only ElGamal
+key, or a sign-and-encrypt ElGamal key.
+When a subkey or user ID is generated it is self-signed using your 
+master signing key, which is why you must supply your passphrase
+when the key is generated.</P
+><P
+>Additional user IDs are useful when you need multiple identities.
+For example, you may have an identity for your job and an identity
+for your work as a political activist.
+Coworkers will know you by your work user ID.
+Coactivists will know you by your activist user ID.
+Since those groups of people may not overlap, though, each group
+may not trust the other user ID.
+Both user IDs are therefore necessary.</P
+><P
+>Additional subkeys are also useful.
+The user IDs associated with your public master key are validated by
+the people with whom you
+communicate, and changing the master key therefore requires recertification.
+This may be difficult and time consuming if you communicate with
+many people.
+On the other hand, it is good to periodically change encryption subkeys.
+If a key is broken, all the data encrypted with that key will be
+vulnerable.
+By changing keys, however, only the data encrypted with the one broken
+key will be revealed.</P
+><P
+>Subkeys and user IDs may also be deleted.
+To delete a subkey or user ID you must first select it using the
+<A
+HREF="edit-key.html#KEY"
+><B
+CLASS="COMMAND"
+>key</B
+></A
+> or 
+<A
+HREF="edit-key.html#UID"
+><B
+CLASS="COMMAND"
+>uid</B
+></A
+> commands respectively.
+These commands are toggles.
+For example, the command <B
+CLASS="COMMAND"
+>key <TT
+CLASS="PARAMETER"
+><I
+>2</I
+></TT
+></B
+> 
+selects the second subkey,
+and invoking <B
+CLASS="COMMAND"
+>key <TT
+CLASS="PARAMETER"
+><I
+>2</I
+></TT
+></B
+> again 
+deselects it.
+If no extra argument is given, all subkeys or user IDs are deselected.
+Once the user IDs to be deleted are selected, the command
+<A
+HREF="edit-key.html#DELUID"
+><B
+CLASS="COMMAND"
+>deluid</B
+></A
+>
+actually deletes the user IDs from your key.
+Similarly, the command <A
+HREF="edit-key.html#DELKEY"
+><B
+CLASS="COMMAND"
+>delkey</B
+></A
+>
+deletes all selected subkeys from both your public and private keys.</P
+><P
+>For local keyring management, deleting key components is a good way
+to trim other people's public keys of unnecessary material.
+Deleting user IDs and subkeys on your own key, however, is not always
+wise since it complicates key distribution.
+By default, when a user imports your updated public key it will be merged
+with the old copy of your public key on his ring if it exists.
+The components from both keys are combined in the merge, and this
+effectively restores any components you deleted.
+To properly update the key, the user must first delete the old version
+of your key and then import the new version.
+This puts an extra burden on the people with whom you communicate.
+Furthermore, if you send your key to a keyserver, the merge will
+happen regardless, and anybody who downloads your key from a keyserver
+will never see your key with components deleted.
+Consequently, for updating your own key it is better to revoke key
+components instead of deleting them.</P
+></DIV
+><DIV
+CLASS="SECT2"
+><H2
+CLASS="SECT2"
+><A
+NAME="AEN300"
+>Revoking key components</A
+></H2
+><P
+>To revoke a subkey it must be selected.
+Once selected it may be revoked with the 
+<A
+HREF="edit-key.html#REVKEY"
+><B
+CLASS="COMMAND"
+>revkey</B
+></A
+> command.
+The key is revoked by adding a revocation self-signature to the key.
+Unlike the command-line option <TT
+CLASS="OPTION"
+>--gen-revoke</TT
+>, the effect of
+revoking a subkey is immediate.</P
+><TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>Command&#62;</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>revkey</B
+></TT
+>
+Do you really want to revoke this key? y
+                                        
+You need a passphrase to unlock the secret key for
+user: "Chloe (Jester) &#60;chloe@cyb.org&#62;"
+1024-bit DSA key, ID B87DBA93, created 1999-06-28
+
+                  
+pub  1024D/B87DBA93  created: 1999-06-28 expires: never      trust: -/u
+sub  2048g/B7934539  created: 1999-06-28 expires: never     
+sub  1792G/4E3160AD  created: 1999-06-29 expires: 2000-06-28
+rev! subkey has been revoked: 1999-06-29
+sub   960D/E1F56448  created: 1999-06-29 expires: 2000-06-28
+(1)  Chloe (Jester) &#60;chloe@cyb.org&#62;
+(2)  Chloe (Plebian) &#60;chloe@tel.net&#62;</PRE
+></TD
+></TR
+></TABLE
+><P
+>A user ID is revoked differently.
+Normally, a user ID collects signatures that attest that the user ID
+describes the person who actually owns the associated key.
+In theory, a user ID describes a person forever, since that person will
+never change.
+In practice, though, elements of the user ID such as the email address
+and comment may change over time, thus invalidating the user ID.</P
+><P
+>The OpenPGP
+
+specification does not support user ID revocation, but
+a user ID can effectively be revoked by revoking the self-signature
+on the user ID.
+For the security reasons described 
+<A
+HREF="management.html#AEN262"
+>previously</A
+>,
+correspondents will not trust a user ID with no valid self-signature.</P
+><P
+>A signature is revoked by using the command 
+<A
+HREF="edit-key.html#REVSIG"
+><B
+CLASS="COMMAND"
+>revsig</B
+></A
+>.
+Since you may have signed any number of user IDs, the user interface
+prompts you to decide for each signature whether or not to revoke it.</P
+><TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>Command&#62;</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>revsig</B
+></TT
+>
+You have signed these user IDs:
+     Chloe (Jester) &#60;chloe@cyb.org&#62;
+   signed by B87DBA93 at 1999-06-28
+     Chloe (Plebian) &#60;chloe@tel.net&#62;
+   signed by B87DBA93 at 1999-06-28
+user ID: "Chloe (Jester) &#60;chloe@cyb.org&#62;"
+signed with your key B87DBA93 at 1999-06-28
+Create a revocation certificate for this signature? (y/N)n
+user ID: "Chloe (Plebian) &#60;chloe@tel.net&#62;"                
+signed with your key B87DBA93 at 1999-06-28
+Create a revocation certificate for this signature? (y/N)y
+You are about to revoke these signatures:                 
+     Chloe (Plebian) &#60;chloe@tel.net&#62;
+   signed by B87DBA93 at 1999-06-28
+Really create the revocation certificates? (y/N)y
+                                                 
+You need a passphrase to unlock the secret key for
+user: "Chloe (Jester) &#60;chloe@cyb.org&#62;"
+1024-bit DSA key, ID B87DBA93, created 1999-06-28
+
+                  
+pub  1024D/B87DBA93  created: 1999-06-28 expires: never      trust: -/u
+sub  2048g/B7934539  created: 1999-06-28 expires: never     
+sub  1792G/4E3160AD  created: 1999-06-29 expires: 2000-06-28
+rev! subkey has been revoked: 1999-06-29
+sub   960D/E1F56448  created: 1999-06-29 expires: 2000-06-28
+(1)  Chloe (Jester) &#60;chloe@cyb.org&#62;
+(2)  Chloe (Plebian) &#60;chloe@tel.net&#62;</PRE
+></TD
+></TR
+></TABLE
+><P
+>A revoked user ID is indicated by the revocation signature on 
+the ID when the signatures on the key's user IDs are listed.</P
+><TABLE
+BORDER="0"
+BGCOLOR="#E0E0E0"
+WIDTH="100%"
+><TR
+><TD
+><PRE
+CLASS="SCREEN"
+><TT
+CLASS="PROMPT"
+>Command&#62;</TT
+> <TT
+CLASS="USERINPUT"
+><B
+>check</B
+></TT
+>
+uid  Chloe (Jester) &#60;chloe@cyb.org&#62;
+sig!       B87DBA93 1999-06-28   [self-signature]
+uid  Chloe (Plebian) &#60;chloe@tel.net&#62;
+rev!       B87DBA93 1999-06-29   [revocation]
+sig!       B87DBA93 1999-06-28   [self-signature]</PRE
+></TD
+></TR
+></TABLE
+><P
+>Revoking both subkeys and self-signatures on user IDs adds revocation
+self-signatures to the key.
+Since signatures are being added and no material is deleted, a 
+revocation will always be visible to others when your updated public
+key is distributed and merged with older copies of it.
+Revocation therefore guarantees that everybody has a consistent
+copy of your public key.</P
+></DIV
+><DIV
+CLASS="SECT2"
+><H2
+CLASS="SECT2"
+><A
+NAME="AEN324"
+>Updating a key's expiration time</A
+></H2
+><P
+>The expiration time of a key may be updated with the command
+<A
+HREF="edit-key.html#EXPIRE"
+><B
+CLASS="COMMAND"
+>expire</B
+></A
+> from the key edit menu.
+If no key is selected the expiration time of the primary key
+is updated.
+Otherwise the expiration time of the selected subordinate key
+is updated.</P
+><P
+>A key's expiration time is associated with the key's self-signature.
+The expiration time is updated by deleting the old self-signature
+and adding a new self-signature.
+Since correspondents will not have deleted the old self-signature, they
+will see an additional self-signature on the key when they update
+their copy of your key.
+The latest self-signature takes precedence, however, so all correspondents
+will unambiguously know the expiration times of your keys.</P
+></DIV
+></DIV
+></DIV
+><DIV
+CLASS="NAVFOOTER"
+><HR
+ALIGN="LEFT"
+WIDTH="100%"><TABLE
+WIDTH="100%"
+BORDER="0"
+CELLPADDING="0"
+CELLSPACING="0"
+><TR
+><TD
+WIDTH="33%"
+ALIGN="left"
+VALIGN="top"
+><A
+HREF="x211.html"
+>Prev</A
+></TD
+><TD
+WIDTH="34%"
+ALIGN="center"
+VALIGN="top"
+><A
+HREF="book1.html"
+>Home</A
+></TD
+><TD
+WIDTH="33%"
+ALIGN="right"
+VALIGN="top"
+><A
+HREF="x330.html"
+>Next</A
+></TD
+></TR
+><TR
+><TD
+WIDTH="33%"
+ALIGN="left"
+VALIGN="top"
+>Digital signatures</TD
+><TD
+WIDTH="34%"
+ALIGN="center"
+VALIGN="top"
+>&nbsp;</TD
+><TD
+WIDTH="33%"
+ALIGN="right"
+VALIGN="top"
+>Validating other keys on your public keyring</TD
+></TR
+></TABLE
+></DIV
+></BODY
+></HTML
+>

@@ -1,0 +1,197 @@
+
+                                    BF-SDK
+                                    ~~~~~~
+                                     V1.1
+
+                               Pascalinterface
+                               ~~~~~~~~~~~~~~~
+
+                    (c) 1996 Cedric Reinartz & Markus Hahn
+
+
+This documentation helps you to use the pascal interface in your own 
+program. You need to include the unit BLOWFISH.TPU in your programm. 
+It should be sufficient to use the provided one which was compiled with
+the default parameters. For changing the parameters please see ASM.TXT.
+
+The following type declarations are made in BLOWFISH.TPU:
+
+  ULONG = Longint;     { unsigned 32bit }
+  UINT  = Word;        { unsigned 16bit }
+  UCHAR = Byte;        { unsigned 8bit }
+  BOOL  = Word;        { 16bit boolean }
+  P_UCHAR_Buffer = ^T_UCHAR_Buffer;
+  T_UCHAR_Buffer = array[0..MAXDATA-1] of UCHAR;
+  P_UINT_Buffer  = ^T_UINT_Buffer;
+  T_UINT_Buffer  = array[0..(MAXDATA div 2)-1] of UINT;
+  P_ULONG_Buffer = ^T_ULONG_Buffer;
+  T_ULONG_Buffer = array[0..(MAXDATA div 4)-1] of ULONG;
+
+You need this declarations to understand and use the following 
+descriptions. See also PAS_DEMO.PAS for reference.
+
+
+
+Functions
+~~~~~~~~~
+
+Blowfish_Init(pKey : P_UCHAR_Buffer; unKeySize : UINT);
+
+ Function   : Initialises the Boxes
+ Argument   : Pointer to the Password (which is NOT a string)
+              Length of the Password
+ Return     : none
+ Description: A Password with a maximum of 56 Bytes is used to encrypt the
+              Boxes. These encrypted boxes are vital for the further encryption
+              process with Blowfish_(CBC)Encrypt and Blowfish_(CBC)Decrypt.
+              If you want to change the password at runtime you have to restore
+              the original contents of the boxes before you can use this
+              function again (See Blowfish_GetBoxes and Blowfish_SetBoxes).
+
+-------------------------------------------------------------------------------
+
+Blowfish_WeakKey : BOOL;
+
+ Function   : Test if the generated Boxes are weak
+ Argument   : none
+ Return     : Status (1=weak, 0=good)
+ Description: After "Blowfish_InitCrypt" you should test the Boxes with this 
+              function. If they provide a weakness which a cryptoanalyst could
+              use to break the cipher a "1" is returned. In this case you
+              should reload the original boxes and let the user choose a
+              different password.
+
+-------------------------------------------------------------------------------
+
+Blowfish_ECBEncrypt(pBuffer : P_ULONG_Buffer; unCount : UINT);
+
+ Function   : Encrypts a plaintext string using the ECB method
+ Argument   : Pointer to the plaintext
+              Length of the plaintext
+ Return     : none
+ Description: This function encrypts (multiple) blocks of 8 Bytes of plaintext
+              using the ECB method (blocks are not chained). The generated 
+              ciphertext will overwrite the plaintext. Thus the plaintext-
+              pointer will point to the ciphertext after the encryption. The 
+              length of the plaintext must be a multiple of 8. If it is not,
+              plaintext bytes will be left at the end of the ciphertext.
+
+-------------------------------------------------------------------------------
+
+Blowfish_ECBDecrypt(pBuffer : P_ULONG_Buffer; unCount : UINT);
+
+ Function   : Decrypts a ciphertext string using the ECB method
+ Argument   : Pointer to the ciphertext
+              Length of the ciphertext
+ Return     : none
+ Description: This function decrypts (multiple) blocks of 8 Bytes of cipher-
+              text using the ECB method (blocks are not chained). The generated
+              plaintext will overwrite the ciphertext. Thus the ciphertext-
+              pointer will point to the plaintext after the decryption. The 
+              length of the ciphertext must be a multiple of 8. If it is not, 
+              ciphertext bytes will be left at the end of the plaintext.
+
+-------------------------------------------------------------------------------
+
+Blowfish_CBCEncrypt(pBuffer : P_ULONG_Buffer; unCount : UINT;
+                              var ulCBCLeft, ulCBCRight : ULONG);
+
+ Function   : Encrypts a plaintext string using the CBC method
+ Argument   : Pointer to the plaintext
+              Length of the plaintext
+              Lower part of the IV
+              Upper part of the IV
+ Return     : none
+ Description: This function encrypts (multiple) blocks of 8 Bytes of plaintext
+              using the CBC method (blocks are chained using an initialisation
+	      vector IV). The generated ciphertext will overwrite the plain-
+	      text. Thus the plaintext-pointer will point to the ciphertext 
+	      after the encryption. The length of the plaintext must be a
+	      multiple of 8. If it is not, plaintext bytes will be left at the
+	      end of the ciphertext. The IV must not be secret. For different
+	      encryptions you can choose the same IV but if possible you should
+	      use different ones to improve security. 
+	      Note: you need the original IV for decryption.
+
+
+-------------------------------------------------------------------------------
+
+Blowfish_CBCDecrypt(pBuffer : P_ULONG_Buffer; unCount : UINT;
+                              var ulCBCLeft, ulCBCRight : ULONG);
+
+ Function   : Decrypts a ciphertext string using the CBC method
+ Argument   : Pointer to the ciphertext
+              Length of the ciphertext
+              Lower part of the IV
+              Upper part of the IV
+ Return     : none
+ Description: This function decrypts (multiple) blocks of 8 Bytes of ciphertext
+              using the CBC method (blocks are chained using an initialisation
+	      vector IV). The generated plaintext will overwrite the cipher-
+	      text. Thus the ciphertext-pointer will point to the plaintext 
+	      after the decryption. The length of the ciphertext must be a
+	      multiple of 8. If it is not, ciphertext bytes will be left at the
+	      end of the plaintext.
+	      Note: The IV is the same used on encryption.
+
+-------------------------------------------------------------------------------
+
+Blowfish_Done;
+
+ Function   : Clears the Boxes
+ Argument   : none
+ Return     : none
+ Description: Clears the contents of the P- and S-Boxes. This should be used
+              before you exit your program to make sure that no one can get
+              your Key.
+
+-------------------------------------------------------------------------------
+
+Blowfish_SetRounds(Rounds : UINT): UINT;
+
+ Function   : Set number of rounds. Returns number of rounds.
+ Argument   : # of rounds = 16, 32 or 2-32. See variable RNDS in ASM.TXT
+ Return     : number of rounds
+ Description: You always have to give a Argument. If BFENG386.ASM was compiled
+              with "rnds equ 3" you are able to set the number of rounds 
+              between 2 and 32. This function always returns the number of
+              rounds actual used. If you supply an invalid argument nothing
+              is changed and the currently used number of rounds is returned.
+              For more details see variable RNDS in ASM.TXT.
+
+-------------------------------------------------------------------------------
+
+Blowfish_GetBoxes(pBuffer : P_ULONG_Buffer);
+
+ Function   : Copies the actual P- and S-Boxes to a user buffer
+ Arguments  : Pointer to the user buffer
+ Return     : none
+ Description: Use this to save the original Boxes. If you want to change the
+              Password at runtime you have to restore these Boxes first. 
+              You can also save the encrypted Boxes and restore them if needed.
+              In this way you are able to swap Passwords at high speed.
+              The needed buffer size is 1042 for rnds=1 and 1058 for rnds=2 or 
+              rnds=3 (see ASM.TXT for the meaning of "rnds").
+
+-------------------------------------------------------------------------------
+
+Blowfish_SetBoxes(pBuffer : P_ULONG_Buffer);
+
+ Function   : Copies a user buffer to the P- and S-Boxes
+ Arguments  : Pointer to the user buffer
+ Return     : none
+ Description: Use this to restore the Boxes with previously saved ones.
+              See description of "Blowfish_GetBoxes".
+
+-------------------------------------------------------------------------------
+
+Blowfish_GetBoxPointer : Pointer;
+
+ Function   : Returns a Pointer to the beginning of PBox in DX:AX
+ Arguments  : none
+ Return     : pointer to the Boxes
+ Description: For a reason I do not know the pointer is sometimes wrong,
+              so verify this! Normaly there is no need to use this function.
+
+
+- eof -

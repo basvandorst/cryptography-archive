@@ -1,0 +1,144 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!usenet.ins.cwru.edu!gatech!swrinde!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx!colin
+From: colin@nyx.cs.du.edu (Colin Plumb)
+Subject: Re: another RNG
+Message-ID: <1993Nov24.145549.28658@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx's hardware; my words.
+Keywords: RNG, C, pool
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1993Nov24.050303.5236@oracle.us.oracle.com>
+Date: Wed, 24 Nov 93 14:55:49 GMT
+Lines: 131
+
+In article <1993Nov24.050303.5236@oracle.us.oracle.com>,
+Robert Jenkins <rjenkins@uucp> wrote:
+>/*
+>---------------------------------------------------------
+>A cryptographically secure pseudorandom number generator?
+>Generates 10^9 bits in 11.2 seconds on a SPARCstation 10.
+>---------------------------------------------------------
+>*/
+>
+>#define ALPHA 9                   /* arrays of size 2^alpha */
+>#define SIZE  (1<<ALPHA)
+>#define OMEGA 32                  /* omega bits per value */
+>
+>typedef  unsigned long int  u4;   /* u4 is unsigned, 4 bytes */
+>static u4 za, zb;                 /* za,zb: secret values */
+>static u4 m[SIZE];                /* m: pool of secret memory */
+>static u4 r[SIZE];                /* r: results given to the user */
+>
+>static void zgen()                /* fill r[] with new values */
+>{
+>  register u4 a,b,c,i,j,k;
+>
+>  a = za;  b = zb;
+>  for (i=0; i<SIZE; ++i) 
+>  {
+>    j = m[(b >> (OMEGA-ALPHA))] + b;
+>    k = m[(c = (j >> (OMEGA-ALPHA)))] + a;
+>    a = m[i];
+>    b = c ^ (j << ALPHA);         /* b is j barrelshifted by alpha */
+>    m[i] = b + k;                 /* a's value is no longer in m */
+>    r[i] = k;
+>  }
+>  zb = b;  za = a;
+>}
+>
+>int main()
+>{
+>  u4 i;
+>  za = zb = 1;                      /* something must be nonzero */
+>  for (i=0; i<SIZE; ++i) m[i] = 0;  /* put the seed in m[] */
+>  for (i=0; i<100; ++i) zgen();     /* stir things up some */
+>
+>  for (i=0; i<62500; ++i) zgen();   /* generate 10^9 bits */
+>}
+
+H'm... nothing was terribly obvious to me.  I reduced the number of
+local variables to make the data flow easier to see:
+
+#define ALPHA 9
+#define SIZE (1<<ALPHA)
+#define OMEGA 32
+#define TOP(x) ((x)>>(OMEGA-ALPHA))
+
+typedef unsigned long u4;	/* OMEGA bits */
+static u4 za, zb;		/* Secret state */
+static u4 m[SIZE];		/* Secret state */
+static u4 r[SIZE];		/* Output */
+
+static void zgen()
+{
+	register u4 a,b,t,i;
+
+	a = za; b = zb;
+
+	for (i = 0; i < SIZE; ++i)
+	{
+		b += m[TOP(b)];		/* Was j */
+		a += m[TOP(b)];		/* Was k */
+
+		r[i] = a;		/* Result */
+
+		b = TOP(b)+(b<<ALPHA);	/* I.e. rotate left by ALPHA */
+
+		t = a+b;
+		a = m[i];
+		m[i] = t;		/* I.e. a+=b; SWAP(a,m[i]); */
+	}
+	za = a; zb = b;
+}
+
+>This passed the distribution, frequency, and run tests for as long as I
+>was willing to run them.  So what might be wrong with the generator?
+>A simple, secure generator faster than LCG would be a good thing.
+
+Cryptographically strong RNGs are always useful.  I'd be curious how
+you developed this one.
+
+Tangent:
+
+On a similar thread, I've been considering the cryptographic strength
+of (x & y) | (~x & z), where x, y, and z are LFSR outputs.  I.e. x
+chooses between y and z.  I should probably track down some of the
+references in Simmons (the chapter on stream ciphers).  Obviously,
+guessing x will cause it to fall apart.  Guessing y or z will let you
+find half the zeros (the places where the output does not match y)
+or half the ones in x, respectively, which also causes it to fall apart.
+
+Are there any other good attacks?  I've been thinking about whether
+knowing that the longest possible run of zeros (or ones) in x is one
+less than its degree lets you know that in each degree(x) bits of the
+output, at least one bit must come from each of y and z, so you know
+you can't have all degree(x) bits disagree.  I'm wondering if there
+is an efficient way to accumulate these constraints to break y or z.
+
+Also, for generating x, y and z, it would be nice to use key-dependent
+polynomials.  Is there a way to either directly generate a random
+irreducible polynomial of a given degree, or is there a more efficient
+test for irreducibility of a degree-n polynomial than what amounts to
+trial division by everything up to degree n/2 taking the GCD with
+x^2^(n/2)+x?
+
+For polynomials up to 32 bits, the bulk of the time is spent in the
+first modulus operatin in Euclid's algorithm, but fortunately a
+remainder modulo a 32-bit polynomial is what a CRC is, so it boils down
+to running 65536 bits = 8K of text through a CRC generator, so it's
+pretty efficient.  Obviously, you can generate polynomials not divisible
+by x or x+1 directly, and test for factors up to a smaller degree
+first.  For 32 bits, testing for factors up to 8 bits long first by
+trying x^255+1, which is 64 bytes and similar in work to initializing a
+byte-at-a-time table for the larger test, is a good starting
+optimisation.  (Actually, for the smaller test done bit-at-a-time,
+it would be easier to take the factor of x+1 out of x^255+1 and use
+the string x^254+x^253+...+x+1, altering the top-bit-testing logic
+to XOR in the 1 bit.  For the larger test, it's easier to have the
+test vector be a multiple of 8 bits long, so using x^65535+1 makes
+as much sense as anything.)
+
+But for larger polynomials, this gets expensive very quickly.  Are there
+any better solutions?
+-- 
+	-Colin

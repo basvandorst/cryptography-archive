@@ -1,0 +1,1498 @@
+diff -C3 -r ../apache_0.8.14/src/Configuration ./src/Configuration
+*** ../apache_0.8.14/src/Configuration	Tue Sep 19 17:04:58 1995
+--- ./src/Configuration	Thu Nov  9 18:36:33 1995
+***************
+*** 13,22 ****
+  # First, ordinary compile-time configuration.
+  
+  # What to call the compiler:  For normal machines with ANSI compilers
+! # CC= cc
+  # For Suns or other non-ANSI platforms. Please make sure your gcc is
+  # 2.0 or later, as 1.40 seems to create bad code for the Sun 4.
+! CC= gcc
+  
+  # CFLAGS, compile flags.
+  
+--- 13,22 ----
+  # First, ordinary compile-time configuration.
+  
+  # What to call the compiler:  For normal machines with ANSI compilers
+! CC= cc
+  # For Suns or other non-ANSI platforms. Please make sure your gcc is
+  # 2.0 or later, as 1.40 seems to create bad code for the Sun 4.
+! #CC= gcc
+  
+  # CFLAGS, compile flags.
+  
+***************
+*** 44,49 ****
+--- 44,60 ----
+  # -lndbm is commonly required for DBM auth, if that is configured in.
+  EXTRA_LIBS=
+  
++ # Define the target
++ TARGET=httpd
++ 
++ # Enable SSL. NB: There is one line at the end of this file, too...
++ SSL_INCLUDE= -I/u/ben/crypto/SSLeay-0.4.5b-ben/include
++ SSL_CFLAGS= -DAPACHE_SSL $(SSL_INCLUDE)
++ SSL_LIB_DIR= /u/ben/crypto/SSLeay-0.4.5b-ben/
++ SSL_LIBS= -L$(SSL_LIB_DIR) -lssl -lcrypto
++ TARGET=httpsd
++ 
++ 
+  # AUX_CFLAGS are system-specific control flags.
+  # NOTE: IF YOU DO NOT CHOOSE ONE OF THESE, EDIT httpd.h AND CHOOSE
+  # SETTINGS FOR THE SYSTEM FLAGS. IF YOU DON'T, BAD THINGS WILL HAPPEN.
+***************
+*** 78,86 ****
+  # libcrypt_i available from sosco.sco.com, files /SLS/lng225b.Z and
+  # /SLS/lng225b.ltr.Z
+  # the -Oe option causes cc to die compiling mod_imap (using 3.0.0a of the dev sys)
+! #CFLAGS= -Oacgiltz
+! #AUX_CFLAGS= -DSCO
+  #EXTRA_LIBS= -lPW -lsocket -lmalloc -lcrypt_i
+  # For SVR4
+  #AUX_CFLAGS= -DSVR4
+  #EXTRA_LIBS= -lsocket -lnsl -lc
+--- 89,98 ----
+  # libcrypt_i available from sosco.sco.com, files /SLS/lng225b.Z and
+  # /SLS/lng225b.ltr.Z
+  # the -Oe option causes cc to die compiling mod_imap (using 3.0.0a of the dev sys)
+! CFLAGS= -Oacgiltz -g -W3
+! AUX_CFLAGS= -DSCO
+  #EXTRA_LIBS= -lPW -lsocket -lmalloc -lcrypt_i
++ EXTRA_LIBS= -lPW -lsocket -lmalloc
+  # For SVR4
+  #AUX_CFLAGS= -DSVR4
+  #EXTRA_LIBS= -lsocket -lnsl -lc
+***************
+*** 123,135 ****
+  
+  Module asis_module        mod_asis.o
+  Module imap_module        mod_imap.o
+! # Module dbm_auth_module  mod_auth_dbm.o
+  
+  # Optional modules for *full* NCSA compatibility --- we think these log
+  # files are a bad idea, but reasonable people seem to disagree:
+  
+! # Module agent_log_module    mod_log_agent.o
+! # Module referer_log_module  mod_log_referer.o
+  
+  # Finally, outright experiments --- mod_dld defines commands which
+  # allows other modules to be loaded in at runtime, and mod_cookies
+--- 135,147 ----
+  
+  Module asis_module        mod_asis.o
+  Module imap_module        mod_imap.o
+! #Module dbm_auth_module  mod_auth_dbm.o
+  
+  # Optional modules for *full* NCSA compatibility --- we think these log
+  # files are a bad idea, but reasonable people seem to disagree:
+  
+! Module agent_log_module    mod_log_agent.o
+! Module referer_log_module  mod_log_referer.o
+  
+  # Finally, outright experiments --- mod_dld defines commands which
+  # allows other modules to be loaded in at runtime, and mod_cookies
+***************
+*** 137,144 ****
+  # click-trails from Netscape cookies, for Netscape-using clients who
+  # aren't coming in via proxy.
+  
+! # Module dld_module     mod_dld.o
+! # Module cookies_module mod_cookies.o
+  
+  # Finally, this is a *replacement* for mod_log_common which 
+  # supports a LogFormat directive which allows you to specify what
+--- 149,156 ----
+  # click-trails from Netscape cookies, for Netscape-using clients who
+  # aren't coming in via proxy.
+  
+! #Module dld_module     mod_dld.o
+! #Module cookies_module mod_cookies.o
+  
+  # Finally, this is a *replacement* for mod_log_common which 
+  # supports a LogFormat directive which allows you to specify what
+***************
+*** 152,157 ****
+  # mod_log_common --- a server with both will work, but you'll get
+  # very confused trying to figure out what's going on...
+  
+! # Module config_log_module mod_log_config.o
+! 
+  
+--- 164,171 ----
+  # mod_log_common --- a server with both will work, but you'll get
+  # very confused trying to figure out what's going on...
+  
+! #Module config_log_module mod_log_config.o
+  
++ # Damn damn damn. Apache inverts the module list. SSL must go first to fake
++ # basic authorization. So, uncomment this line to add SSL.
++ Module ssl_module apache_ssl.o
+diff -C3 -r ../apache_0.8.14/src/Makefile ./src/Makefile
+*** ../apache_0.8.14/src/Makefile	Tue Sep 19 17:25:13 1995
+--- ./src/Makefile	Thu Nov  9 18:39:03 1995
+***************
+*** 1,104 ****
+! # Makefile for the Apache httpd. 
+! 
+! # For normal machines with ANSI compilers
+! # CC= cc
+! # For Suns or other non-ANSI platforms. Please make sure your gcc is
+! # 2.0 or later, as 1.40 seems to create bad code for the Sun 4.
+! CC= gcc -Wall
+! 
+! # CFLAGS, compile flags.
+! 
+! # If you want no reverse hostname resolution, use -DMINIMAL_DNS
+! # If you want to have more secure hostname resolution at the cost of some 
+! # performance, use -DMAXIMUM_DNS
+! 
+! #CFLAGS= -O2 
+! CFLAGS= -g 
+! 
+! # Modules precompiled with the server.  Note that these must also be
+! # in the list in modules.c in order to be active.
+! 
+! MODULES = mod_mime.o mod_access.o mod_alias.o mod_cgi.o mod_include.o \
+! 	mod_dir.o mod_auth.o mod_auth_dbm.o mod_negotiation.o mod_userdir.o \
+! 	mod_log_common.o mod_asis.o
+! 
+! # Place here any extra libraries you may need to link to. 
+! # If you want DBM auth, -lndbm is commonly required.
+  EXTRA_LIBS=
+! 
+! # AUX_CFLAGS are system-specific control flags.
+! # NOTE: IF YOU DO NOT CHOOSE ONE OF THESE, EDIT httpd.h AND CHOOSE
+! # SETTINGS FOR THE SYSTEM FLAGS. IF YOU DON'T, BAD THINGS WILL HAPPEN.
+! 
+! # For SunOS 4
+  AUX_CFLAGS= -DSUNOS4
+! # For Solaris 2.
+! # AUX_CFLAGS= -DSOLARIS2 -DFCNTL_SERIALIZED_ACCEPT
+! # EXTRA_LIBS= -lsocket -lnsl
+! # For SGI IRIX. Use the EXTRA_LIBS line if you're using NIS and want
+! # user-supported directories
+! #AUX_CFLAGS= -DIRIX -DFCNTL_SERIALIZED_ACCEPT
+! #EXTRA_LIBS= -lsun
+! # For HP-UX
+! #AUX_CFLAGS= -DHPUX
+! # For AIX
+! #AUX_CFLAGS= -DAIX -U__STR__
+! # For Ultrix
+! #AUX_CFLAGS= -DULTRIX
+! # For DEC OSF/1
+! #AUX_CFLAGS= -DOSF1
+! # For NeXT
+! #AUX_CFLAGS= -DNEXT
+! # For Sequent
+! #AUX_CFLAGS= -DSEQUENT
+! # For Linux -m486 ONLY IF YOU HAVE 486 BINARY SUPPORT IN KERNEL
+! #AUX_CFLAGS= -DLINUX -DFCNTL_SERIALIZED_ACCEPT
+! # For A/UX
+! #AUX_CFLAGS= -DAUX
+! #EXTRA_LIBS= -lbsd -lposix -s
+! # For SCO ODT
+! # libcrypt_i available from sosco.sco.com, files /SLS/lng225b.Z and
+! # /SLS/lng225b.ltr.Z
+! #AUX_CFLAGS= -DSCO
+! #EXTRA_LIBS= -lPW -lsocket -lmalloc -lcrypt_i
+! # For SVR4
+! #AUX_CFLAGS= -DSVR4
+! #EXTRA_LIBS= -lsocket -lnsl -lc
+! # For Amdahl UTS 2.1
+! # -Xa enables ANSI mode, -eft is expanded types
+! #AUX_CFLAGS= -Xa -eft -DUTS21
+! #EXTRA_LIBS= -lsocket -lbsd -la
+! # For HP/Apollo Domain/OS
+! #AUX_CFLAGS= -DAPOLLO
+! # For NetBSD/FreeBSD/BSDI 2.x
+! # -m486 only if you are running on Intel 486/586
+! #AUX_CFLAGS= -m486
+! # BSDI doesn't need -lcrypt
+! #EXTRA_LIBS= -lcrypt
+! 
+! # Place here any flags you may need upon linking, such as a flag to
+! # prevent dynamic linking (if desired)
+! LFLAGS= 
+  
+! # You shouldn't have to edit anything else.
+  
+  OBJS= alloc.o http_main.o http_core.o http_config.o http_request.o \
+    http_log.o http_protocol.o rfc931.o util.o util_script.o modules.o $(MODULES)
+  
+  .c.o:
+! 	$(CC) -c $(CFLAGS) $(AUX_CFLAGS) $<
+  
+! all: httpd
+  
+  httpd: $(OBJS)
+  	$(CC) $(LFLAGS) -o httpd $(OBJS) $(EXTRA_LIBS)
+  
+  clean:
+! 	rm -f httpd $(OBJS) *pure*
+  
+  #Dependencies
+  #Core code
+! $(OBJS): Makefile httpd.h alloc.h conf.h
+  
+  http_config.o http_core.o http_main.o util.o: http_conf_globals.h
+  http_config.o http_core.o http_main.o: http_config.h http_log.h
+--- 1,71 ----
+! # Makefile automatically generated from Makefile.tmpl
+! # and configuration file by Apache config script. 
+! # Hand-edited changes will be lost if the config script
+! # is re-run.
+! CC= cc
+! CFLAGS= -O2
+! LFLAGS=
+  EXTRA_LIBS=
+! TARGET=httpd
+! SSL_INCLUDE= -I/u/ben/crypto/SSLeay-0.4.5b-ben/include
+! SSL_CFLAGS= -DAPACHE_SSL $(SSL_INCLUDE)
+! SSL_LIB_DIR= /u/ben/crypto/SSLeay-0.4.5b-ben/
+! SSL_LIBS= -L$(SSL_LIB_DIR) -lssl -lcrypto
+! TARGET=httpsd
+  AUX_CFLAGS= -DSUNOS4
+! CFLAGS= -Oacgiltz -g -W3
+! AUX_CFLAGS= -DSCO
+! EXTRA_LIBS= -lPW -lsocket -lmalloc
+! MODULES=\
+!   mod_mime.o \
+!   mod_access.o \
+!   mod_auth.o \
+!   mod_negotiation.o \
+!   mod_include.o \
+!   mod_dir.o \
+!   mod_cgi.o \
+!   mod_userdir.o \
+!   mod_alias.o \
+!   mod_log_common.o \
+!   mod_asis.o \
+!   mod_imap.o \
+!   mod_log_agent.o \
+!   mod_log_referer.o \
+!   apache_ssl.o
+  
+! # Apache makefile template (well, suffix).
+! 
+! # This is combined with the information in the "Configuration" file
+! # by the configure script to make the actual Makefile.
+  
+  OBJS= alloc.o http_main.o http_core.o http_config.o http_request.o \
+    http_log.o http_protocol.o rfc931.o util.o util_script.o modules.o $(MODULES)
+  
+  .c.o:
+! 	$(CC) -c $(CFLAGS) $(AUX_CFLAGS) $(SSL_CFLAGS) $<
+  
+! all: $(TARGET)
+  
+  httpd: $(OBJS)
+  	$(CC) $(LFLAGS) -o httpd $(OBJS) $(EXTRA_LIBS)
+  
++ httpsd: $(OBJS)
++ 	$(CC) $(LFLAGS) -o httpsd $(OBJS) $(EXTRA_LIBS) $(SSL_LIBS)
++ 
+  clean:
+! 	rm -f httpd shttpd $(OBJS) *pure*
+! 
+! dist.tar: 
+! 	# Assure a semi-sensible configuration going out...
+! 	cp Makefile.orig Makefile
+! 	cp modules.c.orig modules.c
+! 	tar cvf dist.tar README INSTALL CHANGES TODO API.html \
+! 		Configuration Configure Makefile.tmpl Makefile *.h *.c
+  
+  #Dependencies
+  #Core code
+! $(OBJS): Makefile httpd.h alloc.h conf.h apache_ssl1.h apache_ssl2.h
+! #$(OBJS): httpd.h alloc.h conf.h
+  
+  http_config.o http_core.o http_main.o util.o: http_conf_globals.h
+  http_config.o http_core.o http_main.o: http_config.h http_log.h
+diff -C3 -r ../apache_0.8.14/src/Makefile.tmpl ./src/Makefile.tmpl
+*** ../apache_0.8.14/src/Makefile.tmpl	Tue Jul 25 01:37:52 1995
+--- ./src/Makefile.tmpl	Fri Oct 20 15:18:30 1995
+***************
+*** 7,21 ****
+    http_log.o http_protocol.o rfc931.o util.o util_script.o modules.o $(MODULES)
+  
+  .c.o:
+! 	$(CC) -c $(CFLAGS) $(AUX_CFLAGS) $<
+  
+! all: httpd
+  
+  httpd: $(OBJS)
+  	$(CC) $(LFLAGS) -o httpd $(OBJS) $(EXTRA_LIBS)
+  
+  clean:
+! 	rm -f httpd $(OBJS) *pure*
+  
+  dist.tar: 
+  	# Assure a semi-sensible configuration going out...
+--- 7,24 ----
+    http_log.o http_protocol.o rfc931.o util.o util_script.o modules.o $(MODULES)
+  
+  .c.o:
+! 	$(CC) -c $(CFLAGS) $(AUX_CFLAGS) $(SSL_CFLAGS) $<
+  
+! all: $(TARGET)
+  
+  httpd: $(OBJS)
+  	$(CC) $(LFLAGS) -o httpd $(OBJS) $(EXTRA_LIBS)
+  
++ httpsd: $(OBJS)
++ 	$(CC) $(LFLAGS) -o httpsd $(OBJS) $(EXTRA_LIBS) $(SSL_LIBS)
++ 
+  clean:
+! 	rm -f httpd shttpd $(OBJS) *pure*
+  
+  dist.tar: 
+  	# Assure a semi-sensible configuration going out...
+***************
+*** 26,32 ****
+  
+  #Dependencies
+  #Core code
+! $(OBJS): Makefile httpd.h alloc.h conf.h
+  
+  http_config.o http_core.o http_main.o util.o: http_conf_globals.h
+  http_config.o http_core.o http_main.o: http_config.h http_log.h
+--- 29,36 ----
+  
+  #Dependencies
+  #Core code
+! $(OBJS): Makefile httpd.h alloc.h conf.h apache_ssl1.h apache_ssl2.h
+! #$(OBJS): httpd.h alloc.h conf.h
+  
+  http_config.o http_core.o http_main.o util.o: http_conf_globals.h
+  http_config.o http_core.o http_main.o: http_config.h http_log.h
+diff -C3 -r ../apache_0.8.14/src/conf.h ./src/conf.h
+*** ../apache_0.8.14/src/conf.h	Tue Sep 19 17:04:54 1995
+--- ./src/conf.h	Thu Nov  9 17:46:33 1995
+***************
+*** 192,197 ****
+--- 192,198 ----
+  #undef NO_KILLPG
+  #undef NO_SETSID
+  #define NEED_INITGROUPS
++ #define SCO_LIB_PROTOTYPES
+  #define JMP_BUF sigjmp_buf
+  #define SIGURG SIGUSR1 /* but note, this signal will be sent to a process group if enabled (for OOB data). It is not currently enabled. */
+  #define getwd(d) getcwd(d,MAX_STRING_LEN)
+***************
+*** 357,368 ****
+   * Believe it or not, these do have to be declared, at least on SunOS,
+   * because they aren't mentioned in the relevant system headers.
+   * Sun Quality Software.  Gotta love it.
+   */
+  
+  int getopt (int, char **, char *);
+  
+- int strcasecmp (char *, char *);
+- int strncasecmp (char *, char *, int);
+  int toupper(int);
+  int tolower(int);     
+       
+--- 358,368 ----
+   * Believe it or not, these do have to be declared, at least on SunOS,
+   * because they aren't mentioned in the relevant system headers.
+   * Sun Quality Software.  Gotta love it.
++  * SCO also fails to define a few of these - see below.
+   */
+  
+  int getopt (int, char **, char *);
+  
+  int toupper(int);
+  int tolower(int);     
+       
+***************
+*** 397,403 ****
+  int listen (int, int);     
+  int bind (int, struct sockaddr *, int);     
+  int connect (int, struct sockaddr *, int);
+- int accept (int, struct sockaddr *, int *);
+  int shutdown (int, int);     
+  
+  int getsockname (int s, struct sockaddr *name, int *namelen);
+--- 397,402 ----
+***************
+*** 409,412 ****
+--- 408,418 ----
+  #include <stdarg.h>
+  long vfprintf (FILE *, char *, va_list);
+       
++ #endif
++ 
++ #if defined(SUNOS_LIB_PROTOTYPES) || defined(SCO_LIB_PROTOTYPES)
++ int strcasecmp (char *, char *);
++ int strncasecmp (char *, char *, int);
++ 
++ int accept (int, struct sockaddr *, int *);
+  #endif
+diff -C3 -r ../apache_0.8.14/src/http_config.c ./src/http_config.c
+*** ../apache_0.8.14/src/http_config.c	Tue Sep 19 17:04:59 1995
+--- ./src/http_config.c	Fri Oct 20 16:31:50 1995
+***************
+*** 498,504 ****
+  	    sconfig = (*mod->create_server_config)(parms->pool, parms->server);
+  	    set_module_config (parms->server->module_config, mod, sconfig);
+  	}
+! 	
+  	return invoke_cmd (cmd, parms, mconfig, args);
+      }
+  }
+--- 498,504 ----
+  	    sconfig = (*mod->create_server_config)(parms->pool, parms->server);
+  	    set_module_config (parms->server->module_config, mod, sconfig);
+  	}
+! 
+  	return invoke_cmd (cmd, parms, mconfig, args);
+      }
+  }
+***************
+*** 754,759 ****
+--- 754,761 ----
+      
+      fixup_virtual_hosts (p, s);
+      
++     default_server_hostnames(s);
++ 
+      for (m = top_module; m; m = m->next)
+          if (m->init)
+  	    (*m->init) (s, p);
+diff -C3 -r ../apache_0.8.14/src/http_main.c ./src/http_main.c
+*** ../apache_0.8.14/src/http_main.c	Tue Sep 19 17:05:01 1995
+--- ./src/http_main.c	Fri Oct 20 16:30:12 1995
+***************
+*** 255,262 ****
+  	
+  	log_transaction(timeout_req);
+  
+! 	fclose (timeout_req->connection->client);
+! 	fclose (timeout_req->connection->request_in);
+      
+  	if (!standalone) exit(0);
+  #ifdef NEXT
+--- 255,261 ----
+  	
+  	log_transaction(timeout_req);
+  
+!         os_conn_close (timeout_req->connection);
+      
+  	if (!standalone) exit(0);
+  #ifdef NEXT
+***************
+*** 632,641 ****
+  }
+  
+  void set_signals() {
+!     signal(SIGSEGV,(void (*)())seg_fault);
+!     signal(SIGBUS,(void (*)())bus_error);
+!     signal(SIGTERM,(void (*)())sig_term);
+!     signal(SIGHUP,(void (*)())restart);
+  }
+  
+  /*****************************************************************
+--- 631,643 ----
+  }
+  
+  void set_signals() {
+!   if(!one_process)
+!     {
+!       signal(SIGSEGV,(void (*)())seg_fault);
+!       signal(SIGBUS,(void (*)())bus_error);
+!     }
+!   signal(SIGTERM,(void (*)())sig_term);
+!   signal(SIGHUP,(void (*)())restart);
+  }
+  
+  /*****************************************************************
+***************
+*** 646,657 ****
+  pool *pconf;			/* Pool for config stuff */
+  pool *ptrans;			/* Pool for per-transaction stuff */
+  
+! server_rec *find_virtual_server (FILE *client_fd, server_rec *server)
+  {
+      struct in_addr server_ip; 
+      server_rec *virt;
+  
+!     server_ip = get_local_addr (fileno(client_fd));
+      
+      for (virt = server->next; virt; virt = virt->next)
+  	if (virt->host_addr.s_addr == server_ip.s_addr)
+--- 648,659 ----
+  pool *pconf;			/* Pool for config stuff */
+  pool *ptrans;			/* Pool for per-transaction stuff */
+  
+! static server_rec *find_virtual_server (os_conn_rec *client, server_rec *server)
+  {
+      struct in_addr server_ip; 
+      server_rec *virt;
+  
+!     server_ip = os_conn_get_local_addr(client);
+      
+      for (virt = server->next; virt; virt = virt->next)
+  	if (virt->host_addr.s_addr == server_ip.s_addr)
+***************
+*** 683,694 ****
+  void abort_connection (conn_rec *c)
+  {
+      /* Make sure further I/O DOES NOT HAPPEN */
+!     shutdown (fileno (c->client), 2);
+      signal (SIGPIPE, SIG_IGN);	/* Ignore further complaints */
+      c->aborted = 1;
+  }
+  
+! conn_rec *new_connection (pool *p, server_rec *server, FILE *in, FILE *out)
+  {
+      conn_rec *conn = (conn_rec *)pcalloc (p, sizeof(conn_rec));
+      
+--- 685,696 ----
+  void abort_connection (conn_rec *c)
+  {
+      /* Make sure further I/O DOES NOT HAPPEN */
+!     os_conn_abort(c);
+      signal (SIGPIPE, SIG_IGN);	/* Ignore further complaints */
+      c->aborted = 1;
+  }
+  
+! static conn_rec *new_connection (pool *p, server_rec *server, os_conn_rec *os_conn)
+  {
+      conn_rec *conn = (conn_rec *)pcalloc (p, sizeof(conn_rec));
+      
+***************
+*** 699,707 ****
+      conn = (conn_rec *)pcalloc(p, sizeof(conn_rec));
+      
+      conn->pool = p;
+!     conn->server = find_virtual_server (in, server);
+!     conn->client = out;
+!     conn->request_in = in;
+      
+      get_remote_host(conn);
+      
+--- 701,708 ----
+      conn = (conn_rec *)pcalloc(p, sizeof(conn_rec));
+      
+      conn->pool = p;
+!     conn->server = find_virtual_server (os_conn, server);
+!     memcpy(&conn->client,os_conn,sizeof *os_conn);
+      
+      get_remote_host(conn);
+      
+***************
+*** 761,767 ****
+      signal(SIGURG, timeout);
+  
+      while (1) {
+! 	FILE *conn_in, *conn_out;
+  	request_rec *r;
+        
+          alarm(0);		/* Cancel any outstanding alarms. */
+--- 762,768 ----
+      signal(SIGURG, timeout);
+  
+      while (1) {
+!         os_conn_rec os_conn;
+  	request_rec *r;
+        
+          alarm(0);		/* Cancel any outstanding alarms. */
+***************
+*** 791,796 ****
+--- 792,804 ----
+  
+  	accept_mutex_off(); /* unlock after "accept" */
+  	
++ 	update_child_status (child_num, SERVER_BUSY);
++ 
++ #ifdef APACHE_SSL
++ 	os_conn.ssl=SSL_new();
++ 	SSL_set_fd(os_conn.ssl,csd);
++ #else /* ndef APACHE_SSL */
++ 
+  	note_cleanups_for_fd (ptrans, csd);
+  	dupped_csd = csd;
+  #if defined(AUX) || defined(SCO)
+***************
+*** 800,810 ****
+  	} else
+  	    note_cleanups_for_fd (ptrans, dupped_csd);
+  #endif
+! 	update_child_status (child_num, SERVER_BUSY);
+! 	conn_in = fdopen (csd, "r");
+! 	conn_out = fdopen (dupped_csd, "w");
+! 
+! 	current_conn = new_connection (ptrans, server_conf, conn_in, conn_out);
+  
+  	if (current_conn->server->do_rfc931)
+  	    current_conn->remote_logname = 
+--- 808,822 ----
+  	} else
+  	    note_cleanups_for_fd (ptrans, dupped_csd);
+  #endif
+! 	os_conn.in = fdopen (csd, "r");
+! 	os_conn.out = fdopen (dupped_csd, "w");
+! #endif /* ndef APACHE_SSL */
+! 
+! 	current_conn = new_connection (ptrans, server_conf, &os_conn);
+! 
+! #ifdef APACHE_SSL
+! 	ApacheSSLSetupVerify(current_conn);
+! #endif /* def APACHE_SSL */
+  
+  	if (current_conn->server->do_rfc931)
+  	    current_conn->remote_logname = 
+***************
+*** 819,828 ****
+  	             bytes_in_pool (ptrans), r->the_request);
+              log_error (errstr, r->server);
+          }
+! 		
+! 	fflush (conn_out);
+! 	fclose (conn_in);
+! 	fclose (conn_out);
+      }    
+  }
+  
+--- 831,838 ----
+  	             bytes_in_pool (ptrans), r->the_request);
+              log_error (errstr, r->server);
+          }
+! 	os_conn_flush (current_conn);
+! 	os_conn_close (current_conn);
+      }    
+  }
+  
+***************
+*** 859,864 ****
+--- 869,875 ----
+  void standalone_main(int argc, char **argv)
+  {
+      struct sockaddr_in sa_server;
++     static BOOL bFirst=TRUE;
+  
+      standalone = 1;
+      sd = -1;
+***************
+*** 873,878 ****
+--- 884,890 ----
+  
+      signal (SIGHUP, SIG_IGN);	/* Until we're done (re)reading config */
+      
++     if(!one_process)
+  #ifndef NO_KILLPG
+      killpg(pgrp,SIGHUP);	/* Kill 'em off */
+  #else
+***************
+*** 884,899 ****
+  	log_error ("SIGHUP received.  Attempting to restart", server_conf);
+      }
+      
+!     clear_pool (pconf);
+!     ptrans = make_sub_pool (pconf);
+!     
+!     server_conf = read_config(pconf, ptrans, server_confname); 
+      open_logs(server_conf, pconf);
+      set_group_privs();
+      accept_mutex_init(pconf);
+      reinit_scoreboard(pconf);
+      
+!     default_server_hostnames (server_conf);
+  
+      if ((sd = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == -1) {
+          fprintf(stderr,"httpd: could not get socket\n");
+--- 896,916 ----
+  	log_error ("SIGHUP received.  Attempting to restart", server_conf);
+      }
+      
+!     if(!bFirst)
+!       {
+! 	clear_pool (pconf);
+! 	ptrans = make_sub_pool (pconf);
+! 	server_conf = read_config(pconf, ptrans, server_confname); 
+!       }
+!     else
+!       bFirst=FALSE;
+! 
+      open_logs(server_conf, pconf);
+      set_group_privs();
+      accept_mutex_init(pconf);
+      reinit_scoreboard(pconf);
+      
+! /*    default_server_hostnames (server_conf);*/
+  
+      if ((sd = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP)) == -1) {
+          fprintf(stderr,"httpd: could not get socket\n");
+***************
+*** 1004,1016 ****
+      setup_prelinked_modules();
+      
+      server_conf = read_config (pconf, ptrans, server_confname);
+!     
+      if(standalone) {
+-         clear_pool (pconf);	/* standalone_main rereads... */
+          standalone_main(argc, argv);
+      }
+      else {
+          conn_rec *conn;
+  	request_rec *r;
+        
+  	open_logs(server_conf, pconf);
+--- 1021,1034 ----
+      setup_prelinked_modules();
+      
+      server_conf = read_config (pconf, ptrans, server_confname);
+! 
+      if(standalone) {
+          standalone_main(argc, argv);
+      }
++ #ifndef APACHE_SSL
+      else {
+          conn_rec *conn;
++ 	os_conn_rec os_conn;
+  	request_rec *r;
+        
+  	open_logs(server_conf, pconf);
+***************
+*** 1021,1030 ****
+          group_id = getgid();
+  
+          server_conf->port = get_portnum(fileno(stdout));
+! 	conn = new_connection (ptrans, server_conf, stdin, stdout);
+  	r = read_request (conn);
+  	if (r) process_request (r); /* else premature EOF (ignore) */
+      }
+      exit (0);
+  }
+  
+--- 1039,1051 ----
+          group_id = getgid();
+  
+          server_conf->port = get_portnum(fileno(stdout));
+! 	os_conn.in=stdin;
+! 	os_conn.out=stdout;
+! 	conn = new_connection (ptrans, server_conf,&os_conn);
+  	r = read_request (conn);
+  	if (r) process_request (r); /* else premature EOF (ignore) */
+      }
++ #endif /* ndef APACHE_SSL */
+      exit (0);
+  }
+  
+diff -C3 -r ../apache_0.8.14/src/http_protocol.c ./src/http_protocol.c
+*** ../apache_0.8.14/src/http_protocol.c	Sun Aug 27 17:08:03 1995
+--- ./src/http_protocol.c	Thu Nov  9 16:53:56 1995
+***************
+*** 194,202 ****
+   * Finally, real protocol stuff.
+   */
+  
+! char *getline (char *s, int n, FILE *in)
+  {
+!     char *retval = fgets (s, n, in);
+      char *cp;
+  
+      if (retval == NULL) return NULL;
+--- 194,202 ----
+   * Finally, real protocol stuff.
+   */
+  
+! static char *getline (char *s, int n, conn_rec *conn)
+  {
+!     char *retval = os_conn_gets (s, n, conn);
+      char *cp;
+  
+      if (retval == NULL) return NULL;
+***************
+*** 233,239 ****
+      conn_rec *conn = r->connection;
+      
+      l[0] = '\0';
+!     if(!getline(l, HUGE_STRING_LEN, conn->request_in))
+          return 0;
+      if(!l[0]) 
+          return 0;
+--- 233,239 ----
+      conn_rec *conn = r->connection;
+      
+      l[0] = '\0';
+!     if(!getline(l, HUGE_STRING_LEN, conn))
+          return 0;
+      if(!l[0]) 
+          return 0;
+***************
+*** 254,260 ****
+      char *t;
+      conn_rec *c = r->connection;
+  
+!     while(getline(w, MAX_STRING_LEN-1, c->request_in)) {
+          if(!w[0]) 
+              return;
+          if(!(t = strchr(w,':')))
+--- 254,260 ----
+      char *t;
+      conn_rec *c = r->connection;
+  
+!     while(getline(w, MAX_STRING_LEN-1, c)) {
+          if(!w[0]) 
+              return;
+          if(!(t = strchr(w,':')))
+***************
+*** 444,459 ****
+  
+  void basic_http_header (request_rec *r)
+  {
+!     FILE *fd = r->connection->client;
+      
+      if (r->assbackwards) return;
+      
+      if (!r->status_line)
+          r->status_line = status_lines[index_of_response(r->status)];
+      
+!     fprintf(fd,"%s %s\015\012", SERVER_PROTOCOL, r->status_line);
+!     fprintf(fd,"Date: %s\015\012", gm_timestr_822 (r->pool, time(NULL)));
+!     fprintf(fd,"Server: %s\015\012",SERVER_VERSION);
+  }
+  
+  char *nuke_mime_parms (pool *p, char *content_type)
+--- 444,459 ----
+  
+  void basic_http_header (request_rec *r)
+  {
+!   conn_rec *conn=r->connection;
+      
+      if (r->assbackwards) return;
+      
+      if (!r->status_line)
+          r->status_line = status_lines[index_of_response(r->status)];
+      
+!     rprintf(r,"%s %s\015\012", SERVER_PROTOCOL, r->status_line);
+!     rprintf(r,"Date: %s\015\012", gm_timestr_822 (r->pool, time(NULL)));
+!     rprintf(r,"Server: %s\015\012",SERVER_VERSION);
+  }
+  
+  char *nuke_mime_parms (pool *p, char *content_type)
+***************
+*** 484,490 ****
+  void send_http_header(request_rec *r)
+  {
+      conn_rec *c = r->connection;
+-     FILE *fd = c->client;
+  
+      array_header *hdrs_arr = table_elts (r->headers_out);
+      table_entry *hdrs = (table_entry *)hdrs_arr->elts;
+--- 484,489 ----
+***************
+*** 505,539 ****
+      basic_http_header (r);
+      
+      if (r->content_type)
+!         fprintf (fd, "Content-type: %s\015\012",
+  		 nuke_mime_parms (r->pool, r->content_type));
+      else
+!         fprintf (fd, "Content-type: %s\015\012", default_type);
+      
+      if (r->content_encoding)
+!         fprintf (fd, "Content-encoding: %s\015\012", r->content_encoding);
+      
+      if (r->content_language)
+!         fprintf (fd, "Content-language: %s\015\012", r->content_language);
+      
+      for (i = 0; i < hdrs_arr->nelts; ++i) {
+          if (!hdrs[i].key) continue;
+! 	fprintf (fd, "%s: %s\015\012", hdrs[i].key, hdrs[i].val);
+      }
+  
+      for (i = 0; i < err_hdrs_arr->nelts; ++i) {
+          if (!err_hdrs[i].key) continue;
+! 	fprintf (fd, "%s: %s\015\012", err_hdrs[i].key, err_hdrs[i].val);
+      }
+  
+!     fputs("\015\012",fd);
+  
+      r->bytes_sent = 0;		/* Whatever follows is real body stuff... */
+  }
+  
+  long read_client_block (request_rec *r, char *buffer, int bufsiz)
+  {
+!     return fread (buffer, sizeof(char), bufsiz, r->connection->request_in);
+  }
+  
+  long send_fd(FILE *f, request_rec *r)
+--- 504,538 ----
+      basic_http_header (r);
+      
+      if (r->content_type)
+!         rprintf(r, "Content-type: %s\015\012",
+  		 nuke_mime_parms (r->pool, r->content_type));
+      else
+!         rprintf(r, "Content-type: %s\015\012", default_type);
+      
+      if (r->content_encoding)
+!         rprintf(r, "Content-encoding: %s\015\012", r->content_encoding);
+      
+      if (r->content_language)
+!         rprintf(r, "Content-language: %s\015\012", r->content_language);
+      
+      for (i = 0; i < hdrs_arr->nelts; ++i) {
+          if (!hdrs[i].key) continue;
+! 	rprintf(r, "%s: %s\015\012", hdrs[i].key, hdrs[i].val);
+      }
+  
+      for (i = 0; i < err_hdrs_arr->nelts; ++i) {
+          if (!err_hdrs[i].key) continue;
+! 	rprintf(r, "%s: %s\015\012", err_hdrs[i].key, err_hdrs[i].val);
+      }
+  
+!     os_conn_puts("\015\012",c);
+  
+      r->bytes_sent = 0;		/* Whatever follows is real body stuff... */
+  }
+  
+  long read_client_block (request_rec *r, char *buffer, int bufsiz)
+  {
+!     return os_conn_read (buffer, sizeof(char), bufsiz, r->connection);
+  }
+  
+  long send_fd(FILE *f, request_rec *r)
+***************
+*** 557,568 ****
+  	total_bytes_sent += n;
+  	
+          while(n && !r->connection->aborted) {
+!             w=fwrite(&buf[o],sizeof(char),n,c->client);
+              n-=w;
+              o+=w;
+          }
+      }
+!     fflush(c->client);
+      
+      return total_bytes_sent;
+  }
+--- 556,567 ----
+  	total_bytes_sent += n;
+  	
+          while(n && !r->connection->aborted) {
+!             w=os_conn_write(&buf[o],sizeof(char),n,c);
+              n-=w;
+              o+=w;
+          }
+      }
+!     os_conn_flush(c);
+      
+      return total_bytes_sent;
+  }
+***************
+*** 570,576 ****
+  int rputc (int c, request_rec *r)
+  {
+      if (r->connection->aborted) return EOF;
+!     putc (c, r->connection->client);
+      ++r->bytes_sent;
+      return c;
+  }
+--- 569,575 ----
+  int rputc (int c, request_rec *r)
+  {
+      if (r->connection->aborted) return EOF;
+!     os_conn_putc (c, r->connection);
+      ++r->bytes_sent;
+      return c;
+  }
+***************
+*** 583,589 ****
+      if (r->connection->aborted) return EOF;
+      
+      va_start (args, fmt);
+!     retval = vfprintf (r->connection->client, fmt, args);
+      va_end (args);
+  
+      r->bytes_sent += retval;
+--- 582,588 ----
+      if (r->connection->aborted) return EOF;
+      
+      va_start (args, fmt);
+!     retval = os_conn_vprintf (r->connection, fmt, args);
+      va_end (args);
+  
+      r->bytes_sent += retval;
+***************
+*** 611,697 ****
+  	 */
+  	
+  	if (status == USE_LOCAL_COPY) {
+! 	    fprintf (c->client, "\015\012");
+  	    return;
+  	}
+  	
+  	if (status == REDIRECT)
+! 	    fprintf (c->client, "Location: %s\015\012", location);
+  	
+  	for (i = 0; i < err_hdrs_arr->nelts; ++i) {
+  	    if (!err_hdrs[i].key) continue;
+! 	    fprintf (c->client, "%s: %s\015\012",
+  		     err_hdrs[i].key, err_hdrs[i].val);
+  	}
+  
+! 	fprintf(c->client, "Content-type: text/html\015\012\015\012");
+      }
+  
+      if (r->header_only) return;
+      
+      if ((custom_response = response_code_string (r, idx)))
+!         fputs (custom_response, c->client);
+      else {
+  	char *title = response_titles[idx];
+- 	FILE *fd = c->client;
+  	
+!         fprintf(fd,"<HEAD><TITLE>%s</TITLE></HEAD>%c",title,LF);
+! 	fprintf(fd,"<BODY><H1>%s</H1>%c",title,LF);
+  	
+          switch (r->status) {
+  	case REDIRECT:
+! 	    fprintf (fd,"The document has moved <A HREF=\"%s\">here</A>.<P>%c",
+  		     location, LF);
+  	    break;
+  	case AUTH_REQUIRED:
+! 	    fprintf (fd, "This server could not verify that you%c", LF);
+! 	    fprintf (fd, "are authorized to access the document you%c", LF);
+! 	    fprintf (fd, "requested.  Either you supplied the wrong%c", LF);
+! 	    fprintf (fd, "credentials (e.g., bad password), or your%c", LF);
+! 	    fprintf (fd, "browser doesn't understand how to supply%c", LF);
+! 	    fprintf (fd, "the credentials required.<P>%c", LF);
+  	    break;
+  	case BAD_REQUEST:
+! 	    fprintf (fd, "Your browser sent a query that%c", LF);
+! 	    fprintf (fd, "this server could not understand.<P>%c", LF);
+  	    break;
+  	case FORBIDDEN:
+! 	    fprintf (fd, "You don't have permission to access %s%c",
+  		     r->uri, LF);
+! 	    fprintf (fd, "on this server.<P>%c", LF);
+  	    break;
+  	case NOT_FOUND:
+! 	    fprintf (fd,
+  		     "The requested URL %s was not found on this server.<P>%c",
+  		     r->uri, LF);
+  	    break;
+  	case SERVER_ERROR:
+! 	    fprintf(fd,"The server encountered an internal error or%c",LF);
+! 	    fprintf(fd,"misconfiguration and was unable to complete%c",LF);
+! 	    fprintf(fd,"your request.<P>%c",LF);
+! 	    fprintf(fd,"Please contact the server administrator,%c",LF);
+! 	    fprintf(fd," %s ", r->server->server_admin);
+! 	    fprintf(fd,"and inform them of the time the error occurred,%c",LF);
+! 	    fprintf(fd,"and anything you might have done that may have%c",LF);
+! 	    fprintf(fd,"caused the error.<P>%c",LF);
+  	    break;
+  	case NOT_IMPLEMENTED:
+! 	    fprintf(fd,"%s to %s not supported.<P>%c", r->method,
+  		    r->uri, LF);
+  	    break;
+  	}
+  
+          if (recursive_error) {
+! 	    fprintf (fd, "Additionally, an error of type %d was encountered%c",
+  		     recursive_error, LF);
+! 	    fprintf (fd, "while trying to use an ErrorDocument to%c", LF);
+! 	    fprintf (fd, "handle the request.%c", LF);
+  	}
+! 	fprintf (fd, "</BODY>%c", LF);
+      }
+          
+  }
+  
+  /* Finally, this... it's here to support nph- scripts
+   * Now what ever are we going to do about them when HTTP-NG packetization
+   * comes along?
+--- 610,696 ----
+  	 */
+  	
+  	if (status == USE_LOCAL_COPY) {
+! 	    rprintf(r, "\015\012");
+  	    return;
+  	}
+  	
+  	if (status == REDIRECT)
+! 	    rprintf(r, "Location: %s\015\012", location);
+  	
+  	for (i = 0; i < err_hdrs_arr->nelts; ++i) {
+  	    if (!err_hdrs[i].key) continue;
+! 	    rprintf(r, "%s: %s\015\012",
+  		     err_hdrs[i].key, err_hdrs[i].val);
+  	}
+  
+! 	rprintf(r, "Content-type: text/html\015\012\015\012");
+      }
+  
+      if (r->header_only) return;
+      
+      if ((custom_response = response_code_string (r, idx)))
+!         os_conn_puts (custom_response, c);
+      else {
+  	char *title = response_titles[idx];
+  	
+!         rprintf(r,"<HEAD><TITLE>%s</TITLE></HEAD>%c",title,LF);
+! 	rprintf(r,"<BODY><H1>%s</H1>%c",title,LF);
+  	
+          switch (r->status) {
+  	case REDIRECT:
+! 	    rprintf(r,"The document has moved <A HREF=\"%s\">here</A>.<P>%c",
+  		     location, LF);
+  	    break;
+  	case AUTH_REQUIRED:
+! 	    rprintf(r, "This server could not verify that you%c", LF);
+! 	    rprintf(r, "are authorized to access the document you%c", LF);
+! 	    rprintf(r, "requested.  Either you supplied the wrong%c", LF);
+! 	    rprintf(r, "credentials (e.g., bad password), or your%c", LF);
+! 	    rprintf(r, "browser doesn't understand how to supply%c", LF);
+! 	    rprintf(r, "the credentials required.<P>%c", LF);
+  	    break;
+  	case BAD_REQUEST:
+! 	    rprintf(r, "Your browser sent a query that%c", LF);
+! 	    rprintf(r, "this server could not understand.<P>%c", LF);
+  	    break;
+  	case FORBIDDEN:
+! 	    rprintf(r, "You don't have permission to access %s%c",
+  		     r->uri, LF);
+! 	    rprintf(r, "on this server.<P>%c", LF);
+  	    break;
+  	case NOT_FOUND:
+! 	    rprintf(r,
+  		     "The requested URL %s was not found on this server.<P>%c",
+  		     r->uri, LF);
+  	    break;
+  	case SERVER_ERROR:
+! 	    rprintf(r,"The server encountered an internal error or%c",LF);
+! 	    rprintf(r,"misconfiguration and was unable to complete%c",LF);
+! 	    rprintf(r,"your request.<P>%c",LF);
+! 	    rprintf(r,"Please contact the server administrator,%c",LF);
+! 	    rprintf(r," %s ", r->server->server_admin);
+! 	    rprintf(r,"and inform them of the time the error occurred,%c",LF);
+! 	    rprintf(r,"and anything you might have done that may have%c",LF);
+! 	    rprintf(r,"caused the error.<P>%c",LF);
+  	    break;
+  	case NOT_IMPLEMENTED:
+! 	    rprintf(r,"%s to %s not supported.<P>%c", r->method,
+  		    r->uri, LF);
+  	    break;
+  	}
+  
+          if (recursive_error) {
+! 	    rprintf(r, "Additionally, an error of type %d was encountered%c",
+  		     recursive_error, LF);
+! 	    rprintf(r, "while trying to use an ErrorDocument to%c", LF);
+! 	    rprintf(r, "handle the request.%c", LF);
+  	}
+! 	rprintf(r, "</BODY>%c", LF);
+      }
+          
+  }
+  
++ /* Can't do this with SSL - the output would be encrypted! */
+  /* Finally, this... it's here to support nph- scripts
+   * Now what ever are we going to do about them when HTTP-NG packetization
+   * comes along?
+***************
+*** 699,704 ****
+  
+  void client_to_stdout (conn_rec *c)
+  {
+!   fflush (c->client);
+!   dup2 (fileno (c->client), STDOUT_FILENO);
+  }
+--- 698,708 ----
+  
+  void client_to_stdout (conn_rec *c)
+  {
+! #ifdef APACHE_SSL
+!   log_error("client_to_stdout not supported with SSL",c->server);
+!   exit(1);
+! #else
+!   os_conn_flush (c);
+!   dup2 (fileno (c->client.out), STDOUT_FILENO);
+! #endif
+  }
+diff -C3 -r ../apache_0.8.14/src/httpd.h ./src/httpd.h
+*** ../apache_0.8.14/src/httpd.h	Tue Sep 19 17:05:43 1995
+--- ./src/httpd.h	Thu Nov  9 18:38:57 1995
+***************
+*** 66,71 ****
+--- 66,73 ----
+  #include "conf.h"
+  #include "alloc.h"
+  
++ #include "apache_ssl1.h"
++ 
+  /* ----------------------------- config dir ------------------------------ */
+  
+  /* Define this to be the default server home dir. Anything later in this
+***************
+*** 192,198 ****
+--- 194,204 ----
+  
+  /* ------------------------------ error types ------------------------------ */
+  
++ #ifdef APACHE_SSL
++ #define SERVER_VERSION "Apache-SSL/0.8.14d"
++ #else
+  #define SERVER_VERSION "Apache/0.8.14"
++ #endif
+  #define SERVER_PROTOCOL "HTTP/1.0"
+  #define SERVER_SUPPORT "http://www.apache.org/apache/"
+  
+***************
+*** 339,347 ****
+    server_rec *server;
+    
+    /* Information about the connection itself */
+!   
+!   FILE *client;			/* Connetion to the guy */
+!   FILE *request_in;		/* Connection from the guy */
+    int aborted;			/* Are we still talking? */
+    
+    /* Who is the client? */
+--- 345,353 ----
+    server_rec *server;
+    
+    /* Information about the connection itself */
+! 
+!   os_conn_rec client;
+! 
+    int aborted;			/* Are we still talking? */
+    
+    /* Who is the client? */
+***************
+*** 434,439 ****
+--- 440,446 ----
+  int rind (const char *, char);     
+  
+  int cfg_getline(char *s, int n, FILE *f);
++ char *file_getline(char *s, int n, FILE *f);
+       
+  /* Misc system hackery */
+       
+***************
+*** 449,452 ****
+  void get_remote_host(conn_rec *conn);
+  int get_portnum(int sd);
+       
+! 
+--- 456,459 ----
+  void get_remote_host(conn_rec *conn);
+  int get_portnum(int sd);
+       
+! #include "apache_ssl2.h"
+diff -C3 -r ../apache_0.8.14/src/mod_imap.c ./src/mod_imap.c
+*** ../apache_0.8.14/src/mod_imap.c	Fri Sep  8 20:20:57 1995
+--- ./src/mod_imap.c	Thu Nov  9 16:59:57 1995
+***************
+*** 96,103 ****
+  #define X 0
+  #define Y 1
+  
+- char *getline(char *, int, FILE *);
+- 
+  module imap_module;
+  
+  int pointinrect(double point[2], double coords[MAXVERTS][2])
+--- 96,101 ----
+***************
+*** 292,298 ****
+      referer = table_get (r->headers_in, "Referer");
+      base_uri[0] = '\0';
+  
+!     while ((getline(input, MAXLINE, imap))) {
+  
+  	if ((input[0] == '#') || (!input[0]) )
+  	    continue;
+--- 290,296 ----
+      referer = table_get (r->headers_in, "Referer");
+      base_uri[0] = '\0';
+  
+!     while ((file_getline(input, MAXLINE, imap))) {
+  
+  	if ((input[0] == '#') || (!input[0]) )
+  	    continue;
+diff -C3 -r ../apache_0.8.14/src/mod_log_common.c ./src/mod_log_common.c
+*** ../apache_0.8.14/src/mod_log_common.c	Wed Aug 23 02:16:25 1995
+--- ./src/mod_log_common.c	Fri Oct 20 11:19:40 1995
+***************
+*** 190,199 ****
+          strcat(str,"- ");
+  
+      if(r->bytes_sent != -1)
+!         sprintf(str,"%s%d\n",str,r->bytes_sent);
+      else
+!         strcat(str,"-\n");
+  
+      write(cls->log_fd, str, strlen(str));
+  
+      return OK;
+--- 190,215 ----
+          strcat(str,"- ");
+  
+      if(r->bytes_sent != -1)
+!         sprintf(str,"%s%d",str,r->bytes_sent);
+      else
+!         strcat(str,"-");
+  
++ #ifdef APACHE_SSL
++ /* I don't like this method of using sprintf(), but for ease of patch
++ maintenance... Ben */
++     if(c->client.nVerifyError)
++       sprintf(str,"%s %d %s",str,c->client.nVerifyError,
++ 	      X509_verify_error_string(c->client.nVerifyError));
++     else
++       strcat(str," - -");
++ 
++     if(c->client.szClientX509)
++       sprintf(str,"%s \"%s\"",str,c->client.szClientX509);
++     else
++       strcat(str," -");
++ #endif
++ 
++     strcat(str,"\n");
+      write(cls->log_fd, str, strlen(str));
+  
+      return OK;
+diff -C3 -r ../apache_0.8.14/src/modules.c ./src/modules.c
+*** ../apache_0.8.14/src/modules.c	Tue Sep 19 17:25:13 1995
+--- ./src/modules.c	Thu Nov  9 18:39:03 1995
+***************
+*** 1,36 ****
+  #include "httpd.h"
+  #include "http_config.h"
+  
+- /*
+-  * This file just tells the core what other modules have been compiled
+-  * in, so it knows to go out and configure them.  Someday, it might be
+-  * automatically generated from a config file which is intelligible to
+-  * J. Random Sysadmin...
+-  */
+- 
+  extern module core_module;
+  extern module mime_module;
+  extern module access_module;
+- extern module alias_module;
+  extern module auth_module;
+- extern module dbm_auth_module;
+  extern module negotiation_module;
+- extern module userdir_module;
+- extern module cgi_module;
+  extern module includes_module;
+  extern module dir_module;
+  extern module common_log_module;
+  extern module asis_module;
+! #ifdef DLD
+! extern module dld_module;
+! #endif
+  
+  module *prelinked_modules[] = {
+    &core_module,
+    &mime_module,
+    &access_module,
+    &auth_module,
+-   &dbm_auth_module,
+    &negotiation_module,
+    &includes_module,
+    &dir_module,
+--- 1,32 ----
++ /* modules.c --- automatically generated by Apache
++  * configuration script.  DO NOT HAND EDIT!!!!!
++  */
++ 
+  #include "httpd.h"
+  #include "http_config.h"
+  
+  extern module core_module;
+  extern module mime_module;
+  extern module access_module;
+  extern module auth_module;
+  extern module negotiation_module;
+  extern module includes_module;
+  extern module dir_module;
++ extern module cgi_module;
++ extern module userdir_module;
++ extern module alias_module;
+  extern module common_log_module;
+  extern module asis_module;
+! extern module imap_module;
+! extern module agent_log_module;
+! extern module referer_log_module;
+! extern module ssl_module;
+  
+  module *prelinked_modules[] = {
+    &core_module,
+    &mime_module,
+    &access_module,
+    &auth_module,
+    &negotiation_module,
+    &includes_module,
+    &dir_module,
+***************
+*** 39,46 ****
+    &alias_module,
+    &common_log_module,
+    &asis_module,
+! #ifdef DLD  
+!   &dld_module,
+! #endif  
+!   NULL,
+  };
+--- 35,43 ----
+    &alias_module,
+    &common_log_module,
+    &asis_module,
+!   &imap_module,
+!   &agent_log_module,
+!   &referer_log_module,
+!   &ssl_module,
+!   NULL
+  };
+diff -C3 -r ../apache_0.8.14/src/util.c ./src/util.c
+*** ../apache_0.8.14/src/util.c	Tue Sep 19 17:05:00 1995
+--- ./src/util.c	Thu Nov  9 17:38:57 1995
+***************
+*** 757,763 ****
+  
+      len = sizeof(struct sockaddr);
+  
+!     if ((getpeername(fileno(conn->client), &addr, &len)) < 0) {
+  	conn->remote_name = conn->remote_host = NO_SUCH_HOST_NAME;
+  	conn->remote_ip = NO_SUCH_HOST_ADDR;
+          return;
+--- 757,763 ----
+  
+      len = sizeof(struct sockaddr);
+  
+!     if ((os_conn_getpeername(conn, &addr, &len)) < 0) {
+  	conn->remote_name = conn->remote_host = NO_SUCH_HOST_NAME;
+  	conn->remote_ip = NO_SUCH_HOST_ADDR;
+          return;
+***************
+*** 915,918 ****
+--- 915,933 ----
+      }
+      bufplain[nbytesdecoded] = '\0';
+      return bufplain;
++ }
++ 
++ char *file_getline (char *s, int n, FILE *f)
++ {
++     char *retval = fgets (s, n, f);
++     char *cp;
++ 
++     if (retval == NULL) return NULL;
++ 
++     cp = s + strlen(s) - 1;
++ 
++     while (cp >= s && (*cp == '\015' || *cp == '\012'))
++         *cp-- = '\0';
++ 
++     return s;
+  }

@@ -1,0 +1,305 @@
+Path: msuinfo!midway!ncar!elroy.jpl.nasa.gov!usc!cs.utexas.edu!peyote!ritter
+From: ritter@peyote.cactus.org (Terry Ritter)
+Newsgroups: sci.crypt
+Subject: Design of Cryptosystem CLOAK
+Keywords: cipher dynamic substitution additive RNG cloak
+Message-ID: <3492@peyote.cactus.org>
+Date: 16 Nov 90 21:32:32 GMT
+Distribution: usa
+Organization: Capital Area Central Texas Unix Society, Austin, TX
+Lines: 294
+
+
+     Apparently something went wrong with the first post -- if this
+is a duplicate, sorry!
+
+
+      If you found the source for the CLOAK cipher a bit much, or
+even irritating, you are not alone.  Gee, folks, I just don't use
+C much; I prefer Turbo Pascal.  A short "theory" document was
+included in the distribution file CLOAK.ZIP which is on many
+bulletin boards.  But I was worried about message length, and did
+not include it in the CLOAK posting here.  
+
+      Basically, CLOAK is a stream cipher, with an improved and non-
+linear combiner design (instead of the usual linear exclusive-OR),
+and an improved Random Number Generator (with up to 44K of internal
+state).  The sequence of operations is approximately as follows:  
+
+      * A textual User Key is processed into 992 bits
+      * The User Key bits initialize a large RNG
+      * The RNG is extended
+      * A 992-bit "really random" Message Key is created
+      * The RNG is used to XOR-cipher the Message Key
+      * The plaintext Message Key re-inits the RNG
+      * The RNG is extended to operational length 
+      * The RNG is used to init the Dynamic Substitution tables
+      * The RNG and Dynamic Substitution encipher plaintext data
+
+      Since an enciphered Message Key is added to every enciphered
+file anyway, additional header information is also added.  This
+includes a flag to indicate "enciphered," and values which indicate
+the cipher technique being used.  In this way, the design can be
+extended in the future, and yet still remain compatible with
+existing enciphered files.  
+
+      The cryptographic RNG is an Additive design, which is based on
+some arbitrary primitive mod 2 polynomial; GFSR designs using
+trinomials of degree 521 have been reported.  The CLOAK RNG uses
+particular primitive 9-nomials found by the author, and includes a
+selection between degrees 1279, 4253, and 11213 when enciphering. 
+This is a very big RNG.  
+
+      Should you wish to work on breaking CLOAK, please first work
+on breaking the Dynamic Substitution demo DYNSUB.PAS posted here
+last year.  Using the Turbo internal LCG RNG, without a message
+key, and just a single level of Dynamic Substitution, an attack
+should be far easier, and may demonstrate methods which could be
+used on the larger system.  
+
+
+
+
+                          CLOAK DESIGN THEORY
+
+                             Terry Ritter
+                              26 Oct 1990
+
+
+CLOAK was designed to be a strong cipher.  Of course, most cipher
+programs produce ciphertext which seems to be complex, but very few
+available ciphers could be expected to win a confrontation with
+professional cryptanalysts and their fast computers.  
+
+CLOAK was designed to be as simple as possible, so that the design
+could be fully revealed.  The usual practice is to invent a
+"proprietary" cipher, and keep the design secret.  What this really
+means is that serious cryptanalysts will know the design, while
+buyers and users will not; a strange situation indeed.  
+
+At this point in the public development of cryptography, there is
+still no practical cipher which is provably secret.  Since the
+design of CLOAK is open to examination, each expert may come to
+their own conclusion as to its strength.  
+
+
+STREAM CIPHERS
+      CLOAK is an example of a stream cipher.  The classical Vernam
+stream cipher simply combines plaintext data with the output from
+a random number generator in an additive combiner, which is often
+a single exclusive-OR gate or XOR operation.  
+
+Unfortunately, additive combiners are inherently susceptible to
+"known plaintext" attacks.  Moreover, most random number generators
+have only a tiny amount of internal state, and are easy to break. 
+Such a system is really a "toy" cipher.  
+
+CLOAK improves upon the classical stream cipher design with a
+completely new class of cryptographic combiner (patent pending), a
+very large cryptographic random number generator, and "really
+random" message keys.  
+
+Alternative design approaches include DES, which is now rather
+small, and RSA, which is slow and complex.  Public-key systems may
+seem to improve the key-distribution situation, but they also
+forego the inherent source verification of a secret-key system. 
+This can be overcome only with complex and precise protocols, thus
+adding even more complexity to the system.  
+
+CLOAK is a secret-key system, which means that it is necessary to
+somehow get the secret key to the far end, so that enciphered
+messages may be deciphered.  However, once this is done, only those
+possessing the secret key may cipher messages in that key.  A
+secret-key system thus mimics the use of a house key, and has
+similar problems and risks.  
+
+
+DYNAMIC SUBSTITUTION COMBINER
+      The new cryptographic combiner can be described as an
+extension of classical Simple Substitution.  In simple
+substitution, each plaintext data value is translated into a
+ciphertext value using a substitution table.  The innovation of
+Dynamic Substitution is to re-arrange the content of the
+substitution table after every substitution operation.  In this
+case, the just-used substitution is exchanged with some
+substitution selected at random.  
+
+The result is a non-linear combiner with a substantial amount of
+internal state.  Only non-linear combiners make sense when several
+are used in sequence; linear additive combiners do not.  
+
+In CLOAK, I have used a two-level Dynamic Substitution design.  The
+first level randomizes the incoming data, and the second level has
+16 separate combiners selected for use at random.  Because the
+second-level combiners are used at random, it should be difficult
+for a cryptanalyst to work on the content of any particular
+substitution table.  
+
+Dynamic Substitution technology is patent-pending.  
+
+
+CRYPTOGRAPHIC RANDOM NUMBER GENERATOR
+      The usual computer-language random number generator (RNG) is
+a 32-bit linear congruential generator (LCG), and can be solved
+very easily given one, or perhaps a few of the random values.  This
+is a very weak cryptographic design.  
+
+The generator I selected for use in CLOAK is the Additive RNG, as
+discussed in Knuth II.  
+
+The strength of an RNG is at least partially related to the amount
+of its internal state, and the ones designed for statistical
+service are rather small.  But the Additive generator is easily
+customized, and can be made one or more bytes wide.  For CLOAK, the
+width has been set at 32 bits.  
+
+The Additive generator can also be made as long as desired,
+provided that one can find primitive mod 2 polynomials of large
+degree.  For CLOAK primitives have been found at degrees 1279, 4253
+and 11213.  Thus, the amount internal state can be 11213 times as
+large as the usual computer language LCG RNG.  
+
+There are billions of acceptable polynomials; the particular ones
+selected for use in CLOAK are protected by copyright.  
+
+
+JITTERIZER
+      Despite its size, the Additive generator is nonetheless a
+linear system, and thus "easily" solved (assuming a cyptanalyst
+gets past the combiners).  Naturally, the manipulation of 11,000
+equations in 11,000 unknowns of 32-bits each might be expected to
+slow cryptanalysis somewhat.  Nevertheless, it is still necessary
+to add some sort of isolation mechanism to hide the true sequence
+from analysis.  
+
+For CLOAK, I have devised a mechanism which periodically deletes
+some of the Additive RNG result values from the output stream.  A
+random number of values are deleted after a random number of steps. 
+In addition, each group of values is given a separate value offset. 
+This should make cryptanalysis a real exercise; certainly the
+jitterizer cannot be expected to make cryptanalysis any easier.  
+
+
+THE MESSAGE KEY
+      An RNG will produce a particular sequence of random numbers
+after being initialized from a particular key.  Thus, when the
+usual stream cipher is used twice with the same key, the messages
+will be combined with the same sequence.  But one of the properties
+of additive combiners is that repeated sequences can "canceled
+out," thus leaving a combination of two plaintext messages.  Such
+a combination is likely to be broken easily.  
+
+Consequently, it is important that the same sequence not be used
+for each message.  This could be done, for example, by having a
+different User Key for each message.  But this is surely
+unacceptable, for who could remember that many keys?  Who could
+transfer that many keys to the far end with any degree of secrecy? 
+
+An alternative is to use a different key for each message, but do
+so only internally.  Each Message Key is enciphered and included in
+the message header; the User Key is used to encipher and thus
+protect the message key.  
+
+Each message key is a "really random" value which is created
+dynamically for each message.  Because the message key is a truly
+arbitrary value, and since most cryptanalysis methods require that
+a message "make sense," an enciphered message key will be very
+difficult to crack.  
+
+Another advantage of the message key is that it can be made quite
+large, as well as random.  CLOAK uses a message key consisting of
+31 values of 32 bits each; a 124-byte message key (992 bits).  This
+is enough to directly initialize a degree-31 Additive RNG, which is
+then stepped until enough data are produced for a degree-127 RNG,
+etc.  Thus, the "really random" message key automatically satisfies
+many of the questions about a statistically correct initialization
+of the RNG.  It also reduces the need for extreme length in the
+user key.   
+
+
+THE USER KEY
+      Although the User Key is used only to protect the message key,
+it must initialize an RNG in order to do so.  This initialization
+should be as arbitrary as possible.  I decided to use LFSR or CRC
+technology to perform a polynomial division of the textual key, and
+use remainders as the initialization value.  
+
+The user key is processed by 32 degree-31 polynomials, thus
+producing 32 different results of 31 bits each.  By eliminating the
+unused bits, 31 values of 32 bits each are produced; this is
+exactly the right amount of data to initialize a degree-31 Additive
+RNG.  By stepping the Additive RNG, it will eventually fill enough
+to initialize a degree-127 RNG, and so on.  
+
+CLOAK collects the user key from the keyboard into a string with a
+maximum length of 255 bytes; thus, up to 2040 bits of randomness
+are collected.  This is then reduced (or expanded) to the 992 bits
+needed for degree-31 Additive RNG initialization.  CLOAK does not
+insist on a long user key, but the serious user will create very
+unique keys of 30 characters or longer.  
+
+There are millions of acceptable degree-31 primitive mod 2
+polynomials; the particular ones selected for CLOAK are protected
+by copyright.  
+
+
+
+SELECTED BIBLIOGRAPHY
+      .  Beker, H. and F. Piper.  1982.  Cipher Systems.  John
+Wiley: New York.
+      .  Blum, L., M. Blum and M. Shub.  1986.  A Simple
+Unpredictable Pseudo-Random Number Generator.  SIAM Journal of
+Computing.  15: 364-383.  
+      .  Chaitin, G.  1975.  Randomness and mathematical proof. 
+Scientific American.  232(5): 47-52.  
+      .  Ciarcia, S.  1986.  Build a Hardware Data Encryptor. 
+Byte.  Sept: 97-111.  
+      .  Devours, C., D. Kahn, L. Kruh, G. Mellen, B. Winkel.
+1987.   Cryptology Yesterday, Today, and Tomorrow.  Artech House: 
+Norwood, MA.  
+      .  Geffe, P.  1973.  How to protect data with ciphers that
+are really hard to break.  Electronics.  46(1): 99-101.  
+      .  Golomb, S.  1982 (original 1967).  Shift Register
+Sequences.  Aegean Park Press:  POB 2837, Laguna Hills, CA 92653. 
+      .  Kahn, D.  1967.  The Codebreakers.  Macmillan: New York. 
+      .  Knuth, D.  The Art of Computer Programming, Vol. 2,
+Seminumerical Algorithms.  2nd ed.  Addison-Wesley: Reading,
+Massachusetts.  
+      .  Kochanski, M.  1987.  A Survey of Data Insecurity
+Packages.  Cryptologia.  XI(1): 1-15.  
+      .  Kochanski, M.  1988.  Another Data Insecurity Package. 
+Cryptologia.  XII(3): 165-173.  
+      .  L'Ecuyer, P. and R. Proulx.  1989.  About Polynomial-
+Time "Unpredictable" Generators.  Proceedings of the 1989 Winter
+Simulation Conference.  467-476.  
+      .  Lu, S.  1979.  The Existence of Good Cryptosystems for
+Key Rates Greater than Message Redundancy.  IEEE Transactions on
+Information Theory.  IT-25(4): 475-477.  
+      .  MacWilliams, F. and N. Sloane.  1977.  The Theory of
+Error-Correcting Codes.  North Holland:  Amsterdam / New York.  
+      .  Marsaglia, G.  1984.  A current view of random number
+generators.  Proceedings of the Sixteenth Symposium on the
+Interface Between Computer Science and Statistics.  3-10.  
+      .  Marsaglia, G. and L. Tsay.  1985.  Matrices and the
+Structure of Random Number Sequences.  Linear Algebra and its
+Applications.  67: 147-156.  
+      .  Pearson, P.  1988.  Cryptanalysis of the Ciarcia
+Circuit Cellar Data Encryptor.  Cryptologia.  12: 1-10.  
+      .  Plauger, P.  1988.  Locking the Barn Door.  Computer
+Language.  October, 17-22.  
+      .  Retter, C.  1984.  Cryptanalysis of a Maclaren-
+Marsaglia System.  Cryptologia.  8(2): 97-108.  (Also see 8(4):
+374-378.)  
+      .  Retter, C.  1985.  A Key-Search Attack on Maclaren-
+Marsaglia Systems.  Cryptologia.  9(2): 114-130.  
+      .  Ritter, T.  1990.  Substitution Cipher with Pseudo-
+Random Shuffling:  The Dynamic Substitution Combiner.  Cryptologia. 
+XIV(4): 289-303.  
+      .  Siegenthaler, T.  1985.  Decrypting a Class of Stream
+Ciphers Using Ciphertext Only.  IEEE Transactions on Computers. 
+C-34(1): 81-85.  
+      .  Vahle, M. and L. Tolendino.  1982.  Breaking a Pseudo
+Random Number Based Cryptographic Algorithm.  Cryptologia.  6(4):
+319-328.  
+      .  Wolfram, S.  1986.  Random Sequence Generation by
+Cellular Automata.  Advances in Applied Mathematics.  7: 123-169. 

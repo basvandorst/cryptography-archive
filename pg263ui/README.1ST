@@ -1,0 +1,292 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+
+About PGP 2.62ui
+================
+
+This is PGP 2.62ui, the successor to PGP 2.6ui, an unofficial
+international release of the famous public key encryption program,
+based originally on version 2.3a.
+
+This version is being made available for a number of reasons:
+
+* It is the only version fully compatible with *all* versions of PGP
+from 2.0 to 2.7
+
+* It incorporates a number of bug fixes and features not available
+in the MIT release (see below)
+
+* This version, like 2.3a and 2.6ui before it, is published under the
+terms of the GPL. Consequently:
+
+  - You are not bound by the RSADSI licence since this version does not
+  use RSAREF (which forbids commercial use and unauthorised use of the
+  cryptograpgic routines), as you are with MIT PGP
+
+  - You are not bound by the MIT licence (which requires the program
+  to produce output that cannot be read by earlier versions), as you are
+  with both MIT PGP and Staale Schumacher's PGP 2.6.2i.
+
+  - you can therefore do what you like with the code of the program
+  provided any derrivative work is also GPL'd.
+
+  - The only relevant patent for users outside the USA is Ascom-Tech's
+  patent on IDEA. For non-commercial use it's free, anywhere. For
+  commercial use you need  a license, but this portion of the PGP 2.6.2
+  documentation (freely exportable, by the way) is interesting:
+
+    [Ascom-Tech has told Phil Zimmerman that t]hey will allow
+    commercial users of PGP outside the US or Canada to use IDEA
+    in PGP without paying royalties to Ascom-Tech, because it is
+    not currently possible for commercial users to buy a licensed
+    version of PGP outside the US or Canada. 
+
+* Since this code was written and developed outside the USA, American
+export law (ITAR) is not an issue.
+
+Users inside the USA may not legally use 2.62ui, because the RSA
+patent is in effect there. USA residents are advised to obtain one
+of the MIT versions which have a license for non-commercial use of
+RSA.
+
+Note that I personally have done very little coding on this version.
+However if bugs are reported or constructive suggestions for
+improvements made I will pass them on to the individual(s) who have
+done the bulk of the work to make this release possible. I am assured
+that continuing support will be provided.
+
+This version of PGP has not been approved by MIT or Phil Zimmerman.
+Please do NOT send any questions or bug reports about this version to
+either pgp-bugs at MIT or directly to Phil, but rather to me, Tony
+Lezard <tony@mantis.co.uk>.
+
+It is my sincere belief that I am not in violation of any applicable
+laws by releasing this code. If anyone's *informed* opinion differs,
+I want to know about it. I'm not releasing this to be "subversive",
+or for profit, but rather to give the international community a
+choice.
+
+Please note that the documentation in the doc/ directory is for PGP
+version 2.3a. Refer to this and the README.2ND file for changes since
+it was written, and *please* don't bother Phil Zimmerman about
+unofficial versions of PGP, even though the documentation reports him
+as the author of the bulk of this code.
+
+Appended is the list of changes that have been made between PGP 2.6ui
+and 2.62ui. The file README.2ND contains the changes from 2.3a to
+2.6ui.
+
+- --
+Tony Lezard     tony@mantis.co.uk     http://www.mantis.co.uk/~tony/
+
+===================================================================
+Fix an extraneous error message bug present in 2.6ui when generating
+a key with no RANDSEED.BIN.
+===================================================================
+SYSTEM.C
+RANDOM.C
+PGP.C
+
+Lockup on prompt for passphrase in -f mode with input redirection.
+This was reported on alt.security.pgp.
+
+This is apparently a bug in Turbo C. Although the manual clearly
+states that getch/kbhit are supposed to test/read the console,
+they actually call DOS with calls which actually test/read
+stdin, which is subject to redirection.
+
+The bypass of the problem is to define kbhit() and getch()
+in SYSTEM.C to use the Turbo C bioskey functions.
+
+RANDOM.C is changed to define kbhit and getch directly
+for Turbo C rather then #include <conio.h>.
+
+Based on a post, I also added code for Microsoft C compilations.
+Its unknown whether this problem occurs in any other configurations
+using compilers other than those from Microsoft and Borland.
+
+To avoid some anomalous behavior when entering Ctrl-Break at a passphrase
+prompt, I added code in PGP.C to set BREAK ON (in MSDOS platforms) during
+PGP, but to restore the entry state on exit.
+
+===================================================================
+Duplicate file handling is generalized by extracting code from
+savetemp in FILEIO.C into a new subroutine ck_dup_output, which is
+called from process_output (to check for duplicate armored files),
+from CRYPTO.C, to check for duplicate detached sig files, from
+ARMOR.C to check for duplicate multi-segment armored files, and KEYMGMT.C
+to check for duplicate armored keys from -kxa.
+===================================================================
+Feature: labeling of armored files produced by -kxa.
+
+For extraction of a single key, writes output identical to -kv
+for that key with all its userid's in plain text at
+the front of the armored file (Before BEGIN PGP... line).
+I tested that this does not affect ability to run -ka on the file.
+
+For extraction of an entire keyring (pgp -kxa * x.asc), writes
+PSTR("Entire Keyring\n") instead. (Please feel free to change
+this wording). NOTE added message impact on language modules.
+
+For extraction of secret keys, labeling is the same.
+Also BEGIN PGP line is changed to SECRET KEY BLOCK.
+(Original PGP 2.3 says BEGIN PGP MESSAGE; I consider this a bug).
+I tested that SECRET KEY BLOCK doesn't cause any problem in
+storing the key with -ka.
+
+- -kxa sometimes results in multi-segment armored files. In this case
+the armored file appears to be a multi-segment message with no
+labeling. However, PGP recognizes the armored file as a key-file
+after reading it in, and prompts for adding keys to public keyring.
+(I didn't test for what happens with multi-segment secret keys).
+
+Internal description of changes.
+
+I tried to re-use existing code as much as possible and avoid
+duplicating code.  All of my changes are marked with "2.62".
+
+These are the only modules changed:
+
+ARMOR    C       41720 07-16-93  12:49a
+KEYMGMT  C      111762 07-16-93  12:59a
+KEYMGMT  H        4021 07-16-93  12:21a
+
+
+ARMOR.C
+
+Modifies pem_file around line 504 to call new routines kv_title
+and kvformat_keypacket.  This is to implemtent -kxa labeling.
+This also adds the code for SECRET KEY BLOCK.
+
+KEYMGMT.C
+
+Moves a major section of view_keyring into a new subroutine called
+kvformat_keypacket  which now does double duty for both -kv[v] and
+- -kxa.  Also the routine to write the label line ("Type bits/keyID ...")
+was split off and is now called from two places inside KEYMGMT as
+well as from ARMOR.  Note removal of leading linefeed "\n" from
+this message which will affect language modules. (PSTR).
+
+Also internal subroutine showkeyID (line 209) and all calls to it are
+modified to pass a filename.
+
+Two new global variables
+
+char glb_ringfile[MAX_PATH];
+boolean glb_whole_ring;
+
+are defined in KEYMGMT which are referenced in ARMOR.
+===================================================================
+PGP 2.3a bugs and fixes
+
+MAKEFILE.TC
+
+moved "getopt.obj" from OBJ2 to OBJ3 to avoid
+    "Fatal: Command arguments too long" MAKE error
+
+Also added parameters for debugging with Turbo Debug,
+switchable with parameters for optimized compile.
+
+- ----
+SYSTEM.C
+RANDOM.C
+
+Lockup on prompt for passphrase in -f mode with input redirection.
+This was reported on alt.security.pgp.
+
+This is apparently a bug in Turbo C. Although the manual clearly
+states that getch/kbhit are supposed to test/read the console,
+they actually call DOS with calls which actually test/read
+stdin, which is subject to redirection.
+
+The bypass of the problem is to define kbhit() and getch()
+in SYSTEM.C to use the Turbo C bioskey functions.
+
+RANDOM.C is changed to define kbhit and getch directly
+for Turbo C rather then #include <conio.h>.
+
+Based on a post, I also added code for Microsoft C compilations,
+but this is untested.
+Its unknown whether this problem occurs in any other configurations
+using other compilers.
+==================================================================
+Trivial code was taken from MIT PGP and adapted as necessary to
+implement added config parameters
+pubring
+secring
+randseed
+comment
+
+This allows the files to be in separate directories or drives from
+config.txt.
+
+
+Config parameter pubring2 is a path\filename which will be searched
+(after a prompt) when a UserID is not found in pubring.  This only
+occurs for encryption and signature verification, where previous PGP
+would prompt for a additional path\filename to search.  The prompt
+still occurs if UserID is not found in pubring2.
+==================================================================
+parameter -da is "documented" internally in the source code as
+"de-armor only", but not in the DOC files.  I changed this to
+"decrypt-only" + "armor", which means the signature is left with the
+plaintext (-d) and then the result is (re-)compressed and
+(re-)armored.
+
+Similarly -ba is treated as just -a in standard PGP.  I think this is
+a bug.  I have changed it so that a detached signature file is
+extracted and then armored.  filename is set to name.SIG for either
+binary or armored form.
+
+Duplicate output filenames are not handled correctly for armored
+files. i.e. armored files replace files of the same name with no
+warning, as though "force=yes" were specified.  I've changed the code
+to treat armored files the same as other output files.
+
+Multi-segment armored files are a special case. New code checks for
+both .ASC and first segment duplication. It is assumed unnecessary
+to check for duplicate segments 2 ... N.
+
+Although there is some code for detecting duplicate .SIG files for the
+- -b function, it does not support the +batch=yes parameter, or give the
+user the opportunity to select a new filename.  I've corrected this.
+
+These changes are implemented in modules PGP.C, CRYPTO.C, and FILEIO.C
+
+Common output file processing in PGP.C is isolated in a new subroutine
+process_output, which is also called by code in do_decrypt in PGP.C
+(for -da) and from code in CRYPTO.C (for -ba).
+
+Duplicate file handling is generalized by extracting code from
+savetemp in FILEIO.C into a new subroutine ck_dup_output, which is
+called from process_output (to check for duplicate armored files),
+from CRYPTO.C, to check for duplicate detached sig files, and from
+ARMOR.C to check for duplicate multi-segment armored files.
+
+==================================================================
+Fixed "bug" of non-random IV on conventional encrypted files.
+CRYPTO.C in routine make_random_ideakey.  Adds "skip" parameter
+like 2.6.2 to avoid overlay of key. But to avoid changing lower-
+level routines, make_random_ideakey, unlike 2.6.2, just saves
+the key in a buffer of its own.
+=============================================================
+Changed preferred suffix for GZIP files to .gz  PGP.C
+=========================================================
+Fixed a bug in key editing with the public and secret keyrings in
+different directories.  The old code was assuming they were in the same
+directory, which used to be a safe assumption, but no more.
+KEYMGMT.C in dokeyedit.
+=====================================================================
+Change + to * for good Fermat test. Avoids modem problems. 2.62.
+=====================================================================
+No retry of passphrase entry for null passphrase 2.62
+=====================================================================
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6
+
+iQCVAwUBL+sGO1/LM7O/FyBFAQEZHgP+P2vLW/9C+FQvc0gTYTRxfFgZtmM5Hyby
+dmsCy6enzd1QyBKLJBVcbK2+KR2z2YmpZLR1X8EofXmsfJXXnvQqve0VO2NBOKKG
+9A0v1802my3fp40VMZ6yzAto6YtJ96qpI2Hw2Ojge4eekwOdaaBa6aAlgvWZoHGE
+CRF+HG3bXjo=
+=WKwV
+-----END PGP SIGNATURE-----

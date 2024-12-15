@@ -1,0 +1,325 @@
+Subject: Using PGP with Emacs Rmail
+Date: 9 Oct 1992 14:39:10 GMT
+From: bs891@cleveland.Freenet.Edu (Robert Anderson)
+Lines: 319
+
+
+PGP with GNU Emacs Rmail			Revision 1
+------------------------			October 2, 1992
+
+Here are some notes on using PGP 2.0 on a Unix platform, using
+the Gnu Emacs "rmail" package to send and receive mail.
+
+First, it is inherently insecure to use PGP, or any encryption
+program, on a multi-user system.  There are just too many ways
+for the system operators, or even ordinary users, to spy on what
+you are doing.  However, many people are only able to send and
+receive mail on such machines, and it still may be useful for
+them to be able to use PGP.  The security is nowhere near as
+great as it would be on a laptop PC which you keep chained to
+your wrist at all times, but it should be good enough for casual
+privacy.
+
+
+FILTERING
+
+
+PGP 2.0 has a "filter" mode invoked with the "-f" switch.  Many
+Unix mail reading tools have the ability to pass messages, or
+portions of messages, through filter programs, returning the
+result to the editing buffer.  This general approach is what I
+will discuss, as it applies specifically to Gnu Emacs.  (I use
+Gnu Emacs version 18.55.3, of Friday, July 26, 1991.  But most of
+the features discussed here should apply to almost any current
+Gnu Emacs.)
+
+The Emacs command to pass a portion of a buffer through a filter
+is "shell-command-on-region".  On my machine, it is mapped to the
+key M-|, which I activate by typing the escape key and then the
+vertical bar key.  By giving a prefix argument to this function,
+which I do by typing control-U just before the M-|, the function
+replaces the text in the buffer with the output of the filter.
+
+
+ENCRYPTION
+
+
+To encrypt a message, then, I first compose the message using the
+"mail" function of Emacs.  Then I set the Emacs "region" to
+contain the message text (but not the headers at the top of the
+message).  This I do by the function "mark-whole-buffer", which
+is mapped to control-X H on my system, then advancing the "point"
+(cursor) down from the top of the page using control-N until I am
+at the first line of the message I am sending.  (This is the line
+just beyond the separator line which Emacs creates called "--text
+follows this line--".)  This is how a sample message buffer will
+look at this point:
+
+	To: XYZ@abc.com
+	Subject: Test of PGP with Emacs
+	--text follows this line--
+	Dear XYZ:
+	I hope you enjoy this encrypted PGP message.
+	Love, ABC.
+
+(The cursor is on the "D" of "Dear", and the "mark", which you
+can't see, is at the end of the buffer.)
+
+With the region properly set to enclose the message text, I now
+want to filter the message through PGP.  The general idea is to
+use control-U followed by M-|, but a problem arises if I do this.
+
+PGP, when run in filter mode, produces encrypted or decrypted
+output based on its input.  But in addition, it also produces a
+few informational messages, such as the version information that
+is printed for every run.  PGP goes to some trouble to separate
+these two kinds of output, putting the encrypted output to
+"standard out", and the informational messages to "standard
+error".  Unfortunately, Emacs undoes PGP's efforts, combining
+standard out and standard error into one stream.  The result is
+that using this Emacs filter function brings back not just the
+encrypted message, but also the PGP informational messages.  This
+is what the output looks like:
+
+	To: XYZ@abc.com
+	Subject: Test of PGP with Emacs
+	--text follows this line--
+	Pretty Good Privacy 2.0 - Public-key encryption for the masses.
+	(c) 1990-1992 Philip Zimmermann, Phil's Pretty Good Software. 2 Sep 92
+	Date: 1992/10/02 22:10 GMT
+
+
+	Recipient's public key will be used to encrypt. 
+	Key for user ID: XYZ
+	382-bit key, Key ID 5E7ADD, created 1992/09/27
+	.-----BEGIN PGP MESSAGE-----
+	Version: 2.0
+
+	hDwC2RA+W2deet0BAX4iI1FcS9qz57OA2pd3T/tr7wcwzW5mHocwvlND+Un0aYac
+	Kq4qwjxpxr5rY/ABEAymAAAAWnZfbPeqdeXZGkFqCUny9tnVuew9JfSkzaGVIbpS
+	aTOxzNcWP7hgHVCW4FUyFgCUmGGBgIbbSUwisrQsMo0lUH4UxUjjKLYav+RGs8Z6
+	9SG3RzAnnpEdAhSSbQ==
+	=zAPP
+	-----END PGP MESSAGE-----
+
+This can be cleaned up manually by deleting all the characters
+from the "Pretty Good Privacy" header down to the "." just before
+"-----BEGIN PGP MESSAGE-----".  But this is tedious.  To avoid
+this problem, I created a very simple shell script which I use to
+run PGP.  It looks like this:
+
+:
+exec pgp $* 2>/dev/null
+
+I call this script "pgpq".  The first line is just a colon, and
+the second line just remaps standard error to /dev/null, causing
+it to disappear, and passes all arguments along to PGP.  The
+result is that PGP's informational messages do not appear back in
+the Emacs buffer when I run it as "pgpq".
+
+With this script, I can encrypt messages to be sent to other
+people within Emacs.  First I set the region with control-X H
+followed by a few control-N's.  Then I type control-U M-|.  Emacs
+prompts with the query "Shell command on region:".  For
+encryption of a message to user XYZ, I type:
+
+pgpq -fea XYZ
+
+The command is given as "pgpq" to get a cleaner output as
+described above.  The option letter "f" means to use filter mode;
+"e" means to encrypt, and "a" means to get ASCII output.  The
+user name comes next.  (For information on how to also sign a
+message, see below.)  The output of this command, for the example
+above, looks like:
+
+	To: XYZ@abc.com
+	Subject: Test of PGP with Emacs
+	--text follows this line--
+	-----BEGIN PGP MESSAGE-----
+	Version: 2.0
+
+	hDwC2RA+W2deet0BAX4omw4gByFkFaHFko7qPBVq1Yh7EpgHnbZ5EebqFiQjr61I
+	Bz6t1tQZSloNJ4KhTYOmAAAAWi2Ja/oM0LvEi9fumi4IdKDQJ44ihatrM0AEYUi5
+	CVJjj5YCuQUl5XT/s5cG+Gu6R5fTPtmQ94iBmIMUjOw+yEcCkIa5B87PmJJDusMC
+	f1K8VWsc2A2oAJIWqg==
+	=uvLF
+	-----END PGP MESSAGE-----
+
+Assuming user XYZ is on my key ring, the text of the message in
+my buffer has been replaced by the encrypted form of the text.  I
+can then send the message on its way as usual.
+
+
+DECRYPTION
+
+
+I decrypt my incoming mail "in place", substituting the decrypted
+text in place of the encrypted message.  To do this using the
+Emacs rmail package, the incoming mail message must be made
+writable, using the "rmail-edit-current-message" function, mapped
+to the letter "w" on my system.  Then the steps below can be used
+to decrypt the message.  Afterwards, the "rmail-cease-edit"
+function, mapped to "control-C control-C" on my system, is used
+to "write back" the decrypted message.  (If you like, after
+reading the decrypted message but before writing it back you can
+use "rmail-abort-edit", "control-C control-]" on my system, to
+discard your changes and leave the encrypted message in place.)
+
+Decrypting an incoming message can be done in a similar manner to
+encryption.  First I set the Emacs "region" to enclose the PGP
+portion of the message.  Then it is piped through the "pgpq"
+filter to get the decrypted result.
+
+However, the new element in the case of decryption is the need to
+enter a pass phrase to activate your secret key.  I solve this by
+using the "PGPPASS" environment variable.  If PGP is trying to
+read your secret key and this environment variable exists, it
+will try to use the value of this variable as your pass phrase.
+
+So, to do decryption, it is necessary to set this environment
+variable before running the filter.  This could be done by
+setting the variable before Emacs is started, so it will inherit
+the value from the shell.  However, I use the Emacs variable
+"process-environment", which contains the environment variables
+and their values which are passed to sub-shells and filter
+processes.  I wrote a few small Emacs functions to make it easier
+to set and clear PGPPASS from the "process-environment" variable.
+They are:
+
+
+; PGP support
+; Strip from list-of-strings l, any string which matches str
+(defun stripstrlist (l str)
+  (cond (l (cond ((string-match str (car l))
+		  (stripstrlist (cdr l) str))
+		 (t (cons (car l) (stripstrlist (cdr l) str)))))))
+
+; Set PGPPASS environment variable from argument
+(defun pgp-passphrase (arg)
+  (interactive "sPGP pass phrase: ")
+  (setq process-environment
+	(cons (concat "PGPPASS=" arg)
+	      (stripstrlist process-environment "^PGPPASS="))))
+
+; Clear PGPPASS environment variable
+(defun clear-pgp-passphrase ()
+  (interactive)
+  (setq process-environment (stripstrlist process-environment "^PGPPASS=")))
+
+
+I put this code in my Emacs startup file, ".emacs".  To use it, I
+do "M-X pgp-passphrase" to set the pass phrase.  It prompts me,
+and I enter the pass phrase I use.  Generally, I set it once and
+leave it set for the duration of an Emacs session, but I also can
+use "M-X clear-pgp-passphrase" to clear the pass phrase from the
+process-environment variable.
+
+Having set the pass phrase, decryption of incoming messages is
+straightforward.  I set the region, do control-U M-X, and when
+Emacs prompts with "Shell command on region:" I reply:
+
+pgpq -f
+
+This causes the message to be decrypted, and the output to be put
+back in the buffer, overwriting the encrypted data.  Here is the
+buffer before decryption:
+
+	To: XYZ@abc.com
+	Subject: Test of PGP with Emacs
+	--text follows this line--
+	-----BEGIN PGP MESSAGE-----
+	Version: 2.0
+
+	hDwC2RA+W2deet0BAX4omw4gByFkFaHFko7qPBVq1Yh7EpgHnbZ5EebqFiQjr61I
+	Bz6t1tQZSloNJ4KhTYOmAAAAWi2Ja/oM0LvEi9fumi4IdKDQJ44ihatrM0AEYUi5
+	CVJjj5YCuQUl5XT/s5cG+Gu6R5fTPtmQ94iBmIMUjOw+yEcCkIa5B87PmJJDusMC
+	f1K8VWsc2A2oAJIWqg==
+	=uvLF
+	-----END PGP MESSAGE-----
+
+And here it is after setting the PGP pass phrase, putting the
+region around the "PGP MESSAGE" part, and running "pgpq -f":
+
+	To: XYZ@abc.com
+	Subject: Test of PGP with Emacs
+	--text follows this line--
+	Dear XYZ:
+	I hope you enjoy this encrypted PGP message.
+	Love, ABC.
+
+
+SIGNING AND ENCRYPTING
+
+
+The technique of setting the PGPPASS environment variable also
+allows you to sign your outgoing messages along with encrypting
+them.  Use the "M-X pgp-passphrase" command to set your PGP pass
+phrase, then encrypt the outgoing message with the command:
+
+pgpq -safe XYZ
+
+This tells PGP to sign, ascii-encode, use filter mode, and
+encrypt the output for user XYZ.
+
+
+WHEN THINGS GO WRONG
+
+
+Once in a while, you will pass a message through PGP for
+encryption or decryption, and instead of getting replacement
+text, your message simply vanishes.  Don't panic.  The Emacs
+"undo" function, mapped to control-X U on my system, can be used
+to recover your message.
+
+Probably what happened was that PGP had some problem in either
+encrypting or decrypting the message.  Maybe you misspelled the
+User ID so that it wasn't found on the keyring.  Or maybe an
+incoming message was mistakenly encrypted in someone else's key,
+or was in a mode which PGP can't handle when used as a filter
+(see below).
+
+The best way to diagnose the problem is to first bring the
+message back with "undo" as just described, then to re-run the
+filter command, but to use "pgp" rather than "pgpq".  This will
+cause the PGP informational messages to be put into your buffer.
+Usually these will make clear what the problem is.  Give another
+"undo" to get back to the original message after reading this
+output.
+
+
+PROBLEMS AND LIMITATIONS
+
+
+There are some problems associated with using PGP in this mode.
+Probably the biggest is that in decrypting, the informational
+messages are thrown away.  This means that you lose information
+about any incoming signed messages as far as whether the
+signatures are valid or not.  In fact, you won't even know that
+the messages are signed.
+
+The pgpq script could be enhanced to pipe standard error to some
+filter program that could look at the informational output from
+PGP and print a warning message (which would appear back in the
+buffer along with the decrypted message) if, say, an invalid
+signature was found.  More work is needed in this area.
+
+Another problem arises if PGP is used with conventional
+encryption (using the -c flag).  Conventional encryption prompts
+for a pass phrase, but it does not check the PGPPASS environment
+variable, or any other such variable.  At present, conventional
+encryption and decryption cannot be done in filter mode under
+Emacs.
+
+Any other features of PGP which would require interaction with
+the user, such as decrypting a key and trying to add it to the
+key ring, will also not work in this filter mode.  The test cases
+which I have tried work about as well as they can (e.g. when
+decrypting a key in filter mode, PGP shows the contents of the
+key but doesn't ask if it should be added to your key ring), but
+for some of these functions you will have to fire up PGP outside
+of Emacs.
+-- 
+------------
+Bob Anderson
+bs891@cleveland.freenet.edu
+

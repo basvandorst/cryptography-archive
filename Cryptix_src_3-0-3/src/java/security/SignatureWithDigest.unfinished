@@ -1,0 +1,181 @@
+// SignatureWithDigest.java
+//
+// This file is currently unlocked (change this line if you lock the file)
+//
+// History: (add to this EVERY time you make a change) 
+// (insert details of your change immediately below this line)
+//
+// 1.0.2        17 Sep 1997     David Hopwood
+//      + Fixes to take account of changes to IJCE class.
+//      + Renamed engineSetDigest to setDigest.
+//
+// 1.0.1        30 Aug 1997     David Hopwood
+//      + The previous version tried to define a signature algorithm
+//        for any combination of MessageDigest and raw Signature.
+//        That won't work in general, because there are several ways
+//        of padding data to be signed, depending on both the signature
+//        algorithm (e.g. RSA, ElGamal), and the cryptographic standard
+//        in use (e.g. X.509, PEM, P1363, PGP). The new version
+//        requires a subclass of SignatureWithDigest for each
+//        combination of signature algorithm and standard (e.g.
+//        RSA-PEM), but still prevents the number of classes from
+//        being multiplied by the number of MD algorithms.
+//
+// 1.0.0         ?  ?  1997     David Hopwood
+//      + Original version.
+//
+/*
+ * Copyright (c) 1997 Systemics Ltd
+ * on behalf of the Cryptix Development Team.  All rights reserved.
+ */
+
+package java.security;
+
+/**
+ * <strong>This is an experimental class, and is not necessarily useful
+ * or correct in the current version of IJCE.</strong>
+ * <p>
+ * This class is used to specify signature algorithms that can be
+ * used in conjunction with an arbitrary message digest algorithm.
+ * <p>
+ * Most public-key signature algorithms are insecure unless there is
+ * no possibility of the input being chosen by an attacker. Hashing the
+ * input first using a message digest algorithm prevents this kind of
+ * attack (it also ensures that only one block needs to be signed).
+ * <p>
+ * Rather than requiring a separate class for each combination of
+ * digest and signature algorithms, IJCE allows them to be composed.
+ * For example, if "RIPEMD160" is configured as a MessageDigest, and
+ * "RSA-PEM" as a SignatureWithDigest, the combined signature
+ * algorithm "RIPEMD160/RSA-PEM" is supported automatically.
+ * <p>
+ *
+ * <b>Copyright</b> &copy; 1997
+ * <a href="http://www.systemics.com/">Systemics Ltd</a> on behalf of the
+ * <a href="http://www.systemics.com/docs/cryptix/">Cryptix Development Team</a>.
+ * <br>All rights reserved.
+ *
+ * @author  David Hopwood
+ * @version 1.0.2, 1997/09/17
+ * @since   IJCE 1.0.1
+ */
+public abstract class SignatureWithDigest extends Signature {
+    protected MessageDigest digest;
+
+    /**
+     * Constructs a SignatureWithDigest from the given algorithm name.
+     */
+    protected SignatureWithDigest(String algorithm) {
+        super(algorithm);
+    }
+
+    /**
+     * Generates a Signature object that implements the specified
+     * algorithm.
+     * <p>
+     * See <a href="../guide/security/CryptoSpec.html#AppA">Appendix A</a>
+     * in the <cite>Java Cryptography Architecture API Specification &amp; 
+     * Reference</cite> for information about standard algorithm names.
+     *
+     * @param algspec   the standard string name of the algorithm.
+     * @return the new Signature object, in the UNINITIALIZED state.
+     * @throws NoSuchAlgorithmException if the algorithm is
+     *          not available from the provider.
+     *
+     * @see java.security.Signature#UNINITIALIZED
+     */
+    public static Signature getInstance(String algspec)
+    throws NoSuchAlgorithmException {
+        try {
+            return getInstance(algspec, null);
+        } catch (NoSuchProviderException e) {
+            throw new NoSuchAlgorithmException(e.getMessage());
+        }
+    }
+
+    /**
+     * Generates a Signature object implementing the specified algorithm
+     * from the specified provider. If the string <i>algspec</i> is
+     * configured as the name of a Signature implementation for
+     * <i>provider</i>, that implementation is returned.
+     * <p>
+     * Otherwise, if the name is of the form
+     * "<code><i>digestName</i>/<i>sigWithDigestName</i></code>",
+     * then the following procedure is used:
+     * <ol>
+     *   <li> Search for a MessageDigest configured as <i>digestName</i>,
+     *        and call it <i>md</i>.
+     *   <li> Search for a SignatureWithDigest configured as
+     *        <i>sigWithDigestName</i>, and call it <i>sig</i>.
+     *   <li> Call <i>sig</i>'s <code>engineSetDigest</code> method, with
+     *        <i>md</i> as the parameter.
+     *   <li> Return <i>sig</i>.
+     * </ol>
+     * <p>
+     * The signature algorithm will only be found if it is supplied by
+     * <i>provider</i>. However, if the digest is not found from that
+     * provider, other providers will be searched, in preference order.
+     * <p>
+     * [TODO: should it be possible to specify the digest and
+     * signature providers separately?]
+     * <p>
+     * See <a href="../guide/security/CryptoSpec.html#AppA">Appendix A</a>
+     * in the <cite>Java Cryptography Architecture API Specification &amp; 
+     * Reference</cite> for information about standard algorithm names.
+     *
+     * @param algspec   the standard string name of the algorithm.
+     * @return  the new Signature object, in the UNINITIALIZED state.
+     * @throws NoSuchAlgorithmException if the algorithm is
+     *          not available from the provider.
+     * @throws NoSuchProviderException if the provider is not
+     *          available in the environment.
+     *
+     * @see java.security.Signature#UNINITIALIZED
+     */
+    public static Signature getInstance(String algspec, String provider)
+    throws NoSuchAlgorithmException, NoSuchProviderException {
+        int p = algspec.indexOf('/');
+        if (p == -1) {
+            return (Signature) (IJCE.getImplementation(algspec, provider,
+                "Signature"));
+        }
+
+        String digest = IJCE.getStandardName(algspec.substring(0, p), "MessageDigest");
+        String sig = IJCE.getStandardName(algspec.substring(p+1), "SignatureWithDigest");
+        String standardName = digest + "/" + sig;
+        try {
+            return (Signature) (IJCE.getImplementation(standardName, provider,
+                "Signature"));
+        } catch (NoSuchAlgorithmException e) { /* do nothing */ }
+
+        MessageDigest md;
+        try {
+            md = (MessageDigest) (IJCE.getImplementation(digest, provider,
+                "MessageDigest"));
+        } catch (NoSuchAlgorithmException e) {
+            // Currently this allows the digest implementation to come from
+            // any provider. Is that what we want?
+            md = (MessageDigest) (IJCE.getImplementation(digest, "MessageDigest"));
+        }
+
+        SignatureWithDigest impl = (SignatureWithDigest)
+            (IJCE.getImplementation(sig, provider, "SignatureWithDigest"));
+        impl.setDigest(md);
+        return impl;
+    }
+
+    /**
+     * Sets the message digest algorithm.
+     * <p>
+     * For example, to create an MD5/RSA-PEM signature algorithm, a MessageDigest
+     * for "MD5" would be passed to a SignatureWithDigest for "RSA-PEM" using
+     * this method. It is called once, immediately after the SignatureWithDigest
+     * object is constructed.
+     *
+     * @param  digest   the digest object
+     */
+    protected void setDigest(MessageDigest digest) {
+        if (digest == null) throw new NullPointerException("digest == null");
+        this.digest = digest;
+    }
+}

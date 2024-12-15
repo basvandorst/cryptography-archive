@@ -1,0 +1,158 @@
+10 '** DT/ENC ** BY MB Aug 1989
+15 ' A program to encipher Double Transposition ciphers as described by Joseph       Courville ("GUNG HO") in his book "Manual For Cryptanalysis Of The Columnar     Double Transposition Cipher" pages 2-3.
+16 ' The book is sold by JBC at 10240 Virginia Ave, South Gate, CA 90280 or via      the ACA "FOR SALE" dept.
+20 '
+30 KEY OFF:CLEAR: DEFINT A-Z
+40 DEF FN LZ$(A)=RIGHT$("00"+RIGHT$(STR$(A),LEN(STR$(A))-1),2) 'add leading zero
+50 GOTO 9500
+80 '
+                    ---- start here ----
+90 LP=LEN(P$)
+100 GOSUB 5010:LOCATE 6,1: PRINT PT$
+150 KW$="": PRINT: PRINT"Enter the keyword (3-16 chars, either case): ";:Y=CSRLIN: X=POS(0): IF XK$>" " THEN PRINT:PRINT "(Press ENTER for "XK$").
+155 LOCATE Y,X:LINE INPUT KW$
+160 IF KW$="" THEN KW$=XK$:LOCATE Y,X: PRINT KW$:GOSUB 5020
+165 IF KW$="" THEN LOCATE Y-1,X: GOTO 150 'must be a keyword
+170 GOSUB 1100                          'check for repeats in KW & force UC
+175 IF LEN(NK$)<>LEN(KW$) THEN LOCATE Y+1,X-10: PRINT "(Duplicate letters removed)"
+180 IF NK$<>KW$ THEN KW$=NK$: LOCATE Y,X: PRINT KW$"          "
+190 LK=LEN(KW$):CL=INT(LP/LK)+1         'CL is long col length
+200 GOSUB 1000                          'convert KW to key number
+210 '
+               ---- display on screen ----
+215 GOSUB 5010
+220 LOCATE 3,1:COLOR 0,7:PRINT "Plaintext:";:COLOR 7,0:PRINT LP;"chars"; TAB(55)"Key is "KW$:PRINT PT$: PRINT:PRINT"Numeric key is "K$:PRINT
+225 LOCATE 11,1:PRINT "Plain horiz:"TAB(27)"Transposed rows"
+230 FOR M=1 TO CL                                  'print plaintext block
+240   FOR N=1 TO LK
+250     LOCATE 11+M,1: PRINT MID$(P$,(M-1)*LK+1,LK);
+260   NEXT
+265 NEXT
+270 A=0:GOSUB 280:GOTO 390                         'A is horiz offset on screen
+280 '
+        ---- SUB: read out vertically in KW order ----
+285 OP$=""
+290 FOR M=1 TO LK                                  'for each row
+300   J=INSTR(K$,FNLZ$(M))/3+1                     'get value of key digit
+320   FOR N=1 TO CL                                'for each col
+330     X=SCREEN (N+11,J+A): IF X<64 THEN 340      'read the screen char
+335     OP$=OP$+CHR$(X)
+340   NEXT
+360 NEXT
+370 RETURN
+380 '
+390 '   --- print transposed text at TAB (27) ---
+410 FOR M=1 TO CL
+420   FOR N=1 TO LK
+430     LOCATE 11+M,27: PRINT MID$(OP$,(M-1)*LK+1,LK);
+440   NEXT
+450 NEXT
+460 A=26:GOSUB 280            'and read it out vert in KW order into OP$
+470 LOCATE 11,58:COLOR 0,7:PRINT "Ciphertext":COLOR 7,0
+480 '
+490 '   --- put OP$ into groups of five ---
+510 FOR K=1 TO LP/5
+520   FOR L=1 TO 5
+525     IF (K-1)*25 > LP THEN 560
+530     LOCATE (K+11),49+(L-1)*6
+535     PRINT MID$(OP$,(K-1)*25+(L-1)*5+1,5)" ";
+540   NEXT
+545 NEXT
+550 '
+560 LOCATE 23,1:PRINT SPC(79):LOCATE 23,9:PRINT "Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+570 ON INSTR("PpAaQq",Q$)GOTO 580,580,10,10,680,680:GOTO 560
+580 ON ERROR GOTO 15000
+590 WIDTH "lpt1:",255              'needed by GWBASIC
+600 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+610 X=VARPTR(EM(0))
+620 CALL X
+630 FOR N=1 TO 20: LPRINT:NEXT   'space to bottom of page
+635 LPRINT "Double Transposition by MIKE BARLOW":LPRINT
+640 OP$="":FOR N=1 TO LEN(X$)
+645   OP$=OP$+MID$(X$,N,1)
+650     IF N/5=INT(N/5) THEN OP$=OP$+" "
+660 NEXT:LPRINT OP$
+670 ON ERROR GOTO 0
+675 LPRINT CHR$(12):GOTO 560
+680 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+690 GOTO 690
+990 '
+        --- convert keyword to numeric K$, spaced double digits ----
+1000 N=0:K=0:K$=""
+1010 FOR I=1 TO LK
+1020   K=1
+1030   FOR J=1 TO LK
+1040     IF MID$(KW$,I,1)>MID$(KW$,J,1)THEN GOTO 1060
+1050     IF NOT(I>J AND MID$(KW$,I,1)=MID$(KW$,J,1))THEN 1070
+1060     K=K+1
+1070   NEXT J
+1080   K$=K$+FNLZ$(K)+" "   'add leading zero if reqd and space
+1090 NEXT:RETURN
+1100 '
+         ----  elim spaces and force upper case letters in KW$ ----
+1110 NK$="":FOR N=1 TO LEN(KW$)
+1120   IF DU$=" " THEN 1150
+1130   DU$=CHR$(ASC(MID$(KW$,N,1)) AND 223)    'force upper case
+1135   IF DU$=" " THEN 1150
+1140   NK$=NK$+DU$                             'if not, add to new key
+1150 NEXT:RETURN
+5000 ' --- misc subs ---
+5010 CLS:PRINT DATE$ TAB(22)"* DOUBLE TRANSPOSITION ENCIPHERMENT *" TAB(68)"per GUNG HO":PRINT TAB(24)STRING$(33,"-")
+5015 RETURN
+5020 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,28:PRINT "Press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+5030 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,18:PRINT "Press <ENTER> to cut text to 150 chars, <R> to redo: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);
+5040 IF Q$="R" OR Q$="r" THEN GOTO 9510
+5050 PT$=LEFT$(PT$,N9):P$="":GOTO 9640   'N9 was set in 9645
+5060 FOR M=1 TO 3:PRINT MID$(PT$,1+(M-1)*78,78):NEXT:RETURN
+5100 LOCATE 22,1:PRINT SPC(79):LOCATE 22,39:PRINT "end":END
+9500 '   ---   start here   ---
+9510 GOSUB 5010
+9520 PRINT:PRINT TAB(33)"By Mike Barlow"
+9540 XFI$="GUNGHO.P2"                      'default disk filename
+9550 LOCATE 22,16:PRINT "*** Format of disk file is Source, Ciphertext ***"
+9560 '                ====   enter data   ====
+9570 LOCATE 10,13:PRINT "Will you enter the plaintext from <K>eyboard or <D*>isk? ";:LINE INPUT Q$:GOSUB 5010:IF Q$="K"OR Q$="k"THEN 9620
+9580 D=1:LOCATE 11,17:PRINT"What is the file name? (Default = "XFI$"):  ";:LINE INPUT FI$                                    'D=1 for disk
+9590 IF LEN(FI$)=0 THEN FI$=XFI$             'default example
+9600 GOSUB 5010:GOSUB 9810:GOTO 9640
+9610 PRINT"Press <ENTER> for "FI$
+9620 D=0:GOSUB 20000:LOCATE 7,1:PRINT"ENTER THE PLAIN TEXT (either case, with or w/o spaces, 240 chars max):"
+9630 PRINT:LINE INPUT PT$: IF PT$="" THEN PT$=XP$
+9640 NC=LEN(PT$):FOR N=1 TO NC:IF MID$(PT$,N,1)=" " THEN 9650 ELSE P$=P$+CHR$(ASC(MID$(PT$,N,1)) AND 223)  'remove spaces and force UC
+9645  NR=LEN(P$):IF NR=150 THEN N9=N    'remember PT$ length for 150 chars in P$
+9650 NEXT:NR=LEN(P$):GOSUB 5010:LOCATE 6,1:PRINT "The plaintext is: ":GOSUB 5060:PRINT
+9660 PRINT"With spaces removed, there are"NR"characters in the text."
+9662 'IF NR>150 THEN LOCATE 16,22:COLOR 0,7:PRINT "** Text exceeds limit of 150 chars. **":COLOR 7,0:GOTO 5030
+9663 IF NR/5<>INT(NR/5) THEN GOTO 16000
+9665 IF LEN(SO$)>0 THEN 9690
+9666 IF D=1 THEN 9690
+9668 IF LEN(SO$)>0 THEN 9690
+9670 PRINT:PRINT"Enter the Source of the plaintext: (press ENTER for No Source) ";:LINE INPUT SO$:IF LEN(SO$)=0 THEN SO$="NO SOURCE":PRINT SO$
+9690 '
+9750 IF D=1 THEN GOSUB 5020:GOTO 9790
+9760 PRINT:PRINT TAB(20)"Shall I store this data on disk? (Y/N*) ";:LINE INPUT Q$:IF Q$="Y"OR Q$="y" THEN 9770 ELSE GOTO 9790
+9770 PRINT:PRINT TAB(20)"What is the file name? : ";:X=POS(0):LINE INPUT FI$:IF FI$="" THEN 9770
+9780 GOSUB 9800:PRINT:PRINT TAB(20)"Data has been stored in <"FI$">.":GOSUB 5020
+9790 GOSUB 5010:GOTO 90
+9795 GOSUB 5010:LOCATE Y-2:GOTO 9690
+9798 :
+9799 '      =====  files  =====
+9800 OPEN"O",1,FI$:PRINT#1,FI$:PRINT#1,PT$: PRINT#1,KW$:CLOSE:RETURN
+9810 ON ERROR GOTO 9840
+9820 OPEN"I",1,FI$:LINE INPUT#1,SO$:LINE INPUT#1,PT$: LINE INPUT#1, XK$: CLOSE:ON ERROR GOTO 0: RETURN
+9830 '    ---  error traps  ---
+9840 PRINT:PRINT:PRINT TAB(23) "Can't find file "FI$". Try again.":GOSUB 5020:GOSUB 5010:RESUME 9570
+15000 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15:PRINT "Printer not ready: press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+15010 ON ERROR GOTO 0:STOP
+16000 '   ==== pad undersized text ===
+16010  P$=LEFT$(P$+STRING$(24,"X"),(INT(NR/5)+1)*5): LP=LEN(P$): X$=P$: GOSUB 990: PRINT:PRINT"Plaintext has been padded to be a multiple of 5 chars long (unspaced):
+16020 FOR J=1 TO LP-NR:PT$=PT$+"X":NEXT
+16030  PRINT: PRINT PT$:GOSUB 5020
+16040 P$="":GOSUB 5010:GOTO 9640
+20000 '
+                    ----  examples ----
+20010 XP$="MOVE TO HILL TWO SEVEN FIVE TODAY X TOMORROW MOVE TO CROSSROAD ONE TWO ZERO ENDS":XK1$="BOOKKEEPER":XK2$="BOOKKEEPER":SO$="GUNGHO p2"
+20300 RETURN
+60000 'mod to line 16010 was sub 900
+65000 SAVE"dt.enc",A
+

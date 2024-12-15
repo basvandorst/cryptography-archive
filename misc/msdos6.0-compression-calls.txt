@@ -1,0 +1,264 @@
+--------d-2F4A11BX0000-----------------------
+INT 2F - DBLSPACE.BIN - "GetVersion" - INSTALLATION CHECK
+	AX = 4A11h
+	BX = 0000h
+Return: AX = 0000h (successful)
+	BX = 444Dh ("DM")
+	CL = first drive letter used by DBLSPACE (0=A:)
+	CH = number of drive letters used by DBLSPACE
+	DX = internal DBLSPACE.BIN version number (bits 14-0)
+		bit 15 set if DBLSPACE.BIN has not yet been relocated to final
+		position in memory (i.e. DBLSPACE.SYS /MOVE)
+Program: DBLSPACE.BIN is the resident driver for DoubleSpace, the
+	  disk-compression software bundled with MS-DOS 6.0
+SeeAlso: AX=4A11h/BX=0001h,AX=4A11h/BX=0002h,AX=4A11h/BX=0003h
+SeeAlso: AX=4A11h/BX=0005h,AX=4A11h/BX=0007h,AX=4A11h/BX=FFFFh
+SeeAlso: INT 21/AX=4404h"DBLSPACE"
+--------d-2F4A11BX0001-----------------------
+INT 2F - DBLSPACE.BIN - "GetDriveMapping" - GET DRIVE MAPPING
+	AX = 4A11h
+	BX = 0001h
+	DL = drive number (0=A:)
+Return: AX = status (see also below)
+    	    0000h successful
+	    	BL = host drive (bit 7 set if specified drive is compressed)
+		BH = DoubleSpace sequence number
+	    other error code (0101h) (see below)
+Note:	the compressed volume file for the specified compressed drive is
+	  host:\DBLSPACE.sequence
+SeeAlso: AX=4A11h/BX=0000h
+
+Values for status:
+ 0000h	successful
+ 0100h	bad function
+ 0101h	invalid drive
+ 0102h	not a compressed drive
+ 0103h	drive already swapped
+ 0104h	drive not swapped
+--------d-2F4A11BX0002-----------------------
+INT 2F - DBLSPACE.BIN - "Swap Drive" - SWAP DRIVE LETTERS OF CVF AND HOST DRIVE
+	AX = 4A11h
+	BX = 0002h
+	DL = drive number (0=A:) of compressed drive to swap with its host
+Return: AX = status (0000h,0101h,0102h,0103h) (see AX=4A11h/BX=0001h)
+Note:	this function is intended for use by DBLSPACE.EXE only
+SeeAlso: AX=4A11h/BX=0000h
+--------d-2F4A11BX0003-----------------------
+INT 2F U - DBLSPACE.BIN - GET DEVICE DRIVER ENTRY POINTS
+	AX = 4A11h
+	BX = 0003h
+    	CL = drive number (0=A:) of compressed drive
+Return: CL = FFh on error (not compressed drive)
+	   = other host drive???
+	    ES:SI -> device driver's strategy routine
+	    ES:DI -> device driver's interrupt routine
+Note:	the official documentation states that this function is reserved for
+	  use by SMARTDRV; this function and AX=4A11h/BX=0004h allow SMARTDRV
+	  to apply the same device driver wrapper to DoubleSpaced drives that
+	  it applies to regular block devices
+SeeAlso: AX=4A10h/BX=0007h,AX=4A11h/BX=0000h,AX=4A11h/BX=0004h
+--------d-2F4A11BX0004-----------------------
+INT 2F U - DBLSPACE.BIN - SET DEVICE DRIVER ENTRY POINTS
+	AX = 4A11h
+	BX = 0004h
+    	CL = drive number (0=A:) of compressed drive
+	ES:SI -> device driver strategy routine to call for drive
+	ES:DI -> device driver interrupt routine to call for drive
+	(DX???)
+Return: CL = FFh on error
+Program: DBLSPACE.BIN is the resident driver for DoubleSpace, the
+	  disk-compression software bundled with MS-DOS 6.0
+Note:	the official documentation states that this function is reserved for
+	  use by SMARTDRV; this function and AX=4A11h/BX=0003h allow SMARTDRV
+	  to apply the same device driver wrapper to DoubleSpaced drives that
+	  it applies to regular block devices
+SeeAlso: AX=4A10h/BX=0007h,AX=4A11h/BX=0000h,AX=4A11h/BX=0003h
+--------d-2F4A11BX0005-----------------------
+INT 2F - DBLSPACE.BIN - "ActivateDrive" - MOUNT COMPRESSED DRIVE
+	AX = 4A11h
+	BX = 0005h
+	DL = drive number (0=A:) to assign to new drive
+	ES:SI -> activation record (see below)
+Return: status returned in activation record (see below)
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=0006h
+
+Format of activation record:
+Offset	Size	Description
+ 00h  2 BYTEs	signature "MD" (4Dh 44h)
+ 02h	BYTE	4Dh ('M') mount command
+ 03h	BYTE	error code (set to FFh before calling)
+ 		01h drive letter not available for DoubleSpace
+		02h drive letter already in use
+		03h no more disk units (increase MaxRemovableDrives in .INI)
+		09h CVF too fragmented
+ 04h	BYTE	host drive number (0=A:)
+ 05h	???	DISK_UNIT structure (not documented)
+--------d-2F4A11BX0006-----------------------
+INT 2F - DBLSPACE.BIN - "DeactivateDrive" - UNMOUNT COMPRESSED DRIVE
+	AX = 4A11h
+	BX = 0006h
+	DL = drive number (0=A:) to unmount
+Return: AX = status (0000h,0102h) (see AX=4A11h/BX=0001h)
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=0005h
+--------d-2F4A11BX0007-----------------------
+INT 2F - DBLSPACE.BIN - "GetDriveSpace" - GET SPACE AVAIL ON COMPRESSED DRIVE
+	AX = 4A11h
+	BX = 0007h
+	DL = compressed drive number (0=A:)
+Return: AX = status (0000h,0102h) (see also AX=4A11h/BX=0001h)
+	    0000h successful
+		DS:SI -> free space record (see below)
+Program: DBLSPACE.BIN is the resident driver for DoubleSpace, the
+	  disk-compression software bundled with MS-DOS 6.0
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=0008h
+
+Format of free space record:
+Offset	Size	Description
+ 00h	DWORD	total number of sectors in drive's sector heap
+ 04h	DWORD	number of free sectors in drive's sector heap
+--------d-2F4A11BX0008-----------------------
+INT 2F - DBLSPACE.BIN - "GetFileFragmentSpace" - GET SIZE OF FRAGMENT HEAP
+	AX = 4A11h
+	BX = 0008h
+	DL = compressed drive number (0=A:)
+Return: AX = status (0000h,0102h) (see also AX=4A11h/BX=0001h)
+	    0000h successful
+	    	BX = maximum entries in File Fragment heap
+		CX = available entries in File Fragment heap
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=0007h,AX=4A11h/BX=0009h
+--------d-2F4A11BX0009-----------------------
+INT 2F - DBLSPACE.BIN - "GetExtraInfo" - DETERMINE NUMBER OF DISK_UNIT STRUCTS
+	AX = 4A11h
+	BX = 0009h
+	DL = compressed drive number (0=A:)
+Return: AX = status (see also AX=4A11h/BX=0001h)
+	    0000h successful
+		CL = number of DISK_UNIT structures allocated
+			(see AX=4A11h/BX=0005h)
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=0008h
+--------d-2F4A11BXFFFE-----------------------
+INT 2F U - DBLSPACE.BIN - RELOCATE
+	AX = 4A11h
+	BX = FFFEh
+	ES = segment to which to relocate DBLSPACE.BIN
+Return: ???
+Notes:	called by DBLSPACE.SYS to relocate DBLSPACE.BIN to its final position
+	  in memory
+	this function also unhooks and discards the code providing this
+	  function and AX=4A11h/BX=FFFFh
+SeeAlso: AX=4A11h/BX=FFFFh
+--------d-2F4A11BXFFFF-----------------------
+INT 2F U - DBLSPACE.BIN - GET RELOCATION SIZE
+	AX = 4A11h
+	BX = FFFFh
+Return: AX = number of paragraphs needed by DBLSPACE.BIN
+Note:	used by DBLSPACE.SYS to relocate the DBLSPACE driver to its final
+	  position in memory
+SeeAlso: AX=4A11h/BX=0000h,AX=4A11h/BX=FFFEh
+--------d-2F4A13-----------------------------
+INT 2F U - DBLSPACE.BIN - GET ??? ENTRY POINTS
+	AX = 4A13h
+Return: AX = 134Ah if supported
+	    ES:BX -> entry point record (see below)
+SeeAlso: AX=4A11h/BX=0000h
+
+Format of entry point record:
+Offset	Size	Description
+ 00h	DWORD	pointer to FAR function for ???
+ 04h  5 BYTEs	FAR JUMP instruction to ???
+
+
+
+--------d-2F4A12CX4D52-----------------------
+INT 2F - Microsoft Realtime Compression Interface (MRCI) - RAM-BASED SERVER
+	AX = 4A12h
+	CX = 4D52h ("MR")
+	DX = 4349h ("CI")
+Return: CX = 4943h ("IC") if installed
+	DX = 524Dh ("RM") if installed
+	    ES:DI -> MRCINFO structure (see INT 1A/AX=B001h)
+Note:	this call is functionally identical to INT 1A/AX=B001h, but should be
+	  called first, as the latter call is used for the first, ROM-based
+	  MRCI server, while this call is used for RAM-based servers which
+	  may be partially or entirely replacing a prior server
+SeeAlso: INT 1A/AX=B001h
+
+--------d-1AB001CX4D52-----------------------
+INT 1A - Microsoft Real-Time Compression Interface (MRCI) - ROM-BASED SERVER
+	AX = B001h
+	CX = 4D52h ("MR")
+	DX = 4349h ("CI")
+Return: CX = 4943h ("IC") if installed
+	DX = 524Dh ("RM") if installed
+	    ES:DI -> MRCINFO structure (see below)
+Note:	this call is functionally identical to INT 2F/AX=4A12h, which should
+	  be called first, as this call is used for the first, ROM-based
+	  MRCI server, while the other call is used for RAM-based servers
+	  which may be partially or entirely replacing a prior server
+SeeAlso: INT 2F/AX=4A12h
+
+Format of MRCINFO structure:
+Offset	Size	Description
+ 00h  4 BYTEs	vendor signature
+ 		"MSFT" Microsoft
+ 04h	WORD	server version (high=major)
+ 06h	WORD	MRCI specification version
+ 08h	DWORD	address of server entry point
+ 0Ch	WORD	bit flags: server capabilities (see below)
+ 0Eh	WORD	bit flags: hardware assisted capabilities (see below)
+ 10h	WORD	maximum block size supported by server (at least 8192 bytes)
+
+Bitfields for capabilities:
+ bit 0	standard compress
+ bit 1	standard decompress
+ bit 2	update compress
+ bit 3	MaxCompress
+ bit 4	reserved
+ bit 5	incremental decompress
+ bits 6-14 reserved
+ bit 15	this structure is in ROM and can't be modified
+ 	(server capabilities only)
+
+Call MRCI entry point with:
+	DS:SI -> MRCREQUEST structure (see below)
+	CX = type of client (0000h application, 0001h file system)
+	AX = operation
+	    0001h perform standard compression
+	    0002h perform standard decompression
+	    0004h perform update compression
+	    0008h perform MaxCompress
+	    0020h perform incremental decompression
+	AX = FFFFh clear flags
+	    BX = bitmask of flags to clear (set bits in BX are flags to clear)
+Return: AX = status
+	    0000h successful
+	    0001h invalid function
+	    0002h server busy, try again
+	    0003h destination buffer too small
+	    0004h incompressible data
+	    0005h bad compressed data format
+Note:	MRCI driver may chain to a previous driver
+
+Format of MRCREQUEST structure:
+Offset	Size	Description
+ 00h	DWORD	pointer to source buffer
+ 04h	WORD	size of source buffer (0000h = 64K)
+ 06h	WORD	(UpdateCompress only)
+ 		(call) offset in source buffer of beginning of changed data
+		(return) offset in destination buffer of beginning of changed
+			compressed data
+ 08h	DWORD	pointer to destination buffer
+ 		must contain original compressed data for UpdateCompress
+ 0Ch	WORD	size of destination buffer (0000h = 64K)
+ 		any compression: size of buffer for compressed data
+ 		standard decompression: number of bytes to be decompressed
+		incremental decompression: number of byte to decompress now
+		(return) actual size of resulting data
+ 0Eh	WORD	client compressed data storage allocation size
+ 10h	DWORD	incremental decompression state data
+ 		set to 00000000h before first incremental decompression call
+Notes:	the source and destination buffers may not overlap
+	the source and destination buffer sizes should normally be the same
+	application should not update the contents of the MRCREQUEST structure
+	  between incremental decompression calls
+

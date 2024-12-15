@@ -1,0 +1,100 @@
+.TH CATTACH 1 ""
+.SH NAME
+cattach - attach encrypted directory to CFS
+.SH SYNOPSIS
+.B cattach
+[ \-\fBl\fP ]
+[ \-\fB-\fP ]
+[ \-\fBt\fP \fIminutes\fP]
+[ \-\fBi\fP \fIminutes\fP]
+\fIdirectory\fP
+\fIname\fP
+.SH DESCRIPTION
+\fBcattach\fP associates the encrypted \fIdirectory\fP (previously
+created with \fBcmkdir(1)\fP) with the specified \fIname\fP.
+\fBcattach\fP prompts for a passphrase, which is used to generate
+cryptographic keys sent to the cfs daemon \fBcfsd\fP(8) and used to
+transparently encrypt and decrypt the files as needed.  If the correct
+passphrase is given (as verified by a known-plaintext hash file in the
+encrypted directory), the user may thereafter access the cleartext of
+the files in a virtual directory called \fIname\fP under the CFS mount
+point (usually /crypt).  Otherwise, no virtual directory is created.
+The underlying \fIdirectory\fP may be specified either as an absolute
+path or relative to the current directory.
+.LP
+If no \fIIname\fP is specified, the last path component of
+\fIdirectory\fP is used as a default.
+.LP
+If the \fB-l\fP ("lower security mode") option is given, newly created
+identical files will encrypt to identical ciphertexts.  Otherwise, the
+creation time plus the original inode number of the encrypted file is
+used to perturb each file, frustrating certain cryptanalytic attacks.
+Under highly concurrent operation with multiple instances of the same
+encrypted directory, however, lower security mode may be required to
+avoid some race conditions.  This mode also makes recovery (from
+backups) of individual encrypted files a bit simpler.
+.LP
+Note that attached virtual directories may be used only by users whose
+UID is the same as the issuer of the \fBcattach\fP command.
+.LP
+Ordinarily, the names of all currently attached directories can be
+obtained by listing the contents of /crypt (e.g., with \fBls\fP(1)).
+If the specified \fIname\fP begins with a '.' (dot), however, cfsd
+will not include the name in directory listings.  By using a
+hard-to-guess \fIname\fP, this mechanism can be used to provide some
+protection against attackers who can spoof the UID on the client
+machine.  See the \fBssh\fP(1) command for an example of this usage.
+.LP
+The \fB-t\fP option causes the attach to automatically go away after
+the specified number of minutes.  The \fB-i\fP option deletes the
+attach after a specified number of minutes of inactivity.  Note that
+these options, if used, should be chosen with some care; too short
+timeouts may actually increase the risk of compromise of frequently
+re-typed passphrases.
+.LP
+\fBcattach\fP will normally attempt to read the passphrase from the
+tty device (/dev/tty) and will not echo.  The \fB--\fP options forces
+\fBcattach\fP to read from stdin.
+.LP
+Virtual directories should be removed with the \fBcdetach\fP(1)
+command when no longer in use.
+.SH EXAMPLES
+.TP
+cattach /u/mab/secrets mab
+associates encrypted directory "/u/mab/secrets" with the
+cleartext name "mab".  Creates virtual directory "/crypt/mab".
+.TP
+cattach /u/mab/secrets .123xyzzy
+associates encrypted directory "/u/mab/secrets" with the cleartext
+name ".123xyzzy".  The cleartext name will not appear in a listing of
+/crypt.
+.TP
+cattach -l secrets mab
+associates the encrypted directory "secrets" in the current directory
+with the cleartext name "mab".  Identical files will encrypt to the
+same ciphertext.
+.SH FILES
+.TP
+/crypt/*
+currently attached cleartext instances
+.SH SEE ALSO
+cfsd(8), cdetach(1), cmkdir(1), ssh(1)
+.SH BUGS
+Really, really slow machines can time out on the RPC before cfsd is
+finished processing the attach command, especially when 3-DES is used.
+Such machines should probably be considered too slow to be running an
+encrypted file system anyway.
+.LP
+You can't attach an already encrypted directory, lest the
+single-threaded cfsd find itself in a deadlock.
+.LP
+There really should be a better security mechanism than the UID to
+protect against spoofing currently attached directories.  The .name
+hack is an ugly kludge.  In particular, it would be better to limit
+access to the process group of the user who issued the cattach
+command.  Unfortunately, that information is not passed to cfsd.
+.LP
+The timeout isn't perfect, and may occur a minute or two later than
+expected.
+.SH AUTHOR
+Matt Blaze; for information on cfs, email to cfs@research.att.com.

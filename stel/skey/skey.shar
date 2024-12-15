@@ -1,0 +1,7033 @@
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then feed it
+# into a shell via "sh file" or similar.  To overwrite existing files,
+# type "sh file -c".
+# The tool that generated this appeared in the comp.sources.unix newsgroup;
+# send mail to comp-sources-unix@uunet.uu.net if you want that tool.
+# Contents:  deskeyc.c getenv.c getskeyprompt.c login.c md4.c put.c
+#   setenv.c skey.c skeyaccess.c skeyd.c skeyinit.c skeylogin.c
+#   skeysubr.c su.c tmp.c try.c md4.h skey.h Makefile skeydconf
+# Wrapped by vince@idea on Mon May 15 18:22:00 1995
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+echo If this archive is complete, you will see the following message:
+echo '          "shar: End of archive."'
+if test -f 'deskeyc.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'deskeyc.c'\"
+else
+  echo shar: Extracting \"'deskeyc.c'\" \(1743 characters\)
+  sed "s/^X//" >'deskeyc.c' <<'END_OF_FILE'
+X/*
+X	This code is by MJR. See README.MJR.
+X	Small changes by vince
+X*/
+X
+X#include <stdio.h>
+X#ifdef HASSTDLIB
+X#include <stdlib.h>
+X#else
+X#include <sys/types.h>
+X#endif
+X#include <string.h>
+X#ifdef	__MSDOS__
+X#include <dos.h>
+X#else	/* Assume BSD unix */
+X#include <fcntl.h>
+X#endif
+X#include "md4.h"
+X#include "des.h"
+X#include "skey.h"
+X
+Xextern	char	*getenv();
+X
+X/* Crunch a key:
+X * DES decrypt the user's pad file and then crank it through MD4 and
+X * collapse to 64 bits. This is defined as the user's starting key.
+X */
+Xint
+Xdeskeycrunch(result,seed,passwd)
+Xchar *result;	/* 8-byte result */
+Xchar *seed;	/* Seed, any length */
+Xchar *passwd;	/* Password, any length */
+X{
+X	MD4_CTX md;
+X	char *padfile;
+X	char desobuf[BUFSIZ];
+X	char desibuf[BUFSIZ];
+X	des_key_schedule ks;
+X	des_cblock kk;
+X	char iv[8];
+X	FILE *desfd;
+X	int i;
+X	/**/ 
+X	unsigned long	buffer[4];
+X
+X	if((padfile = getenv("SKEYPADFILE")) == (char *)0) {
+X		fprintf(stderr,"No SKEYPADFILE in environment\n");
+X		return(-1);
+X	}
+X
+X	if((desfd = fopen(padfile,"r")) == (FILE *)0) {
+X		perror(padfile);
+X		return(-1);
+X	}
+X
+X	des_string_to_key(passwd, (des_cblock *)kk);
+X	des_set_key((des_cblock *)kk, ks);
+X	bzero(passwd,strlen(passwd));
+X	bzero(kk,sizeof(kk));
+X	bzero(iv,sizeof(iv));
+X
+X	/* decrypt our pad file and MD4 it */
+X	MD4Init(&md);
+X	while((i = fread(desibuf,1,64,desfd)) >= 8) {
+X		if(i % 8 != 0)
+X			i = i - (i % 8);
+X		des_cbc_encrypt((des_cblock *)desibuf, (des_cblock *)desobuf,
+X				i, ks, (des_cblock *)iv, DES_DECRYPT);
+X		MD4Update(&md,(unsigned char *)desobuf, i);
+X	}
+X	fclose(desfd);
+X	if(i < 0) {
+X		perror("read");
+X		return(-1);
+X	}
+X
+X	MD4Final((unsigned char *)buffer,&md);
+X
+X	/* Fold result from 128 to 64 bits */
+X	buffer[0] ^= buffer[2];
+X	buffer[1] ^= buffer[3];
+X
+X	memcpy(result,(char *)buffer,8);
+X	return 0;
+X}
+END_OF_FILE
+  if test 1743 -ne `wc -c <'deskeyc.c'`; then
+    echo shar: \"'deskeyc.c'\" unpacked with wrong size!
+  fi
+  # end of 'deskeyc.c'
+fi
+if test -f 'getenv.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'getenv.c'\"
+else
+  echo shar: Extracting \"'getenv.c'\" \(1842 characters\)
+  sed "s/^X//" >'getenv.c' <<'END_OF_FILE'
+X/*
+X * Copyright (c) 1987 Regents of the University of California.
+X * All rights reserved.
+X *
+X * Redistribution and use in source and binary forms are permitted
+X * provided that the above copyright notice and this paragraph are
+X * duplicated in all such forms and that any documentation,
+X * advertising materials, and other materials related to such
+X * distribution and use acknowledge that the software was developed
+X * by the University of California, Berkeley.  The name of the
+X * University may not be used to endorse or promote products derived
+X * from this software without specific prior written permission.
+X * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+X * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+X * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+X */
+X
+X#if defined(LIBC_SCCS) && !defined(lint)
+Xstatic char sccsid[] = "@(#)getenv.c	5.5 (Berkeley) 6/27/88";
+X#endif /* LIBC_SCCS and not lint */
+X
+X#include <stdio.h>
+X
+X/*
+X * getenv --
+X *	Returns ptr to value associated with name, if any, else NULL.
+X */
+Xchar *
+Xgetenv(name)
+X	char *name;
+X{
+X	int offset;
+X	char *_findenv();
+X
+X	return(_findenv(name, &offset));
+X}
+X
+X/*
+X * _findenv --
+X *	Returns pointer to value associated with name, if any, else NULL.
+X *	Sets offset to be the offset of the name/value combination in the
+X *	environmental array, for use by setenv(3) and unsetenv(3).
+X *	Explicitly removes '=' in argument name.
+X *
+X *	This routine *should* be a static; don't use it.
+X */
+Xchar *
+X_findenv(name, offset)
+X	register char *name;
+X	int *offset;
+X{
+X	extern char **environ;
+X	register int len;
+X	register char **P, *C;
+X
+X	for (C = name, len = 0; *C && *C != '='; ++C, ++len);
+X	for (P = environ; *P; ++P)
+X		if (!strncmp(*P, name, len))
+X			if (*(C = *P + len) == '=') {
+X				*offset = P - environ;
+X				return(++C);
+X			}
+X	return(NULL);
+X}
+END_OF_FILE
+  if test 1842 -ne `wc -c <'getenv.c'`; then
+    echo shar: \"'getenv.c'\" unpacked with wrong size!
+  fi
+  # end of 'getenv.c'
+fi
+if test -f 'getskeyprompt.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'getskeyprompt.c'\"
+else
+  echo shar: Extracting \"'getskeyprompt.c'\" \(1325 characters\)
+  sed "s/^X//" >'getskeyprompt.c' <<'END_OF_FILE'
+X/*   get prompt code for S/KEY Authentication.  S/KEY is a trademark
+X *   of Bellcore.
+X *
+X *   Mink is the former name of the S/KEY authentication system.
+X *   Many references for mink  may still be found in this program.   */
+X 
+X#include <stdio.h>
+X#include <string.h>
+X#include <sys/types.h>
+X#include <sys/stat.h>
+X#include <time.h>
+X#include <errno.h>
+X#include "skey.h"
+X
+X#define	KEYFILE	"/etc/skeykeys"
+X
+Xchar *skipspace();
+X#ifdef SKEYD
+Xint skeylookup __ARGS((struct skey *mp,char *name, int staylocal));
+X#else
+Xint skeylookup __ARGS((struct skey *mp,char *name));
+X#endif
+X
+X
+X
+X/* Issue a skey challenge for user 'name'. If successful,
+X * fill in the caller's skey structure and return 0. If unsuccessful
+X * (e.g., if name is unknown) return -1.
+X *
+X * The file read/write pointer is left at the start of the
+X * record.
+X */
+Xint
+Xgetskeyprompt(mp,name,prompt)
+Xstruct skey *mp;
+Xchar *name;
+Xchar *prompt;
+X{
+X	int rval;
+X
+X	sevenbit(name);
+X#ifdef SKEYD
+X	rval = skeylookup(mp,name, 0);
+X#else
+X	rval = skeylookup(mp,name);
+X#endif
+X	strcpy(prompt,"s/key 55 latour1\n");
+X	switch(rval){
+X	case -1:	/* File error */
+X		return -1;
+X	case 0:		/* Lookup succeeded, return challenge */
+X		sprintf(prompt,"s/key %d %s\n",mp->n - 1,mp->seed);
+X		return 0;
+X	case 1:		/* User not found */
+X		fclose(mp->keyfile);
+X		return -1;
+X	}
+X	return -1;	/* Can't happen */
+X}	
+END_OF_FILE
+  if test 1325 -ne `wc -c <'getskeyprompt.c'`; then
+    echo shar: \"'getskeyprompt.c'\" unpacked with wrong size!
+  fi
+  # end of 'getskeyprompt.c'
+fi
+if test -f 'login.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'login.c'\"
+else
+  echo shar: Extracting \"'login.c'\" \(17853 characters\)
+  sed "s/^X//" >'login.c' <<'END_OF_FILE'
+X/*
+X * Copyright (c) 1980,1987 Regents of the University of California.
+X * All rights reserved.  The Berkeley software License Agreement
+X * specifies the terms and conditions for redistribution.
+X */
+X
+X#ifndef lint
+Xchar copyright[] =
+X"@(#) Copyright (c) 1980 Regents of the University of California.\n\
+X All rights reserved.\n";
+X#endif not lint
+X
+X#ifndef lint
+Xstatic char sccsid[] = "@(#)login.c	5.20 (Berkeley) 10/1/87";
+X#endif not lint
+X
+X/*
+X * login [ name ]
+X * login -r hostname	(for rlogind)
+X * login -h hostname	(for telnetd, etc.)
+X * login -f name	(for pre-authenticated login: datakit, xterm, etc.)
+X */
+X
+X#include <sys/param.h>
+X#ifdef	QUOTA
+X#include <sys/quota.h>
+X#endif
+X#include <sys/stat.h>
+X#include <sys/time.h>
+X#include <sys/resource.h>
+X#include <sys/file.h>
+X
+X#include <sgtty.h>
+X#include <utmp.h>
+X#include <signal.h>
+X#include <pwd.h>
+X#include <stdio.h>
+X#include <lastlog.h>
+X#include <errno.h>
+X#include <ttyent.h>
+X#include <syslog.h>
+X#include <grp.h>
+X#include <netdb.h>
+X#include "skey.h"
+X
+X#define TTYGRPNAME	"tty"		/* name of group to own ttys */
+X#define TTYGID(gid)	tty_gid(gid)	/* gid that owns all ttys */
+X
+X#define	SCMPN(a, b)	strncmp(a, b, sizeof(a))
+X#define	SCPYN(a, b)	strncpy(a, b, sizeof(a))
+X
+X#define NMAX	sizeof(utmp.ut_name)
+X#define HMAX	sizeof(utmp.ut_host)
+X
+X#define	FALSE	0
+X#define	TRUE	-1
+X
+Xchar	nolog[] =	"/etc/nologin";
+Xchar	qlog[]  =	".hushlogin";
+Xchar	maildir[30] =	"/usr/spool/mail/";
+Xchar	lastlog[] =	"/usr/adm/lastlog";
+Xstruct	passwd nouser = {"", "nope", -1, -1, "", "", "", "", "" };
+Xstruct	sgttyb ttyb;
+Xstruct	utmp utmp;
+Xchar	minusnam[16] = "-";
+Xchar	*envinit[1];			/* now set by setenv calls */
+X/*
+X * This bounds the time given to login.  We initialize it here
+X * so it can be patched on machines where it's too small.
+X */
+Xint	timeout = 300;
+X
+Xchar	term[64];
+X
+Xstruct	passwd *pwd;
+Xchar	*strcat(), *rindex(), *index();
+Xint	timedout();
+Xchar	*ttyname();
+Xchar	*crypt();
+Xchar	*getpass();
+Xchar	*stypeof();
+Xextern	int errno;
+X
+Xstruct	tchars tc = {
+X	CINTR, CQUIT, CSTART, CSTOP, CEOT, CBRK
+X};
+Xstruct	ltchars ltc = {
+X	CSUSP, CDSUSP, CRPRNT, CFLUSH, CWERASE, CLNEXT
+X};
+X
+Xstruct winsize win = { 0, 0, 0, 0 };
+X
+Xint	rflag;
+Xint	usererr = -1;
+Xchar	rusername[NMAX+1], lusername[NMAX+1];
+Xchar	rpassword[NMAX+1];
+Xchar	name[NMAX+1];
+Xchar	me[MAXHOSTNAMELEN];
+Xchar	*rhost;
+X
+Xmain(argc, argv)
+X	char *argv[];
+X{
+X	extern	char **environ;
+X	register char *namep;
+X	int pflag = 0, hflag = 0, fflag = 0, t, f, c;
+X	int invalid, quietlog;
+X	FILE *nlfd;
+X	char *ttyn, *tty, host[256];
+X	int ldisc = 0, zero = 0, i;
+X	char *p, *domain, *index();
+X	char skeyprompt[80];
+X	int pwok;
+X
+X	host[0] = '\0';
+X	skeyprompt[0] = '\0';
+X	signal(SIGALRM, timedout);
+X	alarm(timeout);
+X	signal(SIGQUIT, SIG_IGN);
+X	signal(SIGINT, SIG_IGN);
+X	setpriority(PRIO_PROCESS, 0, 0);
+X#ifdef	QUOTA
+X	quota(Q_SETUID, 0, 0, 0);
+X#endif
+X	/*
+X	 * -p is used by getty to tell login not to destroy the environment
+X	 * -r is used by rlogind to cause the autologin protocol;
+X 	 * -f is used to skip a second login authentication 
+X	 * -h is used by other servers to pass the name of the
+X	 * remote host to login so that it may be placed in utmp and wtmp
+X	 */
+X	(void) gethostname(me, sizeof(me));
+X	domain = index(me, '.');
+X	while (argc > 1) {
+X		if (strcmp(argv[1], "-r") == 0) {
+X			if (rflag || hflag || fflag) {
+X				printf("Other options not allowed with -r\n");
+X				exit(1);
+X			}
+X			if (argv[2] == 0)
+X				exit(1);
+X			rflag = 1;
+X			usererr = doremotelogin(argv[2]);
+X			strncpy(host,argv[2],sizeof(host));
+X			if (domain != NULL && (p = index(argv[2], '.')) && strcmp(p, domain) == 0)
+X				*p = 0;
+X			SCPYN(utmp.ut_host, argv[2]);
+X
+X			argc -= 2;
+X			argv += 2;
+X			continue;
+X		}
+X		if (strcmp(argv[1], "-h") == 0) {
+X			if (getuid() == 0) {
+X				if (rflag || hflag) {
+X				    printf("Only one of -r and -h allowed\n");
+X				    exit(1);
+X				}
+X				hflag = 1;
+X				strncpy(host,argv[2],sizeof(host));
+X				if (domain != NULL && (p = index(argv[2], '.')) &&
+X				    strcmp(p, domain) == 0)
+X					*p = 0;
+X				SCPYN(utmp.ut_host, argv[2]);
+X			}
+X			argc -= 2;
+X			argv += 2;
+X			continue;
+X		}
+X		if (strcmp(argv[1], "-f") == 0 && argc > 2) {
+X			if (rflag) {
+X				printf("Only one of -r and -f allowed\n");
+X				exit(1);
+X			}
+X			fflag = 1;
+X			SCPYN(utmp.ut_name, argv[2]);
+X			argc -= 2;
+X			argv += 2;
+X			continue;
+X		}
+X		if (strcmp(argv[1], "-p") == 0) {
+X			argc--;
+X			argv++;
+X			pflag = 1;
+X			continue;
+X		}
+X		break;
+X	}
+X	ioctl(0, TIOCLSET, &zero);
+X	ioctl(0, TIOCNXCL, 0);
+X	ioctl(0, FIONBIO, &zero);
+X	ioctl(0, FIOASYNC, &zero);
+X	ioctl(0, TIOCGETP, &ttyb);
+X	/*
+X	 * If talking to an rlogin process,
+X	 * propagate the terminal type and
+X	 * baud rate across the network.
+X	 */
+X	if (rflag)
+X		doremoteterm(term, &ttyb);
+X	ttyb.sg_erase = CERASE;
+X	ttyb.sg_kill = CKILL;
+X	ioctl(0, TIOCSLTC, &ltc);
+X	ioctl(0, TIOCSETC, &tc);
+X	ioctl(0, TIOCSETP, &ttyb);
+X	for (t = getdtablesize(); t > 2; t--)
+X		close(t);
+X	ttyn = ttyname(0);
+X	if (ttyn == (char *)0 || *ttyn == '\0')
+X		ttyn = "/dev/tty??";
+X	tty = rindex(ttyn, '/');
+X	if (tty == NULL)
+X		tty = ttyn;
+X	else
+X		tty++;
+X	openlog("login", LOG_ODELAY, LOG_AUTH);
+X	t = 0;
+X	invalid = FALSE;
+X	pwok = authfile(host);
+X	do {
+X		ldisc = 0;
+X		ioctl(0, TIOCSETD, &ldisc);
+X		if (fflag == 0)
+X			SCPYN(utmp.ut_name, "");
+X		/*
+X		 * Name specified, take it.
+X		 */
+X		if (argc > 1) {
+X			SCPYN(utmp.ut_name, argv[1]);
+X			argc = 0;
+X		}
+X		/*
+X		 * If remote login take given name,
+X		 * otherwise prompt user for something.
+X		 */
+X		if (rflag && !invalid)
+X			SCPYN(utmp.ut_name, lusername);
+X		else {
+X			getloginname(&utmp);
+X			if (utmp.ut_name[0] == '-') {
+X				puts("login names may not start with '-'.");
+X				invalid = TRUE;
+X				continue;
+X			}
+X		}
+X		invalid = FALSE;
+X		if (!strcmp(pwd->pw_shell, "/bin/csh")) {
+X			ldisc = NTTYDISC;
+X			ioctl(0, TIOCSETD, &ldisc);
+X		}
+X		if (fflag) {
+X			int uid = getuid();
+X
+X			if (uid != 0 && uid != pwd->pw_uid)
+X				fflag = 0;
+X			/*
+X			 * Disallow automatic login for root.
+X			 */
+X			if (pwd->pw_uid == 0)
+X				fflag = 0;
+X		}
+X		/*
+X		 * If no remote login authentication and
+X		 * a password exists for this user, prompt
+X		 * for one and verify it.
+X		 */
+X		if (usererr == -1 && fflag == 0 && *pwd->pw_passwd != '\0') {
+X			char *pp;
+X			struct skey skey;
+X			int i;
+X			char buf[256],*cp;
+X			void rip();
+X			struct sgttyb ttyf,ttysave;
+X			int fflags,lword,lwordsav;
+X#ifdef	OLD
+X			setpriority(PRIO_PROCESS, 0, -4);
+X			pp = getpass("Password:");
+X			namep = crypt(pp, pwd->pw_passwd);
+X			setpriority(PRIO_PROCESS, 0, 0);
+X			if (strcmp(namep, pwd->pw_passwd))
+X				invalid = TRUE;
+X#endif
+X			invalid = TRUE;	/* Guilty til proven innocent */
+X
+X			/* Attempt a s/key challenge */
+X			i = skeychallenge(&skey,utmp.ut_name, skeyprompt);
+X			printf("%s\n",skeyprompt);
+X			if(!pwok)
+X				printf("(s/key required)\n");
+X			printf("Password:");
+X			fflush(stdout);
+X
+X			/* Set normal line editing */
+X			fflags = fcntl(fileno(stdin),F_GETFL,0);
+X			fcntl(fileno(stdin),F_SETFL,fflags & ~FNDELAY);
+X			ioctl(fileno(stdin),TIOCLGET,&lword);
+X			ioctl(fileno(stdin),TIOCLGET,&lwordsav);
+X			lword |= LCRTERA|LCRTKIL;
+X			ioctl(fileno(stdin),TIOCLSET,&lword);
+X
+X			/* Turn off echoing */
+X			ioctl(fileno(stdin), TIOCGETP, &ttyf);
+X			ioctl(fileno(stdin), TIOCGETP, &ttysave);
+X			ttyf.sg_flags &= ~(ECHO|RAW|CBREAK);
+X			ttyf.sg_flags |= CRMOD;
+X			ioctl(fileno(stdin),TIOCSETP,&ttyf);
+X			
+X			/* Read password */
+X			fgets(buf,sizeof(buf),stdin);
+X			rip(buf);
+X			if(strlen(buf) == 0){
+X				/* Null line entered; turn echoing back on
+X				 * and read again
+X				 */
+X				printf(" (echo on)\nPassword:");
+X				fflush(stdout);
+X
+X				ttyf.sg_flags |= (ECHO|CRTBS);
+X				ioctl(fileno(stdin),TIOCSETP,&ttyf);
+X				fgets(buf,sizeof(buf),stdin);
+X				rip(buf);
+X			} else {
+X				printf("\n");
+X			}
+X			/* Restore previous tty modes */
+X			fcntl(fileno(stdin),F_SETFL,fflags);
+X			ioctl(fileno(stdin),TIOCSETP,&ttysave);
+X			ioctl(fileno(stdin),TIOCLSET,&lwordsav);
+X
+X			if(i == 0 && skeyverify(&skey,buf) == 0 && 
+X				(pwd->pw_passwd[0] != '*' && pwd->pw_passwd[0] != '#' ) ){
+X				/* S/Key authentication succeeded */
+X				if(skey.n < 5)
+X					printf("Warning! Change password soon\n");
+X				invalid = FALSE;
+X			} else if(pwok){
+X				/* Try regular password check, if allowed */
+X				pp = crypt(buf,pwd->pw_passwd);
+X				if(strcmp(pp,pwd->pw_passwd) == 0)
+X					invalid = FALSE; /* Success */
+X			}
+X		}
+X		/*
+X		 * If user not super-user, check for logins disabled.
+X		 */
+X		if (pwd->pw_uid != 0 && (nlfd = fopen(nolog, "r")) > 0) {
+X			while ((c = getc(nlfd)) != EOF)
+X				putchar(c);
+X			fflush(stdout);
+X			sleep(5);
+X			exit(0);
+X		}
+X		/*
+X		 * If valid so far and root is logging in,
+X		 * see if root logins on this terminal are permitted.
+X		 */
+X		if (!invalid && pwd->pw_uid == 0 && !rootterm(tty)) {
+X			if (utmp.ut_host[0])
+X				syslog(LOG_CRIT,
+X				    "ROOT LOGIN REFUSED ON %s FROM %.*s",
+X				    tty, HMAX, utmp.ut_host);
+X			else
+X				syslog(LOG_CRIT,
+X				    "ROOT LOGIN REFUSED ON %s", tty);
+X			invalid = TRUE;
+X		}
+X		if (invalid) {
+X			printf("Login incorrect\n");
+X			if (++t >= 5) {
+X				if (utmp.ut_host[0])
+X					syslog(LOG_ERR,
+X			    "REPEATED LOGIN FAILURES ON %s FROM %.*s, %.*s",
+X					    tty, HMAX, utmp.ut_host,
+X					    NMAX, utmp.ut_name);
+X				else
+X					syslog(LOG_ERR,
+X				    "REPEATED LOGIN FAILURES ON %s, %.*s",
+X						tty, NMAX, utmp.ut_name);
+X				ioctl(0, TIOCHPCL, (struct sgttyb *) 0);
+X				close(0), close(1), close(2);
+X				sleep(10);
+X				exit(1);
+X			}
+X		}
+X		if (*pwd->pw_shell == '\0')
+X			pwd->pw_shell = "/bin/sh";
+X		if (chdir(pwd->pw_dir) < 0 && !invalid ) {
+X			if (chdir("/") < 0) {
+X				printf("No directory!\n");
+X				invalid = TRUE;
+X			} else {
+X				printf("No directory! %s\n",
+X				   "Logging in with home=/");
+X				pwd->pw_dir = "/";
+X			}
+X		}
+X		/*
+X		 * Remote login invalid must have been because
+X		 * of a restriction of some sort, no extra chances.
+X		 */
+X		if (!usererr && invalid)
+X			exit(1);
+X	} while (invalid);
+X/* committed to login turn off timeout */
+X	alarm(0);
+X
+X#ifdef	QUOTA
+X	if (quota(Q_SETUID, pwd->pw_uid, 0, 0) < 0 && errno != EINVAL) {
+X		if (errno == EUSERS)
+X			printf("%s.\n%s.\n",
+X			   "Too many users logged on already",
+X			   "Try again later");
+X		else if (errno == EPROCLIM)
+X			printf("You have too many processes running.\n");
+X		else
+X			perror("quota (Q_SETUID)");
+X		sleep(5);
+X		exit(0);
+X	}
+X#endif
+X	time(&utmp.ut_time);
+X	t = ttyslot();
+X	if (t > 0 && (f = open("/etc/utmp", O_WRONLY)) >= 0) {
+X		lseek(f, (long)(t*sizeof(utmp)), 0);
+X		SCPYN(utmp.ut_line, tty);
+X		write(f, (char *)&utmp, sizeof(utmp));
+X		close(f);
+X	}
+X	if ((f = open("/usr/adm/wtmp", O_WRONLY|O_APPEND)) >= 0) {
+X		write(f, (char *)&utmp, sizeof(utmp));
+X		close(f);
+X	}
+X	quietlog = access(qlog, F_OK) == 0;
+X	if ((f = open(lastlog, O_RDWR)) >= 0) {
+X		struct lastlog ll;
+X
+X		lseek(f, (long)pwd->pw_uid * sizeof (struct lastlog), 0);
+X		if (read(f, (char *) &ll, sizeof ll) == sizeof ll &&
+X		    ll.ll_time != 0 && !quietlog) {
+X			printf("Last login: %.*s ",
+X			    24-5, (char *)ctime(&ll.ll_time));
+X			if (*ll.ll_host != '\0')
+X				printf("from %.*s\n",
+X				    sizeof (ll.ll_host), ll.ll_host);
+X			else
+X				printf("on %.*s\n",
+X				    sizeof (ll.ll_line), ll.ll_line);
+X		}
+X		lseek(f, (long)pwd->pw_uid * sizeof (struct lastlog), 0);
+X		time(&ll.ll_time);
+X		SCPYN(ll.ll_line, tty);
+X		SCPYN(ll.ll_host, utmp.ut_host);
+X		write(f, (char *) &ll, sizeof ll);
+X		close(f);
+X	}
+X	chown(ttyn, pwd->pw_uid, TTYGID(pwd->pw_gid));
+X	if (!hflag && !rflag)					/* XXX */
+X		ioctl(0, TIOCSWINSZ, &win);
+X	chmod(ttyn, 0620);
+X	setgid(pwd->pw_gid);
+X	strncpy(name, utmp.ut_name, NMAX);
+X	name[NMAX] = '\0';
+X	initgroups(name, pwd->pw_gid);
+X#ifdef	QUOTA
+X	quota(Q_DOWARN, pwd->pw_uid, (dev_t)-1, 0);
+X#endif
+X	setuid(pwd->pw_uid);
+X
+X	/* destroy environment unless user has asked to preserve it */
+X	if (!pflag)
+X		environ = envinit;
+X	setenv("HOME", pwd->pw_dir, 1);
+X	setenv("SHELL", pwd->pw_shell, 1);
+X	if (term[0] == '\0')
+X		strncpy(term, stypeof(tty), sizeof(term));
+X	setenv("TERM", term, 0);
+X	setenv("USER", pwd->pw_name, 1);
+X	setenv("PATH", ":/usr/ucb:/bin:/usr/bin", 0);
+X
+X	if ((namep = rindex(pwd->pw_shell, '/')) == NULL)
+X		namep = pwd->pw_shell;
+X	else
+X		namep++;
+X	strcat(minusnam, namep);
+X	if (tty[sizeof("tty")-1] == 'd')
+X		syslog(LOG_INFO, "DIALUP %s, %s", tty, pwd->pw_name);
+X	if (pwd->pw_uid == 0)
+X		if (utmp.ut_host[0])
+X			syslog(LOG_NOTICE, "ROOT LOGIN %s FROM %.*s",
+X			    tty, HMAX, utmp.ut_host);
+X		else
+X			syslog(LOG_NOTICE, "ROOT LOGIN %s", tty);
+X	if (!quietlog) {
+X		struct stat st;
+X
+X		showmotd();
+X		strcat(maildir, pwd->pw_name);
+X		if (stat(maildir, &st) == 0 && st.st_size != 0)
+X			printf("You have %smail.\n",
+X				(st.st_mtime > st.st_atime) ? "new " : "");
+X	}
+X	signal(SIGALRM, SIG_DFL);
+X	signal(SIGQUIT, SIG_DFL);
+X	signal(SIGINT, SIG_DFL);
+X	signal(SIGTSTP, SIG_IGN);
+X	execlp(pwd->pw_shell, minusnam, 0);
+X	perror(pwd->pw_shell);
+X	printf("No shell\n");
+X	exit(0);
+X}
+X
+Xgetloginname(up)
+X	register struct utmp *up;
+X{
+X	register char *namep;
+X	char c;
+X
+X	while (up->ut_name[0] == '\0') {
+X		namep = up->ut_name;
+X		printf("login: ");
+X		while ((c = (getchar() & 0x7f) ) != '\n') {
+X			if (c == ' ')
+X				c = '_';
+X			if (c == EOF)
+X				exit(0);
+X			if (feof(stdin))
+X				exit(0);
+X			if (namep < up->ut_name+NMAX)
+X				*namep++ = c;
+X		}
+X	}
+X	strncpy(lusername, up->ut_name, NMAX);
+X	lusername[NMAX] = 0;
+X	if ((pwd = getpwnam(lusername)) == NULL)
+X		pwd = &nouser;
+X}
+X
+Xtimedout()
+X{
+X
+X	printf("Login timed out after %d seconds\n", timeout);
+X	exit(0);
+X}
+X
+Xint	stopmotd;
+Xcatch()
+X{
+X
+X	signal(SIGINT, SIG_IGN);
+X	stopmotd++;
+X}
+X
+Xrootterm(tty)
+X	char *tty;
+X{
+X	register struct ttyent *t;
+X
+X	if ((t = getttynam(tty)) != NULL) {
+X		if (t->ty_status & TTY_SECURE)
+X			return (1);
+X	}
+X	return (0);
+X}
+X
+Xshowmotd()
+X{
+X	FILE *mf;
+X	register c;
+X
+X	signal(SIGINT, catch);
+X	if ((mf = fopen("/etc/motd", "r")) != NULL) {
+X		while ((c = getc(mf)) != EOF && stopmotd == 0)
+X			putchar(c);
+X		fclose(mf);
+X	}
+X	signal(SIGINT, SIG_IGN);
+X}
+X
+X#undef	UNKNOWN
+X#define UNKNOWN "su"
+X
+Xchar *
+Xstypeof(ttyid)
+X	char *ttyid;
+X{
+X	register struct ttyent *t;
+X
+X	if (ttyid == NULL || (t = getttynam(ttyid)) == NULL)
+X		return (UNKNOWN);
+X	return (t->ty_type);
+X}
+X
+Xdoremotelogin(host)
+X	char *host;
+X{
+X	int rc;
+X
+X	getstr(rusername, sizeof (rusername), "remuser");
+X	getstr(lusername, sizeof (lusername), "locuser");
+X	getstr(term, sizeof(term), "Terminal type");
+X	if (getuid()) {
+X		pwd = &nouser;
+X		syslog(LOG_ERR, "getuid() failed");
+X		return(-1);
+X	}
+X	pwd = getpwnam(lusername);
+X	if (pwd == NULL) {
+X		pwd = &nouser;
+X		syslog(LOG_ERR, "getpwname() failed for user %s", lusername);
+X		return(-1);
+X	}
+X	rc = ruserok(host, (pwd->pw_uid == 0), rusername, lusername);
+X	if (rc == -1) {
+X		syslog(LOG_ERR, "ruserok failed, host=%s, uid=%d, remote username=%s, local username=%s", host, pwd->pw_uid, rusername, lusername);
+X	}
+X	return rc;
+X}
+X
+Xgetstr(buf, cnt, err)
+X	char *buf;
+X	int cnt;
+X	char *err;
+X{
+X	char c;
+X
+X	do {
+X		if (read(0, &c, 1) != 1)
+X			exit(1);
+X		if (--cnt < 0) {
+X			printf("%s too long\r\n", err);
+X			exit(1);
+X		}
+X		*buf++ = c;
+X	} while (c != 0);
+X}
+X
+Xchar	*speeds[] =
+X    { "0", "50", "75", "110", "134", "150", "200", "300",
+X      "600", "1200", "1800", "2400", "4800", "9600", "19200", "38400" };
+X#define	NSPEEDS	(sizeof (speeds) / sizeof (speeds[0]))
+X
+Xdoremoteterm(term, tp)
+X	char *term;
+X	struct sgttyb *tp;
+X{
+X	register char *cp = index(term, '/'), **cpp;
+X	char *speed;
+X
+X	if (cp) {
+X		*cp++ = '\0';
+X		speed = cp;
+X		cp = index(speed, '/');
+X		if (cp)
+X			*cp++ = '\0';
+X		for (cpp = speeds; cpp < &speeds[NSPEEDS]; cpp++)
+X			if (strcmp(*cpp, speed) == 0) {
+X				tp->sg_ispeed = tp->sg_ospeed = cpp-speeds;
+X				break;
+X			}
+X	}
+X	tp->sg_flags = ECHO|CRMOD|ANYP|XTABS;
+X}
+X
+Xtty_gid(default_gid)
+X	int default_gid;
+X{
+X	struct group *getgrnam(), *gr;
+X	int gid = default_gid;
+X
+X	gr = getgrnam(TTYGRPNAME);
+X	if (gr != (struct group *) 0)
+X		gid = gr->gr_gid;
+X
+X	endgrent();
+X
+X	return (gid);
+X}
+X
+X/* Turn host into an IP address and then look it up in the authorization
+X * database to determine if ordinary password logins are OK
+X */
+Xauthfile(host)
+Xchar *host;
+X{
+X	static int isaddr();
+X	long aton(),n;
+X	struct hostent *hp;
+X	FILE *fp;
+X	char buf[128],**lp;
+X
+X	if(strlen(host) == 0){
+X		/* Local login, okay */
+X		return 1;
+X	}
+X	if(isaddr(host)){
+X		n = aton(host);
+X		return rdnets(n);
+X	} else {
+X		hp = gethostbyname(host);
+X		if(hp == NULL){
+X			printf("Unknown host %s\n",host);
+X			return 0;
+X		}
+X		for(lp = hp->h_addr_list;*lp != NULL;lp++){
+X			memcpy((char *)&n,*lp,sizeof(n));
+X			n = ntohl(n);
+X			if(rdnets(n))
+X				return 1;
+X		}
+X		return 0;
+X	}
+X}
+Xint
+Xrdnets(host)
+Xlong host;
+X{
+X	FILE *fp;
+X	char buf[128],*cp;
+X	long pattern,mask;
+X	char *strtok();
+X	int permit_it;
+X
+X	fp = fopen("/etc/skey.access","r");
+X	if(fp == NULL)
+X		return 0;
+X	while(fgets(buf,sizeof(buf),fp),!feof(fp)){
+X		if(buf[0] == '#')
+X			continue;	/* Comment */
+X		cp = strtok(buf," \t");
+X		if(cp == NULL) 
+X			continue;
+X		/*two choices permit of deny*/
+X		if( strncasecmp(cp, "permit", 4) == 0){
+X			permit_it = 1;
+X		}
+X		else {
+X			if( strncasecmp(cp, "deny" , 4) == 0){
+X				permit_it = 0;
+X			}
+X		     	else{
+X				continue; /* ignore this it is not permit/deny */
+X			}
+X		}
+X		cp = strtok(NULL," \t");
+X		if(cp == NULL)
+X			continue;	/* Invalid line */
+X		pattern = aton(cp);
+X		cp = strtok(NULL," \t");
+X		if(cp == NULL)
+X			continue;	/* Invalid line */
+X		mask = aton(cp);
+X		if((host & mask) == pattern){
+X			fclose(fp);
+X			return permit_it;
+X		}
+X	}
+X	fclose(fp);
+X	return 0;
+X}
+X/* Return TRUE if string appears to be an IP address in dotted decimal;
+X * return FALSE otherwise (i.e., if string is a domain name)
+X */
+Xint
+Xisaddr(s)
+Xregister char *s;
+X{
+X	char c;
+X
+X	if(s == NULL)
+X		return 1;    /* Can't happen */
+X				  
+X	while((c = *s++) != '\0'){
+X		if(c != '[' && c != ']' && !isdigit(c) && c != '.')
+X			return 0;
+X	}
+X	return 1;
+X}
+X/* Convert Internet address in ascii dotted-decimal format (44.0.0.1) to
+X * binary IP address
+X */
+Xlong
+Xaton(s)
+Xregister char *s;
+X{
+X	long n;
+X	register int i;
+X	char *strchr();
+X
+X	n = 0;
+X	if(s == NULL)
+X		return 0;
+X	for(i=24;i>=0;i -= 8){
+X		/* Skip any leading stuff (e.g., spaces, '[') */
+X		while(*s != '\0' && !isdigit(*s))
+X			s++;
+X		if(*s == '\0')
+X			break;
+X		n |= (long)atoi(s) << i;
+X		if((s = strchr(s,'.')) == NULL)
+X			break;
+X		s++;
+X	}
+X	return n;
+X}
+END_OF_FILE
+  if test 17853 -ne `wc -c <'login.c'`; then
+    echo shar: \"'login.c'\" unpacked with wrong size!
+  fi
+  # end of 'login.c'
+fi
+if test -f 'md4.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'md4.c'\"
+else
+  echo shar: Extracting \"'md4.c'\" \(8620 characters\)
+  sed "s/^X//" >'md4.c' <<'END_OF_FILE'
+X/* MD4C.C - RSA Data Security, Inc., MD4 message-digest algorithm
+X */
+X
+X/* Copyright (C) 1990-2, RSA Data Security, Inc. All rights reserved.
+X
+X   License to copy and use this software is granted provided that it
+X   is identified as the "RSA Data Security, Inc. MD4 Message-Digest
+X   Algorithm" in all material mentioning or referencing this software
+X   or this function.
+X
+X   License is also granted to make and use derivative works provided
+X   that such works are identified as "derived from the RSA Data
+X   Security, Inc. MD4 Message-Digest Algorithm" in all material
+X   mentioning or referencing the derived work.
+X
+X   RSA Data Security, Inc. makes no representations concerning either
+X   the merchantability of this software or the suitability of this
+X   software for any particular purpose. It is provided "as is"
+X   without express or implied warranty of any kind.
+X
+X   These notices must be retained in any copies of any part of this
+X   documentation and/or software.
+X */
+X
+X#include "md4.h"
+X
+X/* Constants for MD4Transform routine.
+X */
+X#define S11 3
+X#define S12 7
+X#define S13 11
+X#define S14 19
+X#define S21 3
+X#define S22 5
+X#define S23 9
+X#define S24 13
+X#define S31 3
+X#define S32 9
+X#define S33 11
+X#define S34 15
+X
+X/* forward declarations */
+Xstatic void MD4Transform ();
+Xstatic void Encode ();
+Xstatic void Decode ();
+Xstatic void MD4_memcpy ();
+Xstatic void MD4_memset ();
+X
+Xstatic unsigned char PADDING[64] = {
+X  0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+X  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+X  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+X};
+X
+X/* F, G and H are basic MD4 functions.
+X */
+X#define F(x, y, z) (((x) & (y)) | ((~x) & (z)))
+X#define G(x, y, z) (((x) & (y)) | ((x) & (z)) | ((y) & (z)))
+X#define H(x, y, z) ((x) ^ (y) ^ (z))
+X
+X/* ROTATE_LEFT rotates x left n bits.
+X */
+X#define ROTATE_LEFT(x, n) (((x) << (n)) | ((x) >> (32-(n))))
+X
+X/* FF, GG and HH are transformations for rounds 1, 2 and 3 */
+X/* Rotation is separate from addition to prevent recomputation */
+X
+X#define FF(a, b, c, d, x, s) { \
+X    (a) += F ((b), (c), (d)) + (x); \
+X    (a) = ROTATE_LEFT ((a), (s)); \
+X  }
+X#define GG(a, b, c, d, x, s) { \
+X    (a) += G ((b), (c), (d)) + (x) + (UINT4)0x5a827999; \
+X    (a) = ROTATE_LEFT ((a), (s)); \
+X  }
+X#define HH(a, b, c, d, x, s) { \
+X    (a) += H ((b), (c), (d)) + (x) + (UINT4)0x6ed9eba1; \
+X    (a) = ROTATE_LEFT ((a), (s)); \
+X  }
+X
+X/* MD4 initialization. Begins an MD4 operation, writing a new context.
+X */
+Xvoid MD4Init (context)
+XMD4_CTX *context;                                        /* context */
+X{
+X  context->count[0] = context->count[1] = 0;
+X
+X  /* Load magic initialization constants.
+X   */
+X  context->state[0] = 0x67452301;
+X  context->state[1] = 0xefcdab89;
+X  context->state[2] = 0x98badcfe;
+X  context->state[3] = 0x10325476;
+X}
+X
+X/* MD4 block update operation. Continues an MD4 message-digest
+X     operation, processing another message block, and updating the
+X     context.
+X */
+Xvoid MD4Update (context, input, inputLen)
+XMD4_CTX *context;                                        /* context */
+Xunsigned char *input;                                /* input block */
+Xunsigned int inputLen;                     /* length of input block */
+X{
+X  unsigned int i, index, partLen;
+X
+X  /* Compute number of bytes mod 64 */
+X  index = (unsigned int)((context->count[0] >> 3) & 0x3F);
+X  /* Update number of bits */
+X  if ((context->count[0] += ((UINT4)inputLen << 3))
+X      < ((UINT4)inputLen << 3))
+X    context->count[1]++;
+X  context->count[1] += ((UINT4)inputLen >> 29);
+X
+X  partLen = 64 - index;
+X
+X  /* Transform as many times as possible.
+X   */
+X  if (inputLen >= partLen) {
+X    MD4_memcpy
+X      ((POINTER)&context->buffer[index], (POINTER)input, partLen);
+X    MD4Transform (context->state, context->buffer);
+X
+X    for (i = partLen; i + 63 < inputLen; i += 64)
+X      MD4Transform (context->state, &input[i]);
+X
+X    index = 0;
+X  }
+X  else
+X    i = 0;
+X
+X  /* Buffer remaining input */
+X  MD4_memcpy
+X    ((POINTER)&context->buffer[index], (POINTER)&input[i],
+X     inputLen-i);
+X}
+X
+X/* MD4 finalization. Ends an MD4 message-digest operation, writing the
+X     the message digest and zeroizing the context.
+X */
+Xvoid MD4Final (digest, context)
+Xunsigned char digest[16];                         /* message digest */
+XMD4_CTX *context;                                        /* context */
+X{
+X  unsigned char bits[8];
+X  unsigned int index, padLen;
+X
+X  /* Save number of bits */
+X  Encode (bits, context->count, 8);
+X
+X  /* Pad out to 56 mod 64.
+X   */
+X  index = (unsigned int)((context->count[0] >> 3) & 0x3f);
+X  padLen = (index < 56) ? (56 - index) : (120 - index);
+X  MD4Update (context, PADDING, padLen);
+X
+X  /* Append length (before padding) */
+X  MD4Update (context, bits, 8);
+X  /* Store state in digest */
+X  Encode (digest, context->state, 16);
+X
+X  /* Zeroize sensitive information.
+X   */
+X  MD4_memset ((POINTER)context, 0, sizeof (*context));
+X}
+X
+X/* MD4 basic transformation. Transforms state based on block.
+X */
+Xstatic void MD4Transform (state, block)
+XUINT4 state[4];
+Xunsigned char block[64];
+X{
+X  UINT4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+X
+X  Decode (x, block, 64);
+X
+X  /* Round 1 */
+X  FF (a, b, c, d, x[ 0], S11); /* 1 */
+X  FF (d, a, b, c, x[ 1], S12); /* 2 */
+X  FF (c, d, a, b, x[ 2], S13); /* 3 */
+X  FF (b, c, d, a, x[ 3], S14); /* 4 */
+X  FF (a, b, c, d, x[ 4], S11); /* 5 */
+X  FF (d, a, b, c, x[ 5], S12); /* 6 */
+X  FF (c, d, a, b, x[ 6], S13); /* 7 */
+X  FF (b, c, d, a, x[ 7], S14); /* 8 */
+X  FF (a, b, c, d, x[ 8], S11); /* 9 */
+X  FF (d, a, b, c, x[ 9], S12); /* 10 */
+X  FF (c, d, a, b, x[10], S13); /* 11 */
+X  FF (b, c, d, a, x[11], S14); /* 12 */
+X  FF (a, b, c, d, x[12], S11); /* 13 */
+X  FF (d, a, b, c, x[13], S12); /* 14 */
+X  FF (c, d, a, b, x[14], S13); /* 15 */
+X  FF (b, c, d, a, x[15], S14); /* 16 */
+X
+X  /* Round 2 */
+X  GG (a, b, c, d, x[ 0], S21); /* 17 */
+X  GG (d, a, b, c, x[ 4], S22); /* 18 */
+X  GG (c, d, a, b, x[ 8], S23); /* 19 */
+X  GG (b, c, d, a, x[12], S24); /* 20 */
+X  GG (a, b, c, d, x[ 1], S21); /* 21 */
+X  GG (d, a, b, c, x[ 5], S22); /* 22 */
+X  GG (c, d, a, b, x[ 9], S23); /* 23 */
+X  GG (b, c, d, a, x[13], S24); /* 24 */
+X  GG (a, b, c, d, x[ 2], S21); /* 25 */
+X  GG (d, a, b, c, x[ 6], S22); /* 26 */
+X  GG (c, d, a, b, x[10], S23); /* 27 */
+X  GG (b, c, d, a, x[14], S24); /* 28 */
+X  GG (a, b, c, d, x[ 3], S21); /* 29 */
+X  GG (d, a, b, c, x[ 7], S22); /* 30 */
+X  GG (c, d, a, b, x[11], S23); /* 31 */
+X  GG (b, c, d, a, x[15], S24); /* 32 */
+X
+X  /* Round 3 */
+X  HH (a, b, c, d, x[ 0], S31); /* 33 */
+X  HH (d, a, b, c, x[ 8], S32); /* 34 */
+X  HH (c, d, a, b, x[ 4], S33); /* 35 */
+X  HH (b, c, d, a, x[12], S34); /* 36 */
+X  HH (a, b, c, d, x[ 2], S31); /* 37 */
+X  HH (d, a, b, c, x[10], S32); /* 38 */
+X  HH (c, d, a, b, x[ 6], S33); /* 39 */
+X  HH (b, c, d, a, x[14], S34); /* 40 */
+X  HH (a, b, c, d, x[ 1], S31); /* 41 */
+X  HH (d, a, b, c, x[ 9], S32); /* 42 */
+X  HH (c, d, a, b, x[ 5], S33); /* 43 */
+X  HH (b, c, d, a, x[13], S34); /* 44 */
+X  HH (a, b, c, d, x[ 3], S31); /* 45 */
+X  HH (d, a, b, c, x[11], S32); /* 46 */
+X  HH (c, d, a, b, x[ 7], S33); /* 47 */
+X  HH (b, c, d, a, x[15], S34); /* 48 */
+X
+X  state[0] += a;
+X  state[1] += b;
+X  state[2] += c;
+X  state[3] += d;
+X
+X  /* Zeroize sensitive information.
+X   */
+X  MD4_memset ((POINTER)x, 0, sizeof (x));
+X}
+X
+X/* Encodes input (UINT4) into output (unsigned char). Assumes len is
+X     a multiple of 4.
+X */
+Xstatic void Encode (output, input, len)
+Xunsigned char *output;
+XUINT4 *input;
+Xunsigned int len;
+X{
+X  unsigned int i, j;
+X
+X  for (i = 0, j = 0; j < len; i++, j += 4) {
+X    output[j] = (unsigned char)(input[i] & 0xff);
+X    output[j+1] = (unsigned char)((input[i] >> 8) & 0xff);
+X    output[j+2] = (unsigned char)((input[i] >> 16) & 0xff);
+X    output[j+3] = (unsigned char)((input[i] >> 24) & 0xff);
+X  }
+X}
+X
+X/* Decodes input (unsigned char) into output (UINT4). Assumes len is
+X     a multiple of 4.
+X */
+Xstatic void Decode (output, input, len)
+X
+XUINT4 *output;
+Xunsigned char *input;
+Xunsigned int len;
+X{
+X  unsigned int i, j;
+X
+X  for (i = 0, j = 0; j < len; i++, j += 4)
+X    output[i] = ((UINT4)input[j]) | (((UINT4)input[j+1]) << 8) |
+X      (((UINT4)input[j+2]) << 16) | (((UINT4)input[j+3]) << 24);
+X}
+X
+X/* Note: Replace "for loop" with standard memcpy if possible.
+X */
+Xstatic void MD4_memcpy (output, input, len)
+XPOINTER output;
+XPOINTER input;
+Xunsigned int len;
+X{
+X  unsigned int i;
+X
+X  for (i = 0; i < len; i++)
+X    output[i] = input[i];
+X}
+X
+X/* Note: Replace "for loop" with standard memset if possible.
+X */
+Xstatic void MD4_memset (output, value, len)
+XPOINTER output;
+Xint value;
+Xunsigned int len;
+X{
+X  unsigned int i;
+X
+X  for (i = 0; i < len; i++)
+X    ((char *)output)[i] = (char)value;
+X}
+END_OF_FILE
+  if test 8620 -ne `wc -c <'md4.c'`; then
+    echo shar: \"'md4.c'\" unpacked with wrong size!
+  fi
+  # end of 'md4.c'
+fi
+if test -f 'put.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'put.c'\"
+else
+  echo shar: Extracting \"'put.c'\" \(20534 characters\)
+  sed "s/^X//" >'put.c' <<'END_OF_FILE'
+X#include <stdio.h>
+X#include <string.h>
+X#include <assert.h>
+X#include <ctype.h>
+X#include "skey.h"
+X
+Xstatic unsigned long extract __ARGS((char *s,int start,int length));
+Xstatic void standard __ARGS((char *word));
+Xstatic void insert __ARGS((char *s, int x, int start, int length));
+Xstatic int wsrch __ARGS((char *w,int low,int high));
+X
+X/* Dictionary for integer-word translations */
+Xchar Wp[2048][4] = {
+X"A",
+X"ABE",
+X"ACE",
+X"ACT",
+X"AD",
+X"ADA",
+X"ADD",
+X"AGO",
+X"AID",
+X"AIM",
+X"AIR",
+X"ALL",
+X"ALP",
+X"AM",
+X"AMY",
+X"AN",
+X"ANA",
+X"AND",
+X"ANN",
+X"ANT",
+X"ANY",
+X"APE",
+X"APS",
+X"APT",
+X"ARC",
+X"ARE",
+X"ARK",
+X"ARM",
+X"ART",
+X"AS",
+X"ASH",
+X"ASK",
+X"AT",
+X"ATE",
+X"AUG",
+X"AUK",
+X"AVE",
+X"AWE",
+X"AWK",
+X"AWL",
+X"AWN",
+X"AX",
+X"AYE",
+X"BAD",
+X"BAG",
+X"BAH",
+X"BAM",
+X"BAN",
+X"BAR",
+X"BAT",
+X"BAY",
+X"BE",
+X"BED",
+X"BEE",
+X"BEG",
+X"BEN",
+X"BET",
+X"BEY",
+X"BIB",
+X"BID",
+X"BIG",
+X"BIN",
+X"BIT",
+X"BOB",
+X"BOG",
+X"BON",
+X"BOO",
+X"BOP",
+X"BOW",
+X"BOY",
+X"BUB",
+X"BUD",
+X"BUG",
+X"BUM",
+X"BUN",
+X"BUS",
+X"BUT",
+X"BUY",
+X"BY",
+X"BYE",
+X"CAB",
+X"CAL",
+X"CAM",
+X"CAN",
+X"CAP",
+X"CAR",
+X"CAT",
+X"CAW",
+X"COD",
+X"COG",
+X"COL",
+X"CON",
+X"COO",
+X"COP",
+X"COT",
+X"COW",
+X"COY",
+X"CRY",
+X"CUB",
+X"CUE",
+X"CUP",
+X"CUR",
+X"CUT",
+X"DAB",
+X"DAD",
+X"DAM",
+X"DAN",
+X"DAR",
+X"DAY",
+X"DEE",
+X"DEL",
+X"DEN",
+X"DES",
+X"DEW",
+X"DID",
+X"DIE",
+X"DIG",
+X"DIN",
+X"DIP",
+X"DO",
+X"DOE",
+X"DOG",
+X"DON",
+X"DOT",
+X"DOW",
+X"DRY",
+X"DUB",
+X"DUD",
+X"DUE",
+X"DUG",
+X"DUN",
+X"EAR",
+X"EAT",
+X"ED",
+X"EEL",
+X"EGG",
+X"EGO",
+X"ELI",
+X"ELK",
+X"ELM",
+X"ELY",
+X"EM",
+X"END",
+X"EST",
+X"ETC",
+X"EVA",
+X"EVE",
+X"EWE",
+X"EYE",
+X"FAD",
+X"FAN",
+X"FAR",
+X"FAT",
+X"FAY",
+X"FED",
+X"FEE",
+X"FEW",
+X"FIB",
+X"FIG",
+X"FIN",
+X"FIR",
+X"FIT",
+X"FLO",
+X"FLY",
+X"FOE",
+X"FOG",
+X"FOR",
+X"FRY",
+X"FUM",
+X"FUN",
+X"FUR",
+X"GAB",
+X"GAD",
+X"GAG",
+X"GAL",
+X"GAM",
+X"GAP",
+X"GAS",
+X"GAY",
+X"GEE",
+X"GEL",
+X"GEM",
+X"GET",
+X"GIG",
+X"GIL",
+X"GIN",
+X"GO",
+X"GOT",
+X"GUM",
+X"GUN",
+X"GUS",
+X"GUT",
+X"GUY",
+X"GYM",
+X"GYP",
+X"HA",
+X"HAD",
+X"HAL",
+X"HAM",
+X"HAN",
+X"HAP",
+X"HAS",
+X"HAT",
+X"HAW",
+X"HAY",
+X"HE",
+X"HEM",
+X"HEN",
+X"HER",
+X"HEW",
+X"HEY",
+X"HI",
+X"HID",
+X"HIM",
+X"HIP",
+X"HIS",
+X"HIT",
+X"HO",
+X"HOB",
+X"HOC",
+X"HOE",
+X"HOG",
+X"HOP",
+X"HOT",
+X"HOW",
+X"HUB",
+X"HUE",
+X"HUG",
+X"HUH",
+X"HUM",
+X"HUT",
+X"I",
+X"ICY",
+X"IDA",
+X"IF",
+X"IKE",
+X"ILL",
+X"INK",
+X"INN",
+X"IO",
+X"ION",
+X"IQ",
+X"IRA",
+X"IRE",
+X"IRK",
+X"IS",
+X"IT",
+X"ITS",
+X"IVY",
+X"JAB",
+X"JAG",
+X"JAM",
+X"JAN",
+X"JAR",
+X"JAW",
+X"JAY",
+X"JET",
+X"JIG",
+X"JIM",
+X"JO",
+X"JOB",
+X"JOE",
+X"JOG",
+X"JOT",
+X"JOY",
+X"JUG",
+X"JUT",
+X"KAY",
+X"KEG",
+X"KEN",
+X"KEY",
+X"KID",
+X"KIM",
+X"KIN",
+X"KIT",
+X"LA",
+X"LAB",
+X"LAC",
+X"LAD",
+X"LAG",
+X"LAM",
+X"LAP",
+X"LAW",
+X"LAY",
+X"LEA",
+X"LED",
+X"LEE",
+X"LEG",
+X"LEN",
+X"LEO",
+X"LET",
+X"LEW",
+X"LID",
+X"LIE",
+X"LIN",
+X"LIP",
+X"LIT",
+X"LO",
+X"LOB",
+X"LOG",
+X"LOP",
+X"LOS",
+X"LOT",
+X"LOU",
+X"LOW",
+X"LOY",
+X"LUG",
+X"LYE",
+X"MA",
+X"MAC",
+X"MAD",
+X"MAE",
+X"MAN",
+X"MAO",
+X"MAP",
+X"MAT",
+X"MAW",
+X"MAY",
+X"ME",
+X"MEG",
+X"MEL",
+X"MEN",
+X"MET",
+X"MEW",
+X"MID",
+X"MIN",
+X"MIT",
+X"MOB",
+X"MOD",
+X"MOE",
+X"MOO",
+X"MOP",
+X"MOS",
+X"MOT",
+X"MOW",
+X"MUD",
+X"MUG",
+X"MUM",
+X"MY",
+X"NAB",
+X"NAG",
+X"NAN",
+X"NAP",
+X"NAT",
+X"NAY",
+X"NE",
+X"NED",
+X"NEE",
+X"NET",
+X"NEW",
+X"NIB",
+X"NIL",
+X"NIP",
+X"NIT",
+X"NO",
+X"NOB",
+X"NOD",
+X"NON",
+X"NOR",
+X"NOT",
+X"NOV",
+X"NOW",
+X"NU",
+X"NUN",
+X"NUT",
+X"O",
+X"OAF",
+X"OAK",
+X"OAR",
+X"OAT",
+X"ODD",
+X"ODE",
+X"OF",
+X"OFF",
+X"OFT",
+X"OH",
+X"OIL",
+X"OK",
+X"OLD",
+X"ON",
+X"ONE",
+X"OR",
+X"ORB",
+X"ORE",
+X"ORR",
+X"OS",
+X"OTT",
+X"OUR",
+X"OUT",
+X"OVA",
+X"OW",
+X"OWE",
+X"OWL",
+X"OWN",
+X"OX",
+X"PA",
+X"PAD",
+X"PAL",
+X"PAM",
+X"PAN",
+X"PAP",
+X"PAR",
+X"PAT",
+X"PAW",
+X"PAY",
+X"PEA",
+X"PEG",
+X"PEN",
+X"PEP",
+X"PER",
+X"PET",
+X"PEW",
+X"PHI",
+X"PI",
+X"PIE",
+X"PIN",
+X"PIT",
+X"PLY",
+X"PO",
+X"POD",
+X"POE",
+X"POP",
+X"POT",
+X"POW",
+X"PRO",
+X"PRY",
+X"PUB",
+X"PUG",
+X"PUN",
+X"PUP",
+X"PUT",
+X"QUO",
+X"RAG",
+X"RAM",
+X"RAN",
+X"RAP",
+X"RAT",
+X"RAW",
+X"RAY",
+X"REB",
+X"RED",
+X"REP",
+X"RET",
+X"RIB",
+X"RID",
+X"RIG",
+X"RIM",
+X"RIO",
+X"RIP",
+X"ROB",
+X"ROD",
+X"ROE",
+X"RON",
+X"ROT",
+X"ROW",
+X"ROY",
+X"RUB",
+X"RUE",
+X"RUG",
+X"RUM",
+X"RUN",
+X"RYE",
+X"SAC",
+X"SAD",
+X"SAG",
+X"SAL",
+X"SAM",
+X"SAN",
+X"SAP",
+X"SAT",
+X"SAW",
+X"SAY",
+X"SEA",
+X"SEC",
+X"SEE",
+X"SEN",
+X"SET",
+X"SEW",
+X"SHE",
+X"SHY",
+X"SIN",
+X"SIP",
+X"SIR",
+X"SIS",
+X"SIT",
+X"SKI",
+X"SKY",
+X"SLY",
+X"SO",
+X"SOB",
+X"SOD",
+X"SON",
+X"SOP",
+X"SOW",
+X"SOY",
+X"SPA",
+X"SPY",
+X"SUB",
+X"SUD",
+X"SUE",
+X"SUM",
+X"SUN",
+X"SUP",
+X"TAB",
+X"TAD",
+X"TAG",
+X"TAN",
+X"TAP",
+X"TAR",
+X"TEA",
+X"TED",
+X"TEE",
+X"TEN",
+X"THE",
+X"THY",
+X"TIC",
+X"TIE",
+X"TIM",
+X"TIN",
+X"TIP",
+X"TO",
+X"TOE",
+X"TOG",
+X"TOM",
+X"TON",
+X"TOO",
+X"TOP",
+X"TOW",
+X"TOY",
+X"TRY",
+X"TUB",
+X"TUG",
+X"TUM",
+X"TUN",
+X"TWO",
+X"UN",
+X"UP",
+X"US",
+X"USE",
+X"VAN",
+X"VAT",
+X"VET",
+X"VIE",
+X"WAD",
+X"WAG",
+X"WAR",
+X"WAS",
+X"WAY",
+X"WE",
+X"WEB",
+X"WED",
+X"WEE",
+X"WET",
+X"WHO",
+X"WHY",
+X"WIN",
+X"WIT",
+X"WOK",
+X"WON",
+X"WOO",
+X"WOW",
+X"WRY",
+X"WU",
+X"YAM",
+X"YAP",
+X"YAW",
+X"YE",
+X"YEA",
+X"YES",
+X"YET",
+X"YOU",
+X"ABED",
+X"ABEL",
+X"ABET",
+X"ABLE",
+X"ABUT",
+X"ACHE",
+X"ACID",
+X"ACME",
+X"ACRE",
+X"ACTA",
+X"ACTS",
+X"ADAM",
+X"ADDS",
+X"ADEN",
+X"AFAR",
+X"AFRO",
+X"AGEE",
+X"AHEM",
+X"AHOY",
+X"AIDA",
+X"AIDE",
+X"AIDS",
+X"AIRY",
+X"AJAR",
+X"AKIN",
+X"ALAN",
+X"ALEC",
+X"ALGA",
+X"ALIA",
+X"ALLY",
+X"ALMA",
+X"ALOE",
+X"ALSO",
+X"ALTO",
+X"ALUM",
+X"ALVA",
+X"AMEN",
+X"AMES",
+X"AMID",
+X"AMMO",
+X"AMOK",
+X"AMOS",
+X"AMRA",
+X"ANDY",
+X"ANEW",
+X"ANNA",
+X"ANNE",
+X"ANTE",
+X"ANTI",
+X"AQUA",
+X"ARAB",
+X"ARCH",
+X"AREA",
+X"ARGO",
+X"ARID",
+X"ARMY",
+X"ARTS",
+X"ARTY",
+X"ASIA",
+X"ASKS",
+X"ATOM",
+X"AUNT",
+X"AURA",
+X"AUTO",
+X"AVER",
+X"AVID",
+X"AVIS",
+X"AVON",
+X"AVOW",
+X"AWAY",
+X"AWRY",
+X"BABE",
+X"BABY",
+X"BACH",
+X"BACK",
+X"BADE",
+X"BAIL",
+X"BAIT",
+X"BAKE",
+X"BALD",
+X"BALE",
+X"BALI",
+X"BALK",
+X"BALL",
+X"BALM",
+X"BAND",
+X"BANE",
+X"BANG",
+X"BANK",
+X"BARB",
+X"BARD",
+X"BARE",
+X"BARK",
+X"BARN",
+X"BARR",
+X"BASE",
+X"BASH",
+X"BASK",
+X"BASS",
+X"BATE",
+X"BATH",
+X"BAWD",
+X"BAWL",
+X"BEAD",
+X"BEAK",
+X"BEAM",
+X"BEAN",
+X"BEAR",
+X"BEAT",
+X"BEAU",
+X"BECK",
+X"BEEF",
+X"BEEN",
+X"BEER",
+X"BEET",
+X"BELA",
+X"BELL",
+X"BELT",
+X"BEND",
+X"BENT",
+X"BERG",
+X"BERN",
+X"BERT",
+X"BESS",
+X"BEST",
+X"BETA",
+X"BETH",
+X"BHOY",
+X"BIAS",
+X"BIDE",
+X"BIEN",
+X"BILE",
+X"BILK",
+X"BILL",
+X"BIND",
+X"BING",
+X"BIRD",
+X"BITE",
+X"BITS",
+X"BLAB",
+X"BLAT",
+X"BLED",
+X"BLEW",
+X"BLOB",
+X"BLOC",
+X"BLOT",
+X"BLOW",
+X"BLUE",
+X"BLUM",
+X"BLUR",
+X"BOAR",
+X"BOAT",
+X"BOCA",
+X"BOCK",
+X"BODE",
+X"BODY",
+X"BOGY",
+X"BOHR",
+X"BOIL",
+X"BOLD",
+X"BOLO",
+X"BOLT",
+X"BOMB",
+X"BONA",
+X"BOND",
+X"BONE",
+X"BONG",
+X"BONN",
+X"BONY",
+X"BOOK",
+X"BOOM",
+X"BOON",
+X"BOOT",
+X"BORE",
+X"BORG",
+X"BORN",
+X"BOSE",
+X"BOSS",
+X"BOTH",
+X"BOUT",
+X"BOWL",
+X"BOYD",
+X"BRAD",
+X"BRAE",
+X"BRAG",
+X"BRAN",
+X"BRAY",
+X"BRED",
+X"BREW",
+X"BRIG",
+X"BRIM",
+X"BROW",
+X"BUCK",
+X"BUDD",
+X"BUFF",
+X"BULB",
+X"BULK",
+X"BULL",
+X"BUNK",
+X"BUNT",
+X"BUOY",
+X"BURG",
+X"BURL",
+X"BURN",
+X"BURR",
+X"BURT",
+X"BURY",
+X"BUSH",
+X"BUSS",
+X"BUST",
+X"BUSY",
+X"BYTE",
+X"CADY",
+X"CAFE",
+X"CAGE",
+X"CAIN",
+X"CAKE",
+X"CALF",
+X"CALL",
+X"CALM",
+X"CAME",
+X"CANE",
+X"CANT",
+X"CARD",
+X"CARE",
+X"CARL",
+X"CARR",
+X"CART",
+X"CASE",
+X"CASH",
+X"CASK",
+X"CAST",
+X"CAVE",
+X"CEIL",
+X"CELL",
+X"CENT",
+X"CERN",
+X"CHAD",
+X"CHAR",
+X"CHAT",
+X"CHAW",
+X"CHEF",
+X"CHEN",
+X"CHEW",
+X"CHIC",
+X"CHIN",
+X"CHOU",
+X"CHOW",
+X"CHUB",
+X"CHUG",
+X"CHUM",
+X"CITE",
+X"CITY",
+X"CLAD",
+X"CLAM",
+X"CLAN",
+X"CLAW",
+X"CLAY",
+X"CLOD",
+X"CLOG",
+X"CLOT",
+X"CLUB",
+X"CLUE",
+X"COAL",
+X"COAT",
+X"COCA",
+X"COCK",
+X"COCO",
+X"CODA",
+X"CODE",
+X"CODY",
+X"COED",
+X"COIL",
+X"COIN",
+X"COKE",
+X"COLA",
+X"COLD",
+X"COLT",
+X"COMA",
+X"COMB",
+X"COME",
+X"COOK",
+X"COOL",
+X"COON",
+X"COOT",
+X"CORD",
+X"CORE",
+X"CORK",
+X"CORN",
+X"COST",
+X"COVE",
+X"COWL",
+X"CRAB",
+X"CRAG",
+X"CRAM",
+X"CRAY",
+X"CREW",
+X"CRIB",
+X"CROW",
+X"CRUD",
+X"CUBA",
+X"CUBE",
+X"CUFF",
+X"CULL",
+X"CULT",
+X"CUNY",
+X"CURB",
+X"CURD",
+X"CURE",
+X"CURL",
+X"CURT",
+X"CUTS",
+X"DADE",
+X"DALE",
+X"DAME",
+X"DANA",
+X"DANE",
+X"DANG",
+X"DANK",
+X"DARE",
+X"DARK",
+X"DARN",
+X"DART",
+X"DASH",
+X"DATA",
+X"DATE",
+X"DAVE",
+X"DAVY",
+X"DAWN",
+X"DAYS",
+X"DEAD",
+X"DEAF",
+X"DEAL",
+X"DEAN",
+X"DEAR",
+X"DEBT",
+X"DECK",
+X"DEED",
+X"DEEM",
+X"DEER",
+X"DEFT",
+X"DEFY",
+X"DELL",
+X"DENT",
+X"DENY",
+X"DESK",
+X"DIAL",
+X"DICE",
+X"DIED",
+X"DIET",
+X"DIME",
+X"DINE",
+X"DING",
+X"DINT",
+X"DIRE",
+X"DIRT",
+X"DISC",
+X"DISH",
+X"DISK",
+X"DIVE",
+X"DOCK",
+X"DOES",
+X"DOLE",
+X"DOLL",
+X"DOLT",
+X"DOME",
+X"DONE",
+X"DOOM",
+X"DOOR",
+X"DORA",
+X"DOSE",
+X"DOTE",
+X"DOUG",
+X"DOUR",
+X"DOVE",
+X"DOWN",
+X"DRAB",
+X"DRAG",
+X"DRAM",
+X"DRAW",
+X"DREW",
+X"DRUB",
+X"DRUG",
+X"DRUM",
+X"DUAL",
+X"DUCK",
+X"DUCT",
+X"DUEL",
+X"DUET",
+X"DUKE",
+X"DULL",
+X"DUMB",
+X"DUNE",
+X"DUNK",
+X"DUSK",
+X"DUST",
+X"DUTY",
+X"EACH",
+X"EARL",
+X"EARN",
+X"EASE",
+X"EAST",
+X"EASY",
+X"EBEN",
+X"ECHO",
+X"EDDY",
+X"EDEN",
+X"EDGE",
+X"EDGY",
+X"EDIT",
+X"EDNA",
+X"EGAN",
+X"ELAN",
+X"ELBA",
+X"ELLA",
+X"ELSE",
+X"EMIL",
+X"EMIT",
+X"EMMA",
+X"ENDS",
+X"ERIC",
+X"EROS",
+X"EVEN",
+X"EVER",
+X"EVIL",
+X"EYED",
+X"FACE",
+X"FACT",
+X"FADE",
+X"FAIL",
+X"FAIN",
+X"FAIR",
+X"FAKE",
+X"FALL",
+X"FAME",
+X"FANG",
+X"FARM",
+X"FAST",
+X"FATE",
+X"FAWN",
+X"FEAR",
+X"FEAT",
+X"FEED",
+X"FEEL",
+X"FEET",
+X"FELL",
+X"FELT",
+X"FEND",
+X"FERN",
+X"FEST",
+X"FEUD",
+X"FIEF",
+X"FIGS",
+X"FILE",
+X"FILL",
+X"FILM",
+X"FIND",
+X"FINE",
+X"FINK",
+X"FIRE",
+X"FIRM",
+X"FISH",
+X"FISK",
+X"FIST",
+X"FITS",
+X"FIVE",
+X"FLAG",
+X"FLAK",
+X"FLAM",
+X"FLAT",
+X"FLAW",
+X"FLEA",
+X"FLED",
+X"FLEW",
+X"FLIT",
+X"FLOC",
+X"FLOG",
+X"FLOW",
+X"FLUB",
+X"FLUE",
+X"FOAL",
+X"FOAM",
+X"FOGY",
+X"FOIL",
+X"FOLD",
+X"FOLK",
+X"FOND",
+X"FONT",
+X"FOOD",
+X"FOOL",
+X"FOOT",
+X"FORD",
+X"FORE",
+X"FORK",
+X"FORM",
+X"FORT",
+X"FOSS",
+X"FOUL",
+X"FOUR",
+X"FOWL",
+X"FRAU",
+X"FRAY",
+X"FRED",
+X"FREE",
+X"FRET",
+X"FREY",
+X"FROG",
+X"FROM",
+X"FUEL",
+X"FULL",
+X"FUME",
+X"FUND",
+X"FUNK",
+X"FURY",
+X"FUSE",
+X"FUSS",
+X"GAFF",
+X"GAGE",
+X"GAIL",
+X"GAIN",
+X"GAIT",
+X"GALA",
+X"GALE",
+X"GALL",
+X"GALT",
+X"GAME",
+X"GANG",
+X"GARB",
+X"GARY",
+X"GASH",
+X"GATE",
+X"GAUL",
+X"GAUR",
+X"GAVE",
+X"GAWK",
+X"GEAR",
+X"GELD",
+X"GENE",
+X"GENT",
+X"GERM",
+X"GETS",
+X"GIBE",
+X"GIFT",
+X"GILD",
+X"GILL",
+X"GILT",
+X"GINA",
+X"GIRD",
+X"GIRL",
+X"GIST",
+X"GIVE",
+X"GLAD",
+X"GLEE",
+X"GLEN",
+X"GLIB",
+X"GLOB",
+X"GLOM",
+X"GLOW",
+X"GLUE",
+X"GLUM",
+X"GLUT",
+X"GOAD",
+X"GOAL",
+X"GOAT",
+X"GOER",
+X"GOES",
+X"GOLD",
+X"GOLF",
+X"GONE",
+X"GONG",
+X"GOOD",
+X"GOOF",
+X"GORE",
+X"GORY",
+X"GOSH",
+X"GOUT",
+X"GOWN",
+X"GRAB",
+X"GRAD",
+X"GRAY",
+X"GREG",
+X"GREW",
+X"GREY",
+X"GRID",
+X"GRIM",
+X"GRIN",
+X"GRIT",
+X"GROW",
+X"GRUB",
+X"GULF",
+X"GULL",
+X"GUNK",
+X"GURU",
+X"GUSH",
+X"GUST",
+X"GWEN",
+X"GWYN",
+X"HAAG",
+X"HAAS",
+X"HACK",
+X"HAIL",
+X"HAIR",
+X"HALE",
+X"HALF",
+X"HALL",
+X"HALO",
+X"HALT",
+X"HAND",
+X"HANG",
+X"HANK",
+X"HANS",
+X"HARD",
+X"HARK",
+X"HARM",
+X"HART",
+X"HASH",
+X"HAST",
+X"HATE",
+X"HATH",
+X"HAUL",
+X"HAVE",
+X"HAWK",
+X"HAYS",
+X"HEAD",
+X"HEAL",
+X"HEAR",
+X"HEAT",
+X"HEBE",
+X"HECK",
+X"HEED",
+X"HEEL",
+X"HEFT",
+X"HELD",
+X"HELL",
+X"HELM",
+X"HERB",
+X"HERD",
+X"HERE",
+X"HERO",
+X"HERS",
+X"HESS",
+X"HEWN",
+X"HICK",
+X"HIDE",
+X"HIGH",
+X"HIKE",
+X"HILL",
+X"HILT",
+X"HIND",
+X"HINT",
+X"HIRE",
+X"HISS",
+X"HIVE",
+X"HOBO",
+X"HOCK",
+X"HOFF",
+X"HOLD",
+X"HOLE",
+X"HOLM",
+X"HOLT",
+X"HOME",
+X"HONE",
+X"HONK",
+X"HOOD",
+X"HOOF",
+X"HOOK",
+X"HOOT",
+X"HORN",
+X"HOSE",
+X"HOST",
+X"HOUR",
+X"HOVE",
+X"HOWE",
+X"HOWL",
+X"HOYT",
+X"HUCK",
+X"HUED",
+X"HUFF",
+X"HUGE",
+X"HUGH",
+X"HUGO",
+X"HULK",
+X"HULL",
+X"HUNK",
+X"HUNT",
+X"HURD",
+X"HURL",
+X"HURT",
+X"HUSH",
+X"HYDE",
+X"HYMN",
+X"IBIS",
+X"ICON",
+X"IDEA",
+X"IDLE",
+X"IFFY",
+X"INCA",
+X"INCH",
+X"INTO",
+X"IONS",
+X"IOTA",
+X"IOWA",
+X"IRIS",
+X"IRMA",
+X"IRON",
+X"ISLE",
+X"ITCH",
+X"ITEM",
+X"IVAN",
+X"JACK",
+X"JADE",
+X"JAIL",
+X"JAKE",
+X"JANE",
+X"JAVA",
+X"JEAN",
+X"JEFF",
+X"JERK",
+X"JESS",
+X"JEST",
+X"JIBE",
+X"JILL",
+X"JILT",
+X"JIVE",
+X"JOAN",
+X"JOBS",
+X"JOCK",
+X"JOEL",
+X"JOEY",
+X"JOHN",
+X"JOIN",
+X"JOKE",
+X"JOLT",
+X"JOVE",
+X"JUDD",
+X"JUDE",
+X"JUDO",
+X"JUDY",
+X"JUJU",
+X"JUKE",
+X"JULY",
+X"JUNE",
+X"JUNK",
+X"JUNO",
+X"JURY",
+X"JUST",
+X"JUTE",
+X"KAHN",
+X"KALE",
+X"KANE",
+X"KANT",
+X"KARL",
+X"KATE",
+X"KEEL",
+X"KEEN",
+X"KENO",
+X"KENT",
+X"KERN",
+X"KERR",
+X"KEYS",
+X"KICK",
+X"KILL",
+X"KIND",
+X"KING",
+X"KIRK",
+X"KISS",
+X"KITE",
+X"KLAN",
+X"KNEE",
+X"KNEW",
+X"KNIT",
+X"KNOB",
+X"KNOT",
+X"KNOW",
+X"KOCH",
+X"KONG",
+X"KUDO",
+X"KURD",
+X"KURT",
+X"KYLE",
+X"LACE",
+X"LACK",
+X"LACY",
+X"LADY",
+X"LAID",
+X"LAIN",
+X"LAIR",
+X"LAKE",
+X"LAMB",
+X"LAME",
+X"LAND",
+X"LANE",
+X"LANG",
+X"LARD",
+X"LARK",
+X"LASS",
+X"LAST",
+X"LATE",
+X"LAUD",
+X"LAVA",
+X"LAWN",
+X"LAWS",
+X"LAYS",
+X"LEAD",
+X"LEAF",
+X"LEAK",
+X"LEAN",
+X"LEAR",
+X"LEEK",
+X"LEER",
+X"LEFT",
+X"LEND",
+X"LENS",
+X"LENT",
+X"LEON",
+X"LESK",
+X"LESS",
+X"LEST",
+X"LETS",
+X"LIAR",
+X"LICE",
+X"LICK",
+X"LIED",
+X"LIEN",
+X"LIES",
+X"LIEU",
+X"LIFE",
+X"LIFT",
+X"LIKE",
+X"LILA",
+X"LILT",
+X"LILY",
+X"LIMA",
+X"LIMB",
+X"LIME",
+X"LIND",
+X"LINE",
+X"LINK",
+X"LINT",
+X"LION",
+X"LISA",
+X"LIST",
+X"LIVE",
+X"LOAD",
+X"LOAF",
+X"LOAM",
+X"LOAN",
+X"LOCK",
+X"LOFT",
+X"LOGE",
+X"LOIS",
+X"LOLA",
+X"LONE",
+X"LONG",
+X"LOOK",
+X"LOON",
+X"LOOT",
+X"LORD",
+X"LORE",
+X"LOSE",
+X"LOSS",
+X"LOST",
+X"LOUD",
+X"LOVE",
+X"LOWE",
+X"LUCK",
+X"LUCY",
+X"LUGE",
+X"LUKE",
+X"LULU",
+X"LUND",
+X"LUNG",
+X"LURA",
+X"LURE",
+X"LURK",
+X"LUSH",
+X"LUST",
+X"LYLE",
+X"LYNN",
+X"LYON",
+X"LYRA",
+X"MACE",
+X"MADE",
+X"MAGI",
+X"MAID",
+X"MAIL",
+X"MAIN",
+X"MAKE",
+X"MALE",
+X"MALI",
+X"MALL",
+X"MALT",
+X"MANA",
+X"MANN",
+X"MANY",
+X"MARC",
+X"MARE",
+X"MARK",
+X"MARS",
+X"MART",
+X"MARY",
+X"MASH",
+X"MASK",
+X"MASS",
+X"MAST",
+X"MATE",
+X"MATH",
+X"MAUL",
+X"MAYO",
+X"MEAD",
+X"MEAL",
+X"MEAN",
+X"MEAT",
+X"MEEK",
+X"MEET",
+X"MELD",
+X"MELT",
+X"MEMO",
+X"MEND",
+X"MENU",
+X"MERT",
+X"MESH",
+X"MESS",
+X"MICE",
+X"MIKE",
+X"MILD",
+X"MILE",
+X"MILK",
+X"MILL",
+X"MILT",
+X"MIMI",
+X"MIND",
+X"MINE",
+X"MINI",
+X"MINK",
+X"MINT",
+X"MIRE",
+X"MISS",
+X"MIST",
+X"MITE",
+X"MITT",
+X"MOAN",
+X"MOAT",
+X"MOCK",
+X"MODE",
+X"MOLD",
+X"MOLE",
+X"MOLL",
+X"MOLT",
+X"MONA",
+X"MONK",
+X"MONT",
+X"MOOD",
+X"MOON",
+X"MOOR",
+X"MOOT",
+X"MORE",
+X"MORN",
+X"MORT",
+X"MOSS",
+X"MOST",
+X"MOTH",
+X"MOVE",
+X"MUCH",
+X"MUCK",
+X"MUDD",
+X"MUFF",
+X"MULE",
+X"MULL",
+X"MURK",
+X"MUSH",
+X"MUST",
+X"MUTE",
+X"MUTT",
+X"MYRA",
+X"MYTH",
+X"NAGY",
+X"NAIL",
+X"NAIR",
+X"NAME",
+X"NARY",
+X"NASH",
+X"NAVE",
+X"NAVY",
+X"NEAL",
+X"NEAR",
+X"NEAT",
+X"NECK",
+X"NEED",
+X"NEIL",
+X"NELL",
+X"NEON",
+X"NERO",
+X"NESS",
+X"NEST",
+X"NEWS",
+X"NEWT",
+X"NIBS",
+X"NICE",
+X"NICK",
+X"NILE",
+X"NINA",
+X"NINE",
+X"NOAH",
+X"NODE",
+X"NOEL",
+X"NOLL",
+X"NONE",
+X"NOOK",
+X"NOON",
+X"NORM",
+X"NOSE",
+X"NOTE",
+X"NOUN",
+X"NOVA",
+X"NUDE",
+X"NULL",
+X"NUMB",
+X"OATH",
+X"OBEY",
+X"OBOE",
+X"ODIN",
+X"OHIO",
+X"OILY",
+X"OINT",
+X"OKAY",
+X"OLAF",
+X"OLDY",
+X"OLGA",
+X"OLIN",
+X"OMAN",
+X"OMEN",
+X"OMIT",
+X"ONCE",
+X"ONES",
+X"ONLY",
+X"ONTO",
+X"ONUS",
+X"ORAL",
+X"ORGY",
+X"OSLO",
+X"OTIS",
+X"OTTO",
+X"OUCH",
+X"OUST",
+X"OUTS",
+X"OVAL",
+X"OVEN",
+X"OVER",
+X"OWLY",
+X"OWNS",
+X"QUAD",
+X"QUIT",
+X"QUOD",
+X"RACE",
+X"RACK",
+X"RACY",
+X"RAFT",
+X"RAGE",
+X"RAID",
+X"RAIL",
+X"RAIN",
+X"RAKE",
+X"RANK",
+X"RANT",
+X"RARE",
+X"RASH",
+X"RATE",
+X"RAVE",
+X"RAYS",
+X"READ",
+X"REAL",
+X"REAM",
+X"REAR",
+X"RECK",
+X"REED",
+X"REEF",
+X"REEK",
+X"REEL",
+X"REID",
+X"REIN",
+X"RENA",
+X"REND",
+X"RENT",
+X"REST",
+X"RICE",
+X"RICH",
+X"RICK",
+X"RIDE",
+X"RIFT",
+X"RILL",
+X"RIME",
+X"RING",
+X"RINK",
+X"RISE",
+X"RISK",
+X"RITE",
+X"ROAD",
+X"ROAM",
+X"ROAR",
+X"ROBE",
+X"ROCK",
+X"RODE",
+X"ROIL",
+X"ROLL",
+X"ROME",
+X"ROOD",
+X"ROOF",
+X"ROOK",
+X"ROOM",
+X"ROOT",
+X"ROSA",
+X"ROSE",
+X"ROSS",
+X"ROSY",
+X"ROTH",
+X"ROUT",
+X"ROVE",
+X"ROWE",
+X"ROWS",
+X"RUBE",
+X"RUBY",
+X"RUDE",
+X"RUDY",
+X"RUIN",
+X"RULE",
+X"RUNG",
+X"RUNS",
+X"RUNT",
+X"RUSE",
+X"RUSH",
+X"RUSK",
+X"RUSS",
+X"RUST",
+X"RUTH",
+X"SACK",
+X"SAFE",
+X"SAGE",
+X"SAID",
+X"SAIL",
+X"SALE",
+X"SALK",
+X"SALT",
+X"SAME",
+X"SAND",
+X"SANE",
+X"SANG",
+X"SANK",
+X"SARA",
+X"SAUL",
+X"SAVE",
+X"SAYS",
+X"SCAN",
+X"SCAR",
+X"SCAT",
+X"SCOT",
+X"SEAL",
+X"SEAM",
+X"SEAR",
+X"SEAT",
+X"SEED",
+X"SEEK",
+X"SEEM",
+X"SEEN",
+X"SEES",
+X"SELF",
+X"SELL",
+X"SEND",
+X"SENT",
+X"SETS",
+X"SEWN",
+X"SHAG",
+X"SHAM",
+X"SHAW",
+X"SHAY",
+X"SHED",
+X"SHIM",
+X"SHIN",
+X"SHOD",
+X"SHOE",
+X"SHOT",
+X"SHOW",
+X"SHUN",
+X"SHUT",
+X"SICK",
+X"SIDE",
+X"SIFT",
+X"SIGH",
+X"SIGN",
+X"SILK",
+X"SILL",
+X"SILO",
+X"SILT",
+X"SINE",
+X"SING",
+X"SINK",
+X"SIRE",
+X"SITE",
+X"SITS",
+X"SITU",
+X"SKAT",
+X"SKEW",
+X"SKID",
+X"SKIM",
+X"SKIN",
+X"SKIT",
+X"SLAB",
+X"SLAM",
+X"SLAT",
+X"SLAY",
+X"SLED",
+X"SLEW",
+X"SLID",
+X"SLIM",
+X"SLIT",
+X"SLOB",
+X"SLOG",
+X"SLOT",
+X"SLOW",
+X"SLUG",
+X"SLUM",
+X"SLUR",
+X"SMOG",
+X"SMUG",
+X"SNAG",
+X"SNOB",
+X"SNOW",
+X"SNUB",
+X"SNUG",
+X"SOAK",
+X"SOAR",
+X"SOCK",
+X"SODA",
+X"SOFA",
+X"SOFT",
+X"SOIL",
+X"SOLD",
+X"SOME",
+X"SONG",
+X"SOON",
+X"SOOT",
+X"SORE",
+X"SORT",
+X"SOUL",
+X"SOUR",
+X"SOWN",
+X"STAB",
+X"STAG",
+X"STAN",
+X"STAR",
+X"STAY",
+X"STEM",
+X"STEW",
+X"STIR",
+X"STOW",
+X"STUB",
+X"STUN",
+X"SUCH",
+X"SUDS",
+X"SUIT",
+X"SULK",
+X"SUMS",
+X"SUNG",
+X"SUNK",
+X"SURE",
+X"SURF",
+X"SWAB",
+X"SWAG",
+X"SWAM",
+X"SWAN",
+X"SWAT",
+X"SWAY",
+X"SWIM",
+X"SWUM",
+X"TACK",
+X"TACT",
+X"TAIL",
+X"TAKE",
+X"TALE",
+X"TALK",
+X"TALL",
+X"TANK",
+X"TASK",
+X"TATE",
+X"TAUT",
+X"TEAL",
+X"TEAM",
+X"TEAR",
+X"TECH",
+X"TEEM",
+X"TEEN",
+X"TEET",
+X"TELL",
+X"TEND",
+X"TENT",
+X"TERM",
+X"TERN",
+X"TESS",
+X"TEST",
+X"THAN",
+X"THAT",
+X"THEE",
+X"THEM",
+X"THEN",
+X"THEY",
+X"THIN",
+X"THIS",
+X"THUD",
+X"THUG",
+X"TICK",
+X"TIDE",
+X"TIDY",
+X"TIED",
+X"TIER",
+X"TILE",
+X"TILL",
+X"TILT",
+X"TIME",
+X"TINA",
+X"TINE",
+X"TINT",
+X"TINY",
+X"TIRE",
+X"TOAD",
+X"TOGO",
+X"TOIL",
+X"TOLD",
+X"TOLL",
+X"TONE",
+X"TONG",
+X"TONY",
+X"TOOK",
+X"TOOL",
+X"TOOT",
+X"TORE",
+X"TORN",
+X"TOTE",
+X"TOUR",
+X"TOUT",
+X"TOWN",
+X"TRAG",
+X"TRAM",
+X"TRAY",
+X"TREE",
+X"TREK",
+X"TRIG",
+X"TRIM",
+X"TRIO",
+X"TROD",
+X"TROT",
+X"TROY",
+X"TRUE",
+X"TUBA",
+X"TUBE",
+X"TUCK",
+X"TUFT",
+X"TUNA",
+X"TUNE",
+X"TUNG",
+X"TURF",
+X"TURN",
+X"TUSK",
+X"TWIG",
+X"TWIN",
+X"TWIT",
+X"ULAN",
+X"UNIT",
+X"URGE",
+X"USED",
+X"USER",
+X"USES",
+X"UTAH",
+X"VAIL",
+X"VAIN",
+X"VALE",
+X"VARY",
+X"VASE",
+X"VAST",
+X"VEAL",
+X"VEDA",
+X"VEIL",
+X"VEIN",
+X"VEND",
+X"VENT",
+X"VERB",
+X"VERY",
+X"VETO",
+X"VICE",
+X"VIEW",
+X"VINE",
+X"VISE",
+X"VOID",
+X"VOLT",
+X"VOTE",
+X"WACK",
+X"WADE",
+X"WAGE",
+X"WAIL",
+X"WAIT",
+X"WAKE",
+X"WALE",
+X"WALK",
+X"WALL",
+X"WALT",
+X"WAND",
+X"WANE",
+X"WANG",
+X"WANT",
+X"WARD",
+X"WARM",
+X"WARN",
+X"WART",
+X"WASH",
+X"WAST",
+X"WATS",
+X"WATT",
+X"WAVE",
+X"WAVY",
+X"WAYS",
+X"WEAK",
+X"WEAL",
+X"WEAN",
+X"WEAR",
+X"WEED",
+X"WEEK",
+X"WEIR",
+X"WELD",
+X"WELL",
+X"WELT",
+X"WENT",
+X"WERE",
+X"WERT",
+X"WEST",
+X"WHAM",
+X"WHAT",
+X"WHEE",
+X"WHEN",
+X"WHET",
+X"WHOA",
+X"WHOM",
+X"WICK",
+X"WIFE",
+X"WILD",
+X"WILL",
+X"WIND",
+X"WINE",
+X"WING",
+X"WINK",
+X"WINO",
+X"WIRE",
+X"WISE",
+X"WISH",
+X"WITH",
+X"WOLF",
+X"WONT",
+X"WOOD",
+X"WOOL",
+X"WORD",
+X"WORE",
+X"WORK",
+X"WORM",
+X"WORN",
+X"WOVE",
+X"WRIT",
+X"WYNN",
+X"YALE",
+X"YANG",
+X"YANK",
+X"YARD",
+X"YARN",
+X"YAWL",
+X"YAWN",
+X"YEAH",
+X"YEAR",
+X"YELL",
+X"YOGA",
+X"YOKE"
+X};
+X
+X/* Encode 8 bytes in 'c' as a string of English words.
+X * Returns a pointer to a static buffer
+X */
+Xchar *
+Xbtoe(engout,c)
+Xchar *c, *engout;
+X{
+X	char cp[9];	/* add in room for the parity 2 bits*/
+X	int p,i ;
+X
+X	engout[0] = '\0';
+X	memcpy(cp, c,8);
+X	/* compute parity */
+X	for(p = 0,i = 0; i < 64;i += 2)
+X		p += extract(cp,i,2);
+X
+X	cp[8] = (char)p << 6;
+X	strncat(engout,&Wp[extract(cp, 0,11)][0],4);
+X	strcat(engout," ");
+X	strncat(engout,&Wp[extract(cp,11,11)][0],4);
+X	strcat(engout," ");
+X	strncat(engout,&Wp[extract(cp,22,11)][0],4);
+X	strcat(engout," ");
+X	strncat(engout,&Wp[extract(cp,33,11)][0],4);
+X	strcat(engout," ");
+X	strncat(engout,&Wp[extract(cp,44,11)][0],4);
+X	strcat(engout," ");
+X	strncat(engout,&Wp[extract(cp,55,11)][0],4);
+X#ifdef	notdef
+X	printf("engout is %s\n\r",engout);
+X#endif
+X	return(engout);
+X}
+X
+X/* convert English to binary   
+X * returns 1 OK - all good words and parity is OK   
+X *         0 word not in data base
+X *        -1 badly formed in put ie > 4 char word
+X *        -2 words OK but parity is wrong
+X */
+Xint
+Xetob(out, e)
+Xchar *out;
+Xchar *e;
+X{
+X	char *word;
+X	int i, p, v,l, low,high;
+X	char b[9];
+X	char input[36];
+X
+X	if(e == NULL)
+X		return -1;
+X
+X	strncpy(input,e,sizeof(input));
+X	memset(b, 0, sizeof(b));
+X	memset(out, 0, 8);
+X	for(i=0,p=0;i<6;i++,p+=11){
+X		if((word = strtok(i == 0 ? input : NULL," ")) == NULL)
+X			return -1;
+X		l = strlen(word);
+X		if(l > 4 || l < 1){
+X			return -1;
+X		} else if(l < 4){
+X			low = 0;
+X			high = 570;
+X		} else {
+X			low = 571;
+X			high = 2047;
+X		}
+X		standard(word);
+X		if( (v = wsrch(word,low,high)) < 0 )
+X			return 0;
+X		insert(b,v,p,11);
+X	}
+X
+X	/* now check the parity of what we got */
+X	for(p = 0, i = 0; i < 64; i +=2)
+X		p += extract(b, i, 2);
+X
+X	if( (p & 3) != extract(b, 64,2) )
+X		return -2;
+X
+X	memcpy(out,b,8);
+X
+X	return 1;
+X}
+X/* Display 8 bytes as a series of 16-bit hex digits */
+Xchar *
+Xput8(out,s)
+Xchar *out;
+Xchar *s;
+X{
+X	sprintf(out,"%02X%02X %02X%02X %02X%02X %02X%02X",
+X		s[0] & 0xff,s[1] & 0xff,s[2] & 0xff,
+X		s[3] & 0xff,s[4] & 0xff,s[5] & 0xff,
+X		s[6] & 0xff,s[7] & 0xff);
+X	return out;
+X}
+X#ifdef	notdef
+X/* Encode 8 bytes in 'cp' as stream of ascii letters.
+X * Provided as a possible alternative to btoe()
+X */
+Xchar *
+Xbtoc(cp)
+Xchar *cp;
+X{
+X	int i;
+X	static char out[31];
+X
+X	/* code out put by characters 6 bits each added to 0x21 (!)*/
+X	for(i=0;i <= 10;i++){
+X		/* last one is only 4 bits not 6*/
+X		out[i] = '!'+ extract(cp,6*i,i >= 10 ? 4:6);
+X	}
+X	out[i] = '\0';
+X	return(out);
+X}
+X#endif
+X
+X/* Internal subroutines for word encoding/decoding */
+X
+X/* Dictionary binary search */
+Xstatic int
+Xwsrch(w,low,high)
+Xchar *w;
+Xint low, high;
+X{
+X	int i,j;
+X
+X	for(;;){
+X		i = (low + high)/2;
+X		if((j = strncmp(w,Wp[i],4)) == 0)
+X			return i;	/* Found it */
+X		if(high == low+1){
+X			/* Avoid effects of integer truncation in /2 */
+X			if(strncmp(w,Wp[high],4) == 0)
+X				return high;
+X			else
+X				return -1;
+X		}
+X		if(low >= high)
+X			return -1;	/* I don't *think* this can happen...*/
+X		if(j < 0)
+X			high = i;	/* Search lower half */
+X		else
+X			low = i;	/* Search upper half */
+X	}
+X}
+Xstatic void
+Xinsert(s, x, start, length)
+Xchar *s;
+Xint x;
+Xint  start, length;
+X{
+X	unsigned char cl;
+X	unsigned char cc;
+X	unsigned char cr;
+X	unsigned long y;
+X	int shift;
+X
+X	assert(length <= 11);
+X	assert(start >= 0);
+X	assert(length >= 0);
+X	assert(start +length <= 66);
+X
+X	shift = ((8  -(( start + length) % 8))%8);
+X	y = (long) x << shift;
+X	cl = (y >> 16) & 0xff;
+X	cc = (y >> 8) & 0xff;
+X	cr = y & 0xff;
+X	if(shift + length > 16){
+X		s[start /8] |= cl;
+X		s[start/8 +1] |= cc;
+X		s[start/8 +2] |= cr;
+X	} else if(shift +length > 8){
+X		s[start/8] |= cc;
+X		s[start/8 + 1] |= cr;
+X	} else {
+X		s[start/8] |= cr;
+X	}
+X}
+X
+Xstatic void
+Xstandard(word)
+Xregister char *word;
+X{
+X	while(*word){
+X		if(!isascii(*word))
+X			break;
+X		if(islower(*word))
+X			*word = toupper(*word);
+X		if(*word == '1')
+X			*word = 'L';
+X		if(*word == '0')
+X			*word = 'O';
+X		if(*word == '5')
+X			*word = 'S';
+X		word++;
+X	}
+X}
+X
+X/* Extract 'length' bits from the char array 's' starting with bit 'start' */
+Xstatic unsigned long
+Xextract(s, start, length)
+Xchar *s;
+Xint start, length;
+X{
+X	unsigned char cl;
+X	unsigned char cc;
+X	unsigned char cr;
+X	unsigned long x;
+X
+X	assert(length <= 11);
+X	assert(start >= 0);
+X	assert(length >= 0);
+X	assert(start +length <= 66);
+X
+X	cl = s[start/8];
+X	cc = s[start/8 +1];
+X	cr = s[start/8 +2];
+X	x = ((long)(cl<<8 | cc) <<8  | cr) ;
+X	x = x >> (24 - (length + (start %8)));
+X	x =( x & (0xffff >> (16-length) )   );
+X	return(x);
+X}
+X
+END_OF_FILE
+  if test 20534 -ne `wc -c <'put.c'`; then
+    echo shar: \"'put.c'\" unpacked with wrong size!
+  fi
+  # end of 'put.c'
+fi
+if test -f 'setenv.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'setenv.c'\"
+else
+  echo shar: Extracting \"'setenv.c'\" \(2838 characters\)
+  sed "s/^X//" >'setenv.c' <<'END_OF_FILE'
+X/*
+X * Copyright (c) 1987 Regents of the University of California.
+X * All rights reserved.
+X *
+X * Redistribution and use in source and binary forms are permitted
+X * provided that the above copyright notice and this paragraph are
+X * duplicated in all such forms and that any documentation,
+X * advertising materials, and other materials related to such
+X * distribution and use acknowledge that the software was developed
+X * by the University of California, Berkeley.  The name of the
+X * University may not be used to endorse or promote products derived
+X * from this software without specific prior written permission.
+X * THIS SOFTWARE IS PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR
+X * IMPLIED WARRANTIES, INCLUDING, WITHOUT LIMITATION, THE IMPLIED
+X * WARRANTIES OF MERCHANTIBILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+X */
+X
+X#if defined(LIBC_SCCS) && !defined(lint)
+Xstatic char sccsid[] = "@(#)setenv.c	5.2 (Berkeley) 6/27/88";
+X#endif /* LIBC_SCCS and not lint */
+X
+X#include <sys/types.h>
+X#include <stdio.h>
+X
+X/*
+X * setenv --
+X *	Set the value of the environmental variable "name" to be
+X *	"value".  If rewrite is set, replace any current value.
+X */
+Xsetenv(name, value, rewrite)
+X	register char *name, *value;
+X	int rewrite;
+X{
+X	extern char **environ;
+X	static int alloced;			/* if allocated space before */
+X	register char *C;
+X	int l_value, offset;
+X	char *malloc(), *realloc(), *_findenv();
+X
+X	if (*value == '=')			/* no `=' in value */
+X		++value;
+X	l_value = strlen(value);
+X	if ((C = _findenv(name, &offset))) {	/* find if already exists */
+X		if (!rewrite)
+X			return(0);
+X		if (strlen(C) >= l_value) {	/* old larger; copy over */
+X			while (*C++ = *value++);
+X			return(0);
+X		}
+X	}
+X	else {					/* create new slot */
+X		register int	cnt;
+X		register char	**P;
+X
+X		for (P = environ, cnt = 0; *P; ++P, ++cnt);
+X		if (alloced) {			/* just increase size */
+X			environ = (char **)realloc((char *)environ,
+X			    (u_int)(sizeof(char *) * (cnt + 2)));
+X			if (!environ)
+X				return(-1);
+X		}
+X		else {				/* get new space */
+X			alloced = 1;		/* copy old entries into it */
+X			P = (char **)malloc((u_int)(sizeof(char *) *
+X			    (cnt + 2)));
+X			if (!P)
+X				return(-1);
+X			bcopy(environ, P, cnt * sizeof(char *));
+X			environ = P;
+X		}
+X		environ[cnt + 1] = NULL;
+X		offset = cnt;
+X	}
+X	for (C = name; *C && *C != '='; ++C);	/* no `=' in name */
+X	if (!(environ[offset] =			/* name + `=' + value */
+X	    malloc((u_int)((int)(C - name) + l_value + 2))))
+X		return(-1);
+X	for (C = environ[offset]; (*C = *name++) && *C != '='; ++C);
+X	for (*C++ = '='; *C++ = *value++;);
+X	return(0);
+X}
+X
+X/*
+X * unsetenv(name) --
+X *	Delete environmental variable "name".
+X */
+Xvoid
+Xunsetenv(name)
+X	char	*name;
+X{
+X	extern	char	**environ;
+X	register char	**P;
+X	int	offset;
+X
+X	while (_findenv(name, &offset))		/* if set multiple times */
+X		for (P = &environ[offset];; ++P)
+X			if (!(*P = *(P + 1)))
+X				break;
+X}
+END_OF_FILE
+  if test 2838 -ne `wc -c <'setenv.c'`; then
+    echo shar: \"'setenv.c'\" unpacked with wrong size!
+  fi
+  # end of 'setenv.c'
+fi
+if test -f 'skey.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skey.c'\"
+else
+  echo shar: Extracting \"'skey.c'\" \(2630 characters\)
+  sed "s/^X//" >'skey.c' <<'END_OF_FILE'
+X/* Stand-alone program for computing responses to S/Key challenges.
+X * Takes the iteration count and seed as command line args, prompts
+X * for the user's key, and produces both word and hex format responses.
+X *
+X * Usage example:
+X *	>skey 88 ka9q2
+X *	Enter password:
+X *	OMEN US HORN OMIT BACK AHOY
+X *	C848 666B 6435 0A93
+X *	>
+X */
+X#include <stdio.h>
+X#ifdef HASSTDLIB
+X#include <stdlib.h>
+X#else
+X#include <sys/types.h>
+X#endif
+X#include <string.h>
+X#ifdef	__MSDOS__
+X#include <dos.h>
+X#else	/* Assume BSD unix */
+X#include <fcntl.h>
+X#endif
+X#include "md4.h"
+X#include "skey.h"
+X
+Xchar *readpass();
+Xvoid usage();
+Xint getopt();
+Xextern int optind;
+Xextern char *optarg;
+X
+Xint
+Xmain(argc,argv)
+Xint argc;
+Xchar *argv[];
+X{
+X	int n,cnt,i;
+X	int desmode = 0;
+X	char passwd[256],passwd2[256];
+X	char key[8];
+X	char *seed;
+X	char buf[25];
+X	char *slash;
+X
+X	cnt = 1;
+X	while((i = getopt(argc,argv,"n:d")) != EOF){
+X		switch(i){
+X		case 'd':
+X			desmode++;
+X			break;
+X		case 'n':
+X			cnt = atoi(optarg);
+X			break;
+X		}
+X	}
+X	/* could be in the form <number>/<seed> */
+X	if(argc <= optind + 1){
+X		/*look for / in it */
+X		if(argc <= optind){
+X			usage(argv[0]);
+X			return 1;
+X		}
+X
+X		slash = strchr(argv[optind], '/');
+X		if(slash == NULL){
+X			usage(argv[0]);
+X			return 1;
+X		}
+X		*slash++ = '\0';
+X		seed = slash;
+X
+X		if((n = atoi(argv[optind])) < 0){
+X			fprintf(stderr,"%s not positive\n",argv[optind]);
+X			usage(argv[0]);
+X			return 1;
+X		}
+X	}
+X	else {
+X
+X		if((n = atoi(argv[optind])) < 0){
+X			fprintf(stderr,"%s not positive\n",argv[optind]);
+X			usage(argv[0]);
+X			return 1;
+X		}
+X		seed = argv[++optind];
+X	}
+X	fprintf(stderr,"Reminder - Do not use key while logged in via telnet or dial-in.\n");
+X
+X	/* Get user's secret password */
+X	for(;;){
+X		fprintf(stderr,"Enter secret password: ");
+X		readpass(passwd,sizeof(passwd));
+X		break;
+X	/************
+X		fprintf(stderr,"Again secret password: ");
+X		readpass(passwd2,sizeof(passwd));
+X		if(strcmp(passwd,passwd2) == 0) break;
+X		fprintf(stderr, "Sorry no match\n");
+X        **************/
+X	
+X	}
+X
+X	/* Crunch seed and password into starting key */
+X	if(desmode ? deskeycrunch(key,seed,passwd) :
+X		keycrunch(key,seed,passwd) != 0) {
+X		fprintf(stderr,"%s: key crunch failed\n",argv[0]);
+X		return 1;
+X	}
+X	if(cnt == 1){
+X		while(n-- != 0)
+X			fff(key);
+X		printf("%s\n",btoe(buf,key));
+X#ifdef	HEXIN
+X		printf("%s\n",put8(buf,key));
+X#endif
+X	} else {
+X		for(i=0;i<=n-cnt;i++)
+X			fff(key);
+X		for(;i<=n;i++){
+X#ifdef	HEXIN
+X			printf("%d: %-29s  %s\n",i,btoe(buf,key),put8(buf,key));
+X#else
+X			printf("%d: %-29s\n",i,btoe(buf,key));
+X#endif
+X			fff(key);		
+X		}
+X	}
+X	return 0;
+X}
+Xvoid
+Xusage(s)
+Xchar *s;
+X{
+X	fprintf(stderr,"Usage: %s [-n count] <sequence #>[/] <key> \n",s);
+X}
+X
+END_OF_FILE
+  if test 2630 -ne `wc -c <'skey.c'`; then
+    echo shar: \"'skey.c'\" unpacked with wrong size!
+  fi
+  # end of 'skey.c'
+fi
+if test -f 'skeyaccess.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeyaccess.c'\"
+else
+  echo shar: Extracting \"'skeyaccess.c'\" \(12227 characters\)
+  sed "s/^X//" >'skeyaccess.c' <<'END_OF_FILE'
+X /*
+X  * Figure out if UNIX passwords are permitted for any combination of user
+X  * name, group member, terminal port, host_name or network:
+X  * 
+X  * Programmatic interface: skeyaccess(user, port, host, addr)
+X  * 
+X  * All arguments are null-terminated strings. Specify a null character pointer
+X  * where information is not available.
+X  * 
+X  * When no address information is given this code performs the host (internet)
+X  * address lookup itself. It rejects addresses that appear to belong to
+X  * someone else.
+X  * 
+X  * When compiled with -DPERMIT_CONSOLE always permits UNIX passwords with
+X  * console logins, no matter what the configuration file says.
+X  * 
+X  * To build a stand-alone test version, compile with -DTEST and run it off an
+X  * skey.access file in the current directory:
+X  * 
+X  * Command-line interface: ./skeyaccess user port [host_or_ip_addr]
+X  * 
+X  * Errors are reported via syslogd.
+X  * 
+X  * Author: Wietse Venema, Eindhoven University of Technology.
+X  */
+X
+X#include <sys/types.h>
+X#include <sys/socket.h>
+X#include <netinet/in.h>
+X#include <string.h>
+X#include <netdb.h>
+X#include <arpa/inet.h>
+X#include <stdio.h>
+X#include <grp.h>
+X#include <ctype.h>
+X#include <syslog.h>
+X#include <unistd.h>
+X#include <stdlib.h>
+X
+X /*
+X  * Token input with one-deep pushback.
+X  */
+Xstatic char *prev_token = 0;		/* push-back buffer */
+Xstatic char *first_token();
+Xstatic int line_number;
+Xstatic void unget_token();
+Xstatic char *get_token();
+Xstatic char *need_token();
+Xstatic char *need_internet_addr();
+X
+X /*
+X  * Various forms of token matching.
+X  */
+X#define match_host_name(l)	match_token((l)->host_name)
+X#define match_port(l)		match_token((l)->port)
+X#define match_user(l)		match_token((l)->user)
+Xstatic int match_internet_addr();
+Xstatic int match_group();
+Xstatic int match_token();
+Xstatic int is_internet_addr();
+Xstatic struct in_addr *convert_internet_addr();
+Xstatic struct in_addr *lookup_internet_addr();
+X
+X /*
+X  * In case not defined in sys/param.h
+X  */
+X#if (MAXHOSTNAMELEN < 64)		/* AIX weirdness */
+X#undef MAXHOSTNAMELEN
+X#endif
+X
+X#ifndef MAXHOSTNAMELEN
+X#define MAXHOSTNAMELEN 255
+X#endif
+X
+X#ifndef INADDR_NONE
+X#define INADDR_NONE     (-1)		/* XXX should be 0xffffffff */
+X#endif
+X
+X /*
+X  * For stand-alone testing, use the skey.access file in the current
+X  * directory and print some stuff as we scan through the table.
+X  */
+X
+X#ifdef TEST
+X#undef KEYACCESS
+X#define KEYACCESS 	"./skey.access"
+X#endif
+X
+X#ifndef KEYACCESS
+X#define KEYACCESS       "/etc/skey.access"
+X#endif
+X
+X#define MAX_ADDR	32
+X#define PERMIT		1
+X#define DENY		0
+X
+Xstruct login_info {
+X    char   *host_name;			/* host name */
+X    struct in_addr *internet_addr;	/* null terminated list */
+X    char   *user;			/* user name */
+X    char   *port;			/* login port */
+X};
+X
+X/* skeyaccess - find out if UNIX passwords are permitted */
+X
+Xint     skeyaccess(user, port, host, addr)
+Xchar   *user;
+Xchar   *port;
+Xchar   *host;
+Xchar   *addr;
+X{
+X    FILE   *fp;
+X    struct login_info login_info;
+X    int     result;
+X
+X    /*
+X     * Assume no restriction on the use of UNIX passwords when the s/key
+X     * acces table does not exist.
+X     */
+X    if ((fp = fopen(KEYACCESS, "r")) == 0) {
+X#ifdef TEST
+X	fprintf(stderr, "No file %s, thus no access control\n", KEYACCESS);
+X#endif
+X	return (PERMIT);
+X    }
+X
+X    /*
+X     * Bundle up the arguments in a structure so we won't have to drag around
+X     * boring long argument lists.
+X     * 
+X     * Look up the host address when only the name is given. We try to reject
+X     * addresses that belong to someone else.
+X     */
+X    login_info.user = user;
+X    login_info.port = port;
+X
+X    if (host != 0 && !is_internet_addr(host)) {
+X	login_info.host_name = host;
+X    } else {
+X	login_info.host_name = 0;
+X    }
+X
+X    if (addr != 0 && is_internet_addr(addr)) {
+X	login_info.internet_addr = convert_internet_addr(addr);
+X    } else if (host != 0) {
+X	if (is_internet_addr(host)) {
+X	    login_info.internet_addr = convert_internet_addr(host);
+X	} else {
+X	    login_info.internet_addr = lookup_internet_addr(host);
+X	}
+X    } else {
+X	login_info.internet_addr = 0;
+X    }
+X
+X    /*
+X     * Print what we think the user wants us to do.
+X     */
+X#ifdef TEST
+X    printf("port: %s\n", login_info.port);
+X    printf("user: %s\n", login_info.user);
+X    printf("host: %s\n", login_info.host_name ? login_info.host_name : "none");
+X    printf("addr: ");
+X    if (login_info.internet_addr == 0) {
+X	printf("none\n");
+X    } else {
+X	int     i;
+X
+X	for (i = 0; login_info.internet_addr[i].s_addr; i++)
+X	    printf("%s%s", login_info.internet_addr[i].s_addr == -1 ?
+X		 "(see error log)" : inet_ntoa(login_info.internet_addr[i]),
+X		   login_info.internet_addr[i + 1].s_addr ? " " : "\n");
+X    }
+X#endif
+X    result = _skeyaccess(fp, &login_info);
+X    fclose(fp);
+X    return (result);
+X}
+X
+X/* _skeyaccess - find out if UNIX passwords are permitted */
+X
+Xint     _skeyaccess(fp, login_info)
+XFILE   *fp;
+Xstruct login_info *login_info;
+X{
+X    char    buf[BUFSIZ];
+X    char   *tok;
+X    int     match;
+X    int     permission;
+X
+X#ifdef PERMIT_CONSOLE
+X    if (login_info->port != 0 && strcasecmp(login_info->port, "console") == 0)
+X	return (1);
+X#endif
+X
+X    /*
+X     * Scan the s/key access table until we find an entry that matches. If no
+X     * match is found, assume that UNIX passwords are disallowed.
+X     */
+X    match = 0;
+X    while (match == 0 && (tok = first_token(buf, sizeof(buf), fp))) {
+X	if (strncasecmp(tok, "permit", 4) == 0) {
+X	    permission = PERMIT;
+X	} else if (strncasecmp(tok, "deny", 4) == 0) {
+X	    permission = DENY;
+X	} else {
+X	    syslog(LOG_ERR, "%s: line %d: bad permission: %s",
+X		   KEYACCESS, line_number, tok);
+X	    continue;				/* error */
+X	}
+X
+X	/*
+X	 * Process all conditions in this entry until we find one that fails.
+X	 */
+X	match = 1;
+X	while (match != 0 && (tok = get_token())) {
+X	    if (strcasecmp(tok, "hostname") == 0) {
+X		match = match_host_name(login_info);
+X	    } else if (strcasecmp(tok, "port") == 0) {
+X		match = match_port(login_info);
+X	    } else if (strcasecmp(tok, "user") == 0) {
+X		match = match_user(login_info);
+X	    } else if (strcasecmp(tok, "group") == 0) {
+X		match = match_group(login_info);
+X	    } else if (strcasecmp(tok, "internet") == 0) {
+X		match = match_internet_addr(login_info);
+X	    } else if (is_internet_addr(tok)) {
+X		unget_token(tok);
+X		match = match_internet_addr(login_info);
+X	    } else {
+X		syslog(LOG_ERR, "%s: line %d: bad condition: %s",
+X		       KEYACCESS, line_number, tok);
+X		match = 0;
+X	    }
+X	}
+X    }
+X    return (match ? permission : DENY);
+X}
+X
+X/* match_internet_addr - match internet network address */
+X
+Xstatic int match_internet_addr(login_info)
+Xstruct login_info *login_info;
+X{
+X    char   *tok;
+X    long    pattern;
+X    long    mask;
+X    struct in_addr *addrp;
+X
+X    if (login_info->internet_addr == 0)
+X	return (0);
+X    if ((tok = need_internet_addr()) == 0)
+X	return (0);
+X    pattern = inet_addr(tok);
+X    if ((tok = need_internet_addr()) == 0)
+X	return (0);
+X    mask = inet_addr(tok);
+X
+X    /*
+X     * See if any of the addresses matches a pattern in the control file. We
+X     * have already tried to drop addresses that belong to someone else.
+X     */
+X
+X    for (addrp = login_info->internet_addr; addrp->s_addr; addrp++)
+X	if (addrp->s_addr != -1 && (addrp->s_addr & mask) == pattern)
+X	    return (1);
+X    return (0);
+X}
+X
+X/* match_group - match username against group */
+X
+Xstatic int match_group(login_info)
+Xstruct login_info *login_info;
+X{
+X    struct group *group;
+X    char   *tok;
+X    char  **memp;
+X
+X    if ((tok = need_token()) && (group = getgrnam(tok))) {
+X	for (memp = group->gr_mem; *memp; memp++)
+X	    if (strcmp(login_info->user, *memp) == 0)
+X		return (1);
+X    }
+X    return (0);					/* XXX endgrent() */
+X}
+X
+X/* match_token - get and match token */
+X
+Xstatic int match_token(str)
+Xchar   *str;
+X{
+X    char   *tok;
+X
+X    return (str && (tok = need_token()) && strcasecmp(str, tok) == 0);
+X}
+X
+X/* first_token - read line and return first token */
+X
+Xstatic char *first_token(buf, len, fp)
+Xchar   *buf;
+Xint     len;
+XFILE   *fp;
+X{
+X    char   *cp;
+X
+X    prev_token = 0;
+X    for (;;) {
+X	if (fgets(buf, len, fp) == 0)
+X	    return (0);
+X	line_number++;
+X	buf[strcspn(buf, "\r\n#")] = 0;
+X#ifdef TEST
+X	if (buf[0])
+X	    printf("rule: %s\n", buf);
+X#endif
+X	if (cp = strtok(buf, " \t"))
+X	    return (cp);
+X    }
+X}
+X
+X/* unget_token - push back last token */
+X
+Xstatic void unget_token(cp)
+Xchar   *cp;
+X{
+X    prev_token = cp;
+X}
+X
+X/* get_token - retrieve next token from buffer */
+X
+Xstatic char *get_token()
+X{
+X    char   *cp;
+X
+X    if (cp = prev_token) {
+X	prev_token = 0;
+X    } else {
+X	cp = strtok((char *) 0, " \t");
+X    }
+X    return (cp);
+X}
+X
+X/* need_token - complain if next token is not available */
+X
+Xstatic char *need_token()
+X{
+X    char   *cp;
+X
+X    if ((cp = get_token()) == 0)
+X	syslog(LOG_ERR, "%s: line %d: premature end of rule",
+X	       KEYACCESS, line_number);
+X    return (cp);
+X}
+X
+X/* need_internet_addr - complain if next token is not an internet address */
+X
+Xstatic char *need_internet_addr()
+X{
+X    char   *cp;
+X
+X    if ((cp = get_token()) == 0) {
+X	syslog(LOG_ERR, "%s: line %d: internet address expected",
+X	       KEYACCESS, line_number);
+X	return (0);
+X    } else if (!is_internet_addr(cp)) {
+X	syslog(LOG_ERR, "%s: line %d: bad internet address: %s",
+X	       KEYACCESS, line_number, cp);
+X	return (0);
+X    } else {
+X	return (cp);
+X    }
+X}
+X
+X/* is_internet_addr - determine if string is a dotted quad decimal address */
+X
+Xstatic int is_internet_addr(str)
+Xchar   *str;
+X{
+X    int     in_run = 0;
+X    int     runs = 0;
+X
+X    /* Count the number of runs of characters between the dots. */
+X
+X    while (*str) {
+X	if (*str == '.') {
+X	    in_run = 0;
+X	} else {
+X	    if (!isdigit(*str))
+X		return (0);
+X	    if (in_run == 0) {
+X		in_run = 1;
+X		runs++;
+X	    }
+X	}
+X	str++;
+X    }
+X    return (runs == 4);
+X}
+X
+X/* lookup_internet_addr - look up internet addresses with extreme prejudice */
+X
+Xstatic struct in_addr *lookup_internet_addr(host)
+Xchar   *host;
+X{
+X    struct hostent *hp;
+X    static struct in_addr list[MAX_ADDR + 1];
+X    char    buf[MAXHOSTNAMELEN + 1];
+X    int     length;
+X    int     i;
+X
+X    if ((hp = gethostbyname(host)) == 0 || hp->h_addrtype != AF_INET)
+X	return (0);
+X
+X    /*
+X     * Save a copy of the results before gethostbyaddr() clobbers them.
+X     */
+X
+X    for (i = 0; i < MAX_ADDR && hp->h_addr_list[i]; i++)
+X	memcpy((char *) &list[i],
+X	       hp->h_addr_list[i], hp->h_length);
+X    list[i].s_addr = 0;
+X
+X    strncpy(buf, hp->h_name, MAXHOSTNAMELEN);
+X    buf[MAXHOSTNAMELEN] = 0;
+X    length = hp->h_length;
+X
+X    /*
+X     * Wipe addresses that appear to belong to someone else. We will get
+X     * false alarms when when the hostname comes from DNS, while its
+X     * addresses are listed under different names in local databases.
+X     */
+X#define NEQ(x,y)	(strcasecmp((x),(y)) != 0)
+X#define NEQ3(x,y,n)	(strncasecmp((x),(y), (n)) != 0)
+X
+X    while (--i >= 0) {
+X	if ((hp = gethostbyaddr((char *) &list[i], length, AF_INET)) == 0) {
+X	    syslog(LOG_ERR, "address %s not registered for host %s",
+X		   inet_ntoa(list[i]), buf);
+X	    list[i].s_addr = -1;
+X	}
+X	if (NEQ(buf, hp->h_name) && NEQ3(buf, "localhost.", 10)) {
+X	    syslog(LOG_ERR, "address %s registered for host %s and %s",
+X		   inet_ntoa(list[i]), hp->h_name, buf);
+X	    list[i].s_addr = -1;
+X	}
+X    }
+X    return (list);
+X}
+X
+X/* convert_internet_addr - convert string to internet address */
+X
+Xstatic struct in_addr *convert_internet_addr(string)
+Xchar   *string;
+X{
+X    static struct in_addr list[2];
+X
+X    list[0].s_addr = inet_addr(string);
+X    list[1].s_addr = 0;
+X    return (list);
+X}
+X
+X#ifdef TEST
+X
+Xmain(argc, argv)
+Xint     argc;
+Xchar  **argv;
+X{
+X    struct hostent *hp;
+X    char    host[MAXHOSTNAMELEN + 1];
+X    int     verdict;
+X    char   *user;
+X    char   *port;
+X
+X    if (argc != 3 && argc != 4) {
+X	fprintf(stderr, "usage: %s user port [host_or_ip_address]\n", argv[0]);
+X	exit(0);
+X    }
+X    if (KEYACCESS[0] != '/')
+X	printf("Warning: this program uses control file: %s\n", KEYACCESS);
+X#ifdef LOG_AUTH
+X    openlog("login", LOG_PID, LOG_AUTH);
+X#else
+X    openlog("login", LOG_PID);
+X#endif
+X
+X    user = argv[1];
+X    port = argv[2];
+X    if (argv[3]) {
+X	strncpy(host, (hp = gethostbyname(argv[3])) ?
+X		hp->h_name : argv[3], MAXHOSTNAMELEN);
+X	host[MAXHOSTNAMELEN] = 0;
+X    }
+X    verdict = skeyaccess(user, port, argv[3] ? host : (char *) 0, (char *) 0);
+X    printf("UNIX passwords %spermitted\n", verdict ? "" : "NOT ");
+X    return (0);
+X}
+X
+X#endif
+END_OF_FILE
+  if test 12227 -ne `wc -c <'skeyaccess.c'`; then
+    echo shar: \"'skeyaccess.c'\" unpacked with wrong size!
+  fi
+  # end of 'skeyaccess.c'
+fi
+if test -f 'skeyd.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeyd.c'\"
+else
+  echo shar: Extracting \"'skeyd.c'\" \(9406 characters\)
+  sed "s/^X//" >'skeyd.c' <<'END_OF_FILE'
+X/*
+X * $Author: vince $
+X * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.25 1995/05/10 17:10:48 vince Exp $
+X * $Date: 1995/05/10 17:10:48 $
+X * $Revision: 1.25 $
+X * $Locker:  $
+X */
+X
+X#ifndef	lint
+Xstatic char *rcsid = "@(#) $Id: skeyd.c,v 1.25 1995/05/10 17:10:48 vince Exp $";
+X#endif	lint
+X
+X#ifndef SKEYD
+Xmain(argc, argv)
+Xint	argc;
+Xchar	*argv[];
+X{
+X	printf("No-no! %s is a null program when compiler without -DSKEYD\n",
+X								argv[0]);
+X}
+X#else /* SKEYD */
+X
+X#include <stdio.h>
+X#ifdef __ultrix
+X#include <fcntl.h>
+X#else
+X#include <sys/fcntl.h>
+X#endif
+X#include <syslog.h>
+X#include <errno.h>
+X#include <unistd.h>
+X#include <signal.h>
+X#include <string.h>
+X#ifdef FLOCK
+X#include <sys/file.h>
+X#endif
+X#include <netinet/in.h>
+X#include <sys/socket.h>
+X#include <netdb.h>
+X#include "skey.h"
+X#include "des.h"
+X#include "md4.h"
+X
+Xstatic char	*skeyserver;
+Xstatic int	skeyport;
+X
+X#define LOCKFILE	"/etc/skeyd.lock"
+X#define NUMTRY		20
+X
+Xstatic char	*hname;
+X
+Xstatic int		fdlock = -1;
+X
+Xmain(argc, argv)
+Xint	argc;
+Xchar	*argv[];
+X{
+X	struct skeymessage	talk;
+X	char			*userline;
+X	int			i, fromlen;
+X	static void		timeout();
+X
+X	char			*getskeyfield(), *peername();
+X
+X#ifdef __ultrix
+X	openlog("skeyd", LOG_WARNING);
+X#else
+X	openlog("skeyd", LOG_PID | LOG_ODELAY, LOG_DAEMON);
+X#endif
+X
+X	if ((hname = peername(0)) == NULL) {
+X		perror("getpeername()");
+X		exit(1);
+X	}
+X
+X	if (readskeydconf()) {
+X		syslog(LOG_INFO, "readskeydconf(): %m");
+X		exit(1);
+X	}
+X
+X	(void)signal(SIGALRM, timeout);
+X	(void)alarm(SKEYDTIMEOUT);
+X
+X	if (skey_read_data(0, &talk, sizeof(talk)) != sizeof(talk)) {
+X		syslog(LOG_INFO, "reading data from %s: %m", hname);
+X		exit(1);
+X	}
+X	if (talkdecode(&talk)) {
+X		syslog(LOG_INFO, "received corrupted data from %s", hname);
+X		bzero(&talk, sizeof(talk));
+X		talk.flag = SKEYDFAILED;
+X		goto sendpoint; /* no data, no encryption */
+X	}
+X	alarm(0);
+X
+X#ifdef DEBUG
+X	syslog(LOG_INFO, "received: `%s' from %s", talk.buf, hname);
+X#endif
+X
+X	/* fix: decrypt and check checksum */
+X
+X	switch (talk.flag) {
+X		case	GIVEMEINFO:
+X#ifdef DEBUG
+X			syslog(LOG_INFO, "GIVEMEINFO");
+X#endif
+X			/* get entry in keyfile */
+X			userline = getskeyfield(talk.buf);
+X
+X			bzero(&talk, sizeof(talk));
+X			if (userline)
+X				strncpy(talk.buf, userline, sizeof(talk.buf));
+X			talk.flag = SKEYDOK;
+X			break;
+X
+X		case	UPDATEKEYS:
+X#ifdef SKEYINITINSECURE
+X		case	FORCEKEYUPDATE:
+X#endif
+X#ifdef DEBUG
+X			syslog(LOG_INFO, "UPDATEKEYS");
+X#endif
+X			if (lock(LOCKFILE))
+X				exit(1);
+X			/* update record */
+X			i = updatekeys(talk.buf, talk.flag);
+X			if (unlock())
+X				exit(1);
+X			bzero(&talk, sizeof(talk));
+X			talk.flag =  i ? SKEYDFAILED : SKEYDOK;
+X			break;
+X
+X		default:
+X			syslog(LOG_INFO, "panic (flag = %d), from %s",
+X							talk.flag, hname);
+X			exit(1);
+X	}
+X
+X#ifdef DEBUG
+X	syslog(LOG_INFO, "sending: `%s'", talk.buf);
+X#endif
+X
+X	talkencode(&talk);
+X
+Xsendpoint:
+X	(void)alarm(SKEYDTIMEOUT);
+X	if (skey_write_data(1, &talk, sizeof(talk)) != sizeof(talk)) {
+X		syslog(LOG_INFO, "writing data to %s: %m", hname);
+X		exit(1);
+X	}
+X	alarm(0);
+X	return(0);
+X}
+X
+Xchar *
+Xgetskeyfield(username)
+Xchar	*username;
+X{
+X	static char	line[256];
+X	char		line2[256], *p;
+X	FILE		*fp;
+X	int		found = 0;
+X
+X	if ((fp = fopen(KEYFILE, "r")) == NULL) {
+X		syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+X		return(NULL);
+X	}
+X
+X	while (fgets(line, sizeof(line), fp) != NULL) {
+X		rip(line);
+X		if (line[0] == '#' || !strlen(line))
+X			continue;
+X		strncpy(line2, line, sizeof(line2));
+X		p = strtok(line2, SEPARATOR);
+X		if (strcmp(p, username) || strlen(username) != strlen(p))
+X			continue;
+X		found = 1;
+X		break;
+X	}
+X
+X	(void)fclose(fp);
+X
+X	return (found ? line : NULL);
+X}
+X
+Xupdatekeys(newline, flag)
+Xchar	*newline;
+Xint	flag;
+X{
+X	char		line[256], buf[256], *name, *p;
+X	extern int	errno;
+X	FILE		*in, *out;
+X	int		found = 0;
+X	long		omask;
+X
+X	rip(newline);
+X	strncpy(buf, newline, sizeof(buf));
+X	name = strtok(buf, SEPARATOR);
+X	if (*name == '\0')
+X		return(1);
+X	
+X	if ((in = fopen(KEYFILE, "r")) == NULL) {
+X		if (errno != ENOENT) {
+X			syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+X			return(1);
+X		}
+X		syslog(LOG_INFO, "%s: %m -- creating it", KEYFILE);
+X		if ((out = fopen(KEYFILE, "w")) == NULL) {
+X			syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+X			(void)fclose(in);
+X			return(1);
+X		}
+X		if (fprintf(out, "%s\n", newline) < 0) {
+X			syslog(LOG_INFO, "fprintf(): %m");
+X			(void)fclose(out);
+X			return(1);
+X		}
+X		if (fclose(out) == -1) {
+X			syslog(LOG_INFO, "fclose(): %m");
+X			return(1);
+X		}
+X		return(0);
+X	}
+X
+X	(void)unlink(PTMPKEYFILE);
+X	omask = umask(077);
+X	if ((out = fopen(PTMPKEYFILE, "w")) == NULL) {
+X		syslog(LOG_INFO, "fopen(%s): %m", PTMPKEYFILE);
+X		(void)fclose(in);
+X		return(1);
+X	}
+X	(void)umask(omask);
+X
+X	errno = 0;
+X	while (fgets(line, sizeof(line), in) != NULL) {
+X		rip(line);
+X		p = line;
+X		if (!strncmp(name, line, strlen(name)) &&
+X						strlen(line) >= strlen(name)) {
+X			/* two usernames in the same password file! */
+X			if (found) {
+X				syslog(LOG_INFO,
+X					"DUPLICATED SKEY RECORD for %s\n", name);
+X				(void)fclose(in);
+X				(void)fclose(out);
+X				return(1);
+X			}
+X
+X			/* Perform some important sanity checks; in particular
+X			   check that the new key is really fff(old key).
+X			   The client is supposed to have done the check
+X			   already but we want to play it safe, just in case
+X			   of replay attacks */
+X			if (
+X#ifdef SKEYINITINSECURE
+X			/* skip sanity check, so inits are viable. we
+X			   trust clients and the security of clients. */
+X			    flag != FORCEKEYUPDATE &&
+X#endif
+X			    sanitychk(newline, line)) {
+X				(void)fclose(in);
+X				(void)fclose(out);
+X				return(1);
+X			}
+X			found = 1;
+X			p = newline;
+X		}
+X		if (fprintf(out, "%s\n", p) < 0) {
+X			syslog(LOG_INFO, "fprintf(): %m");
+X			(void)fclose(in);
+X			(void)fclose(out);
+X			return(1);
+X		}
+X	}
+X	
+X	if (errno) {
+X		syslog(LOG_INFO, "fgets(): %m");
+X		return(1);
+X	}
+X
+X	/* this is a new user; we add it at the end of file */
+X	if (!found) {
+X		if (fprintf(out, "%s\n", newline) < 0) {
+X			syslog(LOG_INFO, "fprintf(): %m");
+X			(void)fclose(in);
+X			(void)fclose(out);
+X			return(1);
+X		}
+X	}
+X
+X	if (fclose(in) || fclose(out)) {
+X		syslog(LOG_INFO, "fclose(): %m");
+X		return(1);
+X	}
+X	
+X	if (rename(PTMPKEYFILE, KEYFILE)) {
+X		syslog(LOG_INFO, "rename(): %m");
+X		return(1);
+X	}
+X	return(0);
+X}
+X
+Xlock(lockfile)
+Xchar	*lockfile;
+X{
+X	extern int	errno;
+X	int		count = 0;
+X
+X	if (fdlock != -1) {
+X		syslog(LOG_INFO, "lock already set");
+X		return(1);
+X	}
+X	if ((fdlock = open(lockfile, O_CREAT | O_WRONLY, 0600)) == -1) {
+X		syslog(LOG_INFO, "%s: %m", lockfile);
+X		return(1);
+X	}
+X
+X	for (count = 0; count < NUMTRY; count++) {
+X#ifdef FLOCK
+X		if (flock(fdlock, LOCK_EX) == -1)
+X#else
+X		if (lockf(fdlock, F_TLOCK, 0) == -1)
+X#endif
+X							{
+X			if (errno == EACCES)
+X				sleep(1);
+X			else {
+X#ifdef FLOCK
+X				perror("lockf(LOCK_EX)");
+X#else
+X				perror("lockf(F_TLOCK)");
+X#endif
+X				return(1);
+X			}
+X		}
+X		else
+X			break;
+X	}
+X
+X	if (count == NUMTRY) {
+X		return(1);
+X	}
+X	return(0);
+X}
+X
+Xunlock()
+X{
+X	if (fdlock == -1) {
+X		syslog(LOG_INFO, "no lock is set");
+X		return(1);
+X	}
+X#ifdef FLOCK
+X	if (flock(fdlock, LOCK_UN) == -1) {
+X		perror("lock(LOCK_UN)");
+X		return(1);
+X	}
+X#else
+X	if (lockf(fdlock, F_ULOCK, 0) == -1) {
+X		perror("lock(F_ULOCK)");
+X		return(1);
+X	}
+X#endif
+X	(void)close(fdlock);
+X	fdlock = -1;
+X	return(0);
+X}
+X
+Xstatic void
+Xtimeout(s)
+X{
+X	(void)signal(s, timeout);
+X	syslog(LOG_INFO, "time out (%d seconds)", SKEYDTIMEOUT);
+X	exit(1);
+X}
+X
+Xsanitychk(l1, l2)
+Xchar	*l1, *l2;
+X{
+X	int	n1, n2;
+X	char	key1[8], key2[8], *p;
+X	char	*get4thtoken();
+X
+X
+X	/* gtet 2nd field (sequence number) */
+X	if ((n1 = get2ndtoken(l1)) == -2 ||
+X	    (n2 = get2ndtoken(l2)) == -2)
+X		return (1);
+X	
+X	if (n1 != n2 - 1) {
+X		syslog(LOG_INFO,
+X"REPLAY ATTACK (sequence mismatch) from %s (new: %d, old: %d)", hname, n1, n2);
+X		return(1);
+X	}
+X
+X	/* get 4th field (key field) */
+X	/* first string */
+X	if ((p = get4thtoken(l1)) == NULL)
+X		return (1);
+X	if (atob8(key1, p) == -1) {
+X		syslog(LOG_INFO, "atob8(%s)", p);
+X		return (1);
+X	}
+X	/* second string */
+X	if ((p = get4thtoken(l2)) == NULL)
+X		return (1);
+X	if (atob8(key2, p) == -1) {
+X		syslog(LOG_INFO, "atob8(%s)", p);
+X		return (1);
+X	}
+X
+X	fff(key1);
+X
+X	if (memcmp(key1, key2, 8)) {
+X		syslog(LOG_INFO,
+X"REPLAY ATTACK (password mismatch) from %s (new: %s, old: %s)", hname, l1, l2);
+X		return(1);
+X	}
+X	return(0);
+X}
+X
+Xchar *
+Xget4thtoken(str)
+Xchar	*str;
+X{
+X	static char	*p, x[BUFLEN];
+X
+X	strncpy(x, str, sizeof(x));
+X
+X	if (strtok(x, SEPARATOR) == NULL ||
+X	    strtok(NULL, SEPARATOR) == NULL ||
+X	    strtok(NULL, SEPARATOR) == NULL ||
+X	    (p = strtok(NULL, SEPARATOR)) == NULL) {
+X		syslog(LOG_INFO, "received invalid data from %s", hname);
+X		return (NULL);
+X	}
+X
+X	return(p);
+X}
+X
+Xget2ndtoken(str)
+Xchar	*str;
+X{
+X	char	x[BUFLEN], *p;
+X
+X	strncpy(x, str, sizeof(x));
+X
+X	if (strtok(x, SEPARATOR) == NULL ||
+X	    (p = strtok(NULL, SEPARATOR)) == NULL )  {
+X		syslog(LOG_INFO, "received invalid data from %s", hname);
+X		return (-2);
+X	}
+X
+X	return(atoi(p));
+X}
+X
+X
+Xchar *
+Xpeername(fd)
+Xint	fd;
+X{
+X	struct sockaddr_in	addr;
+X	struct hostent		*he;
+X	static char		name[128];
+X	int			addrlen = sizeof(addr);
+X	int			on = 1;
+X
+X	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE,
+X					(char *)&on, sizeof (on)) == -1) {
+X		syslog(LOG_INFO, "setsockopt (SO_KEEPALIVE): %m");
+X		return(NULL);
+X	}
+X
+X	if (getpeername(fd, &addr, &addrlen) == -1) {
+X		perror("getpeername()"); /* so frequent */
+X		syslog(LOG_INFO, "getpeername() failed");
+X		return(NULL);
+X	}
+X	if ((he = gethostbyaddr((char *)&addr.sin_addr,
+X				sizeof(struct in_addr), AF_INET)) == NULL)
+X		(void)strcpy(name, (char *) inet_ntoa(addr.sin_addr));
+X	else
+X		(void)strncpy(name, he->h_name, sizeof(name));
+X	return(name);
+X}
+X
+X#endif /* SKEYD */
+END_OF_FILE
+  if test 9406 -ne `wc -c <'skeyd.c'`; then
+    echo shar: \"'skeyd.c'\" unpacked with wrong size!
+  fi
+  # end of 'skeyd.c'
+fi
+if test -f 'skeyinit.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeyinit.c'\"
+else
+  echo shar: Extracting \"'skeyinit.c'\" \(6109 characters\)
+  sed "s/^X//" >'skeyinit.c' <<'END_OF_FILE'
+X/*   change password or add user to S/KEY authentication system.
+X *   S/KEY is a tradmark of Bellcore  */
+X
+X#include <stdio.h>
+X#include <string.h>
+X#include <pwd.h>
+X#include "skey.h"
+X#include <stdio.h>
+X#include <time.h>
+X
+Xextern int optind;
+Xextern char *optarg;
+X
+Xchar * readpass();
+X
+X#ifdef SKEYD
+Xint skeylookup __ARGS((struct skey *mp,char *name, int staylocal));
+X#else
+Xint skeylookup __ARGS((struct skey *mp,char *name));
+X#endif
+X
+X
+X#define NAMELEN 2
+X
+Xint
+Xmain(argc,argv)
+Xint argc;
+Xchar *argv[];
+X{
+X	struct skey skey;
+X	int rval,n,nn,i,defaultsetup;
+X	char seed[18],tmp[80],key[8];
+X	struct passwd *ppuser,*pp;
+X	char defaultseed[17], passwd[256],passwd2[256] ;
+X#ifdef SKEYINITINSECURE
+X#ifdef SKEYD
+X	char line[BUFLEN], answer[BUFLEN];
+X#endif
+X#endif /* SKEYINITINSECURE */
+X
+X	time_t now;
+X	struct tm *tm;
+X	char tbuf[27],buf[60];
+X	char lastc, me[80];
+X	int l;
+X
+X	time(&now);
+X	tm = localtime(&now);
+X	strftime(tbuf, sizeof(tbuf), "%M%j", tm);
+X
+X	if ((gethostname (defaultseed, sizeof (defaultseed))) < 0)
+X		exit (-1);
+X	strcpy(&defaultseed[NAMELEN],tbuf);
+X
+X	pp = ppuser = getpwuid(getuid());
+X	strcpy(me,pp->pw_name);
+X	defaultsetup = 1;
+X	if( argc > 1){
+X		if(strcmp("-s", argv[1]) == 0)
+X			defaultsetup = 0;
+X		else
+X			pp = getpwnam(argv[1]);
+X		if(argc > 2)
+X			pp = getpwnam(argv[2]);
+X
+X	}
+X	if(pp == NULL){
+X		printf("User unknown\n");
+X		exit(1);
+X	}
+X	if(strcmp( pp->pw_name,me) != 0){
+X		if(getuid() != 0){
+X			/* Only root can change other's passwds */
+X			printf("Permission denied.\n");
+X			exit(1);
+X		}
+X	}
+X
+X#ifdef SKEYD
+X#ifndef SKEYINITINSECURE
+X	printf("Notice: skey.init works with LOCAL key file only\n");
+X#endif
+X#endif
+X
+X	/* vince */
+X	bzero(&skey, sizeof(skey));
+X#ifdef SKEYD
+X#ifdef SKEYINITINSECURE
+X	rval = skeylookup(&skey,pp->pw_name,0); /* use skeyd if available */
+X#else /* it is secure, i.e., local updates only */
+X	rval = skeylookup(&skey,pp->pw_name,1); /* prevent using of network */
+X#endif /* SKEYINITINSECURE */
+X#else
+X	rval = skeylookup(&skey,pp->pw_name);
+X#endif /* SKEYD */
+X	switch(rval){
+X	case -1:
+X		perror("error in opening database");
+X		exit(1);
+X	case 0:
+X		printf("Updating %s:\n",pp->pw_name);
+X		printf("Old key: %s\n",skey.seed);
+X		/* lets be nice if they have a skey.seed that ends in 0-8 just add one*/
+X		l = strlen(skey.seed);
+X		if( l > 0){
+X			lastc = skey.seed[l-1];
+X			if( isdigit(lastc) && lastc != '9' ){
+X				strcpy(defaultseed, skey.seed);
+X				defaultseed[l-1] = lastc + 1;
+X			}
+X			if( isdigit(lastc) && lastc == '9' && l < 16){
+X				strcpy(defaultseed, skey.seed);
+X				defaultseed[l-1] = '0';
+X				defaultseed[l] = '0';
+X				defaultseed[l+1] = '\0';
+X			}
+X		}
+X		break;
+X	case 1:
+X		printf("Adding %s:\n",pp->pw_name);
+X		break;
+X	}
+X    n = 99;
+X    if( ! defaultsetup){
+X	printf("Reminder you need the 6 english words from the skey command.\n");
+X	for(i=0;;i++){
+X		if(i >= 2) exit(1);
+X		printf("Enter sequence count from 1 to 10000: ");
+X		fgets(tmp,sizeof(tmp),stdin);
+X		n = atoi(tmp);
+X		if(n > 0 && n < 10000)
+X			break;	/* Valid range */
+X		printf("Count must be > 0 and < 10000\n");
+X	}
+X    }
+X    if( !defaultsetup){
+X	printf("Enter new key [default %s]: ", defaultseed);
+X	fflush(stdout);
+X	fgets(seed,sizeof(seed),stdin);
+X	rip(seed);
+X	if(strlen(seed) > 16){
+X		printf("Seed truncated to 16 chars\n");
+X		seed[16] = '\0';
+X	}
+X	if( seed[0] == '\0') strcpy(seed,defaultseed);
+X	for(i=0;;i++){
+X		if(i >= 2) exit(1);
+X		printf("s/key %d %s\ns/key access password: ",n,seed);
+X		fgets(tmp,sizeof(tmp),stdin);
+X		rip(tmp);
+X		backspace(tmp);
+X		if(tmp[0] == '?'){
+X			printf("Enter 6 English words from secure S/Key calculation.\n");
+X			continue;
+X		}
+X		if(tmp[0] == '\0'){
+X			exit(1);
+X		}
+X		if(etob(key,tmp) == 1 || atob8(key,tmp) == 0)
+X			break;	/* Valid format */
+X		printf("Invalid format, try again with 6 English words.\n");
+X	}
+X    } else {
+X	/* Get user's secret password */
+X	fprintf(stderr,"Reminder - Only use this method if you are directly connected.\n");
+X	fprintf(stderr,"If you are using telnet or dial-in exit with no password and use keyinit -s.\n");
+X	for(i=0;;i++){
+X		if(i >= 2) exit(1);
+X		fprintf(stderr,"Enter secret password: ");
+X		readpass(passwd,sizeof(passwd));
+X		if(passwd[0] == '\0'){
+X			exit(1);
+X		}
+X		fprintf(stderr,"Again secret password: ");
+X		readpass(passwd2,sizeof(passwd));
+X		if(passwd2[0] == '\0'){
+X			exit(1);
+X		}
+X		if(strlen(passwd) < 4 && strlen(passwd2) < 4) {
+X			fprintf(stderr, "Sorry your password must be longer\n\r");
+X			exit(1);
+X		}
+X		if(strcmp(passwd,passwd2) == 0) break;
+X		fprintf(stderr, "Sorry no match\n");
+X		
+X	
+X	}
+X	strcpy(seed,defaultseed);
+X
+X	/* Crunch seed and password into starting key */
+X	if(keycrunch(key,seed,passwd) != 0){
+X		fprintf(stderr,"%s: key crunch failed\n",argv[0]);
+X		exit(1);
+X	}
+X	nn = n;
+X	while(nn-- != 0)
+X		fff(key);
+X    }
+X	time(&now);
+X	tm = localtime(&now);
+X	strftime(tbuf, sizeof(tbuf), " %b %d,%Y %T", tm);
+X
+X	/*DAVE*/
+X	if (skey.val == NULL)
+X		skey.val = (char *) malloc(16+1);
+X	/*DAVE*/
+X	btoa8(skey.val,key);
+X
+X#ifdef SKEYINITINSECURE /* unsafe -- see below */
+X#ifdef SKEYD
+X	sprintf(line,"%s %04d %-16s %s %-21s\n",pp->pw_name,n,
+X		seed,skey.val, tbuf);
+X	if (skeytalk(FORCEKEYUPDATE, line, answer)) {
+X		printf(
+X		"NOT using skey authentication server for key file updating\n");
+X#endif
+X		/* did we used local key file? */
+X		if (skey.keyfile == NULL) {
+X			printf("Can not use local key file!\n");
+X			exit(1);
+X		}
+X		
+X		fprintf(skey.keyfile,"%s %04d %-16s %s %-21s\n",
+X					pp->pw_name,n, seed,skey.val, tbuf);
+X		fclose(skey.keyfile);
+X#ifdef SKEYD
+X	}
+X#endif
+X#else /* !SKEYINITINSECURE */
+X	/* not using skeyd for key initalization. this way the protocol
+X	   is safer. it is not acceptable, in fact, to allow clients
+X	   to init the centralized key file. it would be easy, for
+X	   a malicious hacker, to create a new key file entry or to
+X	   change (that is, init) root's key entry. the security of
+X	   all systems shoudl depend upon the security of the master
+X	   site only */
+X	fprintf(skey.keyfile,"%s %04d %-16s %s %-21s\n",pp->pw_name,n,
+X		seed,skey.val, tbuf);
+X	fclose(skey.keyfile);
+X#endif /* SKEYINITINSECURE */
+X
+X	printf("\nID %s s/key is %d %s\n",pp->pw_name,n,seed);
+X	printf("%s\n",btoe(buf,key));
+X#ifdef HEXIN
+X	printf("%s\n",put8(buf,key));
+X#endif
+X	return 0;
+X}
+END_OF_FILE
+  if test 6109 -ne `wc -c <'skeyinit.c'`; then
+    echo shar: \"'skeyinit.c'\" unpacked with wrong size!
+  fi
+  # end of 'skeyinit.c'
+fi
+if test -f 'skeylogin.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeylogin.c'\"
+else
+  echo shar: Extracting \"'skeylogin.c'\" \(16895 characters\)
+  sed "s/^X//" >'skeylogin.c' <<'END_OF_FILE'
+X/*
+X * $Author: vince $
+X * $Header: /res/usr/vince/src/skey/RCS/skeylogin.c,v 1.30 1995/05/10 17:10:48 vince Exp $
+X * $Date: 1995/05/10 17:10:48 $
+X * $Revision: 1.30 $
+X * $Locker:  $
+X */
+X
+X#ifndef	lint
+Xstatic char *rcsid = "@(#) $Id: skeylogin.c,v 1.30 1995/05/10 17:10:48 vince Exp $";
+X#endif	lint
+X
+X/*
+X *   Login code for S/KEY Authentication.  S/KEY is a trademark
+X *   of Bellcore.
+X *
+X *   Mink is the former name of the S/KEY authentication system.
+X *   Many references for mink  may still be found in this program.
+X */
+X
+X#include <sys/param.h>
+X#ifdef	QUOTA
+X#include <sys/quota.h>
+X#endif
+X#include <sys/stat.h>
+X#include <sys/time.h>
+X#include <sys/resource.h>
+X
+X#include <stdio.h>
+X#include <string.h>
+X#include <sys/types.h>
+X#include <sys/stat.h>
+X#include <errno.h>
+X#include "skey.h"
+X
+X#ifdef SKEYD
+X#define SKEYDCONF "/etc/skeydconf"
+X#define TALKERROR "Can't talk with skey authentication server\n"
+X#define CONFERROR "Unable to use skey authentication server's configuration file\n"
+X#define TOUTERROR "Connection with skey authentication server expired\n"
+X#include <sys/socket.h>
+X#include <netinet/in.h>
+X#include <netdb.h>
+X#include <unistd.h>
+X#include <signal.h>
+X#include "des.h"
+X#include "md4.h"
+X
+Xstatic char		*skeyserver;
+Xstatic int		skeyport;
+Xdes_key_schedule	schedule;
+X
+Xstatic int		talktimeoutflg;
+X#endif
+X
+Xchar *skipspace();
+X
+X#ifdef SKEYD
+Xint skeylookup __ARGS((struct skey *mp,char *name, int staylocal));
+X#else
+Xint skeylookup __ARGS((struct skey *mp,char *name));
+X#endif
+X
+X
+X
+X/* Issue a skey challenge for user 'name'. If successful,
+X * fill in the caller's skey structure and return 0. If unsuccessful
+X * (e.g., if name is unknown) return -1.
+X *
+X * The file read/write pointer is left at the start of the
+X * record.
+X */
+Xint
+Xgetskeyprompt(mp,name,prompt)
+Xstruct skey *mp;
+Xchar *name;
+Xchar *prompt;
+X{
+X	int rval;
+X
+X	sevenbit(name);
+X#ifdef SKEYD
+X	rval = skeylookup(mp,name,0);
+X#else
+X	rval = skeylookup(mp,name);
+X#endif
+X	strcpy(prompt,"s/key 55 latour1\n");
+X	switch(rval){
+X	case -1:	/* File error */
+X		return -1;
+X	case 0:		/* Lookup succeeded, return challenge */
+X		sprintf(prompt,"s/key %d %s\n",mp->n - 1,mp->seed);
+X		return 0;
+X	case 1:		/* User not found */
+X		sfclose(mp->keyfile);
+X		return -1;
+X	}
+X	return -1;	/* Can't happen */
+X}	
+X/* Return  a skey challenge string for user 'name'. If successful,
+X * fill in the caller's skey structure and return 0. If unsuccessful
+X * (e.g., if name is unknown) return -1.
+X *
+X * The file read/write pointer is left at the start of the
+X * record.
+X */
+Xint
+Xskeychallenge(mp,name, ss)
+Xstruct skey *mp;
+Xchar *name;
+Xchar *ss;
+X{
+X	int rval;
+X
+X	bzero(mp, sizeof(struct skey));
+X
+X#ifdef SKEYD
+X	rval = skeylookup(mp,name,0);
+X#else
+X	rval = skeylookup(mp,name);
+X#endif
+X	switch(rval){
+X	case -1:	/* File error */
+X		return -1;
+X	case 0:		/* Lookup succeeded, issue challenge */
+X                sprintf(ss, "s/key %d %s",mp->n - 1,mp->seed);
+X		return 0;
+X	case 1:		/* User not found */
+X		sfclose(mp->keyfile);
+X		return -1;
+X	}
+X	return -1;	/* Can't happen */
+X}
+X
+X/* Find an entry in the One-time Password database.
+X * Return codes:
+X * -1: error in opening database
+X *  0: entry found, file R/W pointer positioned at beginning of record
+X *  1: entry not found, file R/W pointer positioned at EOF
+X */
+Xint
+Xskeylookup(mp,name
+X#ifdef SKEYD /* this violates standard skeylookup() syntax */
+X		, staylocal
+X#endif
+X			)
+Xstruct skey *mp;
+Xchar *name;
+X#ifdef SKEYD
+Xint	staylocal;
+X#endif
+X{
+X	int found;
+X	int len;
+X	long recstart;
+X	char *cp;
+X	struct stat statbuf;
+X
+X#ifdef SKEYD
+X	static char		answer[BUFLEN];
+X
+X	/* do not use skeyd even if it is available */
+X	if (staylocal)
+X		goto readlocal;
+X
+X	if (stat(SKEYDCONF, &statbuf) == -1)
+X		goto readlocal;
+X
+X	/* file should never be readable by anyone */
+X	if (statbuf.st_mode & S_IROTH || statbuf.st_mode & S_IRGRP) {
+X		statbuf.st_mode &= ~(S_IROTH | S_IRGRP);
+X		(void)chmod(SKEYDCONF, statbuf.st_mode);
+X	}
+X
+X	if (readskeydconf())
+X		return (-1);
+X
+X	if (skeytalk(GIVEMEINFO, name, answer)) {
+X		fprintf(stderr, TALKERROR);
+X		return (-1);
+X	}
+X
+X	if (answer[0] == '\0')
+X		return (1);
+X
+X	if ((mp->logname = strtok(answer," \t")) == NULL)
+X		return (-1);
+X	if((cp = strtok(NULL," \t")) == NULL)
+X		return (-1);
+X
+X	mp->n = atoi(cp);
+X
+X	if((mp->seed = strtok(NULL," \t")) == NULL)
+X		return (-1);
+X	if((mp->val = strtok(NULL," \t")) == NULL)
+X		return (-1);
+X	return(0);
+X
+Xreadlocal: /* no networking set, use local file */
+X
+X#endif /* SKEYD */
+X
+X	/* See if the KEYFILE exists, and create it if not */
+X	if(stat(KEYFILE,&statbuf) == -1 && errno == ENOENT){
+X		mp->keyfile = fopen(KEYFILE,"w+");
+X	} else {
+X		/* Otherwise open normally for update */
+X		mp->keyfile = fopen(KEYFILE,"r+");
+X	}
+X	if(mp->keyfile == NULL)
+X		return -1;
+X
+X	/* Look up user name in database */
+X	len = strlen(name);
+X	if( len > 8 ) len = 8;		/*  Added 8/2/91  -  nmh */
+X	found = 0;
+X	while(!feof(mp->keyfile)) {
+X		recstart = ftell(mp->keyfile);
+X		mp->recstart = recstart;
+X		if(fgets(mp->buf,sizeof(mp->buf),mp->keyfile) != mp->buf){
+X			break;
+X		}
+X		rip(mp->buf);
+X		if(mp->buf[0] == '#')
+X			continue;	/* Comment */
+X		if((mp->logname = strtok(mp->buf," \t")) == NULL)
+X			continue;
+X		if((cp = strtok(NULL," \t")) == NULL)
+X			continue;
+X		mp->n = atoi(cp);
+X		if((mp->seed = strtok(NULL," \t")) == NULL)
+X			continue;
+X		if((mp->val = strtok(NULL," \t")) == NULL)
+X			continue;
+X		if(strlen(mp->logname) == len
+X		 && strncmp(mp->logname,name,len) == 0){
+X			found = 1;
+X			break;
+X		}
+X	}
+X	if(found){
+X		fseek(mp->keyfile,recstart,0);
+X		return 0;
+X	} else
+X		return 1;
+X}
+X/* Verify response to a s/key challenge.
+X *
+X * Return codes:
+X * -1: Error of some sort; database unchanged
+X *  0:  Verify successful, database updated
+X *  1:  Verify failed, database unchanged
+X *
+X * The database file is always closed by this call.
+X */
+Xint
+Xskeyverify(mp,response)
+Xstruct skey *mp;
+Xchar *response;
+X{
+X	char key[8];
+X	char fkey[8];
+X	char filekey[8];
+X	time_t now;
+X	struct tm *tm;
+X	char tbuf[27],buf[60];
+X	char *cp;
+X#ifdef SKEYD
+X	struct skeymessage	talk;
+X	char	line[BUFLEN], answer[BUFLEN];
+X	int	useskeyd = 0;
+X
+X	if (!access(SKEYDCONF, R_OK))
+X		useskeyd++;
+X#endif
+X
+X	time(&now);
+X	tm = localtime(&now);
+X	strftime(tbuf, sizeof(tbuf), " %b %d,%Y %T", tm);
+X
+X	if(response == NULL){
+X		sfclose(mp->keyfile);
+X		return -1;
+X	}
+X	rip(response);
+X
+X	/* Convert response to binary */
+X	if(etob(key,response) != 1 && atob8(key,response) != 0) {
+X		/* Neither english words or ascii hex */
+X		sfclose(mp->keyfile);
+X		return -1;
+X	}
+X
+X	/* Compute fkey = f(key) */
+X	memcpy(fkey,key,sizeof(key));
+X	fff(fkey);
+X	/* in order to make the window of update as short as possible
+X           we must do the comparison here and if OK write it back
+X           other wise the same password can be used twice to get in
+X  	   to the system
+X	*/
+X
+X	setpriority(PRIO_PROCESS, 0, -4);
+X
+X	/* reread the file record NOW*/
+X#ifdef SKEYD
+X	if (useskeyd) {
+X		if (skeytalk(GIVEMEINFO, mp->logname, answer)) {
+X			fprintf(stderr, TALKERROR);
+X			return (-1);
+X		}
+X		strncpy(mp->buf, answer, sizeof(mp->buf));
+X	}
+X	else
+X#endif
+X	{
+X		fseek(mp->keyfile,mp->recstart,0);
+X		if(fgets(mp->buf,sizeof(mp->buf),mp->keyfile) != mp->buf){
+X			setpriority(PRIO_PROCESS, 0, 0);
+X			sfclose(mp->keyfile);
+X			return -1;
+X		}
+X	}
+X
+X	rip(mp->buf);
+X	mp->logname = strtok(mp->buf," \t");
+X	cp = strtok(NULL," \t") ;
+X	mp->seed = strtok(NULL," \t");
+X	mp->val = strtok(NULL," \t");
+X	/* And convert file value to hex for comparison */
+X	(void)atob8(filekey,mp->val);
+X
+X	/* Do actual comparison */
+X	if(memcmp(filekey,fkey,8) != 0){
+X		/* Wrong response */
+X		setpriority(PRIO_PROCESS, 0, 0);
+X		sfclose(mp->keyfile);
+X		return 1;
+X	}
+X
+X	btoa8(mp->val,key);
+X	mp->n--;
+X
+X#ifdef SKEYD
+X	if (useskeyd) {
+X		sprintf(line, "%s %04d %-16s %s %-21s\n",
+X			mp->logname, mp->n,mp->seed, mp->val, tbuf);
+X		if (skeytalk(UPDATEKEYS, line, answer)) {
+X			fprintf(stderr, TALKERROR);
+X			return (-1);
+X		}
+X	}
+X	else
+X#endif
+X	{
+X		/* Update key in database by overwriting entire record. Note
+X		 * that we must write exactly the same number of bytes as in
+X		 * the original record (note fixed width field for N)
+X		 */
+X		fseek(mp->keyfile,mp->recstart,0);
+X		fprintf(mp->keyfile,"%s %04d %-16s %s %-21s\n",mp->logname,
+X						mp->n,mp->seed, mp->val, tbuf);
+X
+X		sfclose(mp->keyfile);
+X	}
+X
+X	setpriority(PRIO_PROCESS, 0, 0);
+X	return 0;
+X}
+X
+X
+X/* Convert 8-byte hex-ascii string to binary array
+X * Returns 0 on success, -1 on error
+X */
+Xatob8(out,in)
+Xregister char *out,*in;
+X{
+X	register int i;
+X	register int val;
+X
+X	if(in == NULL || out == NULL)
+X		return -1;
+X
+X	for(i=0;i<8;i++){
+X		if((in = skipspace(in)) == NULL)
+X			return -1;
+X		if((val = htoi(*in++)) == -1)
+X			return -1;
+X		*out = val << 4;
+X
+X		if((in = skipspace(in)) == NULL)
+X			return -1;
+X		if((val = htoi(*in++)) == -1)
+X			return -1;
+X		*out++ |= val;
+X	}
+X	return 0;
+X}
+X
+Xchar *
+Xskipspace(cp)
+Xregister char *cp;
+X{
+X	while(*cp == ' ' || *cp == '\t')
+X		cp++;
+X
+X	if(*cp == '\0')
+X		return NULL;
+X	else
+X		return cp;
+X}
+X
+X/* Convert 8-byte binary array to hex-ascii string */
+Xint
+Xbtoa8(out,in)
+Xregister char *out,*in;
+X{
+X	register int i;
+X
+X	if(in == NULL || out == NULL)
+X		return -1;
+X
+X	for(i=0;i<8;i++){
+X		sprintf(out,"%02x",*in++ & 0xff);
+X		out += 2;
+X	}
+X	return 0;
+X}
+X
+X
+X/* Convert hex digit to binary integer */
+Xint
+Xhtoi(c)
+Xregister char c;
+X{
+X	if('0' <= c && c <= '9')
+X		return c - '0';
+X	if('a' <= c && c <= 'f')
+X		return 10 + c - 'a';
+X	if('A' <= c && c <= 'F')
+X		return 10 + c - 'A';
+X	return -1;
+X}
+X
+X#ifdef SKEYD
+X
+X#define SKEYPWD		"skeypwd"
+X#define SKEYSERVER	"skeyserver"
+X#define SKEYPORT	"skeyport"
+X
+Xreadskeydconf()
+X{
+X	FILE		*fp;
+X	char		line[BUFLEN];
+X	char		*p, *q, *sep = ": \t\n\r";
+X	extern int	errno;
+X	MD4_CTX		mdContext;
+X	des_cblock	key;
+X	int		i;
+X	int		keyset = 0, hstset = 0, prtset = 0;
+X	unsigned char	digest[16];
+X
+X	if ((fp = fopen(SKEYDCONF, "r")) == NULL) {
+X		perror(SKEYDCONF);
+X		fprintf(stderr, CONFERROR);
+X		return (1);
+X	}
+X	errno = 0;
+X	while ((fgets(line, sizeof(line), fp)) != NULL) {
+X		/* skip blank lines, incomplete lines and remarks */
+X		if ((p = strtok(line, sep)) == NULL || *p == '#' ||
+X		    (q = strtok(NULL, sep)) == NULL)
+X			continue;
+X		if (!strncasecmp(p, SKEYPWD, strlen(SKEYPWD))) {
+X			bzero(&mdContext, sizeof(mdContext));
+X			MD4Init(&mdContext);
+X			MD4Update(&mdContext, q, strlen(q));
+X			MD4Final(digest, &mdContext);
+X			for (i = 0; i < 8; i++)
+X				digest[i] ^= digest[i + 8];
+X			memcpy(&key, digest, 8);
+X			des_set_key(&key, schedule);
+X
+X#ifdef DEBUG
+X			printf("ENCRYPTION KEY: ");
+X			for (i = 0; i < 8; i++)
+X				printf("%02x", key[i]);
+X			printf("\n");
+X#endif
+X
+X			keyset++;
+X		}
+X		else if (!strncasecmp(p, SKEYSERVER, strlen(SKEYSERVER))) {
+X			/*
+X			**  ULTRIX doesn't have strdup 
+X			**  studarus@psc.edu - Tue May  2 15:43:57 EDT 1995
+X			**  skeyserver = strdup(q);
+X			*/
+X			skeyserver = strdup(q);
+X			/*
+X			q = (char*)malloc(strlen(skeyserver) * sizeof(char)) ;
+X			strcpy(q,skeyserver) ;
+X			*/
+X			hstset++;
+X		}
+X		else if (!strncasecmp(p, SKEYPORT, strlen(SKEYPORT))) {
+X			skeyport = atoi(q);
+X			prtset++;
+X		}
+X	}
+X
+X	if (errno) {
+X		perror("fgets()");
+X		return(1);
+X	}
+X	if (sfclose(fp) == -1) {
+X		perror("fclose()");
+X		return(1);
+X	}
+X
+X	if (!keyset || !hstset || !prtset) {
+X		fprintf(stderr, "%s incomplete.\n", SKEYDCONF);
+X		fprintf(stderr, CONFERROR);
+X		skeyserver = NULL;
+X		skeyport = 0;
+X		return(1);
+X	}
+X	return(0);
+X}
+X
+Xskeytalk(flag, input, answer)
+Xchar	*input, *answer;
+Xint	flag;
+X{
+X	struct skeymessage	talk;
+X	struct sockaddr_in	sin;
+X	int			s;
+X	static void		timeout();
+X	unsigned int		remaining = 0;
+X	void			(*oldsig) ();
+X
+X	/* check that skeyd is really available. needed for skeyinit */
+X	if (skeyserver == NULL || skeyport == 0) {
+X		(void)fprintf(stderr, "skeyserver or skeyport not set!\n");
+X		return (1);
+X	}
+X
+X	/* do not use name server for security */
+X	if ((sin.sin_addr.s_addr = inet_addr(skeyserver)) == -1) {
+X		(void)fprintf(stderr, "%s: unknown hostname\n", skeyserver);
+X		return (1);
+X	}
+X	sin.sin_family = AF_INET;
+X	sin.sin_port = htons((ushort)skeyport);
+X
+X	if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+X		perror("socket()");
+X		return (1);
+X	}
+X
+X	if (connect(s, &sin, sizeof(sin)) < 0) {
+X		perror("connect()");
+X		return (1);
+X	}
+X
+X	bzero(&talk, sizeof(talk));
+X	talk.flag = htonl(flag);
+X	strncpy(talk.buf, input, sizeof(talk.buf));
+X
+X	talkencode(&talk);
+X
+X	if ((oldsig = signal(SIGALRM, SIG_IGN)) != SIG_IGN)
+X		(void)signal(SIGALRM, timeout);
+X	remaining = alarm(SKEYTALKTIMEOUT);
+X
+X	if (skey_write_data(s, &talk, sizeof(talk)) == -1) {
+X		if (errno == EINTR)
+X			(void)fprintf(stderr, TOUTERROR);
+X		else
+X			perror("write()");
+X		return (1);
+X	}
+X
+X	if (skey_read_data(s, &talk, sizeof(talk)) == -1) {
+X		if (errno == EINTR)
+X			(void)fprintf(stderr, TOUTERROR);
+X		else
+X			perror("read()");
+X		return (1);
+X	}
+X
+X	if (talktimeoutflg) {
+X		(void)fprintf(stderr, TOUTERROR);
+X		return (1);
+X	}
+X
+X	(void)signal(SIGALRM, oldsig);
+X	(void)alarm(remaining);
+X
+X	/* if talkdecode fails the password has been wrongly set
+X	   on the other side. talk.flag is not so important */
+X	if (talkdecode(&talk) || ntohl(talk.flag) != SKEYDOK) {
+X		(void)fprintf(stderr,
+X		"Received corrupted data from skey authentication server!\n");
+X		return(1);
+X	}
+X
+X	(void)close(s);
+X	strcpy(answer, talk.buf);
+X	return(0);
+X}
+X
+X/*
+X * Modified read() & write() for sockets.
+X * Returns: number of characters read if ok; -1 if fails.
+X */
+Xint		skey_read_data(s, buf, n)
+Xint		s;
+Xchar		*buf;
+Xint		n;
+X{
+X	int		bcount;
+X	int		br;
+X
+X	bcount= 0;
+X	br= 0;
+X	while (bcount < n) {
+X		if ((br = read(s, buf, n - bcount)) > 0) {
+X			bcount += br;
+X			buf += br;
+X		}
+X		else if (br < 0)
+X			return(-1);
+X		else if (!br)
+X			break;
+X	}
+X	return(bcount);
+X}
+X
+Xint		skey_write_data(s, buf, n)
+Xint		s;
+Xchar		*buf;
+Xint		n;
+X{
+X	int		bcount;
+X	int		br;
+X
+X	bcount= 0;
+X	br= 0;
+X	while (bcount < n) {
+X		if ((br = write(s, buf, n - bcount)) > 0) {
+X			bcount += br;
+X			buf += br;
+X		}
+X	else if (br < 0)
+X		return(-1);
+X	}
+X	return(bcount);
+X}
+X
+Xtalkencode(talk)
+Xstruct skeymessage	*talk;
+X{
+X	des_cblock		key;
+X	MD4_CTX			mdContext;
+X	int			begin, end;
+X	time_t			t;
+X	char			ivbuf[20];
+X	des_cblock		ivbuf2;
+X
+X	MD4Init(&mdContext);
+X	begin = 8; /* iv */
+X	end = sizeof(struct skeymessage) - 32; /* skip checksum, padding */
+X	MD4Update(&mdContext, (unsigned char *) talk + begin, end);
+X	MD4Final(talk->checksum, &mdContext);
+X
+X	/* build iv */
+X	bzero(ivbuf, sizeof(ivbuf));
+X
+X	(void)time(&t);
+X	t <<= 8 * 3;
+X	t >>= 8 * 3;
+X	(void)sprintf(ivbuf, "%ld%d", t, getpid());
+X	(void)strncpy((char *)ivbuf2, ivbuf, 8);
+X	des_ecb_encrypt(&ivbuf2, &ivbuf2, schedule, DES_ENCRYPT);
+X	des_ecb_encrypt(&ivbuf2, &ivbuf2, schedule, DES_ENCRYPT);
+X	des_ecb_encrypt(&ivbuf2, &ivbuf2, schedule, DES_ENCRYPT);
+X	memcpy(talk->iv, (char *)ivbuf2, 8);
+X
+X	/* encrypt buffer and checksum */
+X	des_cbc_encrypt((des_cblock *)talk->buf, (des_cblock *)talk->buf,
+X			sizeof(talk->buf), schedule, (des_cblock *)talk->iv,
+X			DES_ENCRYPT);
+X	des_cbc_encrypt((des_cblock *)talk->checksum,
+X			(des_cblock *)talk->checksum,
+X			sizeof(talk->checksum), schedule,
+X			(des_cblock *)talk->iv, DES_ENCRYPT);
+X	return(0);
+X}
+X
+Xtalkdecode(talk)
+Xstruct skeymessage	*talk;
+X{
+X	des_cblock		key;
+X	MD4_CTX			mdContext;
+X	int			begin, end;
+X	unsigned char		digest[16];
+X
+X	des_cbc_encrypt((des_cblock *)talk->buf, (des_cblock *)talk->buf,
+X			sizeof(talk->buf), schedule,
+X			(des_cblock *)talk->iv, DES_DECRYPT);
+X	des_cbc_encrypt((des_cblock *)talk->checksum,
+X			(des_cblock *)talk->checksum,
+X			sizeof(talk->checksum), schedule,
+X			(des_cblock *)talk->iv, DES_DECRYPT);
+X
+X	MD4Init(&mdContext);
+X	/* skip checksum, padding */
+X	begin = 8; /* iv */
+X	end = sizeof(struct skeymessage) - 32; /* skip checksum, padding */
+X	MD4Update(&mdContext, (unsigned char *) talk + begin, end);
+X	MD4Final(digest, &mdContext);
+X
+X	return (memcmp(talk->checksum, digest, 16));
+X}
+X
+Xstatic void
+Xtimeout(s)
+Xint	s;
+X{
+X	(void)signal(s, timeout);
+X	talktimeoutflg++;
+X}
+X
+X#endif /* SKEYD */
+X
+X/* safe close - check for pointer */
+Xsfclose(fp)
+XFILE	*fp;
+X{
+X	int	x;
+X
+X	if (fp == NULL)
+X		return(0);
+X
+X	x = fclose(fp);
+X	fp = NULL;
+X	return (x);
+X}
+X
+X
+X#ifdef EXTRA
+X/* A set of small subroutines to make the lib wotk with obsolete code */
+X/*
+X * skey_haskey ()
+X *
+X * Returns: 1 user doesnt exist, -1 fle error, 0 user exists.
+X *
+X */
+Xskey_haskey (username)
+X  char *username;
+X{
+X  int i;
+X  struct skey skey;
+X 
+X#ifdef SKEYD
+X  return (skeylookup (&skey, username, 0));
+X#else
+X  return (skeylookup (&skey, username));
+X#endif
+X}
+X 
+X/*
+X * skey_keyinfo ()
+X *
+X * Returns the current sequence number and
+X * seed for the passed user.
+X *
+X */
+Xchar *skey_keyinfo (username)
+X  char *username;
+X{
+X  int i;
+X  static char str [50];
+X 
+X  struct skey skey;
+X 
+X  i = skeychallenge (&skey, username, str);
+X 
+X  if (i == -2)
+X     return 0;
+X 
+X  return str;
+X}
+X 
+X/*
+X * skey_passcheck ()
+X *
+X * Check to see if answer is the correct one to the current
+X * challenge.
+X *
+X * Returns: 0 success, -1 failure
+X * XXX: calls skeyverify; therefore updates the record!! _H*
+X */
+Xskey_passcheck (username, passwd)
+X  char *username, *passwd;
+X{
+X  int i;
+X  struct skey skey;
+X 
+X#ifdef SKEYD
+X  i = skeylookup (&skey, username, 0);
+X#else
+X  i = skeylookup (&skey, username);
+X#endif
+X 
+X  if (i == -1 || i == 1)
+X      return -1;
+X 
+X  if (skeyverify (&skey, passwd) == 0)
+X      return skey.n;
+X 
+X  return -1;
+X}
+X#endif /* EXTRA */
+END_OF_FILE
+  if test 16895 -ne `wc -c <'skeylogin.c'`; then
+    echo shar: \"'skeylogin.c'\" unpacked with wrong size!
+  fi
+  # end of 'skeylogin.c'
+fi
+if test -f 'skeysubr.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeysubr.c'\"
+else
+  echo shar: Extracting \"'skeysubr.c'\" \(5368 characters\)
+  sed "s/^X//" >'skeysubr.c' <<'END_OF_FILE'
+X/* Hobbit's efforts at a unified s/key. */
+X
+X#include <stdio.h>
+X#ifdef HASSTDLIB
+X#include <stdlib.h>
+X#else
+X#include <sys/types.h>
+X#endif
+X#include <string.h>
+X
+X#ifdef	__MSDOS__
+X#include <dos.h>
+X#else	/* Assume unix; "TERMIOS" fix is implicit below */
+X#include <fcntl.h>
+X#include <signal.h>
+X/* #endif -- but wait, there's more */
+X
+X#undef USE_ECHO			/* default to not echoing! */
+X
+X#ifdef stty
+X# undef stty
+X#endif
+X#ifdef gtty
+X# undef gtty
+X#endif
+X
+X#ifndef SYSV
+X# include <sgtty.h>
+X# define TTYSTRUCT sgttyb
+X# define stty(fd,buf) ioctl((fd),TIOCSETN,(buf))
+X# define gtty(fd,buf) ioctl((fd),TIOCGETP,(buf))
+X#else
+X# include <termio.h>
+X# define TTYSTRUCT termio
+X# define stty(fd,buf) ioctl((fd),TCSETA,(buf))
+X# define gtty(fd,buf) ioctl((fd),TCGETA,(buf))
+X#endif
+X
+X#ifdef SYSV
+X    struct termio newtty;
+X    struct termio oldtty;
+X#else
+X    struct sgttyb newtty;
+X    struct sgttyb oldtty;
+X    struct tchars chars;
+X#endif
+X
+X#ifdef SIGVOID
+X#define SIGTYPE void
+X#else
+X#define SIGTYPE void
+X#endif
+X
+XSIGTYPE trapped();	/* XXX */
+X
+X#endif /* MSDOS */
+X
+X#include "md4.h"
+X
+X#include "skey.h"
+X
+X/* Crunch a key:
+X * concatenate the seed and the password, run through MD4 and
+X * collapse to 64 bits. This is defined as the user's starting key.
+X */
+Xint
+Xkeycrunch(result,seed,passwd)
+Xchar *result;	/* 8-byte result */
+Xchar *seed;	/* Seed, any length */
+Xchar *passwd;	/* Password, any length */
+X{
+X	char *buf;
+X	MD4_CTX md;
+X	unsigned long results[4];
+X	unsigned int buflen;
+X	
+X	buflen = strlen(seed) + strlen(passwd);
+X	if((buf = (char *)malloc(buflen+1)) == NULL)
+X		return -1;
+X	strcpy(buf,seed);
+X	strcat(buf,passwd);
+X
+X	/* Crunch the key through MD[45] */
+X	sevenbit(buf);
+X	MD4Init(&md);
+X	MD4Update(&md,(unsigned char *)buf,buflen);
+X	MD4Final((unsigned char *)results,&md);
+X	free(buf);
+X
+X	/* Fold result from 128 to 64 bits */
+X	results[0] ^= results[2];
+X	results[1] ^= results[3];
+X	memcpy(result,(char *)results,8);
+X	return 0;
+X}
+X
+X/* The one-way function f(). Takes 8 bytes and returns 8 bytes in place */
+Xvoid
+Xfff(x)
+Xchar *x;
+X{
+X	MD4_CTX md;
+X	unsigned long results[4];
+X
+X	MD4Init(&md);
+X	MD4Update(&md,(unsigned char *)x,8);
+X	MD4Final((unsigned char *)results,&md);
+X
+X	/* Fold 128 to 64 bits */
+X	results[0] ^= results[2];
+X	results[1] ^= results[3];
+X
+X	/* Only works on byte-addressed little-endian machines!! */
+X	memcpy(x,(char *)results,8);
+X}
+X
+X/* Strip trailing cr/lf from a line of text */
+Xvoid
+Xrip(buf)
+Xchar *buf;
+X{
+X	char *cp;
+X
+X	if((cp = strchr(buf,'\r')) != NULL)
+X		*cp = '\0';
+X
+X	if((cp = strchr(buf,'\n')) != NULL)
+X		*cp = '\0';
+X}
+X
+X#ifdef	__MSDOS__
+Xchar *
+Xreadpass(buf,n)
+Xchar *buf;
+Xint n;
+X{
+X	int i;
+X	char *cp;
+X
+X	for(cp=buf,i = 0; i < n ; i++)
+X		if ((*cp++ = bdos(7,0,0)) == '\r')
+X			break;
+X	*cp = '\0';
+X	printf("\n");
+X	rip(buf);
+X	return buf;
+X}
+X
+X#else /* MSDOS */
+Xchar *
+Xreadpass(buf,n)
+Xchar *buf;
+Xint n;
+X{
+X#ifdef OLD_NRL			/* xxx: berkeley specific, I bet */
+X	int fflags,lword,lwordsav;
+X	struct sgttyb ttyf,ttysave;
+X
+X	/* Set normal line editing */
+X	fflags = fcntl(fileno(stdin),F_GETFL,0);
+X	fcntl(fileno(stdin),F_SETFL,fflags & ~FNDELAY);
+X	ioctl(fileno(stdin),TIOCLGET,&lword);
+X	ioctl(fileno(stdin),TIOCLGET,&lwordsav);
+X	lword |= LCRTERA|LCRTKIL;
+X	ioctl(fileno(stdin),TIOCLSET,&lword);
+X
+X	/* Turn off echoing */
+X	ioctl(fileno(stdin), TIOCGETP, &ttyf);
+X	ioctl(fileno(stdin), TIOCGETP, &ttysave);
+X	ttyf.sg_flags &= ~(ECHO|RAW|CBREAK);
+X	ttyf.sg_flags |= CRMOD;
+X	ioctl(fileno(stdin),TIOCSETP,&ttyf);
+X	fgets(buf,n,stdin);
+X	rip(buf);
+X
+X	/* Restore previous tty modes */
+X	fcntl(fileno(stdin),F_SETFL,fflags);
+X	ioctl(fileno(stdin),TIOCSETP,&ttysave);
+X	ioctl(fileno(stdin),TIOCLSET,&lwordsav);
+X
+X#else /* OLD_NRL */
+X
+X#ifndef USE_ECHO
+X    set_term ();
+X    echo_off ();
+X#endif
+X
+X	fgets(buf,n,stdin);
+X
+X	/*
+X	after the secret key is taken from the keyboard, the line feed is
+X	written to standard error instead of standard output.  That means that
+X	anyone using the program from a terminal won't notice, but capturing
+X	standard output will get the key words without a newline in front of
+X	them. 
+X	*/
+X        fprintf(stderr, "\n");
+X        fflush(stderr);
+X#ifndef USE_ECHO
+X    unset_term ();
+X#endif
+X
+X	rip(buf);
+X	sevenbit(buf);
+X	return buf;
+X#endif /* OLD_NRL */
+X}
+X
+X/* XXX: perhaps merge Colin Campbell's TERMIOS stuff in here */
+Xset_term ()
+X{
+X    gtty (fileno(stdin), &newtty);
+X    gtty (fileno(stdin), &oldtty);
+X 
+X    signal (SIGINT, trapped);
+X}
+X
+Xecho_off ()
+X{
+X
+X#ifdef SYSV
+X    newtty.c_lflag &= ~(ICANON | ECHO | ECHONL);
+X#else
+X    newtty.sg_flags |= CBREAK;
+X    newtty.sg_flags &= ~ECHO;
+X#endif
+X
+X#ifdef SYSV
+X    newtty.c_cc[VMIN] = 1;
+X    newtty.c_cc[VTIME] = 0;
+X    newtty.c_cc[VINTR] = 3;
+X#else
+X    ioctl(fileno(stdin), TIOCGETC, &chars);
+X    chars.t_intrc = 3;
+X    ioctl(fileno(stdin), TIOCSETC, &chars);
+X#endif
+X
+X    stty (fileno (stdin), &newtty);
+X}
+X
+Xunset_term ()
+X{
+X    stty (fileno (stdin), &oldtty);
+X 
+X#ifndef SYSV
+X    ioctl(fileno(stdin), TIOCSETC, &chars);
+X#endif
+X}
+X
+Xvoid trapped()
+X {
+X  signal (SIGINT, trapped);
+X  printf ("^C\n");
+X  unset_term ();
+X  exit (-1);
+X }
+X
+X#endif /* MSDOS */
+X
+X/* removebackspaced over charaters from the string*/
+Xbackspace(buf)
+Xchar *buf;
+X{
+X	char bs = 0x8;
+X	char *cp = buf;
+X	char *out = buf;
+X
+X	while(*cp){
+X		if( *cp == bs ) {
+X			if(out == buf){
+X				cp++;
+X				continue;
+X			}
+X			else {
+X			  cp++;
+X			  out--;
+X			}
+X		}
+X		else {
+X			*out++ = *cp++;
+X		}
+X
+X	}
+X	*out = '\0';
+X
+X}
+Xsevenbit(s)
+Xchar *s;
+X{
+X	/* make sure there are only 7 bit code in the line*/
+X	while(*s){
+X		*s = 0x7f & ( *s);
+X		s++;
+X	}
+X}
+END_OF_FILE
+  if test 5368 -ne `wc -c <'skeysubr.c'`; then
+    echo shar: \"'skeysubr.c'\" unpacked with wrong size!
+  fi
+  # end of 'skeysubr.c'
+fi
+if test -f 'su.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'su.c'\"
+else
+  echo shar: Extracting \"'su.c'\" \(6459 characters\)
+  sed "s/^X//" >'su.c' <<'END_OF_FILE'
+X/*
+X * Copyright (c) 1980 Regents of the University of California.
+X * All rights reserved.  The Berkeley software License Agreement
+X * specifies the terms and conditions for redistribution.
+X */
+X
+X#ifndef lint
+Xchar copyright[] =
+X"@(#) Copyright (c) 1980 Regents of the University of California.\n\
+X All rights reserved.\n";
+X#endif not lint
+X
+X#ifndef lint
+Xstatic char sccsid[] = "@(#)su.c	5.5 (Berkeley) 1/18/87";
+X#endif not lint
+X
+X#include <stdio.h>
+X#include <pwd.h>
+X#include <grp.h>
+X#include <syslog.h>
+X#include <sys/types.h>
+X#include <sys/time.h>
+X#include <sys/resource.h>
+X#include <fcntl.h>
+X#include "skey.h"
+X
+X#ifndef SYSV
+X# include <sgtty.h>
+X# define TTYSTRUCT sgttyb
+X# define stty(fd,buf) ioctl((fd),TIOCSETN,(buf))
+X# define gtty(fd,buf) ioctl((fd),TIOCGETP,(buf))
+X#else
+X# include <termio.h>
+X# define TTYSTRUCT termio
+X# define stty(fd,buf) ioctl((fd),TCSETA,(buf))
+X# define gtty(fd,buf) ioctl((fd),TCGETA,(buf))
+X#endif
+X
+Xchar	userbuf[16]	= "USER=";
+Xchar	homebuf[128]	= "HOME=";
+Xchar	shellbuf[128]	= "SHELL=";
+Xchar	pathbuf[128]	= "PATH=:/usr/ucb:/bin:/usr/bin";
+Xchar	*cleanenv[] = { userbuf, homebuf, shellbuf, pathbuf, 0, 0 };
+Xchar	*user = "root";
+Xchar	*shell = "/bin/sh";
+Xint	fulllogin;
+Xint	fastlogin;
+X
+Xextern char	**environ;
+Xstruct	passwd *pwd;
+Xchar	*crypt();
+Xchar	*getpass();
+Xchar	*getenv();
+Xchar	*getlogin();
+X
+Xmain(argc,argv)
+X	int argc;
+X	char *argv[];
+X{
+X	char *password;
+X	char buf[1000];
+X	FILE *fp;
+X	register char *p;
+X	struct skey skey;
+X	int i;
+X	char *pp;
+X	void rip();
+X	char pbuf[256];
+X	char skeyprompt[80];
+X	struct TTYSTRUCT ttyf,ttysave;
+X	int fflags,lword,lwordsav;
+X
+X#ifdef __ultrix
+X	openlog("su", LOG_WARNING
+X#else
+X	openlog("su", LOG_ODELAY, LOG_AUTH);
+X#endif
+X
+Xagain:
+X	if (argc > 1 && strcmp(argv[1], "-f") == 0) {
+X		fastlogin++;
+X		argc--, argv++;
+X		goto again;
+X	}
+X	if (argc > 1 && strcmp(argv[1], "-") == 0) {
+X		fulllogin++;
+X		argc--, argv++;
+X		goto again;
+X	}
+X	if (argc > 1 && argv[1][0] != '-') {
+X		user = argv[1];
+X		argc--, argv++;
+X	}
+X	if ((pwd = getpwuid(getuid())) == NULL) {
+X		fprintf(stderr, "Who are you?\n");
+X		exit(1);
+X	}
+X	strcpy(buf, pwd->pw_name);
+X	if ((pwd = getpwnam(user)) == NULL) {
+X		fprintf(stderr, "Unknown login: %s\n", user);
+X		exit(1);
+X	}
+X	/*
+X	 * Only allow those in group zero to su to root.
+X	 */
+X	if (pwd->pw_uid == 0) {
+X		struct	group *gr;
+X		int i;
+X
+X		if ((gr = getgrgid(0)) != NULL) {
+X			for (i = 0; gr->gr_mem[i] != NULL; i++)
+X				if (strcmp(buf, gr->gr_mem[i]) == 0)
+X					goto userok;
+X			fprintf(stderr, "You do not have permission to su %s\n",
+X				user);
+X			exit(1);
+X		}
+X	userok:
+X		setpriority(PRIO_PROCESS, 0, -2);
+X	}
+X
+X#define Getlogin()  (((p = getlogin()) && *p) ? p : buf)
+X	/*
+X	if (pwd->pw_passwd[0] == '\0' || getuid() == 0)
+X		goto ok;
+X	*/
+X#ifdef	OLD
+X	password = getpass("Password:");
+X	if (strcmp(pwd->pw_passwd, crypt(password, pwd->pw_passwd)) != 0) {
+X		fprintf(stderr, "Sorry\n");
+X		if (pwd->pw_uid == 0) {
+X			syslog(LOG_CRIT, "BAD SU %s on %s",
+X					Getlogin(), ttyname(2));
+X		}
+X		exit(2);
+X	}
+X#endif
+X	/* Attempt a S/Key challenge */
+X	i = skeychallenge(&skey,user,skeyprompt);
+X	if (i<0) {
+X		fprintf(stderr, "Permission denied.\n");
+X		syslog(LOG_CRIT,
+X			"ATTEMPTED SU to %s on %s. (%s is not in SKEY database)",
+X			user, ttyname(2));
+X		exit(2);
+X	}
+X
+X	printf("%s\n",skeyprompt);
+X	printf("Password:");
+X	fflush(stdout);
+X
+X#ifndef SYSV
+X	/* Set normal line editing */
+X	fflags = fcntl(fileno(stdin),F_GETFL,0);
+X	fcntl(fileno(stdin),F_SETFL,fflags & ~FNDELAY);
+X	ioctl(fileno(stdin),TIOCLGET,&lword);
+X	ioctl(fileno(stdin),TIOCLGET,&lwordsav);
+X	lword |= LCRTERA|LCRTKIL;
+X	ioctl(fileno(stdin),TIOCLSET,&lword);
+X#endif
+X
+X	/* Turn off echoing */
+X	gtty(fileno(stdin), &ttyf);
+X	gtty(fileno(stdin), &ttysave);
+X#ifdef SYSV
+X	ttyf.c_lflag &= ~(ICANON | ECHO | ECHONL);
+X#else
+X	ttyf.sg_flags &= ~(ECHO|RAW|CBREAK);
+X	ttyf.sg_flags |= CRMOD;
+X#endif			
+X	stty(fileno(stdin),&ttyf);
+X
+X	/* Read password */
+X	fgets(pbuf,sizeof(pbuf),stdin);
+X	rip(pbuf);
+X	if(strlen(pbuf) == 0){
+X		/* Null line entered; turn echoing back on
+X		 * and read again
+X		 */
+X		printf(" (echo on)\nPassword:");
+X		fflush(stdout);
+X#ifdef SYSV
+X		ttyf.c_lflag |= (ICANON | ECHO | ECHONL);
+X#else
+X		ttyf.sg_flags |= (ECHO|CRTBS);
+X#endif
+X		stty(fileno(stdin),&ttyf);
+X		fgets(pbuf,sizeof(pbuf),stdin);
+X		rip(pbuf);
+X	} else {
+X		printf("\n");
+X	}
+X#ifdef SYSV
+X	stty(fileno(stdin),&ttysave);
+X#else
+X	/* Restore previous tty modes */
+X	fcntl(fileno(stdin),F_SETFL,fflags);
+X	stty(fileno(stdin),&ttysave);
+X	ioctl(fileno(stdin),TIOCLSET,&lwordsav);
+X#endif
+X
+X	if(i == 0 && skeyverify(&skey,pbuf) == 0){
+X		/* S/Key authentication succeeded */
+X		if(skey.n < 5)
+X			printf("Warning! Change password soon\n");
+X		goto ok;
+X	} else {
+X		/* Try regular password check */
+X		pp = crypt(pbuf,pwd->pw_passwd);
+X		if(strcmp(pp,pwd->pw_passwd) == 0)
+X			goto ok;	/* Success */
+X	}
+X	fprintf(stderr, "Sorry\n");
+X	if (pwd->pw_uid == 0) {
+X		syslog(LOG_CRIT, "BAD SU %s on %s",
+X				Getlogin(), ttyname(2));
+X	}
+X	exit(2);
+X
+Xok:
+X	endpwent();
+X	if (pwd->pw_uid == 0) {
+X		syslog(LOG_NOTICE, "%s on %s", Getlogin(), ttyname(2));
+X		closelog();
+X	}
+X	if (setgid(pwd->pw_gid) < 0) {
+X		perror("su: setgid");
+X		exit(3);
+X	}
+X	if (initgroups(user, pwd->pw_gid)) {
+X		fprintf(stderr, "su: initgroups failed\n");
+X		exit(4);
+X	}
+X	if (setuid(pwd->pw_uid) < 0) {
+X		perror("su: setuid");
+X		exit(5);
+X	}
+X	if (pwd->pw_shell && *pwd->pw_shell)
+X		shell = pwd->pw_shell;
+X	if (fulllogin) {
+X		cleanenv[4] = getenv("TERM");
+X		environ = cleanenv;
+X	}
+X	if (fulllogin || strcmp(user, "root") != 0)
+X		setenv("USER", pwd->pw_name, userbuf);
+X	setenv("SHELL", shell, shellbuf);
+X	setenv("HOME", pwd->pw_dir, homebuf);
+X	setpriority(PRIO_PROCESS, 0, 0);
+X	if (fastlogin) {
+X		*argv-- = "-f";
+X		*argv = "su";
+X	} else if (fulllogin) {
+X		if (chdir(pwd->pw_dir) < 0) {
+X			fprintf(stderr, "No directory\n");
+X			exit(6);
+X		}
+X		*argv = "-su";
+X	} else
+X		*argv = "su";
+X	execv(shell, argv);
+X	fprintf(stderr, "No shell\n");
+X	exit(7);
+X}
+X
+Xsetenv(ename, eval, buf)
+X	char *ename, *eval, *buf;
+X{
+X	register char *cp, *dp;
+X	register char **ep = environ;
+X
+X	/*
+X	 * this assumes an environment variable "ename" already exists
+X	 */
+X	while (dp = *ep++) {
+X		for (cp = ename; *cp == *dp && *cp; cp++, dp++)
+X			continue;
+X		if (*cp == 0 && (*dp == '=' || *dp == 0)) {
+X			strcat(buf, eval);
+X			*--ep = buf;
+X			return;
+X		}
+X	}
+X}
+X
+Xchar *
+Xgetenv(ename)
+X	char *ename;
+X{
+X	register char *cp, *dp;
+X	register char **ep = environ;
+X
+X	while (dp = *ep++) {
+X		for (cp = ename; *cp == *dp && *cp; cp++, dp++)
+X			continue;
+X		if (*cp == 0 && (*dp == '=' || *dp == 0))
+X			return (*--ep);
+X	}
+X	return ((char *)0);
+X}
+END_OF_FILE
+  if test 6459 -ne `wc -c <'su.c'`; then
+    echo shar: \"'su.c'\" unpacked with wrong size!
+  fi
+  # end of 'su.c'
+fi
+if test -f 'tmp.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'tmp.c'\"
+else
+  echo shar: Extracting \"'tmp.c'\" \(255 characters\)
+  sed "s/^X//" >'tmp.c' <<'END_OF_FILE'
+Xmain(argc, argv)
+Xint	argc;
+Xchar	*argv[];
+X{
+X	char	x[8], y[100];
+X
+X	if (argc != 2) {
+X		printf("Usage: %s hexvalue\n", argv[0]);
+X		exit(1);
+X	}
+X
+X	if (atob8(x, argv[1]) < 0) {
+X		puts("atob8 failed");
+X		exit(1);
+X	}
+X
+X	fff(x);
+X
+X	btoa8(y, x);
+X	printf("%s\n", y);
+X}
+END_OF_FILE
+  if test 255 -ne `wc -c <'tmp.c'`; then
+    echo shar: \"'tmp.c'\" unpacked with wrong size!
+  fi
+  # end of 'tmp.c'
+fi
+if test -f 'try.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'try.c'\"
+else
+  echo shar: Extracting \"'try.c'\" \(797 characters\)
+  sed "s/^X//" >'try.c' <<'END_OF_FILE'
+X#include <stdio.h>
+X
+Xmain(argc, argv)
+Xint	argc;
+Xchar	*argv[];
+X{
+X	if (argc != 2) {
+X		fprintf(stderr, "usage: %s name\n", argv[0]);
+X		exit(1);
+X	}
+X
+X	if (skeydoall(argv[1]))
+X		puts("FAILED");
+X	else
+X		puts("SUCCEEDED");
+X}
+X
+X#include <stdio.h>
+X#include "skey.h"
+X
+X/*
+X * Authenticate skeyuser with skey
+X * returns:
+X *	-1 for keyfile error or user nor found
+X *	 0 ok
+X *	 1 login incorrect
+X */
+Xskeydoall(skeyuser)
+Xchar	*skeyuser;
+X{
+X	struct 	skey skey;
+X	char	skeyprompt[80], buf[80];
+X
+X	skeyprompt[0] = '\0';
+X	if (skeychallenge(&skey, skeyuser, skeyprompt))
+X		return(-1);
+X	printf("[%s]\n",skeyprompt);
+X
+X	printf("Response: ");
+X	(void)fflush(stdout);
+X	fgets(buf, sizeof(buf), stdin);
+X	rip(buf);
+X
+X	if (skeyverify(&skey,buf))
+X		return(1);
+X	if (skey.n < 5)
+X		printf("Warning! Change password soon\n");
+X	return(0);
+X}
+END_OF_FILE
+  if test 797 -ne `wc -c <'try.c'`; then
+    echo shar: \"'try.c'\" unpacked with wrong size!
+  fi
+  # end of 'try.c'
+fi
+if test -f 'md4.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'md4.h'\"
+else
+  echo shar: Extracting \"'md4.h'\" \(1452 characters\)
+  sed "s/^X//" >'md4.h' <<'END_OF_FILE'
+X/* MD4.H - header file for MD4C.C
+X */
+X
+X/* Copyright (C) 1991-2, RSA Data Security, Inc. Created 1991. All
+X   rights reserved.
+X
+X   License to copy and use this software is granted provided that it
+X   is identified as the "RSA Data Security, Inc. MD4 Message-Digest
+X   Algorithm" in all material mentioning or referencing this software
+X   or this function.
+X
+X   License is also granted to make and use derivative works provided
+X   that such works are identified as "derived from the RSA Data
+X   Security, Inc. MD4 Message-Digest Algorithm" in all material
+X   mentioning or referencing the derived work.
+X
+X   RSA Data Security, Inc. makes no representations concerning either
+X   the merchantability of this software or the suitability of this
+X   software for any particular purpose. It is provided "as is"
+X   without express or implied warranty of any kind.
+X
+X   These notices must be retained in any copies of any part of this
+X   documentation and/or software.
+X */
+X
+X/* POINTER defines a generic pointer type */
+Xtypedef unsigned char *POINTER;
+X
+X#ifdef MSDOS
+Xtypedef unsigned long UINT4;
+X#else
+Xtypedef unsigned long int UINT4;
+X#endif /* MSDOS */
+X
+X/* MD4 context. */
+Xtypedef struct {
+X  UINT4 state[4];                                   /* state (ABCD) */
+X  UINT4 count[2];        /* number of bits, modulo 2^64 (lsb first) */
+X  unsigned char buffer[64];                         /* input buffer */
+X} MD4_CTX;
+X
+Xvoid MD4Init();
+Xvoid MD4Update();
+Xvoid MD4Final();
+END_OF_FILE
+  if test 1452 -ne `wc -c <'md4.h'`; then
+    echo shar: \"'md4.h'\" unpacked with wrong size!
+  fi
+  # end of 'md4.h'
+fi
+if test -f 'skey.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skey.h'\"
+else
+  echo shar: Extracting \"'skey.h'\" \(1648 characters\)
+  sed "s/^X//" >'skey.h' <<'END_OF_FILE'
+X#if	defined(__TURBOC__) || defined(__STDC__) || defined(LATTICE)
+X#define	ANSIPROTO	1
+X#endif
+X
+X#ifndef	__ARGS
+X#ifdef	ANSIPROTO
+X#define	__ARGS(x)	x
+X#else
+X#define	__ARGS(x)	()
+X#endif
+X#endif
+X
+X#define	KEYFILE		"/etc/skeykeys"
+X#ifdef SKEYD
+X#define PTMPKEYFILE	"/etc/skeyptmp"
+X#endif
+X
+X/* Server-side data structure for reading keys file during login */
+Xstruct skey {
+X	FILE *keyfile;
+X	char buf[256];
+X	char *logname;
+X	int n;
+X	char *seed;
+X	char *val;
+X	long	recstart; /*needed so reread of buffer is efficient*/
+X
+X
+X};
+X
+X/* Client-side structure for scanning data stream for challenge */
+Xstruct mc {
+X	char buf[256];
+X	int skip;
+X	int cnt;
+X};
+X
+X#ifdef SKEYD
+X#define GIVEMEINFO	0x01	/* orders to skey daemon */
+X#define UPDATEKEYS	0x02	/* critical */
+X#define SKEYDOK		0x04	/* ok */
+X#define SKEYDFAILED	0x08	/* something is wrong */
+X#ifdef SKEYINITINSECURE
+X#define FORCEKEYUPDATE	0x0f	/* _force_ updates */
+X#endif
+X
+X#define BUFLEN		256
+X#define SEPARATOR	" \t\r\n"
+X#define SKEYTALKTIMEOUT	10
+X#define SKEYDTIMEOUT	30
+X
+Xstruct skeymessage {
+X	unsigned char	iv[8];
+X	int		flag;
+X	char		buf[256];
+X	unsigned char	checksum[16];
+X	char		padding[8]; /* unused */
+X};
+X#endif
+X
+Xvoid f __ARGS((char *x));
+Xint keycrunch __ARGS((char *result,char *seed,char *passwd));
+Xchar *btoe __ARGS((char *engout,char *c));
+Xchar *put8 __ARGS((char *out,char *s));
+Xint etob __ARGS((char *out,char *e));
+Xvoid rip __ARGS((char *buf));
+Xint skeychallenge __ARGS((struct skey *mp,char *name,char *promt));
+X#ifdef SKEYD
+Xint skeylookup __ARGS((struct skey *mp,char *name, int staylocal));
+X#else
+Xint skeylookup __ARGS((struct skey *mp,char *name));
+X#endif
+Xint skeyverify __ARGS((struct skey *mp,char *response));
+END_OF_FILE
+  if test 1648 -ne `wc -c <'skey.h'`; then
+    echo shar: \"'skey.h'\" unpacked with wrong size!
+  fi
+  # end of 'skey.h'
+fi
+if test -f 'Makefile' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'Makefile'\"
+else
+  echo shar: Extracting \"'Makefile'\" \(2617 characters\)
+  sed "s/^X//" >'Makefile' <<'END_OF_FILE'
+X#
+X# $Author: vince $
+X# $Header: /res/usr/vince/src/skey/RCS/Makefile,v 1.18 1995/05/10 17:10:48 vince Exp $
+X# $Date: 1995/05/10 17:10:48 $
+X# $Revision: 1.18 $
+X# $Locker:  $
+X#
+X
+XCC=gcc
+XLBIN=/usr/local/bin
+XCDEBUGFLAGS = -O  -g -fwritable-strings
+X
+X# CUSTOMIZE THIS
+X# add -DSKEYINITINSECURE at your own risk!
+X# add -DFLOCK for linux
+XDEFINES = -DSKEYD -DSYSV
+X
+X# CUSTOMIZE THESE
+XLDFLAGS	= -L$(DESDIR)
+X# the following is neede for solaris
+X#LDFLAGS = -L$(DESDIR) -L/usr/ucblib -lucb -lsocket -lnsl
+XDESDIR	= ../libdes
+XDESLIB	= -ldes
+XDESFLAGS= -I$(DESDIR)
+X
+X# CUSTOMIZE THIS
+X# if this machine has /usr/include/stdlib.h, uncomment the first line,
+X# otherwise, uncomment the second
+XHASSTDLIB = -DHASSTDLIB
+X#HASSTDLIB =
+X
+XLIB=	libskey.a
+XLIBOBJS =	skeylogin.o skeysubr.o md4.o put.o skey.o deskeyc.o \
+X		skeyaccess.o
+X
+XRANLIB = ranlib
+X
+X# CUSTOMIZE THIS
+X#RANLIB = echo
+X
+XCFLAGS = $(DEFINES) $(CDEBUGFLAGS) $(HASSTDLIB) $(DESFLAGS)
+X
+X#all: key keylogin skey.init keysu $(LIB)
+Xall: key skey.init keysu skeyd try $(LIB)
+X
+Xinstall: all man
+X	chmod 755 key keylogin skey.init keysu keyinfo keyinit
+X	chown root keylogin skey.init keysu keyinit
+X	cp keyinit skey.init key keylogin keysu keyinfo $(LBIN)
+X	chmod 4755 $(LBIN)/keylogin $(LBIN)/skey.init $(LBIN)/keysu
+X# this assumes things are set up it /etc
+X	cp /etc/login /etc/login.$$
+X	cp  keylogin /etc/login
+X	chmod 4755 /etc/login
+X#	cp /bin/login /bin/Ologin.$$
+X#	rm /bin/login
+X#	ln -s $(LBIN)/keylogin /bin/login
+X#	touch /etc/skeykeys
+X#	chmod 644 /etc/skeykeys
+X
+Xman:	
+X	cp *.1 /usr/local/man/man1
+X
+X$(LIB):  $(LIBOBJS)
+X	ar rc $(LIB) $(LIBOBJS)
+X	$(RANLIB) $(LIB)
+X
+Xclean:
+X	-rm -f *.o key keylogin skey.init keysu skeyd try
+X
+Xsuid: all
+X	chown root keylogin skey.init keysu
+X	chmod 4755 keylogin skey.init keysu
+X
+Xci	:
+X	ci -q -l -mautomatic *.c *.h Makefile
+X
+Xkey: skey.o $(LIB)
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o key skey.o $(LIB) $(DESLIB)
+X
+Xkeylogin: login.o skeylogin.o skeysubr.o md4.o put.o setenv.o getenv.o
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o keylogin \
+X		login.o getenv.o setenv.o skeylogin.o $(LIB)
+X
+Xskey.init: skeyinit.o skeylogin.o skeysubr.o md4.o put.o
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o skey.init \
+X	skeyinit.o $(LIB) $(DESLIB)
+X
+Xkeysu: su.o skeylogin.o skeysubr.o md4.o put.o
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o keysu su.o $(LIB) $(DESLIB)
+X
+Xskeyd: skeyd.o $(LIB)
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ skeyd.o $(LIB) $(DESLIB)
+X
+Xtry: try.o $(LIB)
+X	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ try.o $(LIB) $(DESLIB)
+X
+Xshar:
+X	shar *.c *.h Makefile skeydconf > skey.shar
+X
+Xlogin.o: login.c skey.h
+Xmd4.o: md4.c md4.h
+Xskey.o: skey.c md4.h skey.h
+Xskeylogin.o: skeylogin.c skey.h
+Xskeysubr.o: skeysubr.c md4.h skey.h
+Xput.o: put.c skey.h
+END_OF_FILE
+  if test 2617 -ne `wc -c <'Makefile'`; then
+    echo shar: \"'Makefile'\" unpacked with wrong size!
+  fi
+  # end of 'Makefile'
+fi
+if test -f 'skeydconf' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'skeydconf'\"
+else
+  echo shar: Extracting \"'skeydconf'\" \(695 characters\)
+  sed "s/^X//" >'skeydconf' <<'END_OF_FILE'
+X#
+X# If this file exists as /etc/skeydconf then local /etc/skeykeys is no
+X# longer used; a remote TCP connection to <skeyserver> on port
+X# <skeyport> is attempted. This configuration file should be set
+X# on all clients; it is safe to set it on the server too.
+X#
+X# The <skeypwd> field defines a password for DES encryption/authentication.
+X# All data transmissions are DES encrypted.  <skeypwd> can be any length
+X# and should be the same for all parties, that is, clients and server.
+X# It is higly advisable to use very lenghty pass phrases, since it is
+X# digested through MD4.
+X#	
+X#
+X
+X# an example
+Xskeypwd: somekey1234
+Xskeypwd: This_is_a_Very_str000ng_password
+Xskeyserver: 149.132.3.1
+Xskeyport: 768
+END_OF_FILE
+  if test 695 -ne `wc -c <'skeydconf'`; then
+    echo shar: \"'skeydconf'\" unpacked with wrong size!
+  fi
+  # end of 'skeydconf'
+fi
+echo shar: End of archive.
+exit 0

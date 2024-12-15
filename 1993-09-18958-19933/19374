@@ -1,0 +1,151 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!uunet!ftpbox!mothost!mdisea!uw-coco!nwnexus!jhgrud!eskimo!wayner
+From: wayner@eskimo.com (Wayne Radinsky)
+Subject: Re: novice question
+Message-ID: <CDFwIo.6sE@eskimo.com>
+Organization: Eskimo North (206) For-Ever
+References: <747602250snz@aph.demon.co.uk> <AEsJPbiaJ5@phm.mepi.msk.su>
+Date: Thu, 16 Sep 1993 09:23:56 GMT
+Lines: 141
+
+>>> Does bitwise xor scrambling of data with a pseudo-random noise sequence
+>>> (yielded by a selectable characteristic polynomial and seed state)
+>>> provide decent data security?
+>>
+>> No.  Knuth's _Seminumerical Algorithms_ mentions a way to break such
+>> a system; his scheme relates to a simple linear congruential
+>> generator, but it can be generalized to more elaborate schemes.
+>>
+>> However, if you use a cryptographically strong random number
+>> generator, such as RSA MD5, or DES, or whatever, this technique is as
+>> secure as the generator is difficult to predict.
+>>
+>> If the noise sequence is truly random, the encryption is unbreakable,
+>> as proved by Shannon.
+> 
+> Shannon's model shows XOR-based code is unbreakable IF and ONLY IF
+> cryptoanalysist uses "chiphertext only" attack (enemy knows encrypted
+> data, but not decrypted source).
+> 
+> If plaintext is known, it's too simple to obtain psevdo-random sequence,
+> which could be used to decrypt other your messages, encrypted with the
+> same key. If so, it doesn't matter which pseudo-random generator you use.
+
+Agreed.  I have a program that takes a password, and uses each
+character as a coefficient in a n-order polynomial (n == number of
+chars in password), from which numbers are generated (mod 256) and
+XORed with the plaintext.
+
+The advantage is the program is extremely small and simple, and the
+output is totally random (it can't be compressed), and greater security
+can be achieved by making the password longer (there is no limit).
+
+The disadvantage is, if the bad guy gets a copy of the plaintext and
+the ciphertext for the same message, the password is trivial to figure
+out -- no guesswork at all, no dependence on the password length.  And
+poof! everything encrypted with that password is compromised.
+
+Wayne
+
+
+#include <stdio.h>
+#define MAXPLEN 256
+
+/* mod 256 that handles negatives */
+int wrap(x)
+int x;
+{
+   x = x % 256;
+   if (x<0) x=x+256;
+   return x;
+}
+
+// polynomial-based encryption
+main (argc,argv)
+int argc;
+char **argv;
+{
+   FILE *in, *out;
+   int i, j, c, n, cyc[MAXPLEN], sg; /* sg is short for "sign" */
+   char pw[MAXPLEN], *pp;
+
+   /* parse command line arguments */
+   sg = 1;
+   if (argc>1)
+   {
+      if (*argv[1]=='+')
+      {
+	 sg = 1;
+	 pp=argv[0]; argc--; argv++; argv[0]=pp;
+      }
+      if (*argv[1]=='-')
+      {
+	 sg = -1;
+	 pp=argv[0]; argc--; argv++; argv[0]=pp;
+      }
+   }
+   if (argc <2 || argc > 4)
+   {
+      fprintf(stderr,"Usage: %s [+/-] <input> <output>\n",argv[0]);
+      fprintf(stderr,"       %s [+/-] <input> <output> <password>\n",argv[0]);
+      fprintf(stderr,"       %s [+/-] <password>\n",argv[0]);
+      fprintf(stderr,"First form prompts for password; ");
+      fprintf(stderr,"third form uses stdin/stdout.\n");
+      return 1;
+      /* note that is doesn't matter whether + or - is used for encryption,
+         as long as the opposite is used for decryption */
+   }
+   if (argc > 2) in=fopen(argv[1],"r"); else in = stdin;
+   if (!in)
+   {
+      fprintf(stderr,"%s: Can't open %s for input\n",argv[0],argv[1]);
+      return 1;
+   }
+   if (argc > 2) out=fopen(argv[2],"w"); else out=stdout;
+   if (!out)
+   {
+      fprintf(stderr,"%s: Can't open %s for output\n",argv[0],argv[2]);
+      return 1;
+   }
+   if (argc==3)
+   {
+      printf("password: ");
+      scanf("%s",pw);
+      pp = pw;
+   }
+   else
+   {
+      if (argc==2) pp = argv[1];
+      else pp=argv[3];
+   }
+
+   /* now that we've parsed the command line, let's convert the password
+      into numbers -- we move them into cyc[], where they'll get cycled
+      around as the program runs */
+
+   for (i=0; i<40 && pp[i]; i++)
+   cyc[i]=sg * ((int) pp[i]) ; 
+   n = i-1;
+   n--; 
+
+   /* here's the actual encryption */
+
+   /* 40 is arbitrary; this reduces disadvantage from knowing key is text */
+   for (j=0;j<40;j++)
+      for (i=0;i<n;i++) cyc[i]=wrap(cyc[i+1]+cyc[i]);
+   while (!feof(in))
+   {
+      c = getc(in);
+      c = wrap(c+cyc[0]);
+      for (i=0;i<n;i++) cyc[i]=wrap(cyc[i+1]+cyc[i]);
+      if (!feof(in)) putc(c,out);
+   }
+
+   /* that's it */
+
+   fclose(out);
+   fclose(in);
+   return 1;
+}
+
+

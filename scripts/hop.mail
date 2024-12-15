@@ -1,0 +1,174 @@
+#!/bin/sh
+#hop.mail: allows routing a message through various remailers and forming
+# a reply header
+# NOTE: extropia not supported just yet - for sending only see hop.send
+# Karl Barrus <elee9sf@menudo.uh.edu>
+# last updated 07/02/93
+
+#find out which mode user wants
+echo "Do you want to:"
+echo "1. Mail a file via anonymous remailers"
+echo "2. Create a remailing header and append to a file"
+echo ""
+echo -n "Your choice? "
+read choice
+
+if [ "$choice" = "" -o "$choice" -lt 1 -o "$choice" -gt 2 ]
+then
+  echo "Error.  Improper mode selected."
+  exit 1
+fi
+
+#declare remailers
+# no encrypted remailing requests
+mail1=nowhere@bsu-cs.bsu.edu
+mail2=hh@cicada.berkeley.edu
+mail3=hh@pmantis.berkeley.edu
+mail4=hh@soda.berkeley.edu
+mail5=00x@uclink.berkeley.edu
+# full service
+mail6=hal@alumni.caltech.edu
+mail7=ebrandt@jarthur.claremont.edu
+mail8=phantom@mead.u.washington.edu
+mail9=remailer@rebma.mn.org
+mail10=elee7h5@rosebud.ee.uh.edu
+mail11=hfinney@shell.portal.com
+mail12=remail@tamsun.tamu.edu
+mail13=remail@tamaix.tamu.edu
+mail14=remailer@utter.dis.org
+mail15=remailer@entropy.linet.org
+# special
+mail16=remail@extropia.wimsey.com
+
+#temporary files
+t1=.anon1
+t2=.anon2
+t3=.anon3
+
+#set up encrypted pgp header
+echo "::" > $t1
+echo "Encrypted: PGP" >> $t1
+echo "" >> $t1
+
+#blank out .anon3
+cat /dev/null > $t3
+
+#get final destination
+if [ "$choice" -eq 1 ]
+then
+  echo -n "Final destination (user@host): "
+else
+  echo -n "Your email address (user@host): "
+fi
+read to
+
+#exit if no final destination
+if [ ! "$to" ]
+then
+  echo "Error.  No destination specified."
+  exit 1
+fi
+
+#print menu
+echo ""
+echo "Mailing via:"
+echo "1) $mail1"
+echo "2) $mail2"
+echo "3) $mail3"
+echo "4) $mail4"
+echo "5) $mail5"
+echo "6) $mail6"
+echo "7) $mail7"
+echo "8) $mail8"
+echo "9) $mail9"
+echo "10) $mail10"
+echo "11) $mail11"
+echo "12) $mail12"
+echo "13) $mail13"
+echo "14) $mail14"
+echo "15) $mail15"
+#echo "16) $mail16" <-- remember, extropia not supported in this script
+echo ""
+
+notdone=true
+
+#begin loop
+while [ $notdone ]
+do
+
+#find out remailing request
+  echo -n "via (1-15 or q)? "
+  read rto
+
+  if [ "$rto" = "" -o "$rto" = q ]
+  then
+	notdone=""                     #exit while loop
+  else
+
+#convert number to address
+	case "$rto"
+	in
+	  1) rto=$mail1;  encflag=none ;;
+	  2) rto=$mail2;  encflag=none ;;
+	  3) rto=$mail3;  encflag=none ;;
+	  4) rto=$mail4;  encflag=none ;;
+	  5) rto=$mail5;  encflag=none ;;
+	  6) rto=$mail6;  encflag=""   ;;
+	  7) rto=$mail7;  encflag=""   ;;
+	  8) rto=$mail8;  encflag=""   ;;
+          9) rto=$mail9;  encflag=""   ;;
+         10) rto=$mail10; encflag=""   ;;
+	 11) rto=$mail11; encflag=""   ;;
+	 12) rto=$mail12; encflag=""   ;;
+	 13) rto=$mail13; encflag=""   ;;
+	 14) rto=$mail14; encflag=""   ;;
+         15) rto=$mail15; encflag=""   ;;
+#        16) rto=$mail16; encflag="s"  ;;
+	  *) echo "Invalid menu choice."; exit;;
+	esac
+
+#set up remailing request header
+	echo "::" > $t2
+	echo "Request-Remailing-To: $to" >> $t2
+	echo "" >> $t2
+
+	cat $t3 >> $t2	               #append previous message
+
+	if [ "$encflag" = none ]       #no encrypting remailing request
+	then
+	  cat $t2 > $t3
+	else
+	  pgp -ea $t2 $rto 2>/dev/null 1>/dev/null	#do the encryption
+	  cat $t1 $t2.asc > $t3          #prepend header to encrypted message
+	fi
+
+	to=$rto                        #save last hop
+  fi
+done
+
+if [ "$choice" -eq 1 ]
+then
+#now include message
+  echo -n "File to include? "
+  read msg
+  if [ ! -f "$msg" ]
+  then
+    echo "Error: $msg not found"
+    exit 1
+  fi
+
+  cat $msg >> $t3
+  mail -s "anonymous mail" $to < $t3
+  echo "Mail sent."
+else
+  echo -n "Append to file: "
+  read msg
+  echo "--------8<--cut here-->8--------" >> $msg
+  cat $t3 >> $msg
+  echo "" >> $msg
+  echo "<To reply, save everything below the \"cut here\" marks above" >> $msg
+  echo "<into another file.  Type your reply here (below the blank " >> $msg
+  echo "<line three lines above!) and mail to $to" >> $msg
+fi
+
+rm -rf ${t1}* ${t2}* ${t3}*

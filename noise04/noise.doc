@@ -1,0 +1,769 @@
+
+
+                                   NOISE.SYS
+
+                              (Version 0.4.0-Beta)
+
+                  A random-noise device driver for DOS boxes.
+
+            by Robert Rothenburg Walking-Owl <wlkngowl@unix.asb.com>
+                    Portions by Colin Plumb <colin@nyx.net>
+
+                 Copyright (C) 1995-1996. All Rights Reserved.
+                                
+
+  Note: if you have not yet done so, please check the "readme.1st" file
+        included with this distribution.
+
+  List of ingredients:
+
+    1. License
+    2. Introduction
+    3. System requirements
+    4. Installing the driver
+    5. Using the driver to generate random numbers
+    6. Technical notes
+    7. References
+    8. Credits
+
+
+  1. License
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  General Public License for more details.
+  
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111 USA.
+
+  1.1. Distributing the driver with other software
+                                                                           
+  You may freely distribute the driver with applications which use it
+  in accordance with the GNU General Public License (found in the file
+  COPYING).
+
+  You must include the REAMDE file (this file) unchanged, along with
+  the source code and the General Public License.
+
+  1.2. Other legal miscellania
+
+  Trademarks and copyrights of any products mentioned in this document
+  belong to their respective owners.  Mention of a paricular product
+  does not imply endoresement or derision of that product over another.
+
+
+  2. Introduction
+
+  Computers are deterministic beasts.  What comes out of the machine
+  is related to what was put in before and what came out previously.
+  This applies to the random number generators which can be found with
+  many compilers and programming languages: they are more properly
+  called "pseudo-random number generators" because they are not truly
+  random.
+
+  Avoiding philosophical hair-splitting, we can say that "truly random"
+  data is unpredictable.  There are no correlations which allow one to
+  guess when and where a particular bit will occur with any reasonable
+  certainty.
+
+  Such high-quality randomness is necessary for applications that are
+  sensitive to even the most subtle patterns in the data.  Many data-
+  security and encryption systems are particularly vulnerable to poorly
+  implemented key and initialization schemes (PKZip 1.0 and the recent
+  crack of Netscape come to mind).  The results of some simulations
+  can be skewed because of a bad random number generator.
+
+  Although most computers are not equipped with special hardware to for
+  "true" random number generation, there are still ways in which one
+  sample high-quality random numbers.
+
+  Subtle differences in the time between keystrokes, between disk access
+  (influenced by air turbulence in the drive), changes in mouse position,
+  and even the drift between various hardware timers and CPU clock can be
+  used.  The main difficulties involve using these and other sources in
+  ways that preserve their randomness.
+
+  NOISE.SYS uses these methods.  The samples are mixed into an "entropy
+  pool" and processed using the revised Secure Hash Algorithm (SHA-2).
+  The processing is done to insure that even if the samples are not
+  optimum that the driver will still return "practically random" data.
+  (The Secure Hash Algorithm is designed for generating fingerprints of
+  messages used for digtal signatures.)
+
+  The driver installs two devices, /dev/random and /dev/urandom (modelled
+  after the "random.c" patch for the Linux kernel by Theodore Ts'o) which
+  return a stream of random characters.
+
+  The difference between the two devices is that /dev/random will not
+  return more than the estmated number of random bytes in the pool, while
+  /dev/urandom will return as many bytes as are requested (repeatedly
+  mixing the entropy pool to ensure that the data does not repeat).
+
+  The purpose of designing the interface as a character device is to
+  allow programs written in a variety of high- and low-level languages
+  to be able to use the driver and have access to cryptographic-quality
+  randomness.
+
+  It is also a start at initiating a standard by which other types of
+  drivers can be written, especially if and when specialized random-
+  number generatng hardware becomes commonplace on PCs: drivers can
+  be written for them which are compatible with pre-existing software.
+
+  3. System requirements
+  
+  You need the following in order to run NOISE.SYS on your machine:
+     o An 80386 or later processor on an IBM or compatible machine.
+     o MS-DOS v3.3 or later, or compatible emulator or DOS box.
+     o At least 2k of free memory to load the device driver.
+
+  NOISE.SYS can also use a Soundblaster/Adlib compatible soundcard or      
+  a mouse as sources of randomness, if you have them.                      
+                                                                           
+  The driver was developed on an 486DX4 running AMIBIOS and MS-DOS 5.0     
+  and 4DOS 5.5.  The driver has been tested while in Windows and OS/2
+  Warp 3.0 DOS sessions with no apparent problems.
+
+  3.1. Potential Conflicts
+  
+  Multitasking systems such as Windows, Desqview and OS/2 take over
+  some of the low-level hardware functions that NOISE.SYS monitors,
+  effectually preventing the driver from collecting samples from those
+  IRQs.
+
+  For example, Windows 3.x takes over the timer and keyboard interrupts,
+  preventing the driver from using them.  However, the driver is still
+  able to sample disk-access timings and clock-drift (as well as use
+  entropy accumulated during DOS, before Windows was activated).
+
+  Future versions of the driver will either be written to work with
+  these systems or as separate drivers for those systems.
+
+  See the technical notes for conflicts that occur with audio or mouse
+  sampling, as well as the installation notes on when and where to load
+  the driver.
+
+  Because the driver installs two character devices named "random" and
+  "urandom", you may not be able to access any files matching those
+  filenames (ignoring the extention).  This is a quirk of some versions
+  of DOS, and not the driver.
+
+  3.2. Bug-free software is a rare thing...
+
+  This driver uses a bit of low-level hardware programming and a few
+  poorly-documented features of DOS.  It may not work on some systems
+  because of this.
+
+  If you encounter bugs and problems, the first thing you should do
+  is re-read the section on conflicts and related technical notes. If
+  that is not helpful, make sure you have the most current version of
+  this program.
+
+  Barring that, send E-mail to Rob Walking-Owl <wlkngowl@unix.asb.com>.
+
+  4. Installing the driver
+
+  The NOISE.SYS driver can be placed in your CONFIG.SYS file as you would
+  any other device driver.  If it encounters problem (such as an invalid
+  option or processor) it will print an error message and abort loading.
+
+  An example line in your configuration file may appear like so:
+
+     device=c:\dos\system\noise.sys
+
+  Note that you can place the driver in any directory you choose.  The
+  "c:\dos\system\" path is used as an example only.
+
+  To load the driver in high memory, use "devicehigh=" instead. Because
+  the driver uses less than two kilobytes (2k) of memory, high memory
+  is probably a better place to load it if you have the free space.
+
+  4.1. Installation Options
+
+  You can pass options to the driver to enable features when it is loaded.
+  For this version, that is the only way to enable features (until an API
+  is written which allows configuration of the driver after it is
+  installed).
+
+  The following are valid options (case insensitive):
+
+     /l        Displays the license agreement when installing.
+
+     /m        Enables polling of fast-timings between calls to
+               the mouse interrupt (0x33).
+
+     /p        Enables periodic sampling, called during updates to the
+               system clock.  The driver will check the current mouse
+               position a few times each second and use that information
+               as a source of entropy.
+
+               The source code be rebuilt to have the driver sample a
+               SoundBlaster audio card as well.
+
+     /i        Initialize the entropy pool with random keystrokes.
+
+               When loaded, the driver will ask you to type several
+               random keystrokes to initialize the entropy pool.
+               This option is only necessary if you load the driver
+               from the command line shortly before using software
+               which requires it.
+
+     /w        Collect samples during DOS idle ("wait") time.
+
+               This allows the driver to sample entropy sources while
+               the machine is inactive at the DOS command prompt. The
+               current version of the driver will sample clock drift.
+
+               Note: Sampling clock drift is an experimental method
+               that may require some testing and adjustment for your
+               specific system.
+
+               The source code be rebuilt to have the driver sample a
+               SoundBlaster audio card as well.
+
+  A sample line using options might look like this:
+
+     device=c:\dos\system\noise.sys /l /p
+
+  The source code can be reassembled to change the default behavior of
+  the driver.  Some of these changes will disable associated options.
+  If the driver claims that one of the above options is invalid, it may
+  be that the option was disabled at assembly time.
+
+  See the technical notes and comments in the source code for more
+  information.
+
+  4.2. Loading the driver from the command line
+
+  Older versions of NOISE.SYS (prior to v0.4.0) which only defined one
+  device could be loaded by dynamic device-driver loading utilities such
+  as Jim Kyle's DEVLOD.
+
+  As of yet, I have been unable to find a utility which can load drivers
+  such as the current version of NOISE.SYS, which defines multiple
+  devices.  Some of the tested utilities aborted with an error, others
+  crashed the system (see the "readme.1st" file).
+
+  The source code for the driver included with this distribution
+  contains patches to the sources for DEVLOD and Idrv 1.06 (by Janusz
+  Wojcik), enabling both of those utilities to load this driver and
+  some other multiple-device drivers (as well as run under DOS 6).
+
+  Assuming that you have an updated version of DEVLOD or a similar
+  utility, you could use the following from the command prompt, using
+  similar syntax as you would in the CONFIG.SYS file.
+
+     devlod c:\dos\system\noise.sys /i
+
+  It is a good idea to use the /I option if you plan to immediately
+  run an application that uses the driver after installing it this
+  way.
+
+  For more information about DEVLOD, see Jim Kyle, "Loading Device
+  Drivers from the DOS Command Line", Dr. Dobb's Journal, November
+  1991, pp. 30-42, (plus listings).
+
+  Please do not send requests to the authors for this program.
+
+  4.3. Installation messages
+  
+  When the driver is loaded, it will display a list of the interrupts it
+  has hooked.  Depending on compilation- or load-options, the following
+  interrupts are used:
+  
+     08        The timer interrupt (IRQ0), activated by the /p
+               option.  A counter is incremented every cycle which         
+               sets off sampling events not related to timings.            
+                                                                           
+               This version of the driver will only sample changes         
+               in mouse position or data from a sound-card input.          
+                                                                           
+     09        The keyboard interrupt (IRQ1).  The driver will sample      
+               fast timings each time a key is pressed or released.        
+                                                                           
+     13        The driver will sample fast timings each time a low-level   
+               disk access is performed.                                   
+  
+     14        The driver will sample fast timings between calls to
+               the serial-port interrupt. (Disabled by default)
+  
+     28        During DOS Safe-to-use interrupts (idling), the driver      
+               will sample clock drift or soundcard input, if the /w
+               option is given.                                            
+  
+     33        The driver will sample fast timings between calls to
+               the mouse interrupt, if the /m option is given.  Note
+               that this method probably has a very low entropy.
+  
+  Depending on which options the source code is compiled with, the driver  
+  may also display other messages:                                         
+                                                                           
+     WARNING: Hashing diabled. [and/or] Mixing disabled.
+  
+          When hashing is disabled, the raw contents of the entropy
+          pool are output.  When mixing is disabled, the raw samples
+          are put in the pool without using a polynomial mixing
+          function.
+  
+          Hashing and/or mixing should only be disabled for purposes
+          of testing the the raw samples of an entropy source (or
+          combination of sources) only!
+
+          Do not disable these for normal use of the driver.
+  
+  See the technical notes for more information about these options.
+  
+  The counters were removed from the driver, since they were no longer
+  necessary.  Delta-tracking was changed to only track the entropy, for
+  use by the /dev/random device.
+
+  When the driver has been rebuilt with certain sampling methods
+  disabled, the associated command-line options will also be disabled.
+  If you rebuild the driver with no keyboard sampling, the /I option
+  will not be usable, for example.
+
+  4.4. Caveats (When and where to load the driver?)
+  
+  When and where the driver is loaded will affect its operation.  If
+  you load the driver before another driver or TSR which takes over
+  certain interrupts entirely, NOISE.SYS will not generate any samples
+  from those interrupts.
+
+  Using the /m or /p options before loading the mouse driver (or not
+  loading the mouse driver at all) is useless at best and may cause
+  your system to crash and burn at worst.  [This was a cause of many
+  minutes of panic while developing the driver, actually.]
+  
+  Loading the driver before any disk caching or encryption drivers will
+  generate different types of sampling values than if it is loaded
+  afterwards.  If you have special drivers for CD-ROMs, "flopticals" or
+  large hard disks (over 750M) it is possible that NOISE.SYS will not
+  even sample access times to these devices if loaded before their
+  respective drivers.
+
+  The source-code has sampling of the serial port interrupt (0x14) is
+  disabled because most terminal programs and file-transfer protocols
+  install their own internal drivers over and above the standard BIOS
+  interface.
+
+  Because of this, it is best to make NOISE.SYS one of the last
+  devices you load.  If possible, use a utility like DEVLOD (patched)
+  in your AUTOEXEC.BAT file.
+
+
+  5. Using the driver to generate random numbers
+
+  The simplest way to accumulate random data from the driver is to
+  issue the following command from the DOS prompt:
+  
+        copy /a urandom lonoise.dat
+  
+  This will create a small, random-sized file named "lonoise.dat". It
+  has relatively low-quality randomness because the file was read in
+  text mode, so end-of-line and end-of-file characters are missing.
+  
+  You can also use the included SAMPLE.COM utility to generate a binary
+  file of random data:
+  
+        sample hinoise.dat 512
+  
+  This will create a file of 512 bytes of random data.  You can look at
+  the C or Pascal source code for the SAMPLE utility included with the
+  driver to see how this is done.
+  
+  By default, the SAMPLE utility will read from the /dev/urandom device.
+  You can specify a different device, such as:
+
+        sample hinoise.dat 512 /dev/random
+
+  This will create a file of random data, but one that is smaller than
+  the specified amount because /dev/random will not return more bytes
+  than are estimated to be "truly random" in the pool.
+
+  You can add the -a option when using the SAMPLE utility to append the
+  data to an existing file rather than overwrite it.
+
+  5.1. Writing software which uses the driver
+  
+  You can read a pool of random bytes from the driver as you would from
+  any other device.  It is important to remember to open the devices
+  /dev/urandom or /dev/random in BINARY mode.
+  
+  Turbo Pascal programmers may find this difficult because the language
+  does not enable one to read character devices in binary mode: you will
+  have to write inline() or assembler procedures to access DOS functions
+  directly (See the SAMPLE.PAS for an example kluge that accomplishes
+  this.)  Note that in Turbo Pascal you would simply open a file named
+  "urandom" (and not "\dev\urandom").
+  
+  If you wish to generate random words, long integers or floating point
+  numbers, this will require some additional coding, but it is not a hard
+  task.  It involves reading enough bytes from the stream to generate the
+  desired number.
+  
+  For example, if you wish to generate a 16-bit number between 0 and N,
+  read two bytes from the driver into a word and return that value,        
+  ignoring values >= N. (Returning a value modulo N will skew the data)    
+
+  For a random fraction between 0 and 1, read N bits from the device and
+  return that value divided by 2^N.
+  
+  For floating point numbers, you may wish to directly fill the fields     
+  (significand, sign and exponent) appropriately with bits from the        
+  device.  Care should be taken to set the exponent properly, otherwise    
+  values will vary widely between the very miniscule to the very huge.     
+  Considering the extra work involved along with the variation of real     
+  types over multiple platforms and compilers, it's easier to generate     
+  fractions.                                                               
+                                                                           
+  Future versions of the driver may include libraries for random word,     
+  long integer and floating point generation.                              
+
+  5.2. The differences between /dev/random and /dev/urandom
+
+  Although both drivers will superficially return the same quality of
+  randomness, /dev/random is more secure for generating keys for crypto
+  applications.
+
+  /dev/urandom will return as many bytes as the user requests, even
+  though there may only be a few bits of entropy in the pool.  With
+  each iteration of the hash function on the pool, the driver will
+  remix the output back into the pool.  This will keep the driver from
+  repeatinng its output (theoretically it can repeat, although the
+  period is astronomical).
+
+  However, when no new bits have been added to the pool, all subsequent
+  bits output by /dev/urandom is predetermined.  The driver will behave
+  as a pseudo-random number generator, although one that is difficult
+  for an attacker to predict without full knowledge of the initial pool
+  state.
+
+  /dev/urandom is probably secure for generating initialization vectors
+  and small session keys.  It is certainly adequate for simulations and
+  games.
+
+  For generating public-private key pairs or secure session keys, it is
+  better to use /dev/random.  If you need more bits than the driver will
+  return, than it is good to accumulate them as the program is running,
+  and request that the user type in random keystrokes.
+
+  5.3. Security Concerns
+                                                                           
+  When using or writing software for this driver that requires security    
+  (as with any good crypto application), it is important to make sure      
+  that the driver is working and that it hasn't been tampered with.        
+                                                                           
+  A possible attack would be to give someone a hacked driver which could   
+  produce a known output stream that appears random: encrypted messages    
+  which used a key based soley on the driver's output could be read the    
+  attacker.                                                                
+                                                                           
+  Software should check the quality of the driver's output, as well as     
+  process it with a cipher or hash function to make such an attack         
+  difficult.                                                               
+
+  One of the considerations that led to defining two devices for the
+  driver (/dev/random and /dev/urandom) rather than implementing an
+  API was because it would be much easier for trojans to spoof an API
+  while a good version of the driver is operating, rather than to
+  implement a trojan driver and getting someone to use it.
+
+  5.4. Miscellanea                                                         
+                                                                           
+  It is a good idea to write software which uses the driver to be easily   
+  configrable to use similar drivers with other names (or perhaps random-  
+  noise files generated by other programs).  Because this is driver is     
+  still in beta, and because as of yet there are no standards for such     
+  drivers, the device names may change.                                    
+
+  6. Technical notes
+  
+  Please refer to the source code files for the driver.  It is reasonably
+  well-commented in English and pseudo-C code.  Some familiarity with
+  80386 assembly language is also necessary in understanding the code.
+  
+  See also the "changes.txt" and "to-do.txt" files for additional
+  information.  Pointers to discussions of cryptography and random-number
+  generation, as well as operating system and device internals can be
+  found in the References section at the end of this document.
+  
+  6.1. Interrupt and IRQ Sampling
+  
+  The core of the driver hooks onto the keyboard (0x09), low-level disk
+  access (0x13) and (if defined) the serial port (0x14) or mouse (0x33)
+  interrupts.  Each time these interrupts are called, the driver gets a
+  reading from the system timer and accumulates it in the entropy pool.
+
+  Note that the source uses __sampleXX defines (1 enabled, 0 disabled)
+  where XX is the interrupt number.  These defines refer to hooks only,
+  and not necessarally entropy sources (that is, __sample08 refers to
+  a hook to IRQ0, but does not mean the driver samples IRQ0).
+
+  Adding interrupts to sample that are not defined in the source is a      
+  relatively easy task using the GenericSampler and InstallSampler         
+  macros:                                                                  
+                                                                           
+     GenericSampler _address                                               
+                                                                           
+          Defines a generic interrupt handler that calls the original      
+          routine and then collects accumulates a sample from the          
+          timer.                                                           
+                                                                           
+     InstallSampler interrupt, _address                                    
+                                                                           
+          Installs a new handler at _address for the given interrupt.      
+          The handler need not be one defined by GenericSampler, but       
+          it MUST store the latch for the original handler in the dword    
+          at _address-4 (see how it is done in the source code).           
+                                                                           
+  What interrupts should or should not be sampled is an important issue.   
+  Same events can be easily correlated with others, making them poor (if   
+  not insecure) choices, such as keystrokes and loading a file.  Others    
+  are either redundant or less useful (for example, there is far more      
+  entropy to be sampled from low level disk access by Int 13 than by the   
+  DOS Int 21).  Problems with sampling the serial port have already been   
+  discussed above, in Section 4.                                           
+                                                                           
+  When in doubt over the quality of samples and/or a conflict with other   
+  software, see both Ralf Brown's interrupt lists and chech the driver's   
+  raw output (see below).                                                  
+                                                                           
+  6.1.1. Second-order delta tracking                                       
+                                                                           
+  The driver keeps track of the last two timing differences (deltas) and   
+  uses this information to estimate the amount of fresh (random) bits in   
+  the entropy pool.                                                        
+                                                                           
+  It has no effect on the bits added to the pool or returned by the        
+  driver (unlike some earlier versions of the driver).  It is used by
+  the /dev/random device for estimating the number of actually random
+  bits in the pool.
+                                                                           
+  Entropy estimates are based on differences in timing cycles.  Shorter    
+  deltas will increment the freshness counter by smaller values (if at     
+  all).  The freshness count will max out at 512 bits when the pool is     
+  saturated, although bits will still be added to the pool.                
+
+  This method is based on a similar method used by Theodore Ts'o in the
+  "random.c" patch for the Linux kernel.
+
+  6.1.2. Mouse movement
+  
+  When mouse-position sampling is enabled, the driver calls the mouse
+  interrupt (separately from a latch to the interrupt, so that samplings
+  are not skewed) to determine the change in mouse position.  The driver
+  is latched onto the system timer and will poll the changes in the mouse
+  position a few times each second.
+  
+  The horizontal and vertical changes in the mouse position are averaged   
+  and added to the entropy pool.                                           
+                                                                           
+  There may be problems when sampling the mouse position within Windows
+  programs run from OS/2.
+
+  Note the relationships between  __samplmouse and other defines: it is
+  only valid when __sample08 or __sample28 is enabled.
+
+  6.1.3. Clock drift
+  
+  When clock drift sampling is enabled, the driver latches onto the "DOS
+  Safe to Use" interrupt (0x28) which is called whenever the operating
+  system is idleing (usually while waiting for console input).
+  
+  The theory behind this method is that there is "drift" between the timer
+  and CPU cycles.  The driver samples the timer, runs a tight loop, and
+  then resamples the timer.  The difference contains some usable entropy,  
+  although it is low (perhaps less than one-bit per sample).               
+                                                                           
+  The roll and xor mixing was removed from previous versions, since the    
+  accumulate function can handle low-entropy additions quite nicely.       
+                                                                           
+  The size of the loop (65536 iterations) may need to be adjusted on       
+  processors where the cycles are in sync with the timer, or on some       
+  VERY fast processors (although it appears to work with no obvious        
+  skew on a 100 MHz 486DX4).  This method is rather experimental, and
+  has not been tested for correlations or patterns.
+  
+  An advantage of clock-drift sampling is that an unattended machine can
+  be used to generate randomness.
+
+  6.1.4. Audio-input sampling                                            
+                                                                           
+  The driver is capable of sampling the line or microphone input from a    
+  Soundblaster- or Adlib-compatible sound card as a source of entropy.     
+                                                                           
+  You may need to adjust the BaseAddress value in "noise.mac" for this     
+  method to work properly, until auto-determination of this is added to    
+  the driver in later releases.                                            
+                                                                           
+  Some audio cards will return noise if no microphone is plugged in.       
+  Others will return silence, so a microphone or other noise source        
+  should be plugged in.  An amplified microphone, noise circuit or         
+  static source (a radio tuned between stations) should be adequate.       
+                                                                           
+  Sampling is not recommended while in the periodic interrupt (08).        
+  A small test has been added to keep the driver from sampling the         
+  soundcard while in Windows, however other DOS programs that also         
+  use the soundcard may conflict with the driver.  There may also be       
+  problems under OS/2 DOS sessions.                                        
+                                                                           
+  Samples should only be collected from the soundcard while in DOS idle    
+  (Int 28) to minimize conflicts.                                          
+
+  Note that __samplaudio is only valid if __sample08 or __sample28 is
+  enabled.
+
+  6.2. The accumulation function
+  
+  Older versions of the driver (v0.2.x) used a simple circular buffer      
+  where new data was simply xored or moved into it.  The flaw with that    
+  method is that samples would wipe out previous samples, irregardless     
+  of the entropy of the samples.  The effect was that more entropy was     
+  lost than accumulated.                                                   
+                                                                           
+  This was changed to an accumulation function (suggested by Colin Plumb)  
+  that distributes the samples evenly over the pool, and preserves some    
+  of the entropy when new samples are added. It is based on the polynomial 
+  x^32 + x^17 + x^3 + x^2 + 1.                                             
+                                                                           
+  In pseudo-code, for each new sample x (where i is the index),            
+                                                                           
+     x ^= pool[i] ^ pool[i+16 & 31] ^ pool[i+30 & 31] ^ pool[i+31 & 31]    
+     rotate x left 7 bits                                                  
+     pool[i] = x                                                           
+     i = i+1 & 31                                                          
+                                                                           
+  Note that different functions were used in version 0.3.3 and 0.3.5 of    
+  the driver.  The code and references for functions used in previous      
+  versions can be found in the source code, in file "polynom2.inc".        
+
+  6.3. Hashing
+  
+  The revised Secure Hash Alhorithm (SHA-2) is used to process the entropy
+  pool for output.  It was selected over MD5 in part because it produces
+  160-bits of output rather than 128 bits, but also because a compact
+  implementation that was readily available.  Colin Plumb rewrote the SHA
+  transformation routine with several improvements over the routine used   
+  in v0.2 of the driver (see the file "sha.inc").                          
+  
+  Only the transformation portion of the algorithm is used.  The entropy
+  pool is equivalent to the the first 16 32-bit words of the W[] array,
+  and byte-swapping has been left out of the expansion portion of the
+  algorithm.
+  
+  For each hash performed, the resulting state is re-accumulated into the
+  entropy pool, eliminating the need for a counter, as well as returning
+  some of the entropy to the pool (although technically the entropy has
+  been used up once it has been hashed).
+  
+  6.4. Testing the quality of samples
+  
+  The source code allows you to disable hashing and mixing by defining the
+  NOHASH and NOMIX variables to 1.  The purpose of this is for testing the
+  quality of samples returned by various sampling methods and
+  configurations of the driver.
+  
+  The only way to disable hashing or mixing is to recompile the driver. It
+  will not (and should never) be made into a command-line option.
+  
+  Only the first 64 bytes returned by the driver are significant.  Unless
+  new samples are collected (or a counter is enabled) the driver will keep
+  returning the same 64 bytes.  To test a large quantity of raw samples
+  you will have to collect samples, read 64 bytes, then collect more
+  samples and read 64 more bytes, repeatedly...
+  
+  Testing is important when tweaking the values used by mouse position or
+  clock drift sampling, or for any other changes made to the driver.  It
+  is IMPORTANT that you test the driver this way, no matter what changes
+  you make to the driver!  A minor bug or typo that fills the random pool
+  with the same values can be caught quickly this way.
+  
+  It is also useful to test any new methods of sampling added to the
+  driver, or to test current sampling methods (especially as they interact
+  with other drivers, memory managers, TSRs, multi-taskers, etc.).
+  
+  7. References
+
+  The following is a list of technical documents and source codes which
+  were consulted in the development of this driver:
+
+  7.1. DOS techie:
+
+    Baresel, Andre and Craig Jackson.  1995.  "Soundblaster Programming
+      Information."  Version 0.90.                                         
+      <URL ftp://oak.oakland.edu/SimTel/msdos/sound/sblast09.zip>          
+
+    Brown, Ralf. 1995. MS-DOS Interrupt List (no. 48).
+
+    "DOS Programmer's Reference" 2nd Edition.  Terry Dettmann and Jim Kyle,
+      Eds.  Que Books.  1989.
+
+    Kyle, Jim. 1990. "Loading Device Drivers from the DOS Command Line."
+      Dr. Dobb's Journal.  November 1991. pp. 30-42, 90-98.
+
+  7.2. Crypto and randomness:
+
+    Eastlake, D, S. Crocker and J. Schiller. 1994.  RFC-1750. "Randomness
+      Recommendations for Security." December 1994.
+
+    Ellison, Carl <cme@tis.com> and Burt Kaliski <burt@rsa.com>. 1995.
+      "P1363: Appendix E -- Cryptographic Random Numbers."  Draft V1.0.
+      November 11, 1995.
+      <URL http://www.clark.net/pub/cme/P1363/ranno.html> (Nov. 19, 1995.)
+
+    FIPS PUB 180. May 1993. (Proposed 1992.) "The Secure Hash Standard."
+      Also "Proposed Revision to...", July 11, 1994.
+
+    Gutmann, Peter. 1992.  Source code for "shs.c" and "shsdrvr.c".
+
+    Jenkins, Bob. 1994. "A tester of random number generators." from a
+      post to sci.crypt, July 13, 1995.
+
+    Mitchell, D.P. and Matt Blaze. 1995.  Source code for truerand().
+
+      There is a similar truerand() implementation by Phil Karn as well.
+      truerand() uses CPU clock-drift sampling as a source of entropy.     
+
+    Pickover, Clifford A. 1995. "Random number generators: pretty good
+      ones are easy to find."  The Visual Computer (1995) 11:369-377.
+
+      This article discusses some interesting visual methods for testing   
+      pseudo-RNGs.                                                         
+
+    Rivest, Ron. 1992. RFC-1321.  "The MD5 Message Digest Algorithm."
+
+    Schneier, Burce. 1994.  "Applied Cryptography."  New York: John Wiley
+      and Sons, Inc.
+
+    Theodore Ts'o. 1995. Source code to /dev/random for Linux.
+      (September 23, 1995.)
+
+  8. Credits
+
+  The following people have contributed advice, comments, suggestions,
+  utilities, pointers to information, or source code for this driver
+  or the testing of it in some way:
+
+        Mikael af Enehielm <mikael@unigraf.pp.fi>
+        Yih-Chun Hu <yihchun@u.washington.edu>
+        Perry E. Metzger <perry@piermont.com>
+        Colin Plumb <colin@nyx.net>
+        Theodore T'so <tytso@mit.edu>
+        David Wagner <daw@cs.berkeley.edu>
+        Will Ware <wware@world.std.com>
+
+  Colin Plumb deserves much thanks for proof-reading of the source,
+  suggestions, and large code snippets.
+
+  Note that any bugs in the driver are of my own doing, and not Colin's
+  or anyone else's.
+
+        -- Rob Rothenburg Walking-Owl <wlkngowl@unix.asb.com>
+                                      <rrothenb@ic.sunysb.edu>
+

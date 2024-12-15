@@ -1,0 +1,317 @@
+From msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!EU.net!sun4nl!cwi.nl!pmontgom Sat Feb 26 16:14:01 1994
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!EU.net!sun4nl!cwi.nl!pmontgom
+From: pmontgom@cwi.nl (Peter L. Montgomery)
+Subject: Re: Fermat's method (Was:  Factoring N=P\*Q vs. general factoring)
+Message-ID: <CLqG52.Eqo@cwi.nl>
+Sender: news@cwi.nl (The Daily Dross)
+Nntp-Posting-Host: gier.cwi.nl
+Organization: CWI, Amsterdam
+References: <1994Feb22.230222.35937@ns1.cc.lehigh.edu> <2kfhma$i1s@linus.mitre.org>
+Date: Thu, 24 Feb 1994 14:27:02 GMT
+Lines: 150
+
+In article <2kfhma$i1s@linus.mitre.org> bs@gauss.mitre.org
+(Robert D. Silverman) writes:
+>In article <1994Feb22.230222.35937@ns1.cc.lehigh.edu> mlf3@ns1.cc.lehigh.edu
+>(Matt Fante) writes:
+>
+>stuff deleted....
+>>It might be good to note that if $n=pq$ for $p,q$ prime and
+>>$p\approx q\approx \sqrt{n}$ then the Fermat factoring algorithm
+>>has a good chance of factoring $n$.
+>
+>Let me correct this. Many people seem to be laboring under this delusion.
+>Fermat's method will factor N = pq  (p,q, need not be prime) in time
+>O(p-q).  If (say) N is 50 digits, p, and q are prime and p ~ 1.0001q
+>[i.e. p and q are nearly equal] you will still need approx. 10^21
+>operations to factor N via Fermat's method. This is WAY out of compute
+>range. Only if p and q are VERY VERY VERY close (i.e. differ only in the
+>last 8 or 9 digits) will Fermat's method succeed.
+>
+>Fermat's method is marginally usefull for N up to about 18 digits
+>once you have pulled out the small primes by trial division.
+
+        Fermat's method attempts to guess (p + q)/2 given pq.
+It tries CEIL(sqrt(pq)), then CEIL(sqrt(pq)) + 1, ...
+Often one can streamline the search process beforehand.
+For example, if pq == -1 (mod 24), then (p + q)/2 == 0 (mod 12).
+
+        Ignoring this streamlining, the number of trials is
+
+               (p + q)/2 - sqrt(pq) = (sqrt(p) - sqrt(q))^2/2
+                                    = (p - q)^2/(2 (sqrt(p) + sqrt(q))^2)
+                                    <= (p - q)^2/8*sqrt(pq).
+
+If p and q are about 10^25, with |p - q| around 10^22,
+then this gives 10^19/8 trials, not 10^21.
+
+        The above is too high to be practical.
+But if p and q differ by 10^14 rather than 10^22, then at most
+two iterations of Fermat's method are needed.  More generally,
+Fermat's method is practical when the factors are known to several
+decimal places (to about k/4 significant digits if n has k digits)
+but are not known exactly.
+
+        For example, consider the Quadratic Sieve and related algorithms.
+The sieving phase finds an approximation to the logarithm
+of a known (smooth) factor of our number.  Often this phase
+uses 8-bit logarithms (perhaps to base 2), but it may soon be
+practical to use 64-bit integer logarithms to base 1 + 2^(-56).
+
+        When a sieved logarithm is sufficiently large, and known to within
+about 10 units (from roundoff), we can reconstruct the product S of the
+sieved primes with error about 1 part in 2^52.  Then we must reconstruct
+a factorization n = S * U, where n is known exactly and U (the unsieved
+portion) is unknown. (However, we have an approximation for U = n/S.)
+
+        Using continued fractions, find an approximation
+u/s ~=~ U/S = (n/S)/S with relative error around 2^(-51) and u*s around 2^52.
+
+        The integers u*S and s*U are very close (relative error 2^(-51)).
+To factor usn = u*s*n into u*S times s*U, Fermat's method will need about
+
+                (u*S - s*U)^2/8*sqrt(usn)
+            ~=~  (2^(-51)*sqrt(usn))^2/8*sqrt(usn)
+             =   sqrt(usn)/2^105
+            ~=~  sqrt(n)/2^79
+
+iterations.  Even for n ~= 10^50, this is only 17 iterations.  After 
+finding u*S and s*U, we can divide by the known u and s to find S and U.
+
+        If n >> 10^50 (e.g, in the RSA-129 project it is about 10^70), 
+then one can trial divide to find part of (smooth) S 
+and find the rest of S and U after their product shrinks below 10^54.
+
+        The Maple session below illustrates how one can reconstruct two
+25-digit factors of 2^163 - 1 given  a 15-digit approximation to one factor.
+
+
+
+    |\^/|     Maple V Release 2 (Stichting Mathematisch Centrum)
+._|\|   |/|_. Copyright (c) 1981-1992 by the University of Waterloo.
+ \  MAPLE  /  All rights reserved. MAPLE is a registered trademark of
+ <____ ____>  Waterloo Maple Software.
+      |       Type ? for help.
+> Digits := 15;                # Use 15-digit precision for floating point
+                                  Digits := 15
+
+> readlib(lattice):
+> 
+> n := 2^163 - 1;
+            n := 11692013098647223345629478661730264157247460343807
+
+>                 f1 := 36230454570129675721 * 150287;
+                        f1 := 5444966325981078575081927
+
+>                 f2 := n/f1;
+                        f2 := 2147306778162773425682441
+
+> 
+> f1est := evalf(f1);             # Assume we know f1 to 15 significant digits
+                                                     25
+                         f1est := .544496632598108*10
+
+> f2est := evalf(n/f1est);        # Then we can also approximate n/f1.
+                                                     25
+                         f2est := .214730677816277*10
+
+> 
+> q := f2est/f1est;
+                             q := .394365483569059
+
+> mp := minpoly(q, 1, 10.^(Digits-1));
+                           mp := 2623053 - 6651325 _X
+
+>                                 # Find linear polynomial for q
+> m1 := abs(coeff(mp, _X, 0));    # Extract numerator and denominator
+                                 m1 := 2623053
+
+> m2 := abs(coeff(mp, _X, 1));    #         of approximation to f2/f1.
+                                 m2 := 6651325
+
+> evalf((q - m1/m2)/q, 20);       # How good was the approximation?
+                                                   -13
+                          -.10921189047838649412*10
+
+> 
+> 
+>                 fm1 := f1*m1;   # Factors of n*m1*m2, very close to each other
+                    fm1 := 14282435256263646099604373863131
+
+> 
+>                 fm2 := f2*m2;
+                    fm2 := 14282435256263508955577261884325
+
+>                 evalf([fm1, fm2, (fm1 - fm2)/fm2]);
+                         32                     32                     -14
+     [.142824352562636*10  , .142824352562635*10  , .960228593032374*10   ]
+
+>                                 # How far apart are the new factors?
+> 
+> nm := 4*n*m1*m2;                # Number to be factored by Fermat's method
+     nm := 815951827397443373926297171966257016092366081325391122817286300
+
+>                 trials := fm1 + fm2 - round(evalf(sqrt(nm), 50));
+                                 trials := 330
+
+>                                 # Number of iterations of Fermat's method
+> 
+> quit;
+bytes used=412032, alloc=262096, time=0.92
+-- 
+Peter L. Montgomery    pmontgom@cwi.nl
+
+From msuinfo!agate!howland.reston.ans.net!pipex!uknet!comlab.ox.ac.uk!pcl Sat Feb 26 16:21:06 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uknet!comlab.ox.ac.uk!pcl
+From: pcl@foo.oucs.ox.ac.uk (Paul C Leyland)
+Subject: Re: Factoring N=P*Q vs. general factoring
+Message-ID: <PCL.94Feb21114701@foo.oucs.ox.ac.uk>
+In-reply-to: lou@Cadence.COM's message of Sat, 19 Feb 1994 16:29:41 GMT
+References: <2jqpre$6j1@fbi-news.informatik.uni-dortmund.de> <2jt8ii$ioa@linus.mitre.org>
+	<lou.761675381@cadence.com>
+Date: 21 Feb 1994 11:47:01 GMT
+Lines: 53
+
+In article <lou.761675381@cadence.com> lou@Cadence.COM (Louis K. Scheffer) writes:
+
+   In <2jt8ii$ioa@linus.mitre.org> bs@gauss.mitre.org (Robert D. Silverman) writes:
+
+   >Either a method depends on the size of the factors or it does not.
+   >If it does, then that method will find it harder to factor N = pq,
+   >(p ~ q ~ sqrt(N)) than an N which has small factors.
+
+   This is not clear to me.  Suppose it depends on the size of the factors,
+   but not in the simple way "bigger->slower".  For example, I think there
+   is an algorithm which works better if the two factors are roughly equal
+   in size.  (This is from some very early RSA articles, which said the
+
+
+Bob omitted Fermat's factoring algorithm which does have the property you
+describe.  The algorithm runs something like the following:
+
+	To factor N, calculate  x =  int (sqrt (N)) + 1
+	form y = x^2 - N
+
+	while ( y is not a perfect square)
+		x = x + 1
+		y = x^2 - N
+
+	The factors of N are (x - y) / 2 and (x + y) / 2
+
+
+Although this method can be streamlined substantially, it is extremely
+poor at factoring large numbers in general.  However, if y is small
+(less than a few times sqrt(sqrt(N)) it generates its result very
+quickly.
+
+As far as I know, Fermat's method is largely a historical curiosity.
+I know of only one place where it has been used in a serious modern
+algorithm.  The double prime variation of the multiple polynomial
+quadratic sieve makes use of a large number of factorizations of
+intermediate results known to contain only two prime factors, both of
+which are of similiar size.  The PPMPQS implementation which Lenstra
+and Manasse have employed to great effect in the last few years used
+to use Pollard's rho method.  I replaced the rho with Fermat's, giving
+a substantial increase in average speed for the intermediate
+factorizations.  Some while afterwards, Peter Montgomery replaced
+Fermat's with the SQUFOF algorithm which ran even faster.  The latest
+variant, being used in the on-going RSA-129 project first uses SQUFOF
+and then goes on to try ECM if that fails.
+
+Paul
+--
+Paul Leyland <pcl@black.ox.ac.uk>        | Hanging on in quiet desperation is
+Oxford University Computing Services     |     the English way.
+13 Banbury Road, Oxford, OX2 6NN, UK     | The time is gone, the song is over.
+Tel: +44-865-273200  Fax: +44-865-273275 | Thought I'd something more to say.
+Finger pcl@black.ox.ac.uk for PGP key    |
+
+From msuinfo!agate!library.ucla.edu!europa.eng.gtefsd.com!MathWorks.Com!blanket.mitre.org!linus.mitre.org!gauss.mitre.org!bs Sat Feb 26 16:21:22 1994
+Path: msuinfo!agate!library.ucla.edu!europa.eng.gtefsd.com!MathWorks.Com!blanket.mitre.org!linus.mitre.org!gauss.mitre.org!bs
+From: bs@gauss.mitre.org (Robert D. Silverman)
+Newsgroups: sci.crypt
+Subject: Re: Factoring N=P*Q vs. general factoring
+Date: 21 Feb 1994 16:15:34 GMT
+Organization: Research Computer Facility, MITRE Corporation, Bedford, MA
+Lines: 33
+Message-ID: <2kamn6$3uv@linus.mitre.org>
+References: <2jt8ii$ioa@linus.mitre.org> <lou.761675381@cadence.com> <PCL.94Feb21114701@foo.oucs.ox.ac.uk>
+NNTP-Posting-Host: gauss.mitre.org
+
+In article <PCL.94Feb21114701@foo.oucs.ox.ac.uk> pcl@foo.oucs.ox.ac.uk (Paul C Leyland) writes:
+:In article <lou.761675381@cadence.com> lou@Cadence.COM (Louis K. Scheffer) writes:
+:
+:   In <2jt8ii$ioa@linus.mitre.org> bs@gauss.mitre.org (Robert D. Silverman) writes:
+:
+:   >Either a method depends on the size of the factors or it does not.
+:   >If it does, then that method will find it harder to factor N = pq,
+:   >(p ~ q ~ sqrt(N)) than an N which has small factors.
+:
+:   This is not clear to me.  Suppose it depends on the size of the factors,
+:   but not in the simple way "bigger->slower".  For example, I think there
+:   is an algorithm which works better if the two factors are roughly equal
+:   in size.  (This is from some very early RSA articles, which said the
+:
+:
+:Bob omitted Fermat's factoring algorithm which does have the property you
+:describe.  The algorithm runs something like the following:
+ 
+I omitted it deliberately, as it is virtually useless for anything
+over 18 digits. For example, consider a 50 digit N which is the product
+of 2 25-digit primes that are identical in the first 4 digits. By any
+reasonable definition, these are nearly equal, yet Fermat's method
+is hopeless for factoring N.  Fermat's method runs in time proportional
+to the DIFFERENCE between the 2 factors. Here, the difference is still a
+21-digit number.
+
+"roughly equal" still leads to too many operations.
+
+-- 
+Bob Silverman
+These are my opinions and not MITRE's.
+Mitre Corporation, Bedford, MA 01730
+"You can lead a horse's ass to knowledge, but you can't make him think"
+
+From msuinfo!agate!howland.reston.ans.net!pipex!uknet!comlab.ox.ac.uk!pcl Sat Feb 26 16:22:05 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uknet!comlab.ox.ac.uk!pcl
+From: pcl@foo.oucs.ox.ac.uk (Paul C Leyland)
+Subject: Re: Factoring N=P*Q vs. general factoring
+Message-ID: <PCL.94Feb24094644@foo.oucs.ox.ac.uk>
+In-reply-to: pcl@foo.oucs.ox.ac.uk's message of 21 Feb 1994 11:47:01 GMT
+References: <2jqpre$6j1@fbi-news.informatik.uni-dortmund.de> <2jt8ii$ioa@linus.mitre.org>
+	<lou.761675381@cadence.com> <PCL.94Feb21114701@foo.oucs.ox.ac.uk>
+Date: 24 Feb 1994 09:46:43 GMT
+Lines: 28
+
+In article <PCL.94Feb21114701@foo.oucs.ox.ac.uk> pcl@foo.oucs.ox.ac.uk (Paul C Leyland) writes:
+
+   Bob omitted Fermat's factoring algorithm which does have the property you
+   describe.  The algorithm runs something like the following:
+
+	   To factor N, calculate  x =  int (sqrt (N)) + 1
+	   form y = x^2 - N
+
+	   while ( y is not a perfect square)
+		   x = x + 1
+		   y = x^2 - N
+
+	   The factors of N are (x - y) / 2 and (x + y) / 2
+
+
+Oh dear.  I meant, of course, that the factors are (x +/- sqrt(y))/2
+ as should be obvious.  Fermat's method relies on the identity
+x^2 - y^2 = (x + y)(x - y) and attempts to represent N as the difference
+of two squares.
+
+
+Paul
+--
+Paul Leyland <pcl@black.ox.ac.uk>        | Hanging on in quiet desperation is
+Oxford University Computing Services     |     the English way.
+13 Banbury Road, Oxford, OX2 6NN, UK     | The time is gone, the song is over.
+Tel: +44-865-273200  Fax: +44-865-273275 | Thought I'd something more to say.
+Finger pcl@black.ox.ac.uk for PGP key    |
+

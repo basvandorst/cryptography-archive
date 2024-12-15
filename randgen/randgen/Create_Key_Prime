@@ -1,0 +1,56 @@
+#!/bin/csh
+
+# Syntax: Create_Key_Prime  -d num_digits   file
+#
+#  num_digits   how many decimal digits do you want me to use in constructing
+#                     a Blum prime.
+#  file         contains a guess at a prime number.  The guess needn't contain
+#                     num_digits.  However, if it does, and if it is a Blum
+#                     prime, then the guess is returned as the key_prime.
+#  stdout       will be written with an approved Blum prime of num_digits
+
+if ($#argv != 3) then
+   echo "Usage: " $0 "  -d no_of_digits   guessfile"
+   exit 1
+endif
+
+if( "$1" == "-d" ) then
+   @ num_digits = $2
+   shift ; shift
+else
+   echo "Usage: " $0 "  -d no_of_digits   guessfile
+   echo "   .... Please specify the number of digits to be generated"
+   echo "   .... by using the -d option"
+   exit 1
+endif
+
+if ( ! -e $1 ) then
+   echo "Cant find file " $1
+   exit 1
+endif
+
+
+
+# cook up a name for a temporary workfile
+set tf = ./keycreat_ugh.$$
+
+# first, grab the bc program that does the Blum, Blum, and Shub generator
+cp ./find_blum_prime_bc $tf
+chmod 777 $tf
+
+# grab the guess from guessfile
+echo ' a = \' >> $tf
+cat $1 >> $tf
+
+# the number of digits to be generated was specified on the command line
+echo ' l = \' >> $tf
+echo $num_digits >> $tf
+
+# tell bc to run the BBS generator
+echo "k(a,l)" >> $tf
+
+# fire up bc.  Output is directed to stdout as desired.
+bc < $tf
+
+# clean up the excess
+rm $tf

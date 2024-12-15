@@ -1,0 +1,1195 @@
+;______________________________________________________________________________
+;	Copyright (C) 1998 Network Associates, Inc.
+;	All rights reserved.
+;
+;	
+;
+;	$Id: Oemsetup.inf,v 1.26 1999/04/08 23:01:06 philipn Exp $
+;______________________________________________________________________________
+
+[Identification]
+    OptionType = NetAdapter
+
+[LanguagesSupported]
+    ENG
+
+[Options]
+    PGPMac
+
+[OptionsTextENG]
+    PGPMac     = "PGPnet VPN driver"
+
+[FileConstants]
+UtilityInf      			= "UTILITY.INF"
+subroutineinf   			= "SUBROUTN.INF"
+TransportSoftwareType			= "transport"
+AdapterSoftwareType   			= "driver"
+Exit_Code       			= 0
+NetEventDLL     			= "%SystemRoot%\System32\netevent.dll"
+
+Manufacturer    			= "Network Associates"
+ProductMajorVersion     		= "1"
+ProductMinorVersion     		= "0"
+ProductVersion  			= $(ProductMajorVersion)"."$(ProductMinorVersion)
+
+TransportProductSoftwareName   		= "PGPMac"
+
+ProductSoftwareImagePath 		= "\SystemRoot\System32\drivers\PGPnet.sys"
+
+TransportNetRuleSoftwareType    	= "PGPMac TcpipTransport"
+TransportNetRuleSoftwareClass   	= {"TcpipTransport basic"}
+TransportNetRuleSoftwareUse     	= $(TransportSoftwareType)" none none"
+
+TransportNetRuleSoftwareBindForm	= """PGPMac"" yes yes simple"
+TransportNetRuleSoftwareBindable 	= {"PGPMac ndisDriver non non 100"}
+
+AdapterNetRuleSoftwareType    		= "PGPSys ndisDriver PGPDriver"
+AdapterNetRuleSoftwareUse     		= $(AdapterSoftwareType)
+AdapterNetRuleSoftwareBindForm		= """PGPSys"" yes no container"
+AdapterNetRuleSoftwareClass   		= {"PGPDriver basic"}
+AdapterNetRuleSoftwareBindable 		= {"PGPDriver PGPAdapter non exclusive 100"}
+
+AdapterNetRuleHardwareType		= "PGP PGPAdapter"
+AdapterNetRuleHardwareBindForm 		= " yes yes container"
+AdapterNetRuleHardwareClass    		= {"PGPAdapter basic"}
+
+TransportProductKeyName	= $(!NTN_SoftwareBase)"\"$(Manufacturer)"\"$(TransportProductSoftwareName)"\CurrentVersion"
+TransportParamKeyName	= $(!NTN_ServiceBase)"\"$(TransportProductSoftwareName)"\Parameters"
+TransportServiceKeyName	= $(!NTN_ServiceBase)"\"$(TransportProductSoftwareName)
+TransportLinkageKeyName	= $(!NTN_ServiceBase)"\"$(TransportProductSoftwareName)"\Linkage"
+
+[FileConstantsENG]
+ProCaption   				= "Windows NT Setup"
+ProCancel    				= "Cancel"
+ProCancelMsg 				= "Windows NT Networking is not correctly installed.  "+
+               				  "Are you sure you want to cancel copying files?"
+ProCancelCap 				= "Network Setup Message"
+ProText1     				= "Copying:"
+ProText2     				= "To:"
+FunctionTitle   			= "PGPnet VPN Driver"
+TransportProductSoftwareDescription	= "PGPnet VPN Driver Transport"
+TransportProductSoftwareDisplayName	= "PGPnet VPN Driver Transport"
+TransportProductSoftwareTitle    	= "PGPnet VPN Driver Transport"
+AdapterProductSoftwareDescription	= "PGPnet VPN Driver Adapter"
+AdapterProductSoftwareDisplayName	= "PGPnet VPN Driver Adapter"
+AdapterProductSoftwareTitle    		= "PGPnet VPN Driver Adapter"
+ProductHardwareDescription		= "PGPnet VPN Driver Virtual Adapter"
+ProductHardwareDisplayName		= "PGPnet VPN Driver Virtual Adapter"
+ProductHardwareTitle			= "PGPnet VPN Driver Virtual Adapter"
+ShellCodeErrorTitle     		= "Error: "$(FunctionTitle)
+ShellCodeErrorText      		= "Shell Code Error."
+
+[GeneralConstants]
+from      = ""
+to        = ""
+ExitCodeOk     = 0
+ExitCodeCancel = 1
+ExitCodeFatal  = 2
+KeyNull        = ""
+MAXIMUM_ALLOWED   = 33554432
+RegistryErrorIndex = NO_ERROR
+KeyProduct      = ""
+KeyParameters   = ""
+TRUE            = 1
+FALSE           = 0
+NoTitle         = 0
+ExitState   = "Active"
+OldVersionExisted = $(FALSE)
+DriverPath      = $(!STF_NTPATH)\drivers
+
+[date]
+    Now = {} ? $(!LIBHANDLE) GetSystemDate
+
+[platform]
+    STF_PLATFORM = "" ? $(!LIBHANDLE) GetPlatform
+
+[Identify]
+    read-syms Identification
+    set Status     = STATUS_SUCCESSFUL
+    set Identifier = $(OptionType)
+    set Media      = #("Source Media Descriptions", 1, 1)
+    Return $(Status) $(Identifier) $(Media)
+
+[ReturnOptions]
+    set Status        = STATUS_FAILED
+    set OptionList     = {}
+    set OptionTextList = {}
+    set LanguageList = ^(LanguagesSupported, 1)
+    Ifcontains(i) $($0) in $(LanguageList)
+        goto returnoptions
+    else
+        set Status = STATUS_NOLANGUAGE
+        goto finish_ReturnOptions
+    endif
+returnoptions = +
+    set OptionList     = ^(Options, 1)
+    set OptionTextList = ^(OptionsText$($0), 1)
+    set Status         = STATUS_SUCCESSFUL
+finish_ReturnOptions = +
+    Return $(Status) $(OptionList) $(OptionTextList)
+
+[InstallOption]
+
+    set !DebugOutputControl = 0
+    
+    set Option   = $($1)
+    set SrcDir   = $($2)
+    set AddCopy  = $($3)
+    set DoCopy   = $($4)
+    set DoConfig = $($5)
+    set LanguageList = ^(LanguagesSupported, 1)
+    Ifcontains(i) $($0) NOT-IN $(LanguageList)
+        Return STATUS_NOLANGUAGE
+    endif
+    set-subst LF = "\n"
+    read-syms GeneralConstants
+    read-syms FileConstants
+    read-syms DialogConstants$(!STF_LANGUAGE)
+    ifstr(i) $(!NTN_Origination) == "NCPA"
+        set Continue = $(OK)
+    endif
+    read-syms FileConstants$(!STF_LANGUAGE)
+    detect date
+    detect platform
+    set-title  $(FunctionTitle)
+    set to   = Begin
+    set from = Begin
+    set CommonStatus = STATUS_SUCCESSFUL
+    EndWait
+    
+Begin = +
+	;Get CardType
+	Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+	OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+	ifstr(i) $(NetaKey) != ""
+		GetRegValue $(NetaKey) "CardType" CardTypeList
+		set GroupName = *($(CardTypeList),4)
+	else
+		Debug-Output "PGPMac: failed to open CardType Key for "$(NetaRegKey)
+		set DlgType      = "MessageBox"
+		set STF_MB_TITLE = "Error"
+		set STF_MB_TEXT  = "Registry error"
+		set STF_MB_TYPE  = 1
+		set STF_MB_ICON  = 3
+		set STF_MB_DEF   = 1
+		ui start "Error"
+		goto fatalRegistry
+	endif
+	CloseRegKey $(NetaKey)
+
+	ifstr(i) $(GroupName) == "NDISWAN"
+		set AdapterProductSoftwareName		= "NdisWanPGPMacMP"
+		set AdapterProductHardwareName		= "NdisWanPGPMacMP"
+		set AdapterProductKeyName		= 						$(!NTN_SoftwareBase)"\"$(Manufacturer)"\"$(AdapterProductSoftwareName)"\CurrentVersion"
+		set AdapterParamKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)"\Parameters"
+		set AdapterServiceKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)
+		set AdapterLinkageKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)"\Linkage"
+	else
+		set AdapterProductSoftwareName		= "PGPMacMP"
+		set AdapterProductHardwareName		= "PGPMacMP"
+		set AdapterProductKeyName		= 						$(!NTN_SoftwareBase)"\"$(Manufacturer)"\"$(AdapterProductSoftwareName)"\CurrentVersion"
+		set AdapterParamKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)"\Parameters"
+		set AdapterServiceKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)
+		set AdapterLinkageKeyName	= $(!NTN_ServiceBase)"\"$(AdapterProductSoftwareName)"\Linkage"
+	endif
+
+    Ifstr(i) $(!NTN_InstallMode) == deinstall
+        set StartLabel = deinstall
+    else-Ifstr(i) $(!NTN_InstallMode) == update
+        set StartLabel = update
+    else-Ifstr(i) $(!NTN_InstallMode) == bind
+        set StartLabel = bind
+    else-Ifstr(i) $(!NTN_InstallMode) == configure
+        set StartLabel = configure
+    else
+        set StartLabel = install
+    endif
+    set RadioDefault = 2
+    set RadioIn = {$(RadioDefault)}
+    set from = $(fatal)
+    set to = $(fatal)
+    goto $(StartLabel)
+
+install = +
+    OpenRegKey $(!REG_H_LOCAL) "" $(TransportProductKeyName) $(MAXIMUM_ALLOWED) KeyProduct
+    Ifstr $(KeyProduct) != $(KeyNull)
+        CloseRegKey $(KeyProduct)
+        Shell $(UtilityInf), VerExistedDlg, $(TransportProductSoftwareTitle),+
+            $(ProductVersion)
+        ifint $($ShellCode) != $(!SHELL_CODE_OK)
+            goto ShellCodeError
+        endif
+        goto end
+    endif
+    CloseRegKey $(KeyProduct)
+    goto installproduct
+
+installproduct = +
+    StartWait
+    ifint $(OldVersionExisted) == $(FALSE)
+        Ifstr(i) $(DoCopy) == "YES"
+           Shell $(UtilityInf), DoAskSource, $(!STF_CWDDIR), $(SrcDir) YES
+           Ifint $($ShellCode) != $(!SHELL_CODE_OK)
+               Goto ShellCodeError
+           Else-Ifstr(i) $($R0) == STATUS_FAILED
+               Shell $(UtilityInf) RegistryErrorString "ASK_SOURCE_FAIL"
+               ifint $($ShellCode) != $(!SHELL_CODE_OK)
+                   goto ShellCodeError
+               endif
+               Goto fatal
+           Else-Ifstr(i) $($R0) == STATUS_USERCANCEL
+               Goto successful
+           Endif
+           Set SrcDir = $($R1)
+        Endif
+        Shell "" StripTrailSlash $(SrcDir)
+        set PlatformDir  = $($R0)"\"
+        set InfDir  = $($R0)"\"
+        install "Install-Option"
+        ifstr(i) $(STF_INSTALL_OUTCOME) != STF_SUCCESS
+           Shell $(UtilityInf) RegistryErrorString "UNABLE_COPY_FILE"
+           ifint $($ShellCode) != $(!SHELL_CODE_OK)
+               goto ShellCodeError
+           endif
+           set Error = $($R0)
+           goto fatal
+        endif
+        set OEM_ABANDON_ON = TRUE
+
+	;Get CardType
+	Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+	OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+	ifstr(i) $(NetaKey) != ""
+		GetRegValue $(NetaKey) "CardType" CardTypeList
+		set GroupName = *($(CardTypeList),4)
+	else
+		Debug-Output "PGPMac: failed to open CardType Key for "$(NetaRegKey)
+		set DlgType      = "MessageBox"
+		set STF_MB_TITLE = "Error"
+		set STF_MB_TEXT  = "Registry error"
+		set STF_MB_TYPE  = 1
+		set STF_MB_ICON  = 3
+		set STF_MB_DEF   = 1
+		ui start "Error"
+		goto fatalRegistry
+	endif
+	CloseRegKey $(NetaKey)
+	Debug-Output "PGPMac: Adding Transport Software Component to Registry"
+
+	Shell $(UtilityInf), AddSoftwareComponent, $(Manufacturer), +
+        $(TransportProductSoftwareName), +
+	$(TransportProductSoftwareName), +
+       	$(TransportProductSoftwareDisplayName), $(STF_CONTEXTINFNAME), +
+        $(ProductSoftwareImagePath), "transport", $(GroupName), {}, "",+
+        $(NetEventDLL)
+        set RegistryErrorIndex = $($R0)
+        Ifstr(i) $(RegistryErrorIndex) !=  NO_ERROR
+            EndWait
+            CloseRegKey $($R1)
+            CloseRegKey $($R2)
+            CloseRegKey $($R3)
+            CloseRegKey $($R4)
+            CloseRegKey $($R5)
+            goto fatalRegistry
+        endif
+
+        Set SoftProductKey      = $($R1)
+        Set SoftNetRuleKey      = $($R2)
+        Set SoftServiceKey      = $($R3)
+        Set SoftParameterKey    = $($R4)
+        Set SoftLinkageKey      = $($R5)
+        set NewValueList = {{SoftwareType,$(NoTitle),$(!REG_VT_SZ),$(TransportSoftwareType)},+
+                           {MajorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMajorVersion)},+
+                           {MinorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMinorVersion)},+
+                           {Title,$(NoTitle),$(!REG_VT_SZ),$(TransportProductSoftwareTitle)},+
+                           {Description,$(NoTitle),$(!REG_VT_SZ),$(TransportProductSoftwareDescription)},+
+                           {ServiceName,$(NoTitle),$(!REG_VT_SZ),$(TransportProductSoftwareName)},+
+                           {Review,$(NoTitle),$(!REG_VT_DWORD),1},+
+                           {InstallDate,$(NoTitle),$(!REG_VT_DWORD),*($(Now),1)}}
+        Shell  $(UtilityInf), AddValueList, $(SoftProductKey), $(NewValueList)
+        set RegistryErrorIndex = $($R0)
+        Ifstr $(RegistryErrorIndex) != NO_ERROR
+            CloseRegKey $(SoftProductKey)
+            CloseRegKey $(SoftNetRuleKey)
+            CloseRegKey $(SoftServiceKey)
+            CloseRegKey $(SoftParameterKey)
+            CloseRegKey $(SoftLinkageKey)
+            goto fatalRegistry
+        endif
+        set NewValueList = {{type,$(NoTitle),$(!REG_VT_SZ),$(TransportNetRuleSoftwareType)}, +
+                            {use,$(NoTitle),$(!REG_VT_SZ),$(TransportNetRuleSoftwareUse)}, +
+                            {class,$(NoTitle),$(!REG_VT_MULTI_SZ),$(TransportNetRuleSoftwareClass)}, +
+                            {bindform,$(NoTitle),$(!REG_VT_SZ),$(TransportNetRuleSoftwareBindForm)}, +
+                            {bindable,$(NoTitle),$(!REG_VT_MULTI_SZ),$(TransportNetRuleSoftwareBindable)}, +
+                            {InfOption,$(NoTitle),$(!REG_VT_SZ),$(Option)}}
+        Shell  $(UtilityInf), AddValueList, $(SoftNetRuleKey), $(NewValueList)
+        set RegistryErrorIndex = $($R0)
+        Ifstr $(RegistryErrorIndex) != NO_ERROR
+            CloseRegKey $(SoftProductKey)
+            CloseRegKey $(SoftNetRuleKey)
+            CloseRegKey $(SoftServiceKey)
+            CloseRegKey $(SoftParameterKey)
+            CloseRegKey $(SoftLinkageKey)
+            goto fatalRegistry
+        endif
+
+        set NewValueList = {{DebugLevel,$(NoTitle),$(!REG_VT_DWORD),0}, +
+                            {DebugMask,$(NoTitle),$(!REG_VT_DWORD), 0}}
+        Shell  $(UtilityInf), AddValueList, $(SoftParameterKey), $(NewValueList)
+        set RegistryErrorIndex = $($R0)
+        Ifstr $(RegistryErrorIndex) != NO_ERROR
+            CloseRegKey $(SoftProductKey)
+            CloseRegKey $(SoftNetRuleKey)
+            CloseRegKey $(SoftServiceKey)
+            CloseRegKey $(SoftParameterKey)
+            CloseRegKey $(SoftLinkageKey)
+            goto fatalRegistry
+        endif
+
+	
+        CloseRegKey $(SoftProductKey)
+        CloseRegKey $(SoftNetRuleKey)
+        CloseRegKey $(SoftServiceKey)
+        CloseRegKey $(SoftParameterKey)
+        CloseRegKey $(SoftLinkageKey)
+
+	Debug-Output "PGPMac: Adding Adapter Software Component to Registry"
+
+	Debug-Output "PGPMac: Adding Adapter Software Component to Registry"
+	ifstr(i) $(GroupName) == "NDISWAN"
+        	Shell $(UtilityInf), AddSoftwareComponent, $(Manufacturer), +
+            	$(AdapterProductSoftwareName), +
+            	$(AdapterProductSoftwareName), +
+            	$(AdapterProductSoftwareDisplayName), $(STF_CONTEXTINFNAME), +
+            	$(ProductSoftwareImagePath), "kernelautostart", $(GroupName), {}, "",+
+            	$(NetEventDLL)
+	else
+        	Shell $(UtilityInf), AddSoftwareComponent, $(Manufacturer), +
+            	$(AdapterProductSoftwareName), +
+            	$(AdapterProductSoftwareName), +
+            	$(AdapterProductSoftwareDisplayName), $(STF_CONTEXTINFNAME), +
+            	$(ProductSoftwareImagePath), "kernel", $(GroupName), {}, "",+
+            	$(NetEventDLL)
+	endif	
+
+        set RegistryErrorIndex = $($R0)
+        Ifstr(i) $(RegistryErrorIndex) !=  NO_ERROR
+            EndWait
+            CloseRegKey $($R1)
+            CloseRegKey $($R2)
+            CloseRegKey $($R3)
+            CloseRegKey $($R4)
+            CloseRegKey $($R5)
+            goto fatalRegistry
+        endif
+        Set SoftProductKey      = $($R1)
+        Set SoftNetRuleKey      = $($R2)
+        Set SoftServiceKey      = $($R3)
+        Set SoftParameterKey    = $($R4)
+        Set SoftLinkageKey      = $($R5)
+
+        set NewValueList = {{SoftwareType,$(NoTitle),$(!REG_VT_SZ),$(AdapterSoftwareType)},+
+                           {MajorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMajorVersion)},+
+                           {MinorVersion,$(NoTitle),$(!REG_VT_DWORD),$(ProductMinorVersion)},+
+                           {Title,$(NoTitle),$(!REG_VT_SZ),$(AdapterProductSoftwareTitle)},+
+                           {Description,$(NoTitle),$(!REG_VT_SZ),$(AdapterProductSoftwareDescription)},+
+                           {ServiceName,$(NoTitle),$(!REG_VT_SZ),$(AdapterProductSoftwareName)},+
+                           {InstallDate,$(NoTitle),$(!REG_VT_DWORD),*($(Now),1)}}
+        Shell  $(UtilityInf), AddValueList, $(SoftProductKey), $(NewValueList)
+        set RegistryErrorIndex = $($R0)
+        Ifstr $(RegistryErrorIndex) != NO_ERROR
+            CloseRegKey $(SoftProductKey)
+            CloseRegKey $(SoftNetRuleKey)
+            CloseRegKey $(SoftServiceKey)
+            CloseRegKey $(SoftParameterKey)
+            CloseRegKey $(SoftLinkageKey)
+            goto fatalRegistry
+        endif
+        set NewValueList = {{type,$(NoTitle),$(!REG_VT_SZ),$(AdapterNetRuleSoftwareType)}, +
+                            {use,$(NoTitle),$(!REG_VT_SZ),$(AdapterNetRuleSoftwareUse)}, +
+                            {class,$(NoTitle),$(!REG_VT_MULTI_SZ),$(AdapterNetRuleSoftwareClass)}, +
+                            {bindform,$(NoTitle),$(!REG_VT_SZ),$(AdapterNetRuleSoftwareBindForm)}, +
+                            {bindable,$(NoTitle),$(!REG_VT_MULTI_SZ),$(AdapterNetRuleSoftwareBindable)}, +
+                            {InfOption,$(NoTitle),$(!REG_VT_SZ),$(Option)}}
+        Shell  $(UtilityInf), AddValueList, $(SoftNetRuleKey), $(NewValueList)
+        set RegistryErrorIndex = $($R0)
+        Ifstr $(RegistryErrorIndex) != NO_ERROR
+            CloseRegKey $(SoftProductKey)
+            CloseRegKey $(SoftNetRuleKey)
+            CloseRegKey $(SoftServiceKey)
+            CloseRegKey $(SoftParameterKey)
+            CloseRegKey $(SoftLinkageKey)
+            goto fatalRegistry
+        endif
+        
+        CloseRegKey $(SoftProductKey)
+        CloseRegKey $(SoftNetRuleKey)
+        CloseRegKey $(SoftServiceKey)
+        CloseRegKey $(SoftParameterKey)
+        CloseRegKey $(SoftLinkageKey)
+
+	endif
+
+    EndWait
+
+	Set NetPathRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+	OpenRegKey $(!REG_H_LOCAL) "" $(NetPathRegKey) $(MAXIMUM_ALLOWED) NetaPathKey
+	ifstr(i) $(NetaPathKey) != ""
+		GetRegValue $(NetaPathKey) "InstallPath" NetaPathList
+		set NetaPath = *($(NetaPathList),4)
+	 	CloseRegKey $(NetaPathKey)
+	endif
+
+
+   goto successful
+
+
+bind =+
+
+	;SecuredCard is the ONLY card we want to set
+	Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+	OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+	ifstr(i) $(NetaKey) != ""
+		GetRegValue $(NetaKey) "SecuredCard" SecuredCardList
+		set SecuredCard = *($(SecuredCardList),4)
+	else
+		Debug-Output "PGPMac: failed to open SecuredCard Key for "$(NetaRegKey)
+		set DlgType      = "MessageBox"
+		set STF_MB_TITLE = "Error"
+		set STF_MB_TEXT  = "Registry error"
+		set STF_MB_TYPE  = 1
+		set STF_MB_ICON  = 3
+		set STF_MB_DEF   = 1
+		ui start "Error"
+		goto fatalRegistry
+	endif
+
+	CloseRegKey $(NetaKey)
+
+	;
+	;	If this is the binding review for the Transport Driver...
+   	ifstr(i) $(!NTN_RegBase) == $(TransportProductKeyName)
+
+		;
+		;	Open the Linkage Key and get the Bind Value
+		;
+		Debug-Output "PGPMac: Reviewing bindings in "$(TransportLinkageKeyName)
+		OpenRegKey $(!REG_H_LOCAL) "" $(TransportLinkageKeyName) $(MAXIMUM_ALLOWED) TransportLinkageKey
+		ifstr(i) $(TransportLinkageKey) != ""
+			GetRegValue $(TransportLinkageKey) "Bind" BindList
+			Debug-Output "PGPMac: BindList: "$(BindList)
+			Set Binding = *($(BindList),4)
+			Debug-Output "PGPMac: Binding:  "$(Binding)
+			CloseRegKey $(TransportLinkageKey)
+		else
+			Debug-Output "PGPMac: failed to open Linkage Key for "$(TransportServiceKeyName)
+			goto fatalRegistry
+		endif
+		;
+		;	Parse the Bindings to create a list of Adapter cards
+		;
+		set CardList = {}
+		set CreateCardList = {}
+		ForListDo $(Binding)
+			Split-String $($), "\", BindInfo
+			QueryListSize BindListSize $(BindInfo)
+			set CardName = *($(BindInfo),$(BindListSize))
+			Debug-Output "PGPMac: Cardname: "$(CardName)
+
+			ifstr(i) $(CardList) == {}
+				set CardList = {$(CardName)}
+			else
+				set CardList = >($(CardList),$(CardName))
+			endif
+		EndForListDo
+	
+		Debug-Output "PGPMac: Cardlist: "$(CardList)
+
+		;  At this point we have a list of LAN cards.
+		;
+		;  For each real LAN adapter the transport is bound to...
+		;
+		Set AddedNewVirtualAdapter = "No"
+		ForListDo $(CardList)
+			Debug-Output "PGPMac: Processing "$($)"..."
+			;
+			;	Check if this is a virtual adapter that WE created.
+			;
+			Set RegKey = $(!NTN_ServiceBase)"\"$($)"\Parameters\Signature"
+			Debug-Output "PGPMac: pre-check: about to open "$(RegKey)
+			OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) PGPMacKey
+			
+			ifstr(i) $($) != $(SecuredCard)
+				goto continueCardList
+			endif
+
+			ifstr(i) $(PGPMacKey) == ""
+				Debug-Output "PGPMac: WILL bind to "$($)
+			else
+				Debug-Output "PGPMac: Skipping bind to ourselves "$($)
+				goto continueCardList
+			endif
+
+			;
+			;	Open/Create the protocol specific key under the adapter's parameters key
+			;
+			Set RegKey = $(!NTN_ServiceBase)"\"$($)"\Parameters\"$(TransportProductSoftwareName)
+			Debug-Output "PGPMac: about to open "$(RegKey)
+			OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) PGPMacKey
+			ifstr(i) $(PGPMacKey) == ""
+				Debug-Output "PGPMac: creating "$(TransportProductSoftwareName)" key under the adapter"
+				CreateRegKey $(!REG_H_LOCAL) {$(RegKey),$(NoTitle),GenericClass} "" $(MAXIMUM_ALLOWED) "" PGPMacParamsKey
+			else
+				Debug-Output "PGPMac: Have processed "$($)" already"
+				CloseRegKey $(PGPMacKey)
+				goto continueCardList
+			endif
+			ifstr(i) $(PGPMacParamsKey) == ""
+				Debug-Output "PGPMac: Failed to open/create the \Parameters\"$(TransportProductSoftwareName)" key under the adapter"
+				goto fatalRegistry
+			endif
+
+			;
+			;	Now add a virtual hardware component to represent the ELAN
+			;
+			Debug-Output "PGPMac: Adding Adapter Hardware Component to Registry"
+			Shell $(UtilityInf), AddHardwareComponent, +
+				$(AdapterProductHardwareName), +
+				$(STF_CONTEXTINFNAME), +
+				$(AdapterProductKeyName)
+	    		ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	        		Debug-Output "PGPMac: ShellCode error."
+	        		goto ShellCodeError
+	    		endif
+			set RegistryErrorIndex = $($R0)
+			Ifstr(i) $(RegistryErrorIndex) !=  NO_ERROR
+				Debug-Output "PGPMac: Failed to Add Hardware Component"
+        		CloseRegKey $($R1)
+        		CloseRegKey $($R2)
+        		CloseRegKey $($R3)
+				goto fatalRegistry
+			endif
+				
+	    		set KeyParameters = $($R3)
+    			set KeyAdapterRules = $($R2)
+   			set AdapterNumber = $($R4)
+	    		set NewValueList = {{Manufacturer,$(NoTitle),$(!REG_VT_SZ),$(Manufacturer)},+
+								{Title,$(NoTitle),$(!REG_VT_SZ),"["$($R4)"] "$(ProductHardwareTitle)},+
+								{Description,$(NoTitle),$(!REG_VT_SZ),$(ProductHardwareDescription)},+
+								{ProductName,$(NoTitle),$(!REG_VT_SZ),$(AdapterProductHardwareName)},+
+								{ServiceName,$(NoTitle),$(!REG_VT_SZ),$($R5)},+
+								{InstallDate,$(NoTitle),$(!REG_VT_DWORD),*($(Now),1)}}
+	    	Shell  $(UtilityInf), AddValueList, $($R1), $(NewValueList)
+    		ifint $($ShellCode) != $(!SHELL_CODE_OK)
+        		Debug-Output "PGPMac: ShellCode error"
+        		goto ShellCodeError
+	    	endif
+    		CloseRegKey $($R1)
+    		
+	    	set TempProdName = """"$(AdapterProductHardwareName)$(AdapterNumber)""""
+	    	set TempBindForm = $(TempProdName)$(AdapterNetRuleHardwareBindForm)
+	    	set NewValueList = {{type,$(NoTitle),$(!REG_VT_SZ),$(AdapterNetRuleHardwareType)},+
+								{bindform,$(NoTitle),$(!REG_VT_SZ),$(TempBindForm)}, +
+								{class,$(NoTitle),$(!REG_VT_MULTI_SZ),$(AdapterNetRuleHardwareClass)}, +
+								{InfOption,$(NoTitle),$(!REG_VT_SZ),$(Option)}}
+	    	Shell  $(UtilityInf), AddValueList, $(KeyAdapterRules), $(NewValueList)
+	    	ifint $($ShellCode) != $(!SHELL_CODE_OK)
+	        	Debug-Output "PGPMac: ShellCode error."
+	        	goto ShellCodeError
+	    	endif
+	    	set RegistryErrorIndex = $($R0)
+	    	Ifstr(i) $(RegistryErrorIndex) != NO_ERROR
+	        	EndWait
+	        	Debug-Output "PGPMac: Registry error: add value list."
+	        	CloseRegKey $(KeyParameters)
+	        	CloseRegKey $(KeyAdapterRules)
+	        	goto fatalRegistry
+	    	endif
+    		CloseRegKey $(KeyAdapterRules)
+    		
+	    	Set NewValueList = {{MediaType,$(NoTitle),$(!REG_VT_DWORD),1},+
+	    	                    {InstanceNumber,$(NoTitle),$(!REG_VT_DWORD),$(AdapterNumber)},+
+				    {BusType,$(NoTitle),$(!REG_VT_DWORD),0},+
+				    {BusNumber,$(NoTitle),$(!REG_VT_DWORD),0},+
+				    {RealMac,$(NoTitle),$(!REG_VT_SZ),"\Device\"$(SecuredCard)}}
+		Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+
+		;Get CardType
+		Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+		OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+		ifstr(i) $(NetaKey) != ""
+			GetRegValue $(NetaKey) "CardType" CardTypeList
+			set GroupName = *($(CardTypeList),4)
+		else
+			Debug-Output "PGPMac: failed to open CardType Key for "$(NetaRegKey)
+			set DlgType      = "MessageBox"
+			set STF_MB_TITLE = "Error"
+			set STF_MB_TEXT  = "Registry error"
+			set STF_MB_TYPE  = 1
+			set STF_MB_ICON  = 3
+			set STF_MB_DEF   = 1
+			ui start "Error"
+			goto fatalRegistry
+		endif
+		CloseRegKey $(NetaKey)
+
+		ifstr(i) $(GroupName) == "NDISWAN"
+			Set NewValueList = {{EnumExportPref,$(NoTitle),$(!REG_VT_DWORD),0},+
+	    	        {AutoIPAddress,$(NoTitle),$(!REG_VT_DWORD),1},+
+			{ServerAdapter,$(NoTitle),$(!REG_VT_DWORD),1}}
+
+		endif
+
+		Shell  $(UtilityInf), AddValueList, $(KeyParameters), $(NewValueList)
+    		
+
+    		; Create a key of the type
+    		;	PGPMacMP2\Parameters\Signature\
+    		;
+    		Set SigRegKey = $(!NTN_ServiceBase)"\"$(AdapterProductHardwareName)$(AdapterNumber)"\Parameters\Signature"
+    		Debug-Output "SigRegKey is "$(SigRegKey)
+    		CreateRegKey $(!REG_H_LOCAL) {$(SigRegKey),$(NoTitle),GenericClass} "" $(MAXIMUM_ALLOWED) "" SigKey
+    		ifstr(i) $(SigKey) == ""
+    			Debug-Output "Failed to create "$(SigRegKey)
+   		endif
+
+	    	Set NewValueList = {{AdapterNum,$(NoTitle),$(!REG_VT_SZ),$(AdapterNumber)},+
+				{BindString,$(NoTitle),$(!REG_VT_SZ),"\Device\"$(AdapterProductHardwareName)$(AdapterNumber)}}
+		Set NetPathRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+		OpenRegKey $(!REG_H_LOCAL) "" $(NetPathRegKey) $(MAXIMUM_ALLOWED) NetaPathKey
+		ifstr(i) $(NetaPathKey) != ""
+			Shell  $(UtilityInf), AddValueList, $(NetaPathKey), $(NewValueList)
+	 		CloseRegKey $(NetaPathKey)
+		endif
+    		
+		;Force start type to 2 (automatic)
+		Set RegKey = $(!NTN_ServiceBase)"\"$(AdapterProductHardwareName)"\Parameters"
+		OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) StartKey
+		SetRegValue $(StartKey) {"Start",$(NoTitle),$(!REG_VT_DWORD),2}
+		CloseRegKey $(StartKey)
+
+		;Copy Tcpip values to our card
+    		Set DstRegKey = $(!NTN_ServiceBase)"\"$(AdapterProductHardwareName)$(AdapterNumber)"\Parameters"
+		Set SrcRegKey = $(!NTN_ServiceBase)"\"$(SecuredCard)"\Parameters\Tcpip"
+		;Set SrcRegKey = $(!NTN_SoftwareBase)"\"$(Manufacturer)"\PGPnet\Settings"
+
+		OpenRegKey $(!REG_H_LOCAL) "" $(DstRegKey) $(MAXIMUM_ALLOWED) HDestRegistryKey
+		OpenRegKey $(!REG_H_LOCAL) "" $(SrcRegKey) $(MAXIMUM_ALLOWED) HSrcRegistryKey
+		Shell  $(UtilityInf),CopyRegTreeAs, $(HSrcRegistryKey), $(HDestRegistryKey) , "Tcpip", "FALSE"	
+
+	    	CloseRegKey $(KeyParameters)
+		CloseRegKey $(HDestRegistryKey)
+		CloseRegKey $(HSrcRegistryKey)
+
+		;disable Tcpip from secured card
+		Shell  "", FlipBinding, "Tcpip", $(SecuredCard), "OFF"
+		set BNumber = $($R0)
+		ifstr(i) $(BNumber) != ""
+			Shell  $(UtilityInf),ToggleBinding, "Tcpip", $(BNumber) , "disable"	
+		endif
+
+		;disable NetBT from secured card
+		ifstr(i) $(GroupName) == "NDIS"
+			Shell  "", FlipBinding, "NetBT", $(SecuredCard), "OFF"
+			set BNumber = $($R0)
+			ifstr(i) $(BNumber) != ""
+				Shell  $(UtilityInf),ToggleBinding, "NetBT", $(BNumber) , "disable"	
+			endif
+		endif
+
+		;
+		; 	Note that a virtual adapter was added.
+		;
+		Set AddedNewVirtualAdapter = "Yes"
+
+		;
+		;
+		ifstr(i) $(PGPMacParamsKey) != ""
+			set NewValueList = {{Device,$(NoTitle),$(!REG_VT_SZ),$(AdapterProductHardwareName)$(AdapterNumber)},+
+			                    {AdapterNumber,$(NoTitle),$(!REG_VT_SZ),$(AdapterNumber)}, +
+			                    {InstanceNumber,$(NoTitle),$(!REG_VT_DWORD), $(AdapterNumber) } }
+			Shell $(UtilityInf), AddValueList, $(PGPMacParamsKey), $(NewValueList)
+			CloseRegKey $(PGPMacParamsKey)
+		endif
+		
+continueCardList = +
+			
+		EndForListDo
+
+		;SetGrouptype for PGPmac Transport
+		Set SetDependenceKey = $(!NTN_ServiceBase)"\"$(TransportProductSoftwareName)
+		OpenRegKey $(!REG_H_LOCAL) "" $(SetDependenceKey) $(MAXIMUM_ALLOWED) OpenPGPMacKey
+    		Set NewValueList = {{Group,0,$(!REG_VT_SZ),"TDI"}}
+		Shell  $(UtilityInf), AddValueList, $(OpenPGPMacKey), $(NewValueList)
+		CloseRegKey $(OpenPGPMacKey)
+
+		;
+		;	If we added a virtual adapter, tell NCPA to review bindings
+		;	again after this completes.
+		;
+		ifstr(i) $(AddedNewVirtualAdapter) == "Yes"
+			Set RegKey = $(!NTN_SoftwareBase)"\Microsoft\NCPA\CurrentVersion"
+			OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) NcpaKey
+			ifstr(i) $(NcpaKey) != ""
+				SetRegValue $(NcpaKey) {"BindRestart",$(NoTitle),$(!REG_VT_DWORD),1}
+				Debug-Output "PGPMac: set BindRestart to 1 in "$(RegKey)
+				CloseRegKey $(NcpaKey)
+			else
+				Debug-Output "PGPMac: failed to open "$(RegKey)
+			endif
+		else
+
+			Set NetPathRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+			OpenRegKey $(!REG_H_LOCAL) "" $(NetPathRegKey) $(MAXIMUM_ALLOWED) NetaPathKey
+			ifstr(i) $(NetaPathKey) != ""
+				GetRegValue $(NetaPathKey) "AdapterNum" NetaList
+				set AdptNum = *($(NetaList),4)
+			endif
+			
+			;disable us from us
+			Shell  "", FlipBinding, "PGPMac", $(AdapterProductHardwareName)$(AdptNum), "OFF"
+			set BNumber = $($R0)
+			ifstr(i) $(BNumber) != ""
+				Shell  $(UtilityInf),ToggleBinding, "PGPMac", $(BNumber) , "disable"	
+			endif
+
+			;disable dRmon from us if present
+			Shell  "", FlipBinding, "DTA", $(AdapterProductHardwareName)$(AdptNum), "OFF"
+			set BNumber = $($R0)
+			ifstr(i) $(BNumber) != ""
+				Shell  $(UtilityInf),ToggleBinding, "DTA", $(BNumber) , "disable"	
+			endif
+
+			;Get registry values for secured card
+			Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+			OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+			ifstr(i) $(NetaKey) != ""
+				GetRegValue $(NetaKey) "SecuredCard" SecuredCardList
+				set SecuredCard = *($(SecuredCardList),4)
+			endif
+
+			ifstr(i) $(NetaKey) != ""
+				GetRegValue $(NetaKey) "AdapterNum" SecuredCardNumberList
+				set SecuredCardNumber = *($(SecuredCardNumberList),4)
+			endif
+
+			;Copy WINS values to our card
+    			Set DstRegKey = $(!NTN_ServiceBase)"\NetBT\Adapters"
+			Set SrcRegKey = $(!NTN_ServiceBase)"\NetBT\Adapters\"$(SecuredCard)
+    			Debug-Output "DstRegKey is "$(DstRegKey)
+
+			OpenRegKey $(!REG_H_LOCAL) "" $(DstRegKey) $(MAXIMUM_ALLOWED) HDestRegistryKey
+			OpenRegKey $(!REG_H_LOCAL) "" $(SrcRegKey) $(MAXIMUM_ALLOWED) HSrcRegistryKey
+
+			Shell  $(UtilityInf),CopyRegTreeAs, $(HSrcRegistryKey), $(HDestRegistryKey) , $(AdapterProductHardwareName)$(SecuredCardNumber), "FALSE"	
+
+	    		CloseRegKey $(HDestRegistryKey)
+			CloseRegKey $(HSrcRegistryKey)
+		endif
+
+	endif
+
+    goto successful
+
+deinstall = +
+	read-syms GeneralConstants
+
+	Set NetaRegKey = "SOFTWARE\Network Associates\PGP\PGPnet"
+	OpenRegKey $(!REG_H_LOCAL) "" $(NetaRegKey) $(MAXIMUM_ALLOWED) NetaKey
+	ifstr(i) $(NetaKey) != ""
+		GetRegValue $(NetaKey) "SecuredCard" SecuredCardList
+		set SecuredCard = *($(SecuredCardList),4)
+	endif
+	;enable Tcpip for secured card
+	Shell  "", FlipBinding, "Tcpip", $(SecuredCard), "ON"
+	set BNumber = $($R0)
+
+	ifstr(i) $(BNumber) != ""
+		Shell  $(UtilityInf),ToggleBinding, "Tcpip", $(BNumber) , "activate"	
+	endif
+	;enable NetBT for secured card
+	Shell  "", FlipBinding, "NetBT", $(SecuredCard), "ON"
+	set BNumber = $($R0)
+
+	ifstr(i) $(BNumber) != ""
+		Shell  $(UtilityInf),ToggleBinding, "NetBT", $(BNumber) , "activate"	
+	endif
+	;enable dRMON for secured card
+	Shell  "", FlipBinding, "DTA", $(SecuredCard), "ON"
+	set BNumber = $($R0)
+
+	ifstr(i) $(BNumber) != ""
+		Shell  $(UtilityInf),ToggleBinding, "DTA", $(BNumber) , "activate"	
+	endif
+
+	;
+	;	Build a list of real LAN adapters that the transport is bound to
+	;	
+	OpenRegKey $(!REG_H_LOCAL) "" $(TransportLinkageKeyName) $(MAXIMUM_ALLOWED) TransportLinkageKey
+	ifstr(i) $(TransportLinkageKey) != ""
+		GetRegValue $(TransportLinkageKey) "Bind" BindList
+		Debug-Output "PGPMac: Remove: BindList: "$(BindList)
+		Set Binding = *($(BindList),4)
+		Debug-Output "PGPMac: Remove: Binding:  "$(Binding)
+		CloseRegKey $(TransportLinkageKey)
+	else
+		Debug-Output "PGPMac: failed to open key "$(TransportLinkageKeyName)
+		goto skipRemoveBindings
+	endif
+	set CardList = {}
+	set CreateCardList = {}
+	ForListDo $(Binding)
+		Split-String $($), "\", BindInfo
+		QueryListSize BindListSize $(BindInfo)
+		set CardName = *($(BindInfo),$(BindListSize))
+		Debug-Output "PGPMac: Remove: Cardname: "$(CardName)
+		ifstr(i) $(CardList) == {}
+			set CardList = {$(CardName)}
+		else
+			set CardList = >($(CardList),$(CardName))
+		endif
+	EndForListDo
+	Debug-Output "PGPMac: Cardlist: "$(CardList)
+
+	;
+	;	For each real LAN adapter in the list...
+	;
+	ForListDo $(CardList)
+		;
+		;	Open the params key
+		;
+		Set RegKey = $(!NTN_ServiceBase)"\"$($)"\Parameters\"$(TransportProductSoftwareName)
+		OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) ParamsKey
+		ifstr(i) $(ParamsKey) != ""
+			;
+			;	get the adapter number
+			;
+			GetRegValue $(ParamsKey) "AdapterNumber" AdapterNoValue
+			CloseRegKey $(ParamsKey)
+			Set AdapterNo = *($(AdapterNoValue),4)
+
+			;
+			;	Remove the virtual hardware component that represents the ELAN.
+			;	This will remove the adapter software component as well.
+			;
+			Set AdapterRegBase = "SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkCards\"$(AdapterNo)
+			Debug-Output "PGPMac: removing adapter number "$(AdapterNo)" RegBase "$(AdapterRegBase)
+			Shell $(UtilityInf), RemoveHardwareComponent, $(Manufacturer), +
+				$(AdapterProductSoftwareName), $(AdapterRegBase)
+			ifint $($ShellCode) != $(!SHELL_CODE_OK)
+				Debug-Output "PGPMac: ShellCode error"
+				goto ShellCodeError
+			endif
+
+			;
+			;	delete the whole PGPMac transport specific key from the real LAN adapter
+			;
+			Set RegKey = $(!NTN_ServiceBase)"\"$($)"\Parameters"
+			Debug-Output "PGPMac: Deleting protocol specific key from LAN adapter"
+			Debug-Output "PGPMac: Key is "$(RegKey)
+			OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) ParamsKey
+			ifstr(i) $(ParamsKey) != ""
+				DeleteRegTree $(ParamsKey) $(TransportProductSoftwareName)
+				CloseRegKey $(ParamsKey)
+			else
+				Debug-Output "PGPMac: Failed to delete "$(RegKey)
+			endif
+
+		endif
+
+continueRemoveBindings =+
+	
+	EndForListDo
+
+skipRemoveBindings =+
+
+	Debug-Output "PGPMac: Removing "$(TransportProductSoftwareName)" Software Component from Registry"
+
+	Shell $(UtilityInf), RemoveSoftwareComponent, $(Manufacturer), +
+		$(TransportProductSoftwareName)
+
+	; ignore errors for now
+
+	goto end
+
+configure =+
+
+	set Error = "Configuration Not Implemented"
+	set from = end
+	goto nonfatalinfo
+	
+update = +
+
+    set Error = "Update Not Implemented, Remove and Reinstall"
+	set from = end
+	goto nonfatalinfo
+
+successful = +
+    goto end
+warning = +
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), "WARNING", $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+        goto ShellCodeError
+    endif
+    ifstr(i) $($R1) == "OK"
+        goto $(to)
+    else-ifstr(i) $($R1) == "CANCEL"
+        goto $(from)
+    else
+        goto "end"
+    endif
+nonfatalinfo = +
+    Set CommonStatus = STATUS_USERCANCEL
+    Set Severity = STATUS
+    goto nonfatalmsg
+nonfatal = +
+    Set Severity = NONFATAL
+    goto nonfatalmsg
+nonfatalmsg = +
+    ifstr(i) $(Error) == ""
+        Shell $(UtilityInf) RegistryErrorString "SETUP_FAIL"
+        ifint $($ShellCode) != $(!SHELL_CODE_OK)
+            goto ShellCodeError
+        endif
+        set Error = $($R0)
+    endif
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), $(Severity), $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+        goto ShellCodeError
+    endif
+    ifstr(i) $($R1) == "OK"
+        goto $(from)
+    else
+        goto "end"
+    endif
+fatalregistry = +
+    Shell $(UtilityInf) RegistryErrorString $(RegistryErrorIndex)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+        goto ShellCodeError
+    endif
+    set Error = $($R0)
+    goto fatal
+fatal = +
+    ifstr(i) $(Error) == ""
+        Shell $(UtilityInf) RegistryErrorString "SETUP_FAIL"
+        ifint $($ShellCode) != $(!SHELL_CODE_OK)
+            goto ShellCodeError
+        endif
+        set Error = $($R0)
+    endif
+    Shell $(subroutineinf) SetupMessage, $(!STF_LANGUAGE), "FATAL", $(Error)
+    ifint $($ShellCode) != $(!SHELL_CODE_OK)
+        goto ShellCodeError
+    endif
+    goto setfailed
+ShellCodeError = +
+    set DlgType      = "MessageBox"
+    set STF_MB_TITLE = $(ShellCodeErrorTitle)
+    set STF_MB_TEXT  = $(ShellCodeErrorText)
+    set STF_MB_TYPE  = 1
+    set STF_MB_ICON  = 3
+    set STF_MB_DEF   = 1
+    ui start "Error Message"
+    goto setfailed
+setfailed = +
+    set CommonStatus = STATUS_FAILED
+    ifstr(i) $(OEM_ABANDON_ON) == TRUE
+        set OEM_ABANDON_ON = FALSE
+        goto deinstall
+    endif
+    goto end
+end = +
+    goto term
+term = +
+    Return $(CommonStatus)
+ Return 100100101
+
+[StripTrailSlash]
+    Split-String $($0) "\" InList
+    QueryListSize InListSize, $(InList)
+    Ifint $(InListSize) <= 1
+        Return $($0)
+    Endif
+    Set NewString = ""
+    ForListDo $(InList)
+        ifint $(#) < $(InListSize)
+            Set NewString = $(NewString)$($)
+        else-ifstr $($) != "\"
+            Set NewString = $(NewString)$($)
+        endif
+    EndForListDo
+    Return $(NewString)
+
+;Adds $($0) to review list at uninstall time
+;this is temporary, soon this wont be needed
+;$(!NTN_SoftwareBase)"\Microsoft\Ncpa\CurrentVersion"
+:$(!NTN_ServiceBase)"\RASARP\Linkage"
+[AddNcpaInf]
+    set Start		= $($0)
+    set NewList		= {$($0)}
+    set KeyName		= $($1)
+    set ValueName	= $($2)
+    set Return		= STATUS_FAILED
+    set hKey         	= ""
+
+    OpenRegKey $(!REG_H_LOCAL) "" $(NcpaKeyName) $(MAXIMUM_ALLOWED) hKey
+
+    Ifstr(i) $(KeyName) != $(hKey)
+        GetRegValue   $(KeyName) "ReviewPrograms" TempList
+        ifint $(RegLastError) == 0
+ 
+            ForListDo *($(TempList),4)
+		//This entry needs to added
+                ifstr(i) $($) != $($Start)
+                    set NewList = >($(newList), $($))
+                endif
+            EndForListDo
+
+            SetRegValue $(hKey) {$($ValueName), 0, +
+                                    $(!REG_VT_MULTI_SZ),$(NewList)}
+            CloseRegKey $(hKey)
+            Set Return = STATUS_SUCCESSFUL
+        endif
+    else
+        Debug-Output "AddNcpaInf couldnt open key"
+    endif
+
+    return $(Return )
+
+;Removes $0 from review list at uninstall time
+;this is temporary, soon this wont be needed
+[RemoveNcpaInf]
+    set InfName		= $($0)
+    set KeyName		= $($1)
+    set Return		= STATUS_FAILED
+    set hKey		= ""
+    set newList         = {}
+
+    OpenRegKey $(!REG_H_LOCAL) "" $(KeyName) $(MAXIMUM_ALLOWED) hKey
+    Ifstr(i) $(KeyName) != $(hKey)
+        GetRegValue    $(KeyNcpa) "ReviewPrograms" TmpList
+        ifint $(RegLastError) == 0
+
+            ForListDo *($(TmpList),4)
+                ifstr(i) $($) != $($InfName)
+                    set newList = >($(newList), $($))
+                endif
+            EndForListDo
+            Debug-Output "AddInf: new List "$(newList)
+            SetRegValue $(hKey) {ReviewPrograms, 0, +
+                                    $(!REG_VT_MULTI_SZ),$(newList)}
+            CloseRegKey $(hKey)
+            Set Status = STATUS_SUCCESSFUL
+        endif
+    else
+        Debug-Output "RemoveInfFromReviewPrograms: error opening ncpa key."
+    endif
+    Debug-Output "RemoveInfFromReviewPrograms: exit"
+    return $(Status)
+
+[FlipBinding]
+	;
+	;	Open the Linkage Key and get the Bind Value
+	;
+	;The service which has bindings you want to toggle
+	set ServiceName = $($0)
+	;The name of the binding you wish to toggle
+	set BindingName = $($1)
+	;How do you wish to toggle ON or OFF
+	set Mode	= $($2)
+
+	set ON		= "ON"
+	set OFF		= "OFF"
+
+	read-syms GeneralConstants
+	set MagicIndex = ""
+
+	ifstr(i) $(Mode) == $(ON)
+		Set LinkRegKey = $(!NTN_ServiceBase)"\"$(ServiceName)"\Linkage\Disabled"
+	else	
+		Set LinkRegKey = $(!NTN_ServiceBase)"\"$(ServiceName)"\Linkage"
+	endif
+
+
+	OpenRegKey $(!REG_H_LOCAL) "" $(LinkRegKey) $(MAXIMUM_ALLOWED) hRegKey
+	ifstr(i) $(hRegKey) != ""
+		GetRegValue $(hRegKey) "Bind" BindList
+		Debug-Output "PGPMac: BindList: "$(BindList)
+		Set Binding = *($(BindList),4)
+		CloseRegKey $(hRegKey)
+	else
+		;goto fatalRegistry
+	endif
+	;
+	;	Parse the Bindings to create a list Bindings
+	;
+	set BindList = {}
+	set CreateBindList = {}
+	ForListDo $(Binding)
+		Split-String $($), "\", BindInfo
+		QueryListSize BindListSize $(BindInfo)
+		set BindName = *($(BindInfo),$(BindListSize))
+
+		ifstr(i) $($) == "\Device\"$(BindingName)
+			set MagicIndex = $(#)		
+		endif
+	EndForListDo
+	return $(MagicIndex)
+[EndOfFlipBinding]
+
+[Install-Option]
+    set STF_VITAL = ""
+    ifstr(i) $(AddCopy) == "YES"
+        ;AddSectionFilesToCopyList Files-Platform-Drivers $(PlatformDir) $(!STF_WINDOWSSYSPATH)\drivers
+    endif
+    ifstr(i) $(DoCopy) == "YES"
+       set !STF_NCPA_FLUSH_COPYLIST = TRUE
+       CopyFilesInCopyList
+    endif
+    ifstr(i) $(DoConfig) == "YES"
+    endif
+    Exit
+
+[Install-Update]
+   set STF_VITAL        = ""
+   set STF_OVERWRITE    = "VERIFYSOURCEOLDER"
+
+   exit
+
+[Source Media Descriptions]
+     1 = "PGPMac Driver Installation Disk", TAGFILE = disk1
+
+[ProductType]
+STF_PRODUCT  = Winnt
+
+[Files-Inf]
+1, OEMSETUP.INF, SIZE=999, RENAME=$(!UG_Filename)
+
+[Files-Platform-Drivers]
+1, PGPNet.SYS , SIZE=999
+
+[DialogConstantsENG]
+Help        				= "&Help"
+Exit        				= "Cancel"
+OK          				= "OK"
+HelpContext 				= ""
+Continue    				= "Continue"
+Cancel      				= "Cancel"
+
+;set DlgType      = "MessageBox"
+;set STF_MB_TITLE = "To reg key"
+;set STF_MB_TEXT  = $(ToRegistryKey)
+;set STF_MB_TYPE  = 1
+;set STF_MB_ICON  = 3
+;set STF_MB_DEF   = 1
+;ui start "TEST"
+
+	;disable us from us
+;	Shell  "", FlipBinding, "PGPMac", $(AdapterProductHardwareName)$(AdapterNumber), "OFF"
+;	set BNumber = $($R0)
+
+;	ifstr(i) $(BNumber) != ""
+;		Shell  $(UtilityInf),ToggleBinding, "PGPMac", $(BNumber) , "disable"	
+;			Set RegKey = $(!NTN_SoftwareBase)"\Microsoft\NCPA\CurrentVersion"
+;			OpenRegKey $(!REG_H_LOCAL) "" $(RegKey) $(MAXIMUM_ALLOWED) NcpaKey
+;	endif

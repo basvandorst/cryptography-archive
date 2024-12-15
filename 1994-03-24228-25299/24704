@@ -1,0 +1,200 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!cactus.org!ritter
+From: ritter@cactus.org (Terry Ritter)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar15.065615.3895@cactus.org>
+Keywords: DES replacement, Large blocks
+Organization: Capital Area Central Texas UNIX Society, Austin, Tx
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar14.223702.6452@mnemosyne.cs.du.edu>
+Date: Tue, 15 Mar 1994 06:56:15 GMT
+Lines: 189
+
+
+
+ In: <1994Mar14.223702.6452@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+ (Colin Plumb) comments on block mixing transforms:
+
+
+>The algorithm is self-inverse.
+>[...]
+>This means that
+>if it is used in a structure like an FFT butterfly to encrypt large
+>blocks [...]
+
+ perhaps this quote from the original article will ring a bell:
+
+>> Simple constructs like
+>>
+>>           A      B
+>>           |      |
+>>           v      v
+>>           MixTrans
+>>           |      |
+>>           v      v
+>>           C      D
+>>
+>> are not likely to be very useful as ciphers by themselves, even if
+>> the mixing transformation is keyed and the blocks are large.
+
+ My intent in defining such constructs was to try and separate the
+ concepts of "strength" from the "mixing" property.  This means
+ that we do not have to define what "strength" means in such a
+ construct, but can instead rely on more classical forms, such as
+ DES or substitution.
+
+
+>From A+B, it is easy to obtain most of T, save only the term of p which
+>may be added in the modular reduction.
+>
+>Because this depends on the high
+>bit of A+B, it is also easy to see when this has been added.
+
+ Well, the original polynomial reduction (when p is added) is
+ conditional upon the shifted-out-and-lost upper bit of T.
+ It is not there (not in the output) to see.
+
+ Certainly we can expect to form the inverse T (say, T') given
+ both X and Y.  Then, if we had access to A and B, we could see
+ what p was when it was added.  Hopefully, we will not have that
+ access.  I believe I made that requirement clear:
+
+>> It is crucial to remember that these simple, high-speed, but linear
+>> mixing transforms can be said to have "strength" only if the input
+>> and output values are never both available.  That is, these
+>> structures do not by themselves handle "known-plaintext" attack.
+>> (Of course, the same could be said for many other simple internal
+>> mechanisms used in block cipher construction.)
+
+
+>Given a very few pairs (X,Y) of ciphertext only, half of them will
+>have the high bit of X^Y clear, so the plaintext can be recovered using
+>T = (X^Y)<<1; A = Y^T; B = X^T;
+
+ For those cases where msb(X^Y) = 0.
+
+
+>If there are any exploitable patterns
+>in A and B, these can be used to find p in the cases where X^Y has
+>its high bit set and T = (X^Y)<<1; A = Y^T^p; B = X^T^p;, for some
+>unknown p.  Finding p should not be difficult.
+
+ In many (most?) cases A and B should already be randomized by the
+ time they get to the mixer being attacked.  Without "exploitable
+ patterns," finding p will get a whole lot trickier.
+
+ It certainly is true that the structure is weak.  Since it is weak,
+ it must be protected.  But when the structure is protected, finding
+ p becomes difficult.
+
+ Anyway, I claim the real issue is: "Does it mix well?"  The answer
+ may be: "Not all that well, but we can afford to do a lot of it."
+
+
+>As an aside, if you want a better block-mixing function, try starting
+>with the MA-structure used in IDEA:
+>
+>
+>      A    B
+>      |    |
+>      v    v
+> K1-->*--->+
+>      |    |
+>      |    |
+>      v    v
+>      +<---*<--K2
+>      |    |
+>      v    v
+>      X    Y
+
+ I say you get what you pay for.  This proposal implies two full
+ polynomial multiplications per mixing, at a cost of O(n^2) each.
+ And while it may be said to be "stronger" (and also a better
+ mixer), the question of how many such structures are required
+ (that is, how many "rounds" are needed) is one of the open
+ questions in cryptography, so this added "strength" is difficult
+ to use.  And, because the cost of these mixers is O(n^2), the
+ structure cannot be expanded dramatically without considering the
+ impact on speed or circuit complexity.
+
+ In contrast, I proposed a scheme with no general multiplications
+ at all, just a single shift and three adds; cost O(n) each.  Such
+ a scheme is not a cipher, nor was it intended to be.  It was
+ intended to be a mixer (and, in fact, not that good a mixer).
+ But with it, we might avoid depending on the strength of
+ designs which are not well understood.  And the structure can be
+ expanded arbitrarily in the sense that one large mixer has the
+ same cost as many little ones which handle the same data.
+
+ One of the examples in the original article showed 61 mixing
+ operations for a single 256-bit block operation.  Given that
+ the mixing structure is so weak, perhaps a better approach
+ would be:
+
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --------------mix-------------- --------------mix--------------
+    ------------------------------mix------------------------------
+    --------------mix-------------- --------------mix--------------
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --------------mix-------------- --------------mix--------------
+    ------------------------------mix------------------------------
+    --------------mix-------------- --------------mix--------------
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+
+ This is 122 total mixing operations, but they are O(n) so the
+ cost is something like 4 * 18 * 128 = 9216 (and probably less).
+
+   levels * mixings-per-level * cost-per-mixer * size
+
+    2 *  1 * 4 * 128 +
+    4 *  2 * 4 *  64 +
+    4 *  4 * 4 *  32 +
+    4 *  8 * 4 *  16 +
+    4 * 16 * 4 *   8 =  9216
+
+ If we use the IDEA-derived mixer we have:
+
+   levels * mixings-per-level * cost-per-mixer * size^2
+
+    2 *  1 * 2 * 128^2 +
+    4 *  2 * 2 *  64^2 +
+    4 *  4 * 2 *  32^2 +
+    4 *  8 * 2 *  16^2 +
+    4 * 16 * 2 *   8^2 =  188,416
+
+ or over 20 times the computation of the simple approach.
+
+ Of course, the ideal would be
+
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    ------------------------------mix------------------------------
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    ------------------------------mix------------------------------
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+
+ If we use the simple mixer we have 4 * 128 = 512; with the IDEA-type
+ mixer, we have a cost of 2 * 2 * (128)^2 or 65,536; approximately
+ 128 times the cost of the simple approach.
+
+ Is the version with the IDEA-type mixer stronger?  Probably.  But
+ is it likely to be stronger than, say, 100 sequential versions using
+ the simple mixer, which would require about the same processing?
+
+ Sometimes added strength is not worth the cost.
+
+ ---
+ Terry Ritter   ritter@cactus.org (cactus.org dies March 18)
+                ritter@rts.com
+                ritter@io.com (perhaps temporarily)
+

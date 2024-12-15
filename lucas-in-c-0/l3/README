@@ -1,0 +1,165 @@
+L3 - PRELIMINARY VERSION 0.36 BETA  --  1 June 1993
+
+L3 is a simple public key package using LUCAS encryption based on gmp
+1.3. It uses the usual scheme for encryption of files, namely a "random"
+session key is generated and padded with more "random" data. The session
+key and IV are then encrypted with LUC and used to encrypt this file
+itself using a composition of triple DES and IDEA (40 bytes of key
+material and 8 bytes of IV, which is more than the random number
+generator is "worth" anyway).
+
+Random data is gathered from the system and from the user via keystroke
+timings and entry of "random" text. Because of this, the security of the
+system is dependent on the user typing in a sufficiently long string of
+characters on encrypt and key generation.
+
+Tested on:
+sun 4, sun os 4.1.1 (gcc 2.2.2 and 2.3.3)
+IBM RS6000, AIX 3.2.0 (gcc 2.3.1)
+486/33, Linux 0.99.5/libc 4.3.3 (gcc 2.3.3)
+
+I'm distributing this now, in the hope that people will find flaws in
+the system, send comments &c. This really isn't a "production" version
+yet. Use at your own risk. I may (and probably will) alter the output
+format of L3 in the future and break compatability with this version (in
+fact this version is not compatible with 0.34).
+
+If you are looking for a full featured system for email &c., you're
+probably better off with RIPEM, PGP, another PEM implementation, or
+something else which may not exist as of the time I'm writing this.
+However, there is no reason you couldn't use this with some scripts and
+something like prencode (included here). A few such sample scripts are
+included in the utils directory.
+
+This package is intended to be very simple. No warranty is provided.  In
+other words, read the code, understand it, and then you might decide to
+trust it. LUC hasn't really been around long enough to have a great
+degree of trust in it, anyway.
+
+Incidentally, I did some timing tests which included precompution of
+(1/q) mod p, inverses mod (p+-1)(q+-1) &c. to speed up halfluc.  The
+performance improvement was negligible (<5%), so I didn't bother.
+
+This implementation of LUC is somewhere between 50% slower and twice as
+slow as RSA on the platforms for which I did testing.  The implementation 
+could certainly be fine-tuned for better performance.
+
+
+several commands are included:
+-------------------
+genkey - generates as LUC key. 
+The private key consists of (p,q,e) where p,q are primes satisfying
+	certain conditions with respect to e.
+	p and q are encrypted
+The public key consists of (n,e) where n=pq
+
+the default key size is set to 256 bit primes (512 bit modulus).
+I recommend using a 1024 bit or larger key. The maximum in this
+version is about 1900 bits. Key generation, decryption and signing 
+are very slow with keys this large. 
+
+genkey foo 
+will generate a key.
+The public component is stored in foo.pub
+The private component is stored in foo.prv
+
+p,q in the private component are encrypted using triple DES with
+	a password you specify. 
+
+genkey foo 1024
+will generate
+a key with a 1024 bit modulus. This may take a long time.
+
+You can generate keys with a modulus up to around 1900 bits, but
+operations with such keys are very slow.
+---
+encrypt keyname  <infile >outfile
+encrypts infile using keyname.pub
+---
+decrypt keyname  <infile >outfile
+decrypts infile using keyname.prv (you'll be prompted for a password)
+---
+sign keyname <file >signature
+signs file using keyname.prv (MD5 + LUC signatures)
+---
+vsign keyname signature <file
+verifies signature of file using keyname.pub
+---
+chpwd <private1 >private2
+rewrites private1 with a new password. Of course, you need to
+know the password of private1. private2 will contain the same
+key encrypted with the new password.
+---
+prv2pub <private >public
+derives public key from private key. You need to know the
+password of the private key.
+---
+md5 pubfile
+
+for generating md5 of a public key file. This is  RSADSIs MD5
+driver program modified to use LPATH (see below)
+---
+both genkey and encrypt will grab any surplus parameters and
+seed them into the PRNG. 
+
+This means you might want to use:
+
+encrypt joe <infile >outfile  `rndsrc`
+genkey joe 1024 `rndsrc`
+
+where rndsrc could be a script which grabs some extra "random"
+data from the system (and possibly hashes it, but it needs
+to be encoded in a printable way).
+
+---
+Note that encrypt/decrypt and sign/vsign don't generate any
+temporary files and don't need to know the length of their input
+before proceeding. This means that they can be used on
+very large files with pipes, for example to make an
+encrypted tape.
+e.g.
+tar cf - . | encrypt pubkey |  suitable dd to tape device
+suitable dd from tape device | decrypt pubkey | tar xvf -
+
+----------------------------------------------
+
+In addition I've included Mark Riordan's prencode for encoding
+signatures and encrypted messages in printable format and RSA DSI's
+MD5 driver with a small modification, essentially for calculating
+the md5 value of a public key for verification purposes.
+
+--
+LPATH is the search path for READING private key and public key files.
+e.g.
+LPATH=$HOME/lkeys:.
+
+Note that genkey does not use LPATH
+
+---
+Licensing:
+
+- binaries linked with libgmp are covered by the GPL. 
+- algorithms used here may be covered by a software patent where you live.
+  This may mean that you can use it only for "experimental and educational use".
+  You should find out before you use it, especially in a commercial 
+  context.
+- MD5 is copyright RSA Data Security Inc. (read files for restrictions)
+- d3des is copyright Richard Outerbridge (read files for restrictions)
+- I'm not asserting copyright over any of this code. So, modulo the above,
+  and the export restrictions placed on it by Canadian and U.S. law, do what 
+  you want with it. This includes changing it, claiming you wrote it, 
+  selling it and anything else that is legal. Please do not violate 
+  Canadian and U.S. export laws by exporting this outside the U.S. and 
+  Canada. 
+
+Here's my public key (prencode format):
+jnXrxTT5sNnRU2oLHl/uVzCakoaAkLoLVuOVklx/rnarwxjtxz9rQ2NYWA6/OdAe
+o6K/Or/ksugw+SWwe2DoGJRCGAglVCAkqzOPmZP1ylDFfFGUK7AZzQzLJw1qj78t
+gNwraNpmxapoC5lPjY2o5y10OK/HN4EhaTYbuPifRxn0JvVdPjbnvuEeOVv+LXED
+AQAB
+
+---
+Send comments, flames and bug reports to me via email
+
+Mark Henderson
+markh@wimsey.bc.ca (personal account)

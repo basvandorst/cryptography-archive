@@ -1,0 +1,1568 @@
+Path: msuinfo!caen!zaphod.mps.ohio-state.edu!cs.utexas.edu!devnull!edr
+From: edr@mpd.tandem.com (Ed Rupp)
+Newsgroups: sci.crypt
+Subject: Re: Letter Frequency
+Message-ID: <2715@devnull.mpd.tandem.com>
+Date: 26 Oct 92 07:06:41 GMT
+References: <TED.92Oct20225825@lole.nmsu.edu> <1992Oct21.112802.3379@wkuvx1.bitnet> <1992Oct24.052920.590@news.Hawaii.Edu>
+Sender: news@devnull.mpd.tandem.com
+Organization: Tandem Computers (MPD) Austin, TX
+Lines: 1557
+
+In article <1992Oct24.052920.590@news.Hawaii.Edu> newsham@wiliki.eng.hawaii.edu (Timothy Newsham) writes:
+>well,  if you call now, for a limited time,  on saturdays and all
+>through may, you can get this program...
+
+As long as we're sharing frequency counting programs, here's one I use
+that is a little more flexible.  The default action is to do single
+letter frequency counts, but it will do longer n-grams and can handle
+numeric instead of alpha input (handy for those pesky Beale and Zodiac
+ciphers).  For counting lots of text, there are save/restore
+options.  This program works on RISCOS, but "should be portable".  Limits
+are the amount of memory available for the tree, plus disk space for
+saving the tree.  
+						Ed
+
+---------------------------- cut here ----------------------------
+#include <stdio.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/fcntl.h>
+
+#define MAXDEPTH        100	/* max. length of strings being counted */
+
+#define ALPHA	1
+#define	NUMERIC	2
+
+int *Top;			/* top level of the tree */
+int Symbols;			/* width of each tree level */
+int Results[MAXDEPTH+1];
+int Ltotal = 0;			/* total number of newlevel calls */
+int Atotal = 0;			/* total number of fill calls */
+
+/* command line arguments, and their defaults */
+int Depth = 1;		/* default depth is just the symbols freq. */
+int Minrepeat = 1;	/* minimum repeats to force print */
+int Oflag = 0;		/* load previous table */
+int Uflag = 0;		/* update stored table */
+int Pflag = 0;		/* print results */
+int Verbose = 0;	/* verbose */
+int Mode = ALPHA;	/* alpha only, or numeric */
+
+static char *Directory = ".";
+extern char *getenv();
+extern char *optarg;
+
+/*
+ *      freq --- count strings of varying lengths on stdin
+ *
+ *	-a	Alpha mode (default)
+ *	-n	Numeric mode
+ *	-d#	depth of n-grams to count (default 1)
+ *	-o	load old tables (default off)
+ *	-u	update tables at end (default off)
+ *	-p	print results (default true unless -u)
+ *	-m#	minimum repeat count during print (default 1)
+ *	-v	verbose on (default off)
+ */
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int c;
+
+	/* process args */
+	while( (c=getopt(argc,argv,"and:oupm:v")) != -1 )
+	switch(c){
+	case 'a':
+		Mode=ALPHA;
+		break;
+	case 'n':
+		Mode=NUMERIC;
+		break;
+	case 'd':
+		Depth = atoi(optarg);
+		if(Depth<1 || Depth>MAXDEPTH)
+			Depth=1;
+		break;
+	case 'o':
+		Oflag++;
+		break;
+	case 'u':
+		Uflag++;
+		break;
+	case 'v':
+		Verbose++;
+		break;
+	case 'p':
+		Pflag++;
+		break;
+	case 'm':
+		Minrepeat = atoi(optarg);
+		if(Minrepeat<1)
+			Minrepeat=1;
+		break;
+	default:
+		printf("Legal options are:\n");
+		printf("    -a	Alpha mode [default]\n");
+		printf("    -n	Numeric mode\n");
+		printf("    -d#	depth of n-grams to count [default 1]\n");
+		printf("    -o	load old tables [default off]\n");
+		printf("    -u	update tables at end [default off]\n");
+		printf("    -p	print results [default true unless -u]\n");
+		printf("    -m#	minimum repeat count during print [default 1]\n");
+		printf("    -v	verbose output [default off]\n");
+		exit(1);
+		}
+
+	/* if not updating the file, assume printing is necessary */
+	if(Uflag==0)
+		Pflag++;
+
+	if( Mode==NUMERIC && (Oflag || Uflag) )
+		fatal("Can't save/load tables in numeric mode, sorry.");
+
+	/* setup */
+	if(Mode==ALPHA)
+		Symbols = 26;
+	else
+		Symbols = 256;
+	Top = (int *)newlevel();	/* allocate top level */
+
+	if(Verbose){
+		printf("Mode:   %s\n",Mode==ALPHA ? "Alpha":"Numeric");
+		printf("Depth:  %d\n",Depth);
+		printf("Minrep: %d\n",Minrepeat);
+		}
+	
+	/* process */
+	if(Oflag)
+		treeload();
+	treeadd();
+	if(Uflag)
+		treesave();
+	if(Pflag)
+		treeprint(Top,Results,Depth);
+}
+
+void
+treeload2(FILE *fp,int *top,int depth)
+{
+	int c;
+	int count = 0;
+	int cursym = -1;
+
+	while( (c=getc(fp)) != EOF ){
+		if( isdigit(c) ){
+			count *= 10;
+			count += c-'0';
+			}
+		else if( isupper(c) ){
+			if(depth==1)
+				fatal("treeload2");
+			cursym = c-'A';
+			*(top+cursym) = newlevel();
+			treeload2(fp,(int *)*(top+cursym),depth-1);
+			}
+		else if( isspace(c) )
+			return;
+		else if( islower(c) ){
+			if(depth!=1)
+				fatal("treeload2");
+			cursym = c-'a';
+			if(count==0)
+				count=1;
+			*(top+cursym) = count;
+			Atotal += count;
+			count = 0;
+			}
+		else
+			;	/* ignore */
+		}
+}
+
+treeload()
+{
+	FILE *fp;
+	char fullname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	
+	if( (fp = fopen(fullname,"r"))==NULL){
+		perror(fullname);
+		return;
+		}
+	if(Verbose)
+		printf("Filename: %s\n",fullname);
+
+	/* Load tree from file */
+	treeload2(fp,Top,Depth);
+
+	fclose(fp);
+
+	if(Verbose)
+		printf("Loaded %d levels, %d total count.\n",Ltotal,Atotal);
+}
+
+void
+treesave2(FILE *fp,int *top,int depth)
+{
+	int i;
+
+	for(i=0;i<Symbols;i++,top++){
+		if( *top ){
+			if(depth == 1){
+				if( *top>1 )
+					fprintf(fp,"%d",*top);
+				fprintf(fp,"%c",i+'a');
+				}
+			else{
+				fprintf(fp,"%c",i+'A');
+				treesave2(fp,(int *)*top,depth-1);
+				fprintf(fp,"\n");
+				}
+			}
+		}
+}
+
+treesave()
+{
+	FILE *fp;
+	char fullname[1024];
+	char newname[1024];
+	char oldname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	sprintf(oldname,"%s/TREE%03d.OLD",Directory,Depth);
+	sprintf(newname,"%s/TREE%03d.NEW",Directory,Depth);
+	
+	if((fp = fopen(newname,"w"))==NULL){
+		perror(newname);
+		exit(1);
+		}
+
+	if(Verbose){
+		if( !Oflag )
+			printf("Filename: %s\n",fullname);
+		printf("Stored %d levels, %d total count.\n",Ltotal,Atotal);
+		}
+
+	treesave2(fp,Top,Depth);
+
+	if( ferror(fp) ){
+		printf("Error writing new tree file.  Abandoning new data\n");
+		fclose(fp);
+		}
+	else{
+		fclose(fp);
+		rename(fullname,oldname);
+		rename(newname,fullname);
+		unlink(oldname);
+		}
+}
+
+treeadd()
+{
+	int val[MAXDEPTH];
+	int *ip,*jp;
+	int orig_atotal = Atotal;
+	int orig_ltotal = Ltotal;
+
+	for(ip=val;ip<&val[Depth-1];ip++)
+		if((*ip = getval())==EOF)
+			return;
+
+	while((*ip = getval()) != EOF){
+		fill(Top,val,Depth);
+		for(jp=val;jp<ip;jp++)
+			*jp = *(jp+1);
+		Atotal++;
+		}
+	if(Verbose)
+		printf("Added  %d levels, %d total count.\n",
+			Ltotal-orig_ltotal,Atotal-orig_atotal);
+}
+
+fill(level,val,depth)
+int *level;
+int *val;
+int depth;
+{
+	int *nxtlevel = level+(*val);
+
+	if( depth == 1)
+		(*nxtlevel)++;
+	else{
+		if( *nxtlevel == NULL)
+			*nxtlevel = newlevel();
+		fill(*nxtlevel,val+1,depth-1);
+		}
+}
+
+newlevel()
+{
+	int *ptr,*scn;
+	char *malloc();
+	static int *cache = NULL;
+	static int cache_total = 0;
+
+	if( cache_total == 0 ){
+		cache_total = 1 << (Mode==ALPHA ? 15 : 10);
+		while( cache_total ){
+			cache = (int *)malloc(sizeof(int)*Symbols*cache_total);
+			if( cache != NULL )
+				break;
+			cache_total >>= 1;
+			}
+		if( cache_total == 0 ){
+			printf("Out of memory after %d allocates.\n",Ltotal);
+			exit(1);
+			}
+		memset(cache,0,sizeof(int)*Symbols*cache_total);
+		}
+	ptr = cache;
+	cache += Symbols;
+	cache_total--;
+	Ltotal++;
+	return((int)ptr);
+}
+
+treeprint(level,ptr,depth)
+int *level;
+int *ptr;
+int depth;
+{
+	int i,j;
+
+	for(i=0;i<Symbols;i++,level++)
+		if( *level != NULL){
+			*ptr = i;
+			if(depth==1){
+				if( (*level)>=Minrepeat ){
+					putval(Results[0]);
+					for(j=1;j<Depth;j++)
+						putval(Results[j]);
+					printf("\t%d\n",*level);
+					}
+				}
+			else
+				treeprint(*level,ptr+1,depth-1);
+			}
+}
+
+getval()
+{
+	int c;
+
+	if(Mode==ALPHA){
+		while( (c=getchar()) != EOF){
+			if(islower(c))
+				return(c - 'a');
+			if(isupper(c))
+				return(c - 'A');
+			}
+		return(c);
+		}
+	else{ /* NUMERIC */
+		if( scanf("%d",&c) == 1 && c>0 && c <Symbols )
+			return(c);
+		return( EOF );
+		}
+}
+
+putval(v)
+int v;
+{
+	if(Mode==ALPHA)
+		printf("%c",v+'A');
+	else
+		printf("%4d",v);
+}
+
+fatal(char *s)
+{
+	printf("%s\n",s);
+	exit(1);
+}
+Newsgroups: sci.crypt,alt.security
+Subject: Re: Letter Frequency
+Summary: 
+Expires: 
+References: <TED.92Oct20225825@lole.nmsu.edu> <1992Oct21.112802.3379@wkuvx1.bitnet> <1992Oct24.052920.590@news.Hawaii.Edu>
+Sender: 
+Followup-To: 
+Distribution: 
+Organization: Tandem Computers (MPD) Austin, TX
+Keywords: 
+
+In article <1992Oct24.052920.590@news.Hawaii.Edu> newsham@wiliki.eng.hawaii.edu (Timothy Newsham) writes:
+>well,  if you call now, for a limited time,  on saturdays and all
+>through may, you can get this program...
+
+As long as we're sharing frequency counting programs, here's one I use
+that is a little more flexible.  The default action is to do single
+letter frequency counts, but it will do longer n-grams and can handle
+numeric instead of alpha input (handy for those pesky Beale and Zodiac
+ciphers).  For counting lots of text, there are save/restore
+options.  This program works on RISCOS, but "should be portable".  Limits
+are the amount of memory available for the tree, plus disk space for
+saving the tree.  
+						Ed
+
+---------------------------- cut here ----------------------------
+#include <stdio.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/fcntl.h>
+
+#define MAXDEPTH        100	/* max. length of strings being counted */
+
+#define ALPHA	1
+#define	NUMERIC	2
+
+int *Top;			/* top level of the tree */
+int Symbols;			/* width of each tree level */
+int Results[MAXDEPTH+1];
+int Ltotal = 0;			/* total number of newlevel calls */
+int Atotal = 0;			/* total number of fill calls */
+
+/* command line arguments, and their defaults */
+int Depth = 1;		/* default depth is just the symbols freq. */
+int Minrepeat = 1;	/* minimum repeats to force print */
+int Oflag = 0;		/* load previous table */
+int Uflag = 0;		/* update stored table */
+int Pflag = 0;		/* print results */
+int Verbose = 0;	/* verbose */
+int Mode = ALPHA;	/* alpha only, or numeric */
+
+static char *Directory = ".";
+extern char *getenv();
+extern char *optarg;
+
+/*
+ *      freq --- count strings of varying lengths on stdin
+ *
+ *	-a	Alpha mode (default)
+ *	-n	Numeric mode
+ *	-d#	depth of n-grams to count (default 1)
+ *	-o	load old tables (default off)
+ *	-u	update tables at end (default off)
+ *	-p	print results (default true unless -u)
+ *	-m#	minimum repeat count during print (default 1)
+ *	-v	verbose on (default off)
+ */
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int c;
+
+	/* process args */
+	while( (c=getopt(argc,argv,"and:oupm:v")) != -1 )
+	switch(c){
+	case 'a':
+		Mode=ALPHA;
+		break;
+	case 'n':
+		Mode=NUMERIC;
+		break;
+	case 'd':
+		Depth = atoi(optarg);
+		if(Depth<1 || Depth>MAXDEPTH)
+			Depth=1;
+		break;
+	case 'o':
+		Oflag++;
+		break;
+	case 'u':
+		Uflag++;
+		break;
+	case 'v':
+		Verbose++;
+		break;
+	case 'p':
+		Pflag++;
+		break;
+	case 'm':
+		Minrepeat = atoi(optarg);
+		if(Minrepeat<1)
+			Minrepeat=1;
+		break;
+	default:
+		printf("Legal options are:\n");
+		printf("    -a	Alpha mode [default]\n");
+		printf("    -n	Numeric mode\n");
+		printf("    -d#	depth of n-grams to count [default 1]\n");
+		printf("    -o	load old tables [default off]\n");
+		printf("    -u	update tables at end [default off]\n");
+		printf("    -p	print results [default true unless -u]\n");
+		printf("    -m#	minimum repeat count during print [default 1]\n");
+		printf("    -v	verbose output [default off]\n");
+		exit(1);
+		}
+
+	/* if not updating the file, assume printing is necessary */
+	if(Uflag==0)
+		Pflag++;
+
+	if( Mode==NUMERIC && (Oflag || Uflag) )
+		fatal("Can't save/load tables in numeric mode, sorry.");
+
+	/* setup */
+	if(Mode==ALPHA)
+		Symbols = 26;
+	else
+		Symbols = 256;
+	Top = (int *)newlevel();	/* allocate top level */
+
+	if(Verbose){
+		printf("Mode:   %s\n",Mode==ALPHA ? "Alpha":"Numeric");
+		printf("Depth:  %d\n",Depth);
+		printf("Minrep: %d\n",Minrepeat);
+		}
+	
+	/* process */
+	if(Oflag)
+		treeload();
+	treeadd();
+	if(Uflag)
+		treesave();
+	if(Pflag)
+		treeprint(Top,Results,Depth);
+}
+
+void
+treeload2(FILE *fp,int *top,int depth)
+{
+	int c;
+	int count = 0;
+	int cursym = -1;
+
+	while( (c=getc(fp)) != EOF ){
+		if( isdigit(c) ){
+			count *= 10;
+			count += c-'0';
+			}
+		else if( isupper(c) ){
+			if(depth==1)
+				fatal("treeload2");
+			cursym = c-'A';
+			*(top+cursym) = newlevel();
+			treeload2(fp,(int *)*(top+cursym),depth-1);
+			}
+		else if( isspace(c) )
+			return;
+		else if( islower(c) ){
+			if(depth!=1)
+				fatal("treeload2");
+			cursym = c-'a';
+			if(count==0)
+				count=1;
+			*(top+cursym) = count;
+			Atotal += count;
+			count = 0;
+			}
+		else
+			;	/* ignore */
+		}
+}
+
+treeload()
+{
+	FILE *fp;
+	char fullname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	
+	if( (fp = fopen(fullname,"r"))==NULL){
+		perror(fullname);
+		return;
+		}
+	if(Verbose)
+		printf("Filename: %s\n",fullname);
+
+	/* Load tree from file */
+	treeload2(fp,Top,Depth);
+
+	fclose(fp);
+
+	if(Verbose)
+		printf("Loaded %d levels, %d total count.\n",Ltotal,Atotal);
+}
+
+void
+treesave2(FILE *fp,int *top,int depth)
+{
+	int i;
+
+	for(i=0;i<Symbols;i++,top++){
+		if( *top ){
+			if(depth == 1){
+				if( *top>1 )
+					fprintf(fp,"%d",*top);
+				fprintf(fp,"%c",i+'a');
+				}
+			else{
+				fprintf(fp,"%c",i+'A');
+				treesave2(fp,(int *)*top,depth-1);
+				fprintf(fp,"\n");
+				}
+			}
+		}
+}
+
+treesave()
+{
+	FILE *fp;
+	char fullname[1024];
+	char newname[1024];
+	char oldname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	sprintf(oldname,"%s/TREE%03d.OLD",Directory,Depth);
+	sprintf(newname,"%s/TREE%03d.NEW",Directory,Depth);
+	
+	if((fp = fopen(newname,"w"))==NULL){
+		perror(newname);
+		exit(1);
+		}
+
+	if(Verbose){
+		if( !Oflag )
+			printf("Filename: %s\n",fullname);
+		printf("Stored %d levels, %d total count.\n",Ltotal,Atotal);
+		}
+
+	treesave2(fp,Top,Depth);
+
+	if( ferror(fp) ){
+		printf("Error writing new tree file.  Abandoning new data\n");
+		fclose(fp);
+		}
+	else{
+		fclose(fp);
+		rename(fullname,oldname);
+		rename(newname,fullname);
+		unlink(oldname);
+		}
+}
+
+treeadd()
+{
+	int val[MAXDEPTH];
+	int *ip,*jp;
+	int orig_atotal = Atotal;
+	int orig_ltotal = Ltotal;
+
+	for(ip=val;ip<&val[Depth-1];ip++)
+		if((*ip = getval())==EOF)
+			return;
+
+	while((*ip = getval()) != EOF){
+		fill(Top,val,Depth);
+		for(jp=val;jp<ip;jp++)
+			*jp = *(jp+1);
+		Atotal++;
+		}
+	if(Verbose)
+		printf("Added  %d levels, %d total count.\n",
+			Ltotal-orig_ltotal,Atotal-orig_atotal);
+}
+
+fill(level,val,depth)
+int *level;
+int *val;
+int depth;
+{
+	int *nxtlevel = level+(*val);
+
+	if( depth == 1)
+		(*nxtlevel)++;
+	else{
+		if( *nxtlevel == NULL)
+			*nxtlevel = newlevel();
+		fill(*nxtlevel,val+1,depth-1);
+		}
+}
+
+newlevel()
+{
+	int *ptr,*scn;
+	char *malloc();
+	static int *cache = NULL;
+	static int cache_total = 0;
+
+	if( cache_total == 0 ){
+		cache_total = 1 << (Mode==ALPHA ? 15 : 10);
+		while( cache_total ){
+			cache = (int *)malloc(sizeof(int)*Symbols*cache_total);
+			if( cache != NULL )
+				break;
+			cache_total >>= 1;
+			}
+		if( cache_total == 0 ){
+			printf("Out of memory after %d allocates.\n",Ltotal);
+			exit(1);
+			}
+		memset(cache,0,sizeof(int)*Symbols*cache_total);
+		}
+	ptr = cache;
+	cache += Symbols;
+	cache_total--;
+	Ltotal++;
+	return((int)ptr);
+}
+
+treeprint(level,ptr,depth)
+int *level;
+int *ptr;
+int depth;
+{
+	int i,j;
+
+	for(i=0;i<Symbols;i++,level++)
+		if( *level != NULL){
+			*ptr = i;
+			if(depth==1){
+				if( (*level)>=Minrepeat ){
+					putval(Results[0]);
+					for(j=1;j<Depth;j++)
+						putval(Results[j]);
+					printf("\t%d\n",*level);
+					}
+				}
+			else
+				treeprint(*level,ptr+1,depth-1);
+			}
+}
+
+getval()
+{
+	int c;
+
+	if(Mode==ALPHA){
+		while( (c=getchar()) != EOF){
+			if(islower(c))
+				return(c - 'a');
+			if(isupper(c))
+				return(c - 'A');
+			}
+		return(c);
+		}
+	else{ /* NUMERIC */
+		if( scanf("%d",&c) == 1 && c>0 && c <Symbols )
+			return(c);
+		return( EOF );
+		}
+}
+
+putval(v)
+int v;
+{
+	if(Mode==ALPHA)
+		printf("%c",v+'A');
+	else
+		printf("%4d",v);
+}
+
+fatal(char *s)
+{
+	printf("%s\n",s);
+	exit(1);
+}
+Newsgroups: sci.crypt,alt.security
+Subject: Re: Letter Frequency
+Summary: 
+Expires: 
+References: <TED.92Oct20225825@lole.nmsu.edu> <1992Oct21.112802.3379@wkuvx1.bitnet> <1992Oct24.052920.590@news.Hawaii.Edu>
+Sender: 
+Followup-To: 
+Distribution: 
+Organization: Tandem Computers (MPD) Austin, TX
+Keywords: 
+
+In article <1992Oct24.052920.590@news.Hawaii.Edu> newsham@wiliki.eng.hawaii.edu (Timothy Newsham) writes:
+>well,  if you call now, for a limited time,  on saturdays and all
+>through may, you can get this program...
+
+As long as we're sharing frequency counting programs, here's one I use
+that is a little more flexible.  The default action is to do single
+letter frequency counts, but it will do longer n-grams and can handle
+numeric instead of alpha input (handy for those pesky Beale and Zodiac
+ciphers).  For counting lots of text, there are save/restore
+options.  This program works on RISCOS, but "should be portable".  Limits
+are the amount of memory available for the tree, plus disk space for
+saving the tree.  
+						Ed
+
+---------------------------- cut here ----------------------------
+#include <stdio.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/fcntl.h>
+
+#define MAXDEPTH        100	/* max. length of strings being counted */
+
+#define ALPHA	1
+#define	NUMERIC	2
+
+int *Top;			/* top level of the tree */
+int Symbols;			/* width of each tree level */
+int Results[MAXDEPTH+1];
+int Ltotal = 0;			/* total number of newlevel calls */
+int Atotal = 0;			/* total number of fill calls */
+
+/* command line arguments, and their defaults */
+int Depth = 1;		/* default depth is just the symbols freq. */
+int Minrepeat = 1;	/* minimum repeats to force print */
+int Oflag = 0;		/* load previous table */
+int Uflag = 0;		/* update stored table */
+int Pflag = 0;		/* print results */
+int Verbose = 0;	/* verbose */
+int Mode = ALPHA;	/* alpha only, or numeric */
+
+static char *Directory = ".";
+extern char *getenv();
+extern char *optarg;
+
+/*
+ *      freq --- count strings of varying lengths on stdin
+ *
+ *	-a	Alpha mode (default)
+ *	-n	Numeric mode
+ *	-d#	depth of n-grams to count (default 1)
+ *	-o	load old tables (default off)
+ *	-u	update tables at end (default off)
+ *	-p	print results (default true unless -u)
+ *	-m#	minimum repeat count during print (default 1)
+ *	-v	verbose on (default off)
+ */
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int c;
+
+	/* process args */
+	while( (c=getopt(argc,argv,"and:oupm:v")) != -1 )
+	switch(c){
+	case 'a':
+		Mode=ALPHA;
+		break;
+	case 'n':
+		Mode=NUMERIC;
+		break;
+	case 'd':
+		Depth = atoi(optarg);
+		if(Depth<1 || Depth>MAXDEPTH)
+			Depth=1;
+		break;
+	case 'o':
+		Oflag++;
+		break;
+	case 'u':
+		Uflag++;
+		break;
+	case 'v':
+		Verbose++;
+		break;
+	case 'p':
+		Pflag++;
+		break;
+	case 'm':
+		Minrepeat = atoi(optarg);
+		if(Minrepeat<1)
+			Minrepeat=1;
+		break;
+	default:
+		printf("Legal options are:\n");
+		printf("    -a	Alpha mode [default]\n");
+		printf("    -n	Numeric mode\n");
+		printf("    -d#	depth of n-grams to count [default 1]\n");
+		printf("    -o	load old tables [default off]\n");
+		printf("    -u	update tables at end [default off]\n");
+		printf("    -p	print results [default true unless -u]\n");
+		printf("    -m#	minimum repeat count during print [default 1]\n");
+		printf("    -v	verbose output [default off]\n");
+		exit(1);
+		}
+
+	/* if not updating the file, assume printing is necessary */
+	if(Uflag==0)
+		Pflag++;
+
+	if( Mode==NUMERIC && (Oflag || Uflag) )
+		fatal("Can't save/load tables in numeric mode, sorry.");
+
+	/* setup */
+	if(Mode==ALPHA)
+		Symbols = 26;
+	else
+		Symbols = 256;
+	Top = (int *)newlevel();	/* allocate top level */
+
+	if(Verbose){
+		printf("Mode:   %s\n",Mode==ALPHA ? "Alpha":"Numeric");
+		printf("Depth:  %d\n",Depth);
+		printf("Minrep: %d\n",Minrepeat);
+		}
+	
+	/* process */
+	if(Oflag)
+		treeload();
+	treeadd();
+	if(Uflag)
+		treesave();
+	if(Pflag)
+		treeprint(Top,Results,Depth);
+}
+
+void
+treeload2(FILE *fp,int *top,int depth)
+{
+	int c;
+	int count = 0;
+	int cursym = -1;
+
+	while( (c=getc(fp)) != EOF ){
+		if( isdigit(c) ){
+			count *= 10;
+			count += c-'0';
+			}
+		else if( isupper(c) ){
+			if(depth==1)
+				fatal("treeload2");
+			cursym = c-'A';
+			*(top+cursym) = newlevel();
+			treeload2(fp,(int *)*(top+cursym),depth-1);
+			}
+		else if( isspace(c) )
+			return;
+		else if( islower(c) ){
+			if(depth!=1)
+				fatal("treeload2");
+			cursym = c-'a';
+			if(count==0)
+				count=1;
+			*(top+cursym) = count;
+			Atotal += count;
+			count = 0;
+			}
+		else
+			;	/* ignore */
+		}
+}
+
+treeload()
+{
+	FILE *fp;
+	char fullname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	
+	if( (fp = fopen(fullname,"r"))==NULL){
+		perror(fullname);
+		return;
+		}
+	if(Verbose)
+		printf("Filename: %s\n",fullname);
+
+	/* Load tree from file */
+	treeload2(fp,Top,Depth);
+
+	fclose(fp);
+
+	if(Verbose)
+		printf("Loaded %d levels, %d total count.\n",Ltotal,Atotal);
+}
+
+void
+treesave2(FILE *fp,int *top,int depth)
+{
+	int i;
+
+	for(i=0;i<Symbols;i++,top++){
+		if( *top ){
+			if(depth == 1){
+				if( *top>1 )
+					fprintf(fp,"%d",*top);
+				fprintf(fp,"%c",i+'a');
+				}
+			else{
+				fprintf(fp,"%c",i+'A');
+				treesave2(fp,(int *)*top,depth-1);
+				fprintf(fp,"\n");
+				}
+			}
+		}
+}
+
+treesave()
+{
+	FILE *fp;
+	char fullname[1024];
+	char newname[1024];
+	char oldname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	sprintf(oldname,"%s/TREE%03d.OLD",Directory,Depth);
+	sprintf(newname,"%s/TREE%03d.NEW",Directory,Depth);
+	
+	if((fp = fopen(newname,"w"))==NULL){
+		perror(newname);
+		exit(1);
+		}
+
+	if(Verbose){
+		if( !Oflag )
+			printf("Filename: %s\n",fullname);
+		printf("Stored %d levels, %d total count.\n",Ltotal,Atotal);
+		}
+
+	treesave2(fp,Top,Depth);
+
+	if( ferror(fp) ){
+		printf("Error writing new tree file.  Abandoning new data\n");
+		fclose(fp);
+		}
+	else{
+		fclose(fp);
+		rename(fullname,oldname);
+		rename(newname,fullname);
+		unlink(oldname);
+		}
+}
+
+treeadd()
+{
+	int val[MAXDEPTH];
+	int *ip,*jp;
+	int orig_atotal = Atotal;
+	int orig_ltotal = Ltotal;
+
+	for(ip=val;ip<&val[Depth-1];ip++)
+		if((*ip = getval())==EOF)
+			return;
+
+	while((*ip = getval()) != EOF){
+		fill(Top,val,Depth);
+		for(jp=val;jp<ip;jp++)
+			*jp = *(jp+1);
+		Atotal++;
+		}
+	if(Verbose)
+		printf("Added  %d levels, %d total count.\n",
+			Ltotal-orig_ltotal,Atotal-orig_atotal);
+}
+
+fill(level,val,depth)
+int *level;
+int *val;
+int depth;
+{
+	int *nxtlevel = level+(*val);
+
+	if( depth == 1)
+		(*nxtlevel)++;
+	else{
+		if( *nxtlevel == NULL)
+			*nxtlevel = newlevel();
+		fill(*nxtlevel,val+1,depth-1);
+		}
+}
+
+newlevel()
+{
+	int *ptr,*scn;
+	char *malloc();
+	static int *cache = NULL;
+	static int cache_total = 0;
+
+	if( cache_total == 0 ){
+		cache_total = 1 << (Mode==ALPHA ? 15 : 10);
+		while( cache_total ){
+			cache = (int *)malloc(sizeof(int)*Symbols*cache_total);
+			if( cache != NULL )
+				break;
+			cache_total >>= 1;
+			}
+		if( cache_total == 0 ){
+			printf("Out of memory after %d allocates.\n",Ltotal);
+			exit(1);
+			}
+		memset(cache,0,sizeof(int)*Symbols*cache_total);
+		}
+	ptr = cache;
+	cache += Symbols;
+	cache_total--;
+	Ltotal++;
+	return((int)ptr);
+}
+
+treeprint(level,ptr,depth)
+int *level;
+int *ptr;
+int depth;
+{
+	int i,j;
+
+	for(i=0;i<Symbols;i++,level++)
+		if( *level != NULL){
+			*ptr = i;
+			if(depth==1){
+				if( (*level)>=Minrepeat ){
+					putval(Results[0]);
+					for(j=1;j<Depth;j++)
+						putval(Results[j]);
+					printf("\t%d\n",*level);
+					}
+				}
+			else
+				treeprint(*level,ptr+1,depth-1);
+			}
+}
+
+getval()
+{
+	int c;
+
+	if(Mode==ALPHA){
+		while( (c=getchar()) != EOF){
+			if(islower(c))
+				return(c - 'a');
+			if(isupper(c))
+				return(c - 'A');
+			}
+		return(c);
+		}
+	else{ /* NUMERIC */
+		if( scanf("%d",&c) == 1 && c>0 && c <Symbols )
+			return(c);
+		return( EOF );
+		}
+}
+
+putval(v)
+int v;
+{
+	if(Mode==ALPHA)
+		printf("%c",v+'A');
+	else
+		printf("%4d",v);
+}
+
+fatal(char *s)
+{
+	printf("%s\n",s);
+	exit(1);
+}
+Newsgroups: sci.crypt,alt.security
+Subject: Re: Letter Frequency
+Summary: 
+Expires: 
+References: <TED.92Oct20225825@lole.nmsu.edu> <1992Oct21.112802.3379@wkuvx1.bitnet> <1992Oct24.052920.590@news.Hawaii.Edu>
+Sender: 
+Followup-To: 
+Distribution: 
+Organization: Tandem Computers (MPD) Austin, TX
+Keywords: 
+
+In article <1992Oct24.052920.590@news.Hawaii.Edu> newsham@wiliki.eng.hawaii.edu (Timothy Newsham) writes:
+>well,  if you call now, for a limited time,  on saturdays and all
+>through may, you can get this program...
+
+As long as we're sharing frequency counting programs, here's one I use
+that is a little more flexible.  The default action is to do single
+letter frequency counts, but it will do longer n-grams and can handle
+numeric instead of alpha input (handy for those pesky Beale and Zodiac
+ciphers).  For counting lots of text, there are save/restore
+options.  This program works on RISCOS, but "should be portable".  Limits
+are the amount of memory available for the tree, plus disk space for
+saving the tree.  
+						Ed
+
+---------------------------- cut here ----------------------------
+#include <stdio.h>
+#include <ctype.h>
+#include <sys/types.h>
+#include <sys/fcntl.h>
+
+#define MAXDEPTH        100	/* max. length of strings being counted */
+
+#define ALPHA	1
+#define	NUMERIC	2
+
+int *Top;			/* top level of the tree */
+int Symbols;			/* width of each tree level */
+int Results[MAXDEPTH+1];
+int Ltotal = 0;			/* total number of newlevel calls */
+int Atotal = 0;			/* total number of fill calls */
+
+/* command line arguments, and their defaults */
+int Depth = 1;		/* default depth is just the symbols freq. */
+int Minrepeat = 1;	/* minimum repeats to force print */
+int Oflag = 0;		/* load previous table */
+int Uflag = 0;		/* update stored table */
+int Pflag = 0;		/* print results */
+int Verbose = 0;	/* verbose */
+int Mode = ALPHA;	/* alpha only, or numeric */
+
+static char *Directory = ".";
+extern char *getenv();
+extern char *optarg;
+
+/*
+ *      freq --- count strings of varying lengths on stdin
+ *
+ *	-a	Alpha mode (default)
+ *	-n	Numeric mode
+ *	-d#	depth of n-grams to count (default 1)
+ *	-o	load old tables (default off)
+ *	-u	update tables at end (default off)
+ *	-p	print results (default true unless -u)
+ *	-m#	minimum repeat count during print (default 1)
+ *	-v	verbose on (default off)
+ */
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int c;
+
+	/* process args */
+	while( (c=getopt(argc,argv,"and:oupm:v")) != -1 )
+	switch(c){
+	case 'a':
+		Mode=ALPHA;
+		break;
+	case 'n':
+		Mode=NUMERIC;
+		break;
+	case 'd':
+		Depth = atoi(optarg);
+		if(Depth<1 || Depth>MAXDEPTH)
+			Depth=1;
+		break;
+	case 'o':
+		Oflag++;
+		break;
+	case 'u':
+		Uflag++;
+		break;
+	case 'v':
+		Verbose++;
+		break;
+	case 'p':
+		Pflag++;
+		break;
+	case 'm':
+		Minrepeat = atoi(optarg);
+		if(Minrepeat<1)
+			Minrepeat=1;
+		break;
+	default:
+		printf("Legal options are:\n");
+		printf("    -a	Alpha mode [default]\n");
+		printf("    -n	Numeric mode\n");
+		printf("    -d#	depth of n-grams to count [default 1]\n");
+		printf("    -o	load old tables [default off]\n");
+		printf("    -u	update tables at end [default off]\n");
+		printf("    -p	print results [default true unless -u]\n");
+		printf("    -m#	minimum repeat count during print [default 1]\n");
+		printf("    -v	verbose output [default off]\n");
+		exit(1);
+		}
+
+	/* if not updating the file, assume printing is necessary */
+	if(Uflag==0)
+		Pflag++;
+
+	if( Mode==NUMERIC && (Oflag || Uflag) )
+		fatal("Can't save/load tables in numeric mode, sorry.");
+
+	/* setup */
+	if(Mode==ALPHA)
+		Symbols = 26;
+	else
+		Symbols = 256;
+	Top = (int *)newlevel();	/* allocate top level */
+
+	if(Verbose){
+		printf("Mode:   %s\n",Mode==ALPHA ? "Alpha":"Numeric");
+		printf("Depth:  %d\n",Depth);
+		printf("Minrep: %d\n",Minrepeat);
+		}
+	
+	/* process */
+	if(Oflag)
+		treeload();
+	treeadd();
+	if(Uflag)
+		treesave();
+	if(Pflag)
+		treeprint(Top,Results,Depth);
+}
+
+void
+treeload2(FILE *fp,int *top,int depth)
+{
+	int c;
+	int count = 0;
+	int cursym = -1;
+
+	while( (c=getc(fp)) != EOF ){
+		if( isdigit(c) ){
+			count *= 10;
+			count += c-'0';
+			}
+		else if( isupper(c) ){
+			if(depth==1)
+				fatal("treeload2");
+			cursym = c-'A';
+			*(top+cursym) = newlevel();
+			treeload2(fp,(int *)*(top+cursym),depth-1);
+			}
+		else if( isspace(c) )
+			return;
+		else if( islower(c) ){
+			if(depth!=1)
+				fatal("treeload2");
+			cursym = c-'a';
+			if(count==0)
+				count=1;
+			*(top+cursym) = count;
+			Atotal += count;
+			count = 0;
+			}
+		else
+			;	/* ignore */
+		}
+}
+
+treeload()
+{
+	FILE *fp;
+	char fullname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	
+	if( (fp = fopen(fullname,"r"))==NULL){
+		perror(fullname);
+		return;
+		}
+	if(Verbose)
+		printf("Filename: %s\n",fullname);
+
+	/* Load tree from file */
+	treeload2(fp,Top,Depth);
+
+	fclose(fp);
+
+	if(Verbose)
+		printf("Loaded %d levels, %d total count.\n",Ltotal,Atotal);
+}
+
+void
+treesave2(FILE *fp,int *top,int depth)
+{
+	int i;
+
+	for(i=0;i<Symbols;i++,top++){
+		if( *top ){
+			if(depth == 1){
+				if( *top>1 )
+					fprintf(fp,"%d",*top);
+				fprintf(fp,"%c",i+'a');
+				}
+			else{
+				fprintf(fp,"%c",i+'A');
+				treesave2(fp,(int *)*top,depth-1);
+				fprintf(fp,"\n");
+				}
+			}
+		}
+}
+
+treesave()
+{
+	FILE *fp;
+	char fullname[1024];
+	char newname[1024];
+	char oldname[1024];
+	char *p = getenv("CRYPTDIR");
+
+	if(p!=NULL)
+		Directory=p;
+	sprintf(fullname,"%s/TREE%03d",Directory,Depth);
+	sprintf(oldname,"%s/TREE%03d.OLD",Directory,Depth);
+	sprintf(newname,"%s/TREE%03d.NEW",Directory,Depth);
+	
+	if((fp = fopen(newname,"w"))==NULL){
+		perror(newname);
+		exit(1);
+		}
+
+	if(Verbose){
+		if( !Oflag )
+			printf("Filename: %s\n",fullname);
+		printf("Stored %d levels, %d total count.\n",Ltotal,Atotal);
+		}
+
+	treesave2(fp,Top,Depth);
+
+	if( ferror(fp) ){
+		printf("Error writing new tree file.  Abandoning new data\n");
+		fclose(fp);
+		}
+	else{
+		fclose(fp);
+		rename(fullname,oldname);
+		rename(newname,fullname);
+		unlink(oldname);
+		}
+}
+
+treeadd()
+{
+	int val[MAXDEPTH];
+	int *ip,*jp;
+	int orig_atotal = Atotal;
+	int orig_ltotal = Ltotal;
+
+	for(ip=val;ip<&val[Depth-1];ip++)
+		if((*ip = getval())==EOF)
+			return;
+
+	while((*ip = getval()) != EOF){
+		fill(Top,val,Depth);
+		for(jp=val;jp<ip;jp++)
+			*jp = *(jp+1);
+		Atotal++;
+		}
+	if(Verbose)
+		printf("Added  %d levels, %d total count.\n",
+			Ltotal-orig_ltotal,Atotal-orig_atotal);
+}
+
+fill(level,val,depth)
+int *level;
+int *val;
+int depth;
+{
+	int *nxtlevel = level+(*val);
+
+	if( depth == 1)
+		(*nxtlevel)++;
+	else{
+		if( *nxtlevel == NULL)
+			*nxtlevel = newlevel();
+		fill(*nxtlevel,val+1,depth-1);
+		}
+}
+
+newlevel()
+{
+	int *ptr,*scn;
+	char *malloc();
+	static int *cache = NULL;
+	static int cache_total = 0;
+
+	if( cache_total == 0 ){
+		cache_total = 1 << (Mode==ALPHA ? 15 : 10);
+		while( cache_total ){
+			cache = (int *)malloc(sizeof(int)*Symbols*cache_total);
+			if( cache != NULL )
+				break;
+			cache_total >>= 1;
+			}
+		if( cache_total == 0 ){
+			printf("Out of memory after %d allocates.\n",Ltotal);
+			exit(1);
+			}
+		memset(cache,0,sizeof(int)*Symbols*cache_total);
+		}
+	ptr = cache;
+	cache += Symbols;
+	cache_total--;
+	Ltotal++;
+	return((int)ptr);
+}
+
+treeprint(level,ptr,depth)
+int *level;
+int *ptr;
+int depth;
+{
+	int i,j;
+
+	for(i=0;i<Symbols;i++,level++)
+		if( *level != NULL){
+			*ptr = i;
+			if(depth==1){
+				if( (*level)>=Minrepeat ){
+					putval(Results[0]);
+					for(j=1;j<Depth;j++)
+						putval(Results[j]);
+					printf("\t%d\n",*level);
+					}
+				}
+			else
+				treeprint(*level,ptr+1,depth-1);
+			}
+}
+
+getval()
+{
+	int c;
+
+	if(Mode==ALPHA){
+		while( (c=getchar()) != EOF){
+			if(islower(c))
+				return(c - 'a');
+			if(isupper(c))
+				return(c - 'A');
+			}
+		return(c);
+		}
+	else{ /* NUMERIC */
+		if( scanf("%d",&c) == 1 && c>0 && c <Symbols )
+			return(c);
+		return( EOF );
+		}
+}
+
+putval(v)
+int v;
+{
+	if(Mode==ALPHA)
+		printf("%c",v+'A');
+	else
+		printf("%4d",v);
+}
+
+fatal(char *s)
+{
+	printf("%s\n",s);
+	exit(1);
+}

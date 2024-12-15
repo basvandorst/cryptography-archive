@@ -1,0 +1,87 @@
+# Makefile.in
+
+DEBUG=0
+SHELL=/bin/sh
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+
+LIBDIRS=-L@libdir@
+
+PFLDIR=../../../libs/pfl
+SDKDIR=../../../libs/pgpcdk
+SHAREDDIR=../shared
+
+INCDIRS=-I${prefix}/include \
+        -I$(SHAREDDIR) \
+        -I$(PFLDIR)/common \
+        -I$(PFLDIR)/common/prefs \
+        -I$(PFLDIR)/common/file \
+        -I$(PFLDIR)/unix \
+        -I$(SDKDIR)/unix \
+        -I$(SDKDIR)/unix/ui \
+        -I$(SDKDIR)/priv/utilities \
+        -I$(SDKDIR)/priv/utilities/utils \
+        -I$(SDKDIR)/priv/include \
+        -I$(SDKDIR)/pub/include \
+        -I$(SDKDIR)/priv/include/opaque
+
+LIBDIRS+=-L$(PFLDIR) -L$(SDKDIR)/unix
+
+LIBS=-lPGPui -lPGPsdkNetwork -lPGPsdk -lpfl @THREADLIB@ @LIBS@
+
+SHAREDOBJS=$(SHAREDDIR)/pgpDiskWiper.o $(SHAREDDIR)/pgpClientErrors.o
+
+OBJS=main.o args.o pgp.o getopt.o fileio.o config.o doencode.o dodecode.o \
+        lists.o keyview.o keygen.o keyadd.o keyremove.o keyedit.o \
+        keyexport.o keymaint.o keysign.o keyrevoke.o more.o groups.o \
+        match.o misc.o pgpAcquireEntropy.o pgpLanguage.o
+
+SRCS=main.c args.c pgp.c getopt.c fileio.c config.c doencode.c dodecode.c \
+        lists.c keyview.c keygen.c keyadd.c keyremove.c keyedit.c \
+        keyexport.c keymaint.c keysign.c keyrevoke.c more.c groups.c \
+        match.c misc.c pgpAcquireEntropy.c pgpLanguage.c
+
+HDRS=globals.h prototypes.h lists.h config.h
+
+# DEFS and CFLAGS should be created by configure....
+DEFS=@DEFS@
+DEFS+=-DPGP_UNIX=1 -DPGP_DEBUG=$(DEBUG) -DOPT=$(OPT) -DUNFINISHED_CODE_ALLOWED=1
+
+CFLAGS=@CFLAGS@
+LDFLAGS=@LDFLAGS@
+
+CFLAGS+= -g
+
+TARGET=pgp
+
+all: Makefile $(TARGET)
+
+CC=gcc
+CPP=g++
+
+.c.o:
+	$(CC) $(CFLAGS) $(INCDIRS) $(DEFS) $< -c
+
+$(TARGET): $(OBJS)
+	$(CPP) $(CFLAGS) $(LDFLAGS) $(OBJS) $(SHAREDOBJS) -o $(TARGET) $(LIBDIRS) $(LIBS)
+
+$(OBJS): $(HDRS)
+
+headers:
+
+install: all
+	strip $(TARGET)
+	unix/config/install-sh -c $(TARGET) @bindir@
+	unix/config/install-sh -c packaging/pgp-6.0/man/man1/pgp.1 @mandir@/man1
+
+clean:
+	-rm -f *.o $(TARGET) errs a.out core
+
+distclean: clean
+	-rm -f config.cache config.log config.status Makefile tags
+
+Makefile: Makefile.in
+	./config.status
+	@echo "Makefile updated, restarting the make..."
+	@exit

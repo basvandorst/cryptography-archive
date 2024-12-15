@@ -1,0 +1,1650 @@
+    M.I.R.A.C.L. - Multiprecision Integer and Rational Arithmetic C Library    _______________________________________________________________________
+
+                                 M. Scott
+
+
+ABSTRACT:
+
+
+
+      A portable C library is described  which  implements  multi-precision
+
+      integer and rational data-types, and provides the routines to perform
+
+      basic  arithmetic  on them.  Certain useful number-theoretic routines
+
+      are also included in the package.
+
+
+
+1. INTRODUCTION:
+
+
+
+      Conventional computer  arithmetic  facilities  as  provided  by  most
+
+      computer language compilers usually provide one or two floating-point
+
+      data  types  (e.g.  single and double precision) to represent all the
+
+      real numbers,  together with one or more integer types  to  represent
+
+      whole  numbers.  These built-in data-types are closely related to the
+
+      underlying computer architecture,  which is sensibly designed to work
+
+      quickly with large amounts of small numbers,  rather than slowly with
+
+      small amounts of large numbers (given  a  fixed  memory  allocation).
+
+      Floating-point allows a relatively small binary number (e.g. 32 bits)
+
+      to  represent  real numbers to an adequate precision (e.g.  7 decimal
+
+      places) over a large dynamic range.  Integer types allow small  whole
+
+      numbers to be represented directly by their binary equivalent,  or in
+
+      2's complement  form  if  negative.  Nevertheless  this  conventional
+
+      approach to computer arithmetic has several disadvantages.
+
+
+
+      (1)   Floating-point  and  Integer  data-types  are  representationly
+
+      incompatible.  Note that the set of integers, although infinite, is a
+
+
+
+                                      1                                       
+
+
+
+
+
+
+      subset of the rationals (i.e.  fractions),  which is in turn a subset
+
+      of the reals.  Thus every integer has  an  equivalent  floating-point
+
+      representation.  Unfortunately  these  two  representations  will  in
+
+      general be different.  For example a small positive whole number will
+
+      be  represented  by  its  binary  equivalent  as  an integer,  and as
+
+      separated mantissa and exponent as a floating-point. This implies the
+
+      need for conversion routines, to convert from one form to the other.
+
+
+
+      (2) Most rational numbers can not be expressed  exactly  (e.g.  1/3).
+
+      Indeed  the  floating-point  system  can  only  express exactly those
+
+      rationals whose denominators are multiples  of  the  factors  of  the
+
+      underlying  radix.  For  example our familiar decimal system can only
+
+      represent exactly  those  rational  numbers  whose  denominators  are
+
+      multiples of 2 and 5; 1/20 is 0.05 exactly, 1/21 is .0476190476190...
+
+
+
+      (3) Rounding in floating-point is  base-dependant  and  a  source  of
+
+      obscure errors.
+
+
+
+      (4)  The  fact that the size of integer and floating-point data types
+
+      are dictated by the computer architecture,  defeats  the  efforts  of
+
+      language designers to keep their languages portable.
+
+
+
+      (5)  Numbers  can  only  be  represented to a fixed machine-dependent
+
+      precision. In many applications this can be a crippling disadvantage,
+
+      for example in the new and growing field of Public-Key cryptography.
+
+
+
+      (6) Base-dependent phenomena cannot easily be studied. For example it
+
+      would be difficult to access a particular digit of a decimal  number,
+
+      as  represented  by  a  traditional  integer  data-type.
+
+
+                                      2                                       
+
+
+
+
+
+
+
+
+      Herein is described a set of standard  C  routines  which  manipulate
+
+      multi-precision  rational  numbers  directly,   with  multi-precision
+
+      integers as a compatible subset. Approximate real arithmetic can also
+
+      be performed.
+
+
+
+
+
+2. NUMBER REPRESENTATION
+
+
+
+      The two new data-types are called "big" and "flash".  The  former  is
+
+      used  to  store  multiprecision  integers,   and  the  latter  stores
+
+      multiprecision fractions as numerator and denominator  in  "floating-
+
+      slash" form.  Both take the form of a fixed length array of integers,
+
+      with sign and length information encoded in the  first  element,  and
+
+      the  data  itself  in  subsequent  elements.  Both  new  types can be
+
+      introduced into the syntax of the 'C' language by the 'C'  statements
+
+                            typedef int* big;
+                            typedef int* flash;
+
+      Now  'big' and 'flash' variables can be declared just like any built-
+
+      in data type, e.g.
+
+
+
+                             big x,y[10],z[10][10];
+
+
+
+      Note that the user of these data-types is  not  concerned  with  this
+
+      internal representation; the library routines allow "big" and "flash"
+
+      numbers to be manipulated directly.
+
+
+
+      The structure of "big" and "flash" numbers is illustrated in figure (1)
+
+
+
+
+
+                                      3                                       
+
+
+
+
+
+
+        x[0]    x[1]   x[2]                x[n]                          x[max]
+      $ $ $             $ $                $
+      &s 0 n& & LSW & &     & ..........  & MSW & &  0  & .............. &  0  &
+      ( ( (             ( (                (
+
+
+        x[0]   x[1]    x[2]        x[n]   x[n+1]   x[n+2]     x[n+d]     x[max]
+      $ $ $     $ $ $     $    $
+      &s d n& & LSW & &     & ... & MSW & & LSW & &     & ... & MSW & .. &  0  &
+      ( ( (     ( ( (     (    (
+              <------- numerator ------> / <------ denominator ----->
+
+
+       Figure (1):  Structure of "big" and "flash" data-types,  where s  is
+                   the  sign of the number,  n and d are the lengths of the
+                   numerator and denominator respectively,  and LSW and MSW
+                   mean  'Least  significant  word'  and  'Most significant
+                   word'
+
+
+
+      These   structures   combine   ease   of  use  with  representational
+
+      efficiency.  A denominator of length zero (d=0),  implies  an  actual
+
+      denominator  of one;  and similarily a numerator of length zero (n=0)
+
+      implies  a  numerator of one.  Zero itself is uniquely defined as the
+
+      number whose first element is zero (i.e. n=d=0).
+
+
+
+      Note that the slash in the  'flash'  data-type  is  not  in  a fixed
+
+      position,    and  may  "float"   depending  on the relative  size  of
+
+      numerator and denominator.
+
+
+
+      A "flash" number is manipulated by  splitting  it  up  into  separate
+
+      "big"  numerator  and  denominator  components.  A  "big"  number  is
+
+      manipulated by extracting and operating  on  each  of  its  component
+
+      integer elements.  To avoid possible confusion with the internal sign
+
+      bit,  the  numbers  in each element are limited to a somewhat smaller
+
+      range than that of the full word-length, e.g. 0 to 16383  (= 2^14 -1)
+
+      on a 16-bit micro-computer.
+
+
+
+
+
+                                      4                                       
+
+
+
+
+
+
+      When the system is initialised the user specifies the fixed number of
+
+      words (or bytes) to be assigned to all "big"  or  "flash"  variables,
+
+      and the number base to be used. Any base can be used, up to a maximum
+
+      MAXBASE which is dependant on the wordlength of the computer used. If
+
+      requested  to  use  a  small  base  b,  the system will,  for optimal
+
+      efficiency,  actually use base b} ,  where n is the  largest  integer
+
+      such that b} fits in a single computer word.
+
+
+
+      The   encoding  of  the  sign  and  numerator  and  denominator  size
+
+      information into the first word is possible,  as the C  language  has
+
+      standard  constructs  for bit manipulation.  On a 16-bit computer the
+
+      maximum number of words in each 'big' or 'flash' variable is  limited
+
+      to  128,  the  equivalent  of  about 500 decimal digits.  On a 32-bit
+
+      computer there is, effectively, no limit.
+
+
+
+      Normally in flash arithmetic full precision is always  used.  However
+
+      the  internal  global variable 'workprec' can be used to  temporarily
+
+      reduce the working precision.  This is  useful  when  using  Newton's
+
+      method for the calculation of roots and certain elementary functions
+
+      (Scott 1988).
+
+
+
+
+
+3. AN EXAMPLE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      5                                       
+
+
+
+
+
+
+
+/*   Program to calculate factorials.  */
+
+#include <stdio.h>
+#include "miracl.h"   /* include big number system */
+
+main()
+{ /* calculate factorial of number */
+    big nf;           /* declare "big" variable nf */
+    int n;
+    mirsys(5000,10);  /* initialise system to base 10, 5000 digits per "big" */
+    nf=mirvar(1);     /* initialise "big" variable nf=1 */
+    printf("factorial program\n");
+    printf("input number n= \n");
+    scanf("%d",&n);
+    getchar();
+    while (n>1) premult(nf,n--,nf);   /* nf=n!=n*(n-1)*(n-2)*....3*2*1  */
+    printf("n!= \n");
+    otnum(nf,stdout); /* output result */
+}
+
+      This program can be used to quickly calculate and print out 1000!  (a
+
+      2568 digit number) in about 12 seconds on a VAX11/780,  a task  first
+
+      performed  "by  H.S.  Uhler using a desk calculator and much patience
+
+      over a period of several years"  (Knuth  1973).  Many  other  example
+
+      programs are described in Appendix IV.
+
+
+
+
+
+4. THE USER INTERFACE
+
+
+
+      Any  program  that  uses  the  MIRACL  system  must have an '#include
+
+      "miracl.h"' statement.  This tells the compiler to  include  the  'C'
+
+      header  file  "miracl.h"  with  the  main  program source file before
+
+      proceeding with the compilation.  This file  (Appendix  II)  contains
+
+      declarations  of  all  the  MIRACL routines available to the user and
+
+      permits  access  to  some global variables. The small sub-header file
+
+      'mirdef.h' contains hardware-specific details,  other user-tailorable
+
+      details, and some useful general purpose definitions.
+
+
+
+
+
+                                      6                                       
+
+
+
+
+
+
+      In the main program the MIRACL system must be initialized by  a  call
+
+      to  the  routine  mirsys,  which sets the number base and the maximum                        mirsys                                             
+
+      size of the 'big' and 'flash' variables.  It also initializes the
+
+      random number system,  and creates several workspace 'big' variables
+
+      its own  use.  Also  initialized  is  the  relatively sophisticated
+
+      error tracing system which is integrated with the MIRACL package.
+
+      Whenever an  error  is  detected  the  sequence  of  routine calls
+
+      down to the routine which generated the error is reported, as well as
+
+      the  error itself. A typical error message might be
+
+                    MIRACL error from routine powmod
+                                 called from prime
+                                 called from your program
+                    Raising integer to a negative power
+
+      Such an error report facilitates debugging, and certainly assisted me
+
+      during  the  development  of  these routines.  An associated variable
+
+      TRACER,  initialised to OFF,  if set by the user to ON,  will cause a
+
+      trace  of  the  program's  progress through the MIRACL routines to be
+
+      output to the screen.
+
+
+
+      Every 'big'  or  'flash'  variable  in  the  users  program  must  be
+
+      initialized  by  a call to the routine mirvar,  which also allows the                                             mirvar                        
+
+      variable to be given an initial integer value.
+
+
+
+      The full set of arithmetic and number-theoretic routines declared  in
+
+      "miracl.h"  may  be  used  on  these  variables.  Full flexibility is
+
+      (almost always) allowed in parameter usage with these  routines.  For
+
+      example the call multiply(x,y,z),  multiplies the 'big' variable x by                       multiply(x,y,z)                                     
+
+      the 'big' variable y to give the result as 'big' variable z.  Equally
+
+      valid would be multiply(x,y,x),  multiply(y,y,x), or multiply(x,x,x).                     multiply(x,y,x)   multiply(y,y,x)     multiply(x,x,x) 
+
+      This last simply squares x.  Note that the first  parameters  are  by
+
+
+
+                                      7                                       
+
+
+
+
+
+
+      convention  always the inputs to the routines.  Routines are provided
+
+      not only to allow arithmetic on 'big' and 'flash' numbers,  but  also
+
+      to  allow  these  variables  to  perform arithmetic with the built-in
+
+      integer and double precision data-types.
+
+
+
+      Conversion routines are also provided to convert  from  one  type  to
+
+      another.  For  details of each routine see the relevant documentation
+
+      in Appendix III and the example programs of Appendix IV.
+
+
+
+      Input and output is handled by the routines innum, otnum,  cinnum and                                                  innum  otnum   cinnum    
+
+      cotnum. The first two use the fixed number base specified by the user      cotnum                                                               
+
+      in  the  initial call of mirsys.  The latter pair work in conjunction                               mirsys                                      
+
+      with the global variable IOBASE which can be assigned dynamically  by
+
+      the  user.  A  simple  rule  is that if the program is CPU bound,  or
+
+      involves changes of base,  then set the base initially to MAXBASE and
+
+      use cinnum and cotnum. If on the other hand the program is I/O bound,          cinnum     cotnum                                                
+
+      or needs access to individual digits of numbers (using getdig, putdig                                                             getdig  putdig
+
+      and numdig), use innum and otnum.          numdig       innum     otnum 
+
+
+
+      Numbers to bases up to 256 can be represented.  Numbers up to base 60
+
+      use as many of the symbols 0-9, A-Z, a-x as necessary. If the base is
+
+      greater than 60,  the symbols used are the ascii codes 0-255.  A base
+
+      of  256 is useful when it is necessary to interpret a line of text as
+
+      a large integer,  as is the case  for  the  Public  Key  Cryptography
+
+      programs described in Appendix IV.
+
+
+
+      Rational numbers may be input using either a radix point (e.g 0.3333)
+
+      or  as  a fraction (e.g.  1/3).  Either form can be used on output by
+
+      setting the global variable POINT=ON or =OFF.  Wraparound  on  output
+
+
+                                      8                                       
+
+
+
+
+
+
+      can  similarily  be selected by setting WRAP=ON or OFF.  Input can be
+
+      taken from a string instead of from a file or I/O device,  by copying
+
+      the  string  to  the  global array IBUFF[] immediately before calling
+
+      innum or cinnum.  This method can be used to  set  'big'  or  'flash'      innum    cinnum                                                      
+
+      numbers  to  large  constant values.  Similarly by setting the global
+
+      variable STROUT to TRUE, output can be redirected to the global array
+
+      OBUFF[],  instead  of  going  directly  to  a  file  or  I/O  device.
+
+      Subsequent formatting can then take place before actual output.
+
+
+
+
+
+      5. THE IMPLEMENTATION
+
+
+
+      No  great  originality  is claimed for the routines used to implement
+
+      arithmetic on the 'big' data-type.  The algorithms used are  faithful
+
+      renditions  of  those described by Knuth (1981 $4.3.1).  However some
+
+      effort was made to optimise the  implementation  for  speed.  At  the
+
+      heart  of  the  time-consuming multiply and divide routines there is,
+
+      typically,  a need need  to  multiply  together  a  digit  from  each
+
+      operand,  add  in  a  'carry'  from  a  previous operation,  and then
+
+      separate the total into a digit of the result,  and a 'carry' for the
+
+      next   operation.   To   illustrate   this   consider  this  base  10
+
+      multiplication:
+
+                                8723536221
+                               x         9
+                               -----------
+
+
+      To correctly process the column with  the  '5'  in  it,  we  multiply
+
+      5x9=45,  add  in  the 'carry' from the previous column (say a 3),  to
+
+      give 48,  keep the '8' as the result for this column,  and carry  the
+
+      '4' to the next column.
+
+
+
+                                      9                                       
+
+
+
+
+
+
+
+
+      This  basic primitive operation is essentially the calculation of the
+
+      quotient (a*b+c)/m and its remainder. For the example above a=5, b=9,
+
+      c=3 and m=10.  This operation has suprisingly universal  application,
+
+      and since it lies at the innermost loop of the arithmetic algorithms,
+
+      its efficient implementation is essential.
+
+
+
+      There  are three main difficulties with a high-level language general
+
+      base implementation of this MAD (Multiply, Add and Divide) operation.
+
+
+
+      (1)  It will be slow.
+
+
+
+      (2)  Quotient  and  remainder  are  not available simultaneously as a
+
+           result of the divide operation.  Therefore the calculation  must
+
+           be  essentially done twice,  once to get the quotient,  and once
+
+           for the remainder.
+
+
+
+       (3) Although the operation results in two single  digit  quantities,
+
+           the  intermediate  product (a*b+c) may be double-length.  Indeed
+
+           such a Multiply-Add and  Divide  routine  can  be  used  on  all
+
+           occasions when a double-length quantity would be required by the
+
+           basic  arithmetic  algorithms.  Note  that  the  'C' language is
+
+           blessed with a 'long' integer data-type which  may  in  fact  be
+
+           capable of temporarily storing this product.
+
+
+
+      For  these reasons it is best to implement this critical operation in
+
+      the assembly language of the computer used,  although a portable  'C'
+
+      version is possible. At machine-code level a transitory double-length
+
+      result can often be dealt with, even if the 'C' long data-type is not
+
+
+                                      10                                      
+
+
+
+
+
+
+      itself double-length (as is the case for the 'C' compiler used on the
+
+      VAX11/780, for which ints and longs are both 32-bit quantities).  For
+
+      further details see the documentation in the file 'bnmuldv.any'.
+
+
+
+      A  criticism  of  the  MIRACL system might be its use of fixed length
+
+      arrays for its 'big' and 'flash' data types.  This was done to  avoid
+
+      the  difficult  and  time-consuming problems of memory allocation and
+
+      garbage  collection  which  would  be  needed  by  a  variable-length
+
+      representation. However it does mean that when doing a calculation on
+
+      'big'  integers  that  the  results and all intermediate calculations
+
+      must be less than or equal to the fixed size initially  specified  to
+
+      mirsys.      mirsys 
+
+
+
+      In practise most numbers in a stable integer calculation are of  more
+
+      or  less  the  same size,  except when two are multiplied together in
+
+      which case a double-length intermediate product is created.  This  is
+
+      usually  immediately  reduced again by a subsequent divide operation.
+
+      A classic example of this would be  in  the  Pollard-Brent  factoring
+
+      program (Appendix IV and Scott 1986a).
+
+
+
+      Note  that  this  is another manifestation, on a macro level,  of the
+
+      problem mentioned in point (3) above.  It would be a pity to have  to
+
+      specify each variable to be twice as large as necessary, just to cope
+
+      with  these  occasional  intermediate  products.  For  this  reason a
+
+      special Multiply, Add and Divide routine mad has been included in the                                               mad                         
+
+      MIRACL library.  It has proved very useful  when  implementing  large
+
+      programs  (like  the  Pomerance-Silverman-Montgomery factoring
+
+      program, Appendix IV) on computers with limited memory.
+
+
+
+
+                                      11                                      
+
+
+
+
+
+
+      As well  as  the  basic  arithmetic  operations,  routines  are  also
+
+      provided:
+
+
+
+      (a) to generate and test 'big' prime numbers,  using a  probabilistic
+
+          primality test (Knuth 1981 $4.5.4)
+
+
+
+      (b) to generate 'big'  and  'flash'  random  numbers,  based  on  the
+
+          subtractive method (Knuth 1981 $3.6)
+
+
+
+      (c) to calculate powers and roots
+
+
+
+      (d) to implement both the normal and extended euclidean GCD algorithm
+
+          (Knuth 1981 $4.5.2)
+
+
+
+      6. FLOATING-SLASH NUMBERS
+
+
+
+      The  straightforward  way to represent rational numbers is as reduced
+
+      fractions,  as a numerator and denominator with  all  common  factors
+
+      cancelled  out.   These  numbers  can  then  be  added,   subtracted,
+
+      multiplied and divided in the obvious way,  and the result reduced by
+
+      dividing  both  numerator  and  denominator  by their Greatest Common
+
+      Divisor.  An efficient GCD subroutine,  using Lehmers modification of
+
+      the  classical euclidean algorithm for multi-precision numbers (Knuth
+
+      1981), is included in the MIRACL package.
+
+
+
+      An alternative way to  represent  rationals  would  be  as  a  finite
+
+      continued fraction (Knuth 1981, $4.5.2).  Every rational number {p/q}
+
+      can be written as
+
+
+
+
+                                      12                                      
+
+
+
+
+
+
+
+               p
+               -      =     a0    +      1
+               q                 --------------------------------
+                                  a1    +    1
+                                      ----------------------------
+                                        a2    +    1
+                                            ----------------------
+                                                 +  ..
+                                                       +  ..
+                                                          +    1
+                                                              ----
+                                                               an
+
+
+      or more elegantly as {p/q} = [a0/a1/a2/..../an],  where  the  ai  are
+
+      positive integers, usually quite small.
+
+
+
+      For example
+
+
+
+                       {277/642}  =  [0/2/3/6/1/3/3]
+
+
+
+      Note  that  the  ai  elements  of  the   above   continued   fraction
+
+      representation  are  easily found as the quotients generated as a by-
+
+      product when the euclidean GCD algorithm is applied to p and q.
+
+
+
+      As we are committed to fixed length representation  of  rationals,  a
+
+      problem  arises  when the result of some operation exceeds this fixed
+
+      length.  There is a necessity  for  some  scheme  of  truncation,  or
+
+      rounding. While there is no obvious way to truncate a large fraction,
+
+      it   is   a   simple   matter  to  truncate  the  continued  fraction
+
+      representation.  The resulting,  smaller,  fraction is called a  best
+
+      rational approximation, or a convergent, to the original fraction.
+
+
+
+      Consider truncating {277/642} = [0/2/3/6/1/3/3]. Simply drop the last
+
+      element from the CF representation,  giving [0/2/3/6/1/3] = {85/197},
+
+
+
+                                      13                                      
+
+
+
+
+
+
+      which is a very close approximation to {277/642} (error  =  0.0018%).
+
+      Chopping  more  terms  from  the  CF  expansion  gives the successive
+
+      convergents  as  {22/51},  {19/44},  {3/7},  {1/2},  {0/1}.   As  the
+
+      fractions get smaller, the error increases.  Obviously the truncation
+
+      rule for a computer implemention  should  be  to  chose  the  biggest
+
+      convergent that fits the computer representation.
+
+
+
+      The  type  of  rounding  described  above  is  also  called  'Mediant
+
+      rounding'.  If {p/q} and {r/s}  are  two  neighbouring  representable
+
+      slash   numbers   astride   a   gap,   then   their  mediant  is  the
+
+      unrepresentable {(p+r)/(q+s)}.  All larger  fractions  between  {p/q}
+
+      and the mediant will round to {p/q},  and those between {r/s} and the
+
+      mediant will round  to  {r/s}.  The  mediant  itself  rounds  to  the
+
+      'simpler' of {p/q} and {r/s}.
+
+
+
+      This is theoretically a very good way to round,  much better than the
+
+      rather arbitrary and base-dependent methods  used  in  floating-point
+
+      arithmetic,  and is the method used here.  The full theoretical basis
+
+      of floating-slash arithmetic is  described  in  detail  by  Matula  &
+
+      Kornerup  (1985).  It should be noted that our 'flash' representation
+
+      is in fact a cross between  the  fixed-  and  floating-slash  systems
+
+      analysed  by  Matula & Kornerup,  as our slash can only float between
+
+      words,  and not between bits.  However  the  characteristics  of  the
+
+      'flash'  data-type  will  tend  to  those  of floating-slash,  as the
+
+      precision is increased.
+
+
+
+      The MIRACL routine round implements mediant rounding.  If the  result                         round                                             
+
+      of an arithmetic operation is the fraction {p/q},  then the euclidean
+
+      GCD algorithm is applied as before to p and q.  However this time the
+
+
+                                      14                                      
+
+
+
+
+
+
+      objective  is  not  to use the algorithm to calculate the GCD per se,
+
+      but to use its quotients to build successive  convergents  to  {p/q}.
+
+      This  process is stopped when the next convergent is too large to fit
+
+      the 'flash' representation.  The complete algorithm  is  given  below
+
+      (Kornerup & Matula 1983)
+
+
+
+      Given p>=0 and q>=1
+
+
+
+                   b(-2) = p     p(-2)  = 0    q(-2) = 1
+
+                   b(-1) = q     p(-1)  = 1    q(-1) = 0
+
+
+
+      Now  for  i=0,1,....  and  for  b(i-1)  > 0 ,  find the quotient a(i)
+
+      and remainder b(i) when b(i-2) is divided by b(i-1), such that
+
+
+
+                   b(i) =-a(i).b(i-1) + b(i-2)
+
+
+
+      Then calculate
+
+
+
+                   p(i) = a(i).p(i-1) + p(i-2)
+
+                   q(i) = a(i).q(i-1) + q(i-2)
+
+
+
+      Stop when {p(i)/q(i)} is to big to fit the  'flash'   representation,
+
+      and take {p(i-1)/q(i-1)} as the rounded result.
+
+
+
+      If applied to {277/642},  this process will give the same sequence of
+
+      convergents as stated earlier.
+
+
+
+      Since  this  rounding procedure must be applied to the result of each
+
+      arithmetic operation, and since it is potentially rather slow,  a lot
+
+
+                                      15                                      
+
+
+
+
+
+
+      of effort has been made to optimize its implementation. Lehmer's idea
+
+      of  operating only with the most significant piece of each number for
+
+      as long as possible (Knuth 1981) is used,  so that for  most  of  the
+
+      iterations  only single-precision arithmetic is needed.  Special care
+
+      is taken to avoid the rounded result overshooting the limits  of  the
+
+      'flash'  representation  (Scott 1986b).  The application of the basic
+
+      arithmetic routines to the calculation of elementary  functions  such
+
+      as log(x), exp(x), sin(x), cos(x), tan(x) etc., is described in Scott
+
+      (1988).
+
+
+
+      In  many  cases the result given by a program can be guaranteed to be
+
+      exact.  This can be checked by testing  the  global  variable  EXACT,
+
+      which  is  initialised  to  TRUE and is only set to FALSE if rounding
+
+      takes place.
+
+
+
+
+
+      7. SOME RESULTS
+
+
+
+      The MIRACL library has been installed  and  tested  on  a  VAX11/780,
+
+      using Digital's own C compiler, on an IBM PC, using (amongst  others)
+
+      the Microsoft V5.0, the Mark Williams V2.0,  Zorland V1.1, Aztec V3.4
+
+      and Borlands Turbo C V1.0 compilers, on an Acorn Archimedes using the
+
+      Norcroft ARM  C V1.54A, and on an Apple Macintosh, using the  Megamax
+
+      compiler.  The only necessary changes required are to the  'mirdef.h'
+
+      header  file.  Special  assembly  language  versions  of the critical
+
+      muldiv function for these implementations are given in  the  file
+
+      'bnmuldv.any', together with a portable 'C' version.
+
+
+
+      Many example programs are described in Appendix IV.  Six  different
+
+
+                                      16                                      
+
+
+
+
+
+
+      factoring  programs  are  included.  The biggest and most powerful of
+
+      these   is   the   Pomerance-Silverman-Montgomery algorithm
+
+      (Pomerance 1985, Silverman 1987) which factored F7 = 2^128 -1 =
+
+
+
+                 340282366920938463463374607431768211457
+
+
+
+      in less than 45 minutes, running on an IBM PC-AT micro-computer. When
+
+      this number was first factored, it took 90 minutes on an IBM 360
+
+      mainframe (Morrison & Brillhart 1975), albeit using a somewhat
+
+      inferior algorithm. Another program implements Lenstra's recently
+
+      discovered Elliptic Curve method (Montgomery 1987).
+
+
+
+      Two Public-Key cryptography systems, whose strength appears to depend
+
+      on  the  difficulty  of  factorisation,  are given.  The first is the
+
+      classic RSA system (Rivest,  Shamir & Adleman 1978).  This is fast to
+
+      encode a message, but painfully slow at decoding.  A much faster, but
+
+      less  tried  and  tested,  approach  is  due  to  Okamato  (1986).  A
+
+      disadvantage  of  this method is  that the  encoded text is  somewhat
+
+      bigger than  the  input  source.   For  both  methods  the  keys  are
+
+      constructed from 'strong' primes (Gordon 1984), to improve security.
+
+
+
+      Several programs demonstrate the use of 'flash' variables.  One gives
+
+      an implementation of Guassian elimination to solve a  set  of  linear
+
+      equations,  involving  notoriously  ill-conditioned Hilbert matrices.
+
+      Others show how rational arithmetic can be used to  approximate  real
+
+      arithmetic,  in,  for  example  the calculation of roots and pi.  The
+
+      former program detected an error in the value for the square root  of
+
+      5 given in Knuth (1981) appendix A. The correct value is
+
+
+
+
+                                      17                                      
+
+
+
+
+
+
+              2.23606 79774 99789 69640 91736 68731 27623 54406                                                    _          
+
+
+
+      The error is in the tenth last digit, which is a 2, and not a 1.
+
+
+
+      The  roots program runs particularly fast when calculating the square
+
+      roots of single precision integers,  as a simple  form  of  continued
+
+      fraction generator can be used (Scott 1987a). In one test the  golden
+
+      ratio was calculated to 100,000 decimal places in 3 hours of CPU time
+
+      on a VAX11/780.
+
+
+
+      The 'pi' program was used to calculate pi  correct  to  1000  decimal
+
+      places, taking about 6 minutes of CPU time on the VAX to do so.
+
+
+
+
+
+      8. CRITICISM and FUTURE DEVELOPMENTS
+
+
+
+      A  disadvantage  of  using  a 'flash' type of variable to approximate
+
+      real  arithmetic  is   the   non-uniformity   in   gap-size   between
+
+      representable  values  (Matula  & Kornerup 1985).  To illustrate this
+
+      consider a floating-slash system which is  constrained  to  have  the
+
+      product of numerator and denominator less than 256. All representable
+
+      values  in  the  range 0-1 are given in Appendix I.  Observe that the
+
+      first representable fraction less than {1/1}  in  such  a  system  is
+
+      {15/16},  a  gap  of  {1/16}.  The next fraction larger than {0/1} is
+
+      {1/255},  a gap of {1/255}.  In general,  for a k-bit  floating-slash
+
+      system,  the gap size varies from smaller than 2^(-k) to a worst case
+
+      2^(-k/2). In practise this means that a real value  that  falls  into
+
+      one of the larger gaps,  will be represented by a fraction which will
+
+      be accurate to only half its usual precision.  Fortunately such large
+
+
+                                      18                                      
+
+
+
+
+
+
+      gaps  are rare,  and increasingly so for higher precision,  occurring
+
+      only near simple fractions.  However it does mean that  real  results
+
+      can  only  be completely trusted to half the given decimal places.  A
+
+      partial solution to this problem  would  be  to  represent  rationals
+
+      directly as continued fractions.  This gives a much better uniformity
+
+      of gap-size (Kornerup & Matula 1985),  but would be very difficult to
+
+      implement using a high level language.
+
+
+
+      Arithmetic  on  'flash'  data-types  is undoubtedly slower than on an
+
+      equivalent  sized  multiprecision  floating-point  type  (e.g.  Brent
+
+      1978).  The  advantages  of  the  'flash' approach are its ability to
+
+      exactly represent rational numbers,  and do exact arithmetic on them.
+
+      Even  when rounding is needed,  the result often works out correctly,
+
+      due to the tendency of mediant-rounding to prefer a  simple  fraction
+
+      over  a  complex  one.  For example the 'roots' program (Appendix IV)
+
+      when asked to find the square root of 2 and then square  the  result,
+
+      comes back with the exact answer of 2, despite internal rounding.  So
+
+      the MIRACL approach should appeal to those who prefer  an  answer  of
+
+      10, to one of 9.9999997.
+
+
+
+      Many users of the MIRACL package would be disappointed that they have
+
+      to calculate
+
+
+
+                            t = x.x  + x + 1
+
+
+
+      by the sequence
+
+                            fmul(x,x,t);
+                            fadd(t,x,t);
+                            fincr(t,1,1,t);
+
+      rather than by simply t=x*x+x+1;
+
+
+                                      19                                      
+
+
+
+
+
+
+
+
+      Someone  could  of  course  use the MIRACL library to write a special
+
+      purpose C compiler which could properly interpret such a command (see
+
+      Cherry and Morris 1984 for an  example  of  this  approach).  However
+
+      such  a drastic step is not necessary.  A superset of C,  called C++,
+
+      has been developed by AT&T (Stroustrup 1986),  which may gain general
+
+      acceptance  as the natural successor to C.  The enhancements to C are
+
+      mainly aimed at making it an object-oriented  language.  By  defining
+
+      'big' and 'flash' variables as 'classes' (in C++ terminology), it
+
+      will be possible to  'overload'  the usual mathematical operators, so
+
+      that the compiler will automatically substitute  calls  to  the
+
+      appropriate  MIRACL  routines  when these operators are used in
+
+      conjunction with 'big'  or  'flash'  variables. Furthermore  C++
+
+      will  be able to look after the initialization (and ultimate
+
+      elimination) of these data-types  automatically,  using  its
+
+      constructor/destructor constructs,  which are included with the class
+
+      definition.  Indeed once the classes are properly defined and set up,
+
+      it  should  be  as simple to work with the new data-types as with the
+
+      built-in double and int types.  It should then be possible  to  adapt
+
+      the C source of existing mathematical libraries, with minimal effort,
+
+      to work with the new data-types.
+
+
+
+      A C++ implementation will be the object of further research.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      20                                      
+
+
+
+
+
+
+  
+
+      9. REFERENCES
+
+
+
+
+
+      BRENT, R.P.  A Fortran Multi-precision Arithmetic Package. ACM Trans.
+
+      Math. Software 4,1 (March 1978), 57-81.
+
+
+
+      CHERRY, L. AND MORRIS, R. BC - An Arbitrary Precision Desk-Calculator
+
+      Language. in ULTRIX-32 Supplementary Documents Vol.  1 General Users.
+
+      Digital Equipment Corporation 1984.
+
+
+
+      GORDON, J. Strong Primes are easy to find. In Advances in Cryptology,
+
+      Proc. Eurocrypt 84, Lecture Notes in Computer Science, Vol. 209, 216-
+
+      223, Springer-Verlag, 1985.
+
+
+
+      KNUTH,  D.E.  The  Art  of Computer Programming,  Vol 1:  Fundamental
+
+      Algorithms. Addison-Wesley, Reading, Mass., 1973.
+
+
+
+      KNUTH,  D.E.  The Art of Computer Programming,  Vol 2:  Seminumerical
+
+      Algorithms. Addison-Wesley, Reading, Mass., 1981.
+
+
+
+      KORNERUP, P.  AND MATULA, D.W.  Finite Precision Rational Arithmetic:
+
+      An Arithmetic Unit.  IEEE Trans.  Comput., C-32,4 (April 1983),  378-
+
+      387.
+
+
+
+      KORNERUP,  P.   AND  MATULA,  D.W.   Finite  Precision  Lexicographic
+
+      Continued  Fraction  Number  Systems.   Proc.   7th  Sym.   on  Comp.
+
+      Arithmetic, IEEE Cat.  #85CH2146-9, 1985, 207-214.
+
+
+
+
+                                      21                                      
+
+
+
+
+
+
+      MATULA, D.W.  AND KORNERUP, P.  Finite Precision Rational Arithmetic:
+
+      Slash Number Systems. IEEE Trans.  Comput., C-34,1 (January 1985), 3-
+
+      18.
+
+
+
+      MORRISON,  M.A.  AND  BRILLHART,  J.  A  Method  of Factoring and the
+
+      Factorization of F7. Math. Comput., 29,129 (January 1975), 183-205.
+
+
+
+      OKAMATO,  T.  Fast Public-Key Cryptosystem using Congruent Polynomial
+
+      Equations. Electr. Letters, 22,11 (May 1986), 581-582.
+
+
+
+      POMERANCE,  C. The Quadratic Sieve Factoring Algorithm. In Advances
+
+      in Cryptology, Lecture Notes in Computer Science, Vol. 209, Springer-
+
+      Verlag, 1985, 169-182
+
+
+
+      RIVEST, R., SHAMIR, A. AND ADLEMAN, L. A Method for obtaining Digital
+
+      Signatures and Public-Key Cryptosystems.  Comm.  ACM,  21,2 (February
+
+      1978), 120-126.
+
+
+
+      SCOTT, M.P.J. Review Feedback letter. Byte, 11,6 (June 1986) 289.
+
+
+
+      SCOTT,   M.P.J.   Fast  rounding  in  multiprecision   floating-slash
+
+      arithmetic.  Accepted for publication IEEE Transactions on Computers.
+
+
+
+      SCOTT, M.P.J.  On the Efficient Generation of Multiprecision Rational
+
+      Approximations. NIHE Dublin Working Paper CA 0487, 1987.
+
+
+
+      SCOTT, M.P.J. Evaluation of elementary functions using multiprecision
+
+      rational arithmetic. In preparation. 1988.
+
+
+
+
+                                      22                                      
+
+
+
+
+
+
+      SILVERMAN, R.D. The Multiple Polynomial Quadratic Sieve, Math. Comp.
+
+      48, 177, (January 1987), 329-339
+
+
+
+      STROUSTRUP, B. The C++ Programming Language. Addison-Wesley, Reading,
+
+      Mass., 1986.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      23                                      
+
+
+
+
+
+
+
+
+                      Appendix I
+
+    Representable values  in  range  0-1  for  a  slash  system  for  which
+    numerator*denominator < 256.
+
+  0/1 1/255 1/254 1/253 1/252 1/251 1/250 1/249 1/248 1/247
+1/246 1/245 1/244 1/243 1/242 1/241 1/240 1/239 1/238 1/237 1/236
+1/235 1/234 1/233 1/232 1/231 1/230 1/229 1/228 1/227 1/226 1/225
+1/224 1/223 1/222 1/221 1/220 1/219 1/218 1/217 1/216 1/215 1/214
+1/213 1/212 1/211 1/210 1/209 1/208 1/207 1/206 1/205 1/204 1/203
+1/202 1/201 1/200 1/199 1/198 1/197 1/196 1/195 1/194 1/193 1/192
+1/191 1/190 1/189 1/188 1/187 1/186 1/185 1/184 1/183 1/182 1/181
+1/180 1/179 1/178 1/177 1/176 1/175 1/174 1/173 1/172 1/171 1/170
+1/169 1/168 1/167 1/166 1/165 1/164 1/163 1/162 1/161 1/160 1/159
+1/158 1/157 1/156 1/155 1/154 1/153 1/152 1/151 1/150 1/149 1/148
+1/147 1/146 1/145 1/144 1/143 1/142 1/141 1/140 1/139 1/138 1/137
+1/136 1/135 1/134 1/133 1/132 1/131 1/130 1/129 1/128 1/127 1/126
+1/125 1/124 1/123 1/122 1/121 1/120 1/119 1/118 1/117 1/116 1/115
+1/114 1/113 1/112 1/111 1/110 1/109 1/108 1/107 1/106 1/105 1/104
+1/103 1/102 1/101 1/100 1/99  1/98  1/97  1/96  1/95  1/94  1/93
+1/92  1/91  1/90  1/89  1/88  1/87  1/86  1/85  1/84  1/83  1/82
+1/81  1/80  1/79  1/78  1/77  1/76  1/75  1/74  1/73  1/72  1/71
+1/70  1/69  1/68  1/67  1/66  1/65  1/64  2/127 1/63  2/125 1/62
+2/123 1/61  2/121 1/60  2/119 1/59  2/117 1/58  2/115 1/57  2/113
+1/56  2/111 1/55  2/109 1/54  2/107 1/53  2/105 1/52  2/103 1/51
+2/101 1/50  2/99  1/49  2/97  1/48  2/95  1/47  2/93  1/46  2/91
+1/45  2/89  1/44  2/87  1/43  2/85  1/42  2/83  1/41  2/81  1/40
+2/79  1/39  2/77  1/38  2/75  1/37  2/73  1/36  2/71  1/35  2/69
+1/34  2/67  1/33  2/65  1/32  2/63  1/31  2/61  1/30  2/59  1/29
+2/57  3/85  1/28  3/83  2/55  3/82  1/27  3/80  2/53  3/79  1/26
+3/77  2/51  3/76  1/25  3/74  2/49  3/73  1/24  3/71  2/47  3/70
+1/23  3/68  2/45  3/67  1/22  3/65  2/43  3/64  1/21  3/62  2/41
+3/61  1/20  3/59  2/39  3/58  1/19  3/56  2/37  3/55  1/18  3/53
+2/35  3/52  1/17  3/50  2/33  3/49  1/16  4/63  3/47  2/31  3/46
+4/61  1/15  4/59  3/44  2/29  3/43  4/57  1/14  4/55  3/41  2/27
+3/40  4/53  1/13  4/51  3/38  2/25  3/37  4/49  1/12  4/47  3/35
+2/23  3/34  4/45  1/11  4/43  3/32  2/21  3/31  4/41  5/51  1/10
+5/49  4/39  3/29  5/48  2/19  5/47  3/28  4/37  5/46  1/9   5/44
+4/35  3/26  5/43  2/17  5/42  3/25  4/33  5/41  1/8   5/39  4/31
+3/23  5/38  2/15  5/37  3/22  4/29  5/36  1/7   6/41  5/34  4/27
+3/20  5/33  2/13  5/32  3/19  4/25  5/31  6/37  1/6   6/35  5/29
+4/23  3/17  5/28  2/11  5/27  3/16  4/21  5/26  6/31  7/36  1/5
+7/34  6/29  5/24  4/19  7/33  3/14  5/23  7/32  2/9   7/31  5/22
+3/13  7/30  4/17  5/21  6/25  7/29  1/4   8/31  7/27  6/23  5/19
+4/15  7/26  3/11  8/29  5/18  7/25  2/7   7/24  5/17  8/27  3/10
+7/23  4/13  5/16  6/19  7/22  8/25  9/28  1/3   9/26  8/23  7/20
+6/17  5/14  9/25  4/11  7/19  3/8   8/21  5/13  7/18  9/23  2/5
+9/22  7/17  5/12  8/19  3/7   10/23 7/16  4/9   9/20  5/11  6/13
+7/15  8/17  9/19  10/21 11/23 1/2   11/21 10/19 9/17  8/15  7/13
+6/11  11/20 5/9   9/16  4/7   11/19 7/12  10/17 3/5   11/18 8/13
+5/8   12/19 7/11  9/14  11/17 2/3   13/19 11/16 9/13  7/10  12/17
+5/7   13/18 8/11  11/15 3/4   13/17 10/13 7/9   11/14 4/5   13/16
+9/11  14/17 5/6   11/13 6/7   13/15 7/8   15/17 8/9   9/10  10/11
+11/12 12/13 13/14 14/15 15/16 1/1
+
+
+
+                                      24                                      
+
+
+
+
+
+
+
+                      Appendix II - Header files
+
+  ***** Deleted to save space - insert mirdef.h/miracl.h files here  *******
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      25                                      
+
+
+
+
+
+

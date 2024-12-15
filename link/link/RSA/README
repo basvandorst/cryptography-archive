@@ -1,0 +1,110 @@
+
+********************************************************************************
+*									       *
+*				R S A - Verfahren			       *
+*									       *
+********************************************************************************
+
+Die Schluessel-Generierung laeuft in 2 Stufen ab.
+
+A)	Es muessen 2 Primzahlen mit genprim berechnet werden. Die
+	Groessenordnung dieser Zahlen sollte 80-130 sein, und sich um
+	eine unterscheiden. Diese Zahlen muessen in einer Datei, mit
+	einem beliebigen Trennzeichen (z.B. '#') dazwischen, abgelegt
+	werden.
+
+		Alle Zahlen werden als Hexadezimalzahlen (fuer
+		Puristen: Sedizimal :-) ein-/ausgegeben.  Bei
+		Ein-/Ausgabe sind White-Spaces (Blank,Tab,Newline)
+		nicht signifikant.
+
+	Der zweite Parameter von genprim gibt die Wahrscheinlichkeit an,
+	mit der die gefundene Zahl wirklich eine Primzahl ist.  Fuer
+	eine Parameter n ist die Wahrscheinlichkeit 1-0.5^n. Fuer n=20
+	ist ein Programierfehler von mir schon wahrscheinlicher :-).
+	Das der Test nur probabilistisch ist, verringert bei vernuenftiger
+	Wahl von n die Aussagekraeftigkeit nur unwesendlich.
+
+B)	Genrsa generiert daraus eine Datei mit oeffendlichem/geheimen
+	Schluessel.  Diese Datei enthaelt 3 Zahlen.  Aus dieser Datei
+	gewinnt man die geheime, in dem man die letzte Zahl (mit Trenn-
+	zeichen) entfernt.  Den oeffendlichen erhaelt man duch Entfernung
+	der zweiten Zahl.
+
+Beispiel:
+	$ genrsa 10 20 >p1		# erste Primzahl
+	$ cat p1
+	2023A0B0BE5
+	$ genrsa 11 20 >p2		# zweite Primzahl
+	$ cat p2
+	537A985EC975
+	$ echo "#" | cat p1 - p2 >pd	# Eingabe fuer genrsa
+	$ genrsa <pd >rd		# Alle Zahlen fertig
+	$ cat rd
+	A7AF134EFB73D789793CA9
+	#
+	9245F9009636D26B7CA5ED
+	#
+	80F408891D5932D10C2585
+
+Dieses File rd muss man auf 2 Files verteilen:
+
+	$ cat geheim
+	A7AF134EFB73D789793CA9
+	#
+	9245F9009636D26B7CA5ED
+	$ cat oeffendlich
+	A7AF134EFB73D789793CA9
+	#
+	80F408891D5932D10C2585
+
+Die Dateien p1,p2,pd und rd sollte man schnell wieder loeschen.
+
+	$ rsaencode oeffendlich <data >crypt	# Verschluesseln
+	$ rsadecode geheim <crypt >clear	# Entschluesseln
+
+Die Verschluesselung laeuft in Bloecken ab, deren Groesse von der der
+ersten Zahl des Schluessels Abhaengt.  Alle Bloecke werden als binaere
+Daten behandelt.  Allerdings wird beim Entschluesseln der letzte Block
+mit ASCII-NULL aufgefuellt.  Dieses ist kein Fehler des RSA-Verfahrens,
+sondern liegt an meiner Verwendung.  Das RSA-Verfahren verschluesselt
+einfach Zahlen. Meiner Umwandlung von Daten in Zahlen ist das Manko
+anzulasten.  Deshalb muss auch der verschluesselte Text mit btoa oder
+aehnlichem mailbar gemacht werden.  Zur Reduktion der Blockanzahl kann
+man natuerlich vorher den Text compressen, da er sowieso binaer behandelt
+wird.
+
+Bei mir (386-er mit 20 MHz) dauert die Ver-/Entschluesselung eines
+Blocks (aus 125 & 124 stelliger Primzahl) 20 Minuten !!!!!!
+Dafuer laeuft die Primzahlberechnung in 1-20 Stunden ab :-) !!!!!
+Das haengt von dem zufaelligen Startpunkt der Suche ab.
+
+Wer Lust hat, die Verschluesselung so zu modifizieren, dass nur ein
+Block mit RSA verschluesselt wird, und alle anderen, mit einem darin
+uebergebenen weiteren Schuessel, mit DES zu verschluesseln, der ist
+herzlich eingeladen ein solches Programm analog rsa.c zu erstellen.
+Die eigendliche Verschluesselung ist mit den Routinen aus arith.c
+trivial.  Es kostet allerding Zeit :-).
+
+Als Warnung fuer Leute, die mit den Routinen arbeiten wollen:
+
+Alle Routinen sind auf Laufzeit optimiert, und enthalten fast keine
+Ueberpruefungen auf Ueberlauf o.ae. .  Wenn ein Fehler entdeckt wird
+(was selten ist :-), gibts eine core.  Alle Zahlen muessen >= 0 sein.
+
+Mein Wissen ueber RSA und die anderen verwendeten Verfahren hab ich
+aus:
+	Horster, Patrick:
+	Kryptologie / von Patrick Horster. - Mannheim;
+	Wien; Zuerich: Bibliographisches Institut, 1985.
+	    (Reihe Informatik; 47)
+	    ISBN 3-411-03106-9
+	NE: GT
+
+Martin Nicolay		( martin@trillian.megalon.de )
+Fliederstr. 23
+4100 Duisburg 1
+W-Germany
+
+PS:	Falls rand.h nicht vorhanden ist: darin sind nur die Funktionen
+	wie drand48 usw. deklariert.

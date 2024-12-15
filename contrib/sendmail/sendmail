@@ -1,0 +1,58 @@
+---(sample .mailrc)
+set EDITOR=vi
+set sendwait
+set sendmail=/home/USER/bin/pgpmail
+set VISUAL=pgpview
+set PAGER=more
+---(pgpmail)
+#!/bin/csh -f
+
+set id=`whoami`
+set pgpexec=/home/USER/bin
+set tmp=/tmp
+
+cat > $tmp/$id.mail.tmp
+
+foreach i ( $* )
+  if ( ${i} =~ *@* ) then
+    set rcpt=${i}
+  endif
+end
+
+/bin/echo -n 'pgpmail: encode mail using pgp (y/n)? '
+set x="`/usr/ucb/head -1 /dev/tty`"
+
+if ( "$x" =~ y* ) then
+
+  if ( ! ${?rcpt} ) then
+    /bin/echo "pgpmail: can't find out recipient... exiting."
+    exit
+  endif
+
+  if ( ! -e $pgpexec/pgpmail.awk ) then
+    /bin/echo pgpmail: generating $pgpexec/pgpmail.awk ...
+    /bin/echo -n '/^Subject/ || /^To/ { print > "' > $pgpexec/pgpmail.awk
+    /bin/echo -n $tmp/$id >> $pgpexec/pgpmail.awk
+    /bin/echo '.mail.subject" }' >> $pgpexec/pgpmail.awk
+    /bin/echo -n '\!/^Subject/ && \!/^To/ { print > "' >> $pgpexec/pgpmail.awk
+    /bin/echo -n $tmp/$id >> $pgpexec/pgpmail.awk
+    /bin/echo '.mail.body" }' >> $pgpexec/pgpmail.awk
+  endif
+
+  /bin/awk -f $pgpexec/pgpmail.awk $tmp/$id.mail.tmp
+  $pgpexec/pgp -ef < $tmp/$id.mail.body > $tmp/$id.mail.crypt $rcpt 
+  if ( $status ) then
+    /bin/echo "pgpmail: pgp failed... exiting."
+    exit
+  endif
+  /bin/cat $tmp/$id.mail.subject $tmp/$id.mail.crypt > $tmp/$id.mail.tmp
+  /bin/echo
+endif
+
+/usr/lib/sendmail $* < $tmp/$id.mail.tmp
+/bin/rm $tmp/$id.mail.*
+---(pgpview)
+#
+pgp -m $1
+#pgp -f < $1 | more
+---

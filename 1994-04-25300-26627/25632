@@ -1,0 +1,186 @@
+Path: msuinfo!agate!ihnp4.ucsd.edu!swrinde!cs.utexas.edu!not-for-mail
+From: boucher@csl.sri.com (Peter K. Boucher)
+Newsgroups: sci.crypt
+Subject: Re: Yet Another Secure? RNG
+Date: 7 Apr 1994 07:49:03 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 175
+Sender: daemon@cs.utexas.edu
+Message-ID: <9404071248.AA19790@redwood.csl.sri.com>
+NNTP-Posting-Host: cs.utexas.edu
+
+In article <jktaberCnv3Bv.25p@netcom.com>, jktaber@netcom.com (John K. Taber) wrote:
+|> C445585@mizzou1.missouri.edu wrote:
+|> :    Suppose I knew the low-order bit of all 17 bytes.  (Let's ignore *how*
+                                            ^^^^^^^^^^^^
+(A) He knows all X (p0 + p1 + p2 + p3) bytes.
+
+|> : I might come to know those bits--I just know all 17 low-order bits.)  Now,
+|> : if I know them, and I know where we are in the output stream, I'll never
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(B) He knows the index, which is between 0 and (p0 * p1 * p2 * p3) - 1.
+
+|> : lose track of what those low-order bits are--the only way they're changed
+|> : is by being XORed with the high-order bit of one output byte, and since I
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+(C) He can see the bits used to update the state.
+
+|> : can see that byte, I have no problems tracking the results.
+|> :
+|> [etc]
+|> 
+|> Beautiful!  That defeats this rng.  Thanks, John Kelsey.
+|> 
+|> Peter, I don't think bigger rotors help significantly, it's still the same
+|> problem.  It is vulnerable to piecemeal attack.  We don't need to isolate
+                                 ^^^^^^^^^^^^^^^^
+That's not how I read what he wrote.  He said he needed 2**X memory and
+2**(X+3) operations to get (A), and that he was assuming (B).
+
+|> all low order bits, we could isolate a few bits in a few bytes, guess what
+|> they might be, then check our guess against a live sequence of output.
+|> 
+|> As I said, I'm interested in the thinking.  We are making the cryptographer's
+|> mistake, assuming the cryptanalyst must play the game the way we have 
+|> structured that guarantees he must lose.  But he plays the game his way, not
+|> as we want him too.
+|> 
+|> It's like we made a huge cheese ball and claimed "You can't eat this because
+|> we can prove it is too big to swallow."  It's true but the cryptanalyst eats
+|> it in nibbles.  We gotta stop making crypto systems outa cheese!
+
+Good analogy, but I'm not convinced it applies to Kelsey's attack.
+
+|> Still, a byte rng is too attractive to me to give up this cheese too quickly.
+|> I have one more fillip, which I will add later.
+
+Me, too.  Attached is a version that produces longs instead of bytes,
+runs acceptibly fast, negates assumptions (B) and (C), and makes the brute-
+forcing of (A) cost on the order of 2**4096 memory and 2**4101 operations.
+
+Peter K. Boucher
+--
+DISCLAIMER:  I am solely responsible for the contents of this message,
+	     which should not be misconstrued as being in any way related
+	     to the opinions of my employer.
+
+============================= CLIP CLIP =================================
+#define N0 1013 /* These primes */
+#define N1 1019 /* must add up  */
+#define N2 1031 /* to a power   */
+#define N3 1033 /* of 2.        */
+
+#define vSIZE (N0+N1+N2+N3)
+#define vMASK (vSIZE-1)
+
+static union
+{
+   unsigned long v[vSIZE];		/* vector of vSIZE random longs */
+   struct
+     {
+       unsigned long R0[N0],		/* ..redefined as rotors	*/
+		     R1[N1],
+		     R2[N2],
+		     R3[N3];
+     } rotor;
+} prng; /* end union */
+
+static unsigned long *rotor0, *rotor1, *rotor2, *rotor3;
+
+unsigned long rand32()
+{
+#define BARREL_5(X)	((X<< 5)^(X>>27))
+#define BARREL_7(X)	((X<< 7)^(X>>25))
+#define BARREL_9(X)	((X<< 9)^(X>>23))
+#define BARREL_11(X)	((X<<11)^(X>>21))
+#define BARREL_13(X)	((X<<13)^(X>>19))
+#define BARREL_15(X)	((X<<15)^(X>>17))
+   register unsigned long a,b;
+
+	a = *rotor0 + *rotor1;
+	b = *rotor2 + *rotor3;
+	prng.v[((BARREL_5(a)+BARREL_9(b))&vMASK)] += (BARREL_11(a)+BARREL_13(b));
+	if (++rotor0 >= &(prng.rotor.R0[N0])) rotor0 = prng.rotor.R0;
+	if (++rotor1 >= &(prng.rotor.R1[N1])) rotor1 = prng.rotor.R1;
+	if (++rotor2 >= &(prng.rotor.R2[N2])) rotor2 = prng.rotor.R2;
+	if (++rotor3 >= &(prng.rotor.R3[N3])) rotor3 = prng.rotor.R3;
+	return( BARREL_7(a)+BARREL_15(b) );
+}
+
+
+void
+srand128(seed1,seed2,seed3,seed4)
+unsigned long seed1,seed2,seed3,seed4;
+{
+#define LC1(x) (x * 66049+3907864577)
+#define LC2(x) (x * 69069)
+
+    register int i,j;
+    register unsigned long rdm_val=0L;
+    register unsigned long x=seed1;
+    register unsigned long y=seed2;
+
+    while ((x&1) == 0) {
+	x = LC1(x);
+    }
+    for (i=vSIZE; i--;) {
+        for (j=32;j--;) {
+	    if (y == 0) y = LC1(x);
+	    y ^= (y>>15);
+	    y ^= (y<<17);
+	    rdm_val = (rdm_val>>1) | (0x80000000 & ((x=LC2(x))+y));
+        }
+	prng.v[i] = rdm_val;
+    }
+
+    x=seed3;
+    y=seed4;
+    while ((x&1) == 0) {
+	x = LC1(x);
+    }
+    for (i=32;i--;) {
+	if (y == 0) y = LC1(x);
+	y ^= (y>>15);
+	y ^= (y<<17);
+	rdm_val = (rdm_val<<1) | (((x=LC2(x))+y)>>31);
+    }
+    rotor0 = &(prng.rotor.R0[rdm_val%N0]);
+
+    for (i=32;i--;) {
+	if (y == 0) y = LC1(x);
+	y ^= (y>>15);
+	y ^= (y<<17);
+	rdm_val = (rdm_val<<1) | (((x=LC2(x))+y)>>31);
+    }
+    rotor1 = &(prng.rotor.R1[rdm_val%N1]);
+
+    for (i=32;i--;) {
+	if (y == 0) y = LC1(x);
+	y ^= (y>>15);
+	y ^= (y<<17);
+	rdm_val = (rdm_val<<1) | (((x=LC2(x))+y)>>31);
+    }
+    rotor2 = &(prng.rotor.R2[rdm_val%N2]);
+
+    for (i=32;i--;) {
+	if (y == 0) y = LC1(x);
+	y ^= (y>>15);
+	y ^= (y<<17);
+	rdm_val = (rdm_val<<1) | (((x=LC2(x))+y)>>31);
+    }
+    rotor3 = &(prng.rotor.R3[rdm_val%N3]);
+
+    for (i=0; i<vSIZE; i++) {
+        for (j=32;j--;) {
+	    if (y == 0) y = LC1(x);
+	    y ^= (y>>15);
+	    y ^= (y<<17);
+	    rdm_val = (rdm_val<<1) | (((x=LC2(x))+y)>>31);
+        }
+	prng.v[i] ^= rdm_val;
+    }
+    for (i=vSIZE; i--;) {
+	(void)rand32();
+    }
+}
+

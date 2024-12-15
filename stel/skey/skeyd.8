@@ -1,0 +1,161 @@
+.\" 
+.\"  $Author: vince $
+.\"  $Header: /users/vince/src/skey/RCS/skeyd.8,v 1.3 1996/04/27 12:48:33 vince Exp vince $
+.\"  $Date: 1996/04/27 12:48:33 $
+.\"  $Revision: 1.3 $
+.\"  $Locker: vince $
+.\"
+.TH skeyd 1
+.ds )H CERT-IT
+.ds ]W Beta3 Release: Jan 1995
+
+.SH NAME
+
+skeyd \- s/Key server
+.SH SYNOPSIS
+.B skeyd
+
+.SH DESCRIPTION
+
+.IR skeyd(8)
+is a daemon program for authentication systems based on the
+.CR s/Key
+one time password method.
+.CR skeyd
+attempts to solve the
+.CR /etc/skeykeys
+distribution problem by centralizing the key file on a single
+system (the server) and making other systems (the clients)
+remotely and securely access the keys (that is, one time passwords).
+
+In other words, a single copy of
+.CR /etc/skeykeys
+is maintained on the server site, using the usual syntax and the
+usual skey tools.  On the server site
+.CR skeyd
+should be running;
+.CR skeyd
+will answer queries coming from clients and provide them
+.CR /etc/skeykeys
+information in order to let clients authenticate users.
+.CR skeyd
+should not be running on client systems;
+.CR skeyd 's
+only goal is, infact, to answer queries from client systems.
+On client systems, authenticating application such as
+.CR su
+or
+.CR login
+connect to the server by means
+of a modified version of the
+.CR libskey.a
+library.  That is, authenticating applications on client
+systems should be linked with the
+.CR libskey.a
+.CR libskey.a
+library provided in the STEL package in order to work
+in conjunction with the s/Key server.
+
+The
+.CR skeyd
+systems relies on a single configuration file:
+.IR /etc/skeydconf .
+It defines the address of the server (
+.IR skeyserver
+), the port number
+.CR skeyd
+is bound to (
+.IR skeyport
+), and a DES encryption key, which is used for
+data transmissions between the clients and the server (
+.IR skeypwd
+).
+All traffic between clients and server is, in fact,
+DES/CFB encrypted, a pseudo random initialization
+variable (IV) is used for each data exchange, and the
+MD4 algorithm is used to check data integrity for all
+data transmissions.
+This way, two goals are achieved:
+1) it is harder, for malicious hackers, to passively and/or
+actively tamper with data transmissions and 2) the systems
+is more secure, since clients with a wrong key can not get
+any information from the server.
+
+The
+.CR skeyd
+daemon should be run by
+.CR inetd . 
+The
+.B inetd.conf
+and
+.B services
+configuration files should be edited accordingly.  For example:
+
+.B "skeyd stream tcp nowait root /some/where/skeyd  in.skeyd"
+
+The
+.CR skeyd
+port is, by arbitrary default, set to
+.CR 769 .
+It can be set, however, to any free port.
+
+.SH SECURITY OF SKEYD
+
+The security of the
+.CR skeyd
+system basically depends on the secrecy of the
+.IR skeypwd
+key which is shared between server and clients. 
+For this reason, only reasonably sized, extra-dictionary
+keys should be used.
+The
+.IR skeypwd
+key can be any length, since it is digested by means of
+the MD4 messages hashing function before being used with the
+DES algorithm.
+
+Actually, the most important security issue is secure distribution
+of the
+.IR /etc/skeydconf
+configuration file to all parties.  Distribution of this
+file should be done only once, when setting up the
+.CR skeyd
+systems.  However, no tools are provided to accomplish this
+task by now, and secure distribution of
+.IR /etc/skeydconf
+is left as an exercise for the reader.
+
+.SH BUGS
+
+The s/Key library is compiled with
+.IR -DKEYD
+by default, in order to enable 
+.CR skeyd
+support.
+When compiled with
+.IR -DSKEYD ,
+.IR skeylookup(3) ,
+violates the standard s/Key library syntax.
+
+It is possibile to compile the library by means of
+.IR -DINSECURE ,
+allowing clients to perform skey-setting for new skey
+users and skey-resetting for existing users.
+.IR -DINSECURE
+is disabled by default, since trusting clients to perform
+key (re)setting is generally not a good idea.
+Use this option at your own risk.
+
+.SH DIAGNOSTIC
+
+.B skeyd
+reports errors via syslog.
+
+.SH AUTHOR
+
+David Vincenzetti <vince@dsi.unimi.it>, Stefano Taino
+<taino@dsi.unimi.it> and Fabio Bolognesi <bolo@dsi.unimi.it>.
+
+.SH SEE ALSO
+
+skeydconf

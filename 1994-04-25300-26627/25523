@@ -1,0 +1,180 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Searching for primes
+Message-ID: <1994Apr3.224626.13805@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Sun, 3 Apr 94 22:46:26 GMT
+Lines: 167
+
+Fast sieving for prime numbers
+ 
+I've been working on efficient generation of "strong" primes.  That is,
+primes where p-1 has a large prime factor.  You need to perform a similar
+operation in DSS, when you need a 160-bit prime q, and a longer prime p,
+for which p-1 is a multiple of q.
+ 
+So here are some useful techniques:
+ 
+First of all, trial division by small primes is a very useful thing.
+Basically, each prime p will weed out 1/p of the candidates.  If this
+can be done at a cost of about one multiply, it's significantly
+thousand times faster than a Fermat test to the base 2, the cheapest
+pseudo-primality test.
+ 
+Obviously the smaller the prime, the more lucrative the trial division.
+(I assume you remove multiples of 2, and maybe other small primes,
+directly.)
+ 
+Testing a 512-bit candidate prime on a 32-bit machine (16 words long)
+requires 512 modular squarings.  The multiplies are by 2, so can be
+simplified to a negligible contribution.  Each modular squaring
+requires 16*17/2 multiplies to form the product and 16*16 multiplies to
+perform modular reduction (assuming Montgomery multiplication; other
+algorithms are more expensive).  That's a total of (17+32)*8 = 49 * 8 =
+392 single-precision multiplies per squaring, and it takes 512 of them
+to perform a Fermat test, for a total of about 20,000 multiplies in
+total.  Plus other overhead.  On a 16-bit machine, it's worse by a
+factor of 4.
+
+While you want to do further tests to make sure with a high degree of
+certainty, for performance estimation purposes, a Fermat test to the
+base 2 catches essentially all non-primes.
+
+So consider dealing with a candidate number.  Our options are to do a
+trial division by p, with cost c1, or not, before proceeding to a more
+certain test (further division and/or a stronger test) with cost c2.
+
+If we do the trial division, 1/p of the time the candidate will be
+divisible, so the cost to consider the number will be c1.  1-1/p of the
+time, it will not prove divisible, so the cost will be c1+c2.  The
+average is c1+(1-1/p)*c2.
+
+If we do not do it, the cost is simply c2.
+
+We should not do the test when:
+
+	  c2 < c1+(1-1/p)*c2
+
+<=>	p*c2 < p*c1 + (p-1)*c2
+
+<=>	  c2 < p*c1
+
+<=>	   p > c2/c1
+
+Given that c2/c1 is 20,000 or more, it is most efficient to do a LOT of
+trial division (with all primes up to 20,000 or more!) before falling
+back on a Fermat test.  (BTW, does anyone know of a test intermediate
+in power and expense?)
+
+So now the problem arises, how to do trial division most efficiently.
+Well, there's an efficient algorithm for numbers of the form b+k, where
+b is a large base and k is a single-precision offset.  Searching k
+sequentially is acceptable for cryptographic uses, and you can use a
+strong random pattern if you'd like instead.
+
+What you do is form a table of remainders, r[i] = b mod p[i], for each
+prime in the trial division sieve.  Then you examine r[i]+k mod p[i].
+If this is 0, the number is divisible and non-primality has been
+proved.  If non-zero, continue and keep checking.
+
+As long as r[i] + k (which is bounded above by p[i] + k) fits within one
+machine word, this requires just one division.
+
+However, on many machines division is a little bit expensive.  There is
+a way to replace this with multiplication if you like.
+
+Let the word size be b = 2^k.  k is typically 16 or 32.  p[i] is odd.
+Thus, gcd(p[i], b) = 1, and p[i] has a multiplicative inverse mod b.
+Call this inverse v[i].
+
+y = x*v[i] mod b is the unique number such that x = y*p[i] mod b.  If
+y*p[i] < b, then y*p[i] mod b = y*p[i], and y = x/p[i].  This happens
+only if x is a multiple of p[i] less than b.  In these cases, y =
+x*v[i] = x/p[i], and is bounded by 0 <= y <= floor((b-1)/p[i]).
+
+You can easily precompute d[i] = floor((b-1)/p[i]), and thus reduce the
+test to see if p[i] divides x to  x*v[i] mod b <= d[i].  "mod b" is
+trivial to evaluate, so it's just a multiply and a compare to do a
+"trial division".
+
+(To compute multiplicative inverses mod b, see my earlier posting on
+the subject.)
+
+
+Now, this works fine as long as the range to be searched for primes
+fits into a word size.  But if the candidates to be evaluated are
+congruent modulo a 160-bit prime (or evan a larger one), there are
+problems.
+
+Well, okay, let's consider them.  We want to consider numbers of the
+form b+k*delta, not just b+k.  The condition being tested for is
+
+	b + k*delta == 0 (mod p[i]).
+
+<=>	r[i] + k*delta == 0 (mod p[i])
+
+Assuming delta is relatively prime to p[i] (a good bet in every
+situation I know of - p[i] is usually a large prime itself), then it
+has an inverse D[i] mod p[i].  Multiplying both sides by D[i], you have
+
+	b*D[i] + k*delta*D[i] == 0 (mod p[i])
+<=>	b*D[i] + k == 0 (mod p[i])
+<=>	r[i]*D[i] + k == 0 (mod p[i])
+
+H'm!  You can just adjust the base value r[i] = b mod p[i] based on the
+delta and then search through a large range of possible k's.
+
+That's quite a nice way to do things.
+
+
+Actually, there's one more thing to consider.  There's the cost of
+setting up these tables.  For the small primes, which receive a lot of
+traffic in the form of candidate primes, as much precomputation as is
+possible is worthwhile.  But as you get higher, a given prime may see
+fewer candidates, so is it worth while?  It's one multi/single
+precision divide to form the initial base value, several divides to
+compute the multiplicative inverse (I have the average case behaviour
+of the Euclidean algorithm here somewhere - it's pretty good), another
+divide to find the limit (b-1)/p[i], and another multi-precision divide
+to deal with the delta.
+
+So taking the 512-bit case above, that's 16 divides plus some change,
+and another 16 for a delta.  Call it a bit less than 40 in the worst
+case.
+
+I need to see how many trial divisions this cost is amortized over
+before you find a prime.  Well, PGP provides a useful example.  When it
+generates primes, it prints a . every time a candidate passes the trial
+division sieve, and a + every time it passes a stronger
+pseudo-primality test.  The number of .'s is a good indication of the
+number of candidates that must be examined by a trial divisor high in
+the table.  In the 512-bit range, 40 to 80 .'s before you get to the
+end are typical of what I've seen, with outliers in both directions.
+So that means that each of the trial divisions get charged with 1 to
+1/2 of a division due to setup costs.  If a division is a few times the
+cost of a multiply, that reduces the value of the highest prime to stop
+at from around 20,000 to, say, 5,000.  The additional setup to use
+multiplies instead of divides is a handful of divides (maybe 6), so
+unless they're virtually the same cost, this is an amortized 1/10 of a
+division per trial division multiply, and it's a rare machine on which
+divisions are no more than 10% more expensive than multiplies.
+
+
+Projects to be performed in the future are getting actual timings of
+these operations on various platforms and checking these theoretical
+calculations against reality.  Who know, maybe on a high-end
+workstation, It's cheaper to load one prime and do a division than to
+load an inverse, multiply, and load a comparison value, since memory
+bandwidth is the critical resource.  But the tables are read sequentially,
+so it shouldn't be bad.
+
+
+Would anyone care to take a crack at improving this analysis?
+-- 
+	-Colin
+

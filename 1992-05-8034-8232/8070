@@ -1,0 +1,84 @@
+Path: msuinfo!caen!zaphod.mps.ohio-state.edu!mips!mips!munnari.oz.au!comp.vuw.ac.nz!waikato.ac.nz!aukuni.ac.nz!cs18.cs.aukuni.ac.nz!pgut1
+Newsgroups: sci.crypt
+Subject: Re: CFB mode
+Message-ID: <1992May4.102929.10269@cs.aukuni.ac.nz>
+From: pgut1@cs.aukuni.ac.nz (Peter Gutmann)
+Date: Mon, 4 May 1992 10:29:29 GMT
+Sender: pgut1@cs.aukuni.ac.nz (PeterClaus          Gutmann        )
+References: <1992May1.035501.6083@gpu.utcs.utoronto.ca>
+Organization: Computer Science Dept. University of Auckland
+Keywords: CFB NSEA
+Lines: 72
+
+In message <1992May1.035501.6083@gpu.utcs.utoronto.ca> strange men in dark
+    suits forced Robert Ames (mirage1@gpu.utcs.utoronto.ca) to write:
+
+>I did a few experiments with messages that look like this:
+>
+>    DEPOSIT THE SUM OF $1000 INTO MY ACCOUNT
+>and,
+>    DEPOSIT THE SUM OF $9000 INTO MY ACCOUNT
+>
+>Given ciphertext only (in CFB mode), it was not difficult to transform one
+>into the other.  In other words, the message could be altered in transit to
+>change its meaning.
+
+But to do that you either need to know the key used for the encryption (so
+you can encrypt your own $9000 version of the message) or have obtained a
+copy of the $9000 message from somewhere (perhaps from a previous
+transmission).  This is exactly as weak/strong as something encrypted in CBC
+mode (if you've got the encryption key you can change the message, and if
+you've got a copy of another message you can substitute it).
+
+The advantage of CFB mode is that it lets you recover from transmission
+errors, and also lets you make an insertion/deletion in data without
+reencrypting the entire block of data (you do, however, need to reencrypt all
+the data after the insertion point).
+
+In addition, the last block of ciphertext is dependant on the whole message,
+and so can serve as a checksum for the message.  Take the following example,
+two files '1' and '2':
+
+1: Deposit $1000 in my account.
+2: Deposit $2000 in my account.
+
+When encrypted with NSEA in CFB mode (I just happened to have it handy :-) the
+results are the ciphertext files 'c1' and 'c2':
+
+	    D  e  p  o  s  i  t      $  1  0  0  0     i  n
+			   m  y     a  c  c  o   u  n  t  .
+
+c1: 000000: 97 A6 71 8C 0F 37 BA 13  A6 5E EE 86 64 31 C0 F6
+    000010: D1 54 CD AC DA 74 EB 97  B3 C2 CB CD 06
+
+c2: 000000: 97 A6 71 8C 0F 37 BA 13  A6 5D EE 86 64 31 C0 F6
+    000010: 55 3A EF C3 E3 49 3F 43  E2 71 BB E8 9C
+
+Note that the ciphertext in the second block (the one following the change) is
+completely different.
+
+There is one possible weakness here:  If you know the plaintext for the first
+message you can use it to recover the key stream up to the block following the
+point where the change is made.  In the above example, if you somehow knew '1'
+you could xor it with 'c2' and recover the key stream for the first block.
+This would then let you decrypt the first block of 'c2' to get "Deposit $2000
+in".
+
+This weakness occurs if the same IV is always used, and is avoided by using a
+random IV for each encryption.   The avalanche effect of the cipher thus
+ensures that even the first block is completely different.
+
+>Also, if the same key is used, the ciphertext up to the character
+>representing the first number is identical, so that the cipher is vulnerable
+>to traffic analysis.
+
+But the same is true for CBC mode (well, almost - the ciphertext up to the
+first block which is changed is identical, but this is usually only a few
+characters difference).  Using a random IV eliminates this problem for both CFB
+and CBC modes.
+
+Peter.
+--
+    pgut1@cs.aukuni.ac.nz || peterg@kcbbs.gen.nz || peter@nacjack.gen.nz
+			     (In order of preference)
+

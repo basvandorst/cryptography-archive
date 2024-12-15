@@ -1,0 +1,81 @@
+From jefft@netcom.com  Thu Sep 15 22:30:35 1994
+Received: from netcom16.netcom.com by scss3.cl.msu.edu (4.1/4.7)  id AA01824; Thu, 15 Sep 94 22:30:35 EDT
+Received: by netcom16.netcom.com (8.6.9/Netcom)
+	id TAA13810; Thu, 15 Sep 1994 19:30:04 -0700
+Date: Thu, 15 Sep 1994 19:30:04 -0700
+From: jefft@netcom.com (Jeff Thompson)
+Message-Id: <199409160230.TAA13810@netcom16.netcom.com>
+To: ripem-dev@ripem.msu.edu
+Subject: TIS/PEM interoperability
+
+
+I have been working with Mark Feldman at Trusted Information Systems
+to test interoperability with TIS/PEM. Things went very well. I will
+point out a few quirks we had.
+
+TIS/PEM uses self-singed certificates for the *top* of hierarchy.  In
+the first MIC-CLEAR message I got from Mark, the
+Originator-Certificate field had not a self-signed certificate but a
+certificate from his issuer in the TIS hierarchy.  The last
+Issuer-Certificate was the TIS PCA "root" self-signed certificate.
+(By the way, RFC 1422 says nothing about self-signed certificates,
+either for end users or for roots.  People have come up with these in
+their own implementations.)
+
+I made a special message with the TIS PCA self-signed certificate as
+an Originator-Certificate so that RIPEM could receive it in validation
+mode (to let me make a direct certificate for the TIS PCA).  I then
+used RCERTS to set chain length allowed for the TIS PCA to 2.  Note
+that this operation is done automatically in RCERTS for the Low
+Assurance or Commercial certification authorities when you select E to
+enable standard issuers.  If the TIS PCA were in there, this would
+have been one step.
+
+After that, I could receive Mark's MIC-CLEAR message with no problem.
+I sent him an ENCRYPTED message which he processed easily.  The
+command line was as follows.  (I already have my RIPEM_HOME_DIR and
+RIPEM_USER_NAME environment variables set.)
+
+  ripem -e -m encrypted -M pem -i input.txt -o temp.pem 
+    -r "mark s. feldman" -T m
+
+There is an automated responder at tispca-crl@tis.com.  I used RCERTS
+to produce a CRL-RETRIEVAL-REQUEST message and sent it there.  I
+received a CRL message and used "ripem -d -i crl.pem" to receive it
+into RIPEM.  This changed the chain status for Mark's certificate from
+REVOCATION UNKNOWN to VALID.
+
+Mark sent me an ENCRYPTED message which RIPEM processed just fine
+except for one thing: I had to replace the Originator-ID-Asymmetric
+field with the Originator-Certiticate field from his first message.
+This is RIPEM's problem, not TIS/PEM's.  RIPEM doesn not support the
+"lone" Originator-ID-Asymmetric field (which has only an issuer
+nameandserial number) since its database is indexed by subject name
+and public key, not issuer/serial.
+
+Even if it found the certificate based on issuer/serial, RIPEM would
+completely discard this certificate and find the best chain for the
+subject name and public key, regardless of who originally issued the
+certificate.  This shows how RIPEM tends not to think in a single
+hierarchy.
+
+\Some implmentations provide the option to omit Originator-Certificate
+or Issuer-Certificate fields.  If other implementations send messages
+to RIPEM 2.0 users, they might want to keep the
+Originator-Certificate.  Issuer-Certificates are not necessary (after
+the first communication) since RIPEM saves them in the public key
+database.
+
+I expect we should (grudgingly) support Originator-ID-Asymmetric in a
+later release. But this means either adding more fields to the
+database to let RIPEM index by issuer name and serial number. Or
+better yet just sequentially check each certificate for the right
+issuer/serial in the (hopefully) rare case that an
+Originator-ID-Asymmetric is used.  Note that MIME/PEM has tried to get
+away from identifying users by issuer/serial and has moved more toward
+ID by subject name and public key as in RIPEM.
+
+In summary, once the TIS PCA is validated, all message types work well
+with TIS/PEM as long as TIS/PEM includes the Originator-Certificate.
+
+- Jeff

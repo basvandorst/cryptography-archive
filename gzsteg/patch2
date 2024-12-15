@@ -1,0 +1,56 @@
+*** inflate.c	Fri Aug 13 14:50:20 1993
+--- inflate-steg.c	Wed Apr 27 19:13:45 1994
+***************
+*** 111,116 ****
+--- 111,145 ----
+  #include "gzip.h"
+  #define slide window
+  
++ /* gzsteg: our declarations */
++ 
++ extern int steg;			/* steganography flag */
++ extern int sfd;				/* file descriptor */
++ extern int stegidx;			/* bits in 0..7 or 8..39 */
++ extern ulg steglength;			/* file length (bytes) */
++ extern ulg stegbits;			/* file length (bits) */
++ extern uch stegbyte;			/* next byte */
++ local void steg_wbit OF((int b));
++ 
++ local void steg_wbit(b)			/* write bit */
++      int b;
++ {
++   if(stegidx>=8 && stegidx<=39)	{	/* 39..8 = length */
++     if(b) steglength|=(1L<<(stegidx-8L));
++     if(stegidx==8)
++       stegbits=steglength*8;
++     stegidx--;
++     return;
++   }
++   if(b) stegbyte|=(1<<stegidx);
++   if(!stegidx-- && stegbits) {
++     write(sfd,&stegbyte,1);
++     stegbits-=8;
++     stegbyte=0;
++     stegidx=7;
++   }
++ }
++ 
+  /* Huffman code lookup table entry--this entry is four bytes for machines
+     that have 16-bit pointers (e.g. PC's in the small or medium model).
+     Valid extra bits are 0..13.  e == 15 is EOB (end of block), e == 16
+***************
+*** 558,563 ****
+--- 587,599 ----
+        d = w - t->v.n - ((unsigned)b & mask_bits[e]);
+        DUMPBITS(e)
+        Tracevv((stderr,"\\[%d,%d]", w-d, n));
++ 
++ /*
++  * gzsteg: bit 0 of n is ours, so long as n>3 (MIN_MATCH)
++  */
++ 
++       if(n>3)
++ 	steg_wbit(n&1);
+  
+        /* do the copy */
+        do {

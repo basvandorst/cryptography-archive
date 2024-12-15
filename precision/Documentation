@@ -1,0 +1,431 @@
+The high-precision mathlib consists of several functions documented below.
+See the files "pow.c" and "factorial.c" and "pvincr.c" for examples.
+
+USER MACROS
+-----------
+
+These macros are necessary to ensure that dynamic storage is properly
+managed.  Because C provide for the distinction between "initialization"
+and "assignment" that C++ does, you must be careful to make sure that
+all precision values are "initialized" to pUndef prior to any use.
+
+Reference counting is used to manage the storage, so this package must
+have routines to track when assignments occur.  Since the C compiler will 
+implicity perform assignments to parameters of functions, and their return 
+results, you must flag these explicitly on entry and exit as below.
+
+Automatic (local) variables of type precision should be initialized to 
+"pUndef" when they are declared, and passed to pdestory() prior to exiting 
+the function.
+
+Failure to do these operations will cause very difficult to track down
+"segmentation violation" errors.
+
+This is actually not as bad as it sounds.  See the examples before reading
+further.  
+
+
+void pdestroy(precison u)
+
+   Deallocates the storage used by the expression "u".  This function
+   should be called prior to returning from a function which allocates
+   a local variable u, EXCEPT if the local variable is going to be
+   returned as a function result in which case it must appear as
+   an argument to "presult".  It is OK to pdestroy variables with values
+   of pUndef.
+
+precision pparm(precision u)
+
+   Designate the variable u, as a parameter which has been passed as
+   input to your function.  Returns the value of that parameter.  This
+   function must be called exactly once (prior to any other use) for each 
+   precision parameter passed as input to your function.  
+   
+   It is ILLEGAL to pparm parameters with value pUndef; this is because 
+   you are saying you will use the value, and to use an undefined value is 
+   an error.
+
+   *** WARNING! ***
+
+   This error will not be detected and will result in a segmentation-violation.
+   This is a "feature" to enhance speed.  Perhaps future releases with invoke 
+   "errorp" instead.
+
+precision presult(precision u)
+
+   Designate the local variable u, as a function result.  Use this
+   only a part of a C "return" statement.  This variable should NOT
+   be pdestroyed.  It is OK to pass the value pUndef to presult.
+
+
+ASSIGNMENT:
+-----------
+
+precision pset(target, source)
+   precision *target;
+   precision source;
+
+   "Target" should be a pointer to a variable of type "precision" or pNull.
+   Assign to the variable "target" the value of "source".  If the target
+   is pNull, the source expression is simply discarded ("voided").  If the
+   source is pNull, the "target" variable is set to pNull.  Returns the 
+   value of "source".
+
+
+PRE-DEFINED CONSTANTS
+---------------------
+
+precision pzero
+precision pone
+precision ptwo
+precision p_one
+
+   Values of type precision for 0, 1, 2, and -1 respectively.
+   These are equivalent to itop(0), itop(1), itop(2), itop(-1) respectively.
+
+   For other values see the "type-conversion functions" below.
+
+
+UNARY FUNCTIONS
+---------------
+
+precision pneg(precision)
+precision pabs(precision)
+precision phalf(precision)
+
+   Return the negation (additive inverse), absolute value, or half of
+   the arguent respectively.
+
+
+precision psqrt(precision)
+
+   Returns the integer part of the positive square root of the argument.  
+   The argument must be non-negative, or a run-time error will abort 
+   your program.
+
+
+precision prand(precision n)
+
+   Return a random integer between zero and n (excluding n, including 0).
+
+ 
+
+BINARY FUNCTIONS
+----------------
+
+precision padd(precision, precision)
+precision psub(precision, precision)
+precision pmul(precision, precision)
+precision pdiv(precision, precision)
+precision pmod(precision, precision)
+
+precision pmin(precision, precision)
+precision pmax(precision, precision)
+
+   Return the sum, difference, product, quotient, remainder, minimum,
+   maximum, of the arguments respectively.
+
+
+precision ppow(precision x, precision n)
+
+   Return the x raised to the n'th power.  N must be >= zero or an
+   error occurs (see errorp).
+
+
+int  plogb(precision p, precision b)
+
+   Returns the log base b of p.  Notice that the result is an (int).
+   If p <= 0, or b < 2, then -1 is returned.  No error is triggered.
+
+
+precision pipow(precision u, unsigned n)
+
+   Return u raised to the positive power "n".  Note that the type of "n" is 
+   unsigned NOT precision.  Execution time is O(log(n)).
+
+
+
+INTEGER DIVISION
+----------------
+
+precision pdivr(u, v, r);
+   precision u, v;
+   precision *r;
+
+   Return the quotient as the result, and set r to the remainder.
+
+
+precision pmodr(u, v, r);
+   precision u, v;
+   precision *r;
+
+   Return the remainder as the result, and set q to the quotient.
+
+
+precision pdivmod(dividend, divisor, quotient, remainder)
+   precision dividend, divisor;
+   precision *quotient, *remainder;
+
+   Compute the quotient and/or remainder of the first two arguments.
+
+   If "quotient", or "remainder" are not pNull, they are expected to
+   be the address of variables of type "precision".  Upon return, they
+   will be set to the quotient and remainder respectively.  For the
+   quotient, the result is truncated toward zero. The sign of the remainder
+   is the same as that of "dividend" and the following condition holds:
+   
+      dividend = quotient * divisor + remainder
+
+   The value for "divisor" must not be zero.  If it is, a run-time error 
+   will abort your program.
+
+
+
+RELATIONAL OPERATORS
+--------------------
+
+int peq(precision, precision)
+int pne(precision, precision)
+int pgt(precision, precision)
+int plt(precision, precision)
+int pge(precision, precision)
+int ple(precision, precision)
+
+   Returns non-zero (logical "true") if the arguments are 
+   ==, !=, >, <, >=, or <= respectively.
+
+int peqz(precision)
+int pnez(precision)
+int pltz(precision)
+int pgtz(precision)
+int plez(precision)
+int pgez(precision)
+
+   Returns non-zero (logical "true") if the argument is equal-to zero,
+   not-equal-to zero, less-than zero, greater-than zero, <= 0, or >= 0
+   respectively.
+
+int pcmp(u, v)
+   precision u, v;
+
+   Compare u to v.  Returns a value < 0, == 0, or > 0 when u < v, u == v,
+   and u > v respectively.  Not usually used, see macros above.
+
+int pzero(u)
+   precision u;
+
+   Compare u to zero.  Returns a value < 0, == 0, or > 0 when u is negative,
+   equal to zero, or positive respectively.  Not usually used, see macros 
+   above.
+
+   Note:  To check if u is zero, don't make the mistake of using the expression
+	  (pzero(u)) which will return "false" (0) when u is zero.  The 
+	  expression (pzero(u) == 0) is the correct expression.  
+	  
+
+int peven(precision)
+int ppodd(precision)
+
+   Returns non-zero (logical "true") if the argemnt is even or odd
+   respectively.
+
+
+TYPE CONVERSIONS
+----------------
+
+precision itop(int)
+precision utop(unsigned)
+precision ltop(long)
+precision utop(unsigned long)
+precision dtop(double);
+
+   Returns the precision corresponding to the value of the integer,
+   unsigned, long, unsigned long or double argument, respectively.
+
+int           ptoi(precision)
+unsigned      ptou(precision)
+long          ptol(precision)
+unsigned long ptoul(precision)
+double	      ptod(precision)
+
+
+   Returns the integer, unsigned, long, unsigned long, or double value 
+   corresponding to the value of the precision expression u.  If the value 
+   of u is too large to fit into the result, an overflow error is caused 
+   (see errorp).  No overflow check is made for ptod (yet).
+
+char *ptoa(precision u)
+
+   Returns the ASCII string (terminated by a '\0' character) corresponding 
+   to the decimal denotation for u.  The string will consist of the digits 
+   '0' through '9' with a leading "-" if the result is negative.  The leading 
+   digit will never be zero unless the entire result is zero in which case the 
+   string "0" will be returned.  "-0" will never be returned.  There
+   will be no other characters present in the string, in particular,
+   no new-lines, spaces, or tabs will be present.
+
+   Warning: The storage for the string will be allocated by "malloc",
+	    and it is the caller's responsibilty to "free" this storage
+	    when it is no longer needed.
+
+
+precision atop(char s[])
+
+   Returns the precision corresponding to the character string "s".
+   Leading whitespace will be skipped (whitespace is defined by "isspace"
+   in the manual page for "ctype(3)).  If a leading '-' is present,
+   the result will be negative, otherwise the result is positive.  A 
+   leading '+' is permissable, but has no effect.  Exactly one or
+   zero occurences of either '-' or '+' is allowed.  Next, a sequence
+   of digits '0' through '9' are expected.  Leading '0's are thus permitted.
+   Parsing of the number stops when a non-digit is encountered.  If
+   the value of "s" is NULL, or no digits were encountered, NULL is 
+   returned.  There is no way to determine if the entire string contained
+   valid characters, or how many were consumed.  This defect is 
+   compatable with how "atoi" works.
+
+
+INPUT/OUTPUT
+------------
+
+int fputp(FILE *f, precision u)
+
+   Outputs the value of the precision "u" to the file specified by "f".
+   Functionally identical to the following operations:
+
+      char *chp = ptoa(p)
+      res = fputs(chp, f);
+      free(chp);
+      return res;
+
+   Note that the FILE * argument is first, which differs from the convention
+   of fputc, and fputs.
+
+
+int putp(precision u)
+
+    Same as fputp(stdout, u) except a '\n' is output afterwards.
+    This behavior is consintent with the way fputs, and puts work.
+
+
+precision fgetp(FILE *)
+
+    Read in a precision from a stream.
+
+    Input is processed as follows:
+       Leading whitespace is skipped.
+       Leading '0's are skipped.
+       An optional leading '-' or '+' is read.
+       Digits '0' throught '9' are read.
+       Stops at first unrecognized character.
+      
+   Returns: pUndef if EOF encounted, or no numeric character is availble.
+
+
+int fputp(FILE *, precision, int width)
+
+   Output the precision to the specified stream within a field of 
+   the specified width.  THe output is padded with spaces.  If width is
+   positive, the result is right-justified; if width is negative the
+   result is left-justified.  If the number is too big to fit in the 
+   specified width, the width is increased to fit.  Returns the number 
+   of characters output, or 0 if an output error (EOF) occurred.
+
+
+
+VECTOR OPERATIONS
+-----------------
+
+Frequently you need to operate upon one-dimensional arrays of precisions.
+Because elements of such an array must be initialized to pUndef before
+use, several functions are provided to make it easier to use arrays.
+
+Be aware that assignment and initialization are not the same thing.
+Assignment is used to *change* the value of a precision.  Initialization
+is only used once to set up the value of a previously uninitialized value.
+Automatic (local) variables and storage obtained from "malloc" is an
+example of uninitialized storage.  Static storage is already initialized
+to 0 (pUndef) by the loader.
+
+The type "pvector" is defined to be a precision[].
+
+pvector pvundef(pvector, unsigned size);        /* local variable entry */
+
+   This function initializes each element of previously declared array
+   of precisions of the specified size to pUndef.  The result is the
+   same as the first argument.  This allows you to pass this as input
+   to pset to initialize the array to a constant, for example.
+
+   Use this function ONLY to initialize uninitialized storage.  Never
+   call pvundef on the same array more than once or upon one obtained from
+   pvalloc.  If you wish to set all the elements of an array to pUndef
+   after it has been used, use pvset.
+   
+
+void    pvdestroy(pvector, unsigned size);      /* local variable exit */
+
+   Inverse of pvundef. Used to deallocate each element of an array of the 
+   specified size.  This does NOT deallocate the storage for the array
+   itself; so do not pass arguments obtained from pvalloc.
+
+   Usually used prior to leaving the scope of a procedure containing 
+   an automatic array.
+
+
+
+pvector pvalloc(unsigned size);                 /* pvec allocate */
+
+   Allocate space and initialize an array of size elements.  The array
+   is ready for immediate use.  No need to call pvundef().  If no memory
+   is available, pNull is returned.  This is the same as malloc followed
+   by pvundef.
+
+void    pvfree(pvector, unsigned size);         /* pvec free */
+
+   Inverse of pvalloc.  Free the specified array.  Size must be the same
+   as obtained from pvalloc.  This is the same as pvdestroy followed by
+   free.
+
+
+pvector pvset(pvector, unsigned size, precision value);
+
+   Set every element of the specified array of the specified size to
+   the specified value.  You must have obtained the array from pvalloc,
+   or from a local variable which was previously passed to pvundef.  
+
+   Value may be pUndef, in which case all elements are set to pUndef.
+   Do not use this to initialize un-initialized storage; call pvundef instead.
+
+
+ERROR HANDLING
+--------------
+
+Whenever an error occurs (except bad pointer references), the package will
+call the routine "errorp".  The errors are as follows:
+
+     PNOMEM 	- out of memory (pcreate)
+     PREFCOUNT 	- refcount negative (pdestroy)
+     PUNDEFINED	- undefined value referenced (all) (not implemented yet)
+     PDOMAIN	- domain error
+     	          pdivmod: divide by zero
+     	          psqrt:   negative argument
+     POVERFLOW	- overflow
+         itop:    too big
+
+You may substituue your own handler by linking in a module which defines
+the "errorp" function as below.  You may invoke the handler in your own
+functions if you wish and pass it these errors.
+   
+
+precision errorp(int errnum, char *routine, char *message)
+
+   Report the specified error.  The default handler will abort the
+   program.  If you wish, your handler may continue and pass back the
+   result to be returned to the caller.  (This feature is not tested;
+   if you want to extend and test this exception method, I'd love to
+   get it improved). 
+
+   The routine string should contain the exact name of the C routine
+   which called the handler (e.g. "pdivmod").  The message may be
+   any string which describes the problem.  Errnum is one of the values
+   defined above (e.g. PDOMAIN)

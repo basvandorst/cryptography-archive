@@ -1,0 +1,235 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+
+
+1. Disclaimer
+=============
+
+This program may or may not do what you think it does. It may or may not
+do what its documentation (including this file) tells you it does. USE AT
+YOUR OWN RISK! The author may not be held liable for any damage caused by
+running this program. Or any other damage, for that matter. Blablabla.
+
+2. Copyright
+============
+
+This package was written and is copyright by
+Peter Conrad <conrad@unix-ag.uni-kl.de>.
+Commercial use in any form is strictly forbidden!
+You may use parts of the code in your own programs for non-commercial use
+in case you clearly state where you got it.
+Do not release software using parts of the code without the author's
+explicit consent.
+
+3. What is this?
+================
+
+This package implements an algorithm for breaking the PkZip cipher that was
+devised by Eli Biham and Paul Kocher. A paper describing the attack is
+included in this package.
+
+4. Requirements
+===============
+
+ - ANSI compatible C-compiler (gcc is fine)
+ - at least 21MB of (virtual) memory
+   Note that most of the memory is used only during the first cycles
+   of the key-reduction stage. It runs fine with 16MB RAM (and sufficient
+   swapspace).
+ - patience :-)
+ - PGP (if you want to check the signatures)
+
+5. Building pkcrack
+===================
+
+The sources are kept in the file "src.tar". Unpack them by entering
+
+tar xvf src.tar
+
+This will create a directory "src". cd to that dir.
+
+The program was written and tested under Linux and SolarisX86 2.4. In
+most cases typing 'make' should be sufficient.
+
+If you want to port this to other platforms you should check the definitions
+of some data types:
+
+byte	should have a range of [0..255]		(unsigned char)
+ushort	should have a range of [0..65535]	(unsigned short)
+uword	should have a range of [0..(2^32-1)]	(unsigned int)
+
+I can't think of other important changes right now. Please inform me of
+successful ports to other platforms, I may include them in the Makefile.
+
+6. Using pkcrack
+================
+
+This is *not* one of those "fire & forget" programs. You have to do several
+things by hand.
+
+The first thing you have to know is that this program applies a *known
+plaintext* attack to an encrypted file. A known-plaintext-attack recovers
+a password using the encrypted file and (part of) the unencrypted file.
+
+Before you ask why somebody may want to know the password when he already
+knows the plaintext think of the following situations:
+
+a) There's usually a large number of files in a .ZIP-file. All these files
+   are encrypted using the same password. So if you know one of the files,
+   you can recover the password and decrypt the other files.
+
+b) You need to know only a part of the plaintext (at least 13 bytes). Many
+   files have commonly known headers, like DOS .EXE-files. Knowing a
+   reasonably long header you can recover the password and decrypt the
+   entire file.
+
+Back to the program. You need two files: one file containing the encrypted
+data, and one file containing the plaintext. Neither of these may contain
+ZIP-headers and stuff like that. We only need the actual data. Note that
+PkZip prepends 12 random bytes to the actual data before encrypting. You need
+these 12 bytes, don't discard them.
+
+How to get the actual data out of a ZIP-file:
+
+a) Get a hexdump of the ZIP-file. 'od -c' under unix will do nicely. Somewhere
+   in the dump you will find the name of the file encrypted in the archive.
+   Immediately *after* the name the data begins (usually).
+
+b) Find out how long the archived file is (not its unzipped length, but its
+   length in the archive). Under DOS, do "pkzip -l <filename>" or something
+   like that. Under UNIX use "unzip -v <filename>".
+
+c) Cut the data from the file. Under Unix, enter
+   "tail -c +offset zipfilename | head -c length >datafilename"
+   where offset is the beginning of the actual data in the file,
+	 zipfilename is the name of the archive,
+	 length is the length of the zipped file, and
+	 datafilename is the name of the file where the actual data goes.
+   You will need the GNU-versions of "head" and "tail" for this.
+
+Now, start the cracker by entering
+
+pkcrack ciphertextfilename plaintextfilename
+
+where ciphertextfilename is the name of the file containg the encrypted data
+and   plaintextfilename is the name of the file containg the plaintext.
+
+After a while (maybe a *long* while), the program should either say
+something like "Argh! No more key2 values left", in which case your plaintext
+was probably wrong, or print a key you can use to decrypt the file.
+When it prints the key in the form of "key0=..., key1=..., key2=..." it
+will try to find a password which produces that key. This may take a *long*
+time. If you're impatient try using the zipdecrypt-program, which decrypts
+a ZIP-file using key[012] only (see below).
+
+Note that in the current version of the program the known plaintext must be
+at the *beginning* of the encrypted file. This may change in the future.
+
+7. Some details
+===============
+
+Here is a short description of the source-files:
+
+crc.c
+This file contains functions for calculating CRC-32 checksums.
+The CRC-polynomial used is defined in crc.h
+A lookup-table is used, which has to be initialized first.
+
+crc.h
+Header file for crc.c
+This file contains macros for computing CRC-checksums using a lookup-table
+which has to be initialized using a function in crc.c
+
+decrypt.c
+This program decrypts a file using a given password. The 12 leading
+bytes are *not* discarded.
+It was mainly used for debugging purposes, and is probably of little use
+now. Except if you're interested in how PkZip-encryption works.
+
+findkey.c
+This program tries to find a PkZip-password for a given initial state
+of key0, key1 and key2.
+It was mainly used for debugging purposes, and is probably of little use
+now.
+
+keystuff.c
+This file contains functions for initializing and updating the
+internal state of the PkZip cipher.
+
+keystuff.h
+This is a header file for keystuff.c
+
+main.c
+This file contains the main() function of the PkZip-cracker.
+It reads the ciphertext and plaintext files and makes calls to the
+actual cracking stages.
+
+mktemptbl.c
+This file contains a function for initializing a lookup-table that
+is used for finding "temp" values for a given "key3".
+
+mktemptbl.h
+This is a header file for mktemptbl.c
+
+pkcrack.h
+This header file contains some constants used in the program and some
+global variables from main.c
+
+s2main.c
+This file contains the main() function for a simple program for debugging
+stage2.c
+Note that is uses some constants applying to a specific file only.
+Probably of little interest to non-hackers.
+
+stage1.c
+This file implements stage 1 of the cracking process, namely finding
+initial values for key2_n and reducing the number of possible values.
+See sections 3.1 and 3.2 of the paper.
+
+stage1.h
+This is a header file for stage1.c
+
+stage2.c
+This file implements stage2 of the cracking process, namely creating a
+lists of key2-values, calculating the corresponding key1 and key0
+values, decrypting the 12 prepended bytes and finally calling stage3.
+See sections 3.3, 3.4 and 3.5 of the paper.
+
+stage2.h
+This is a header file for stage2.c
+
+stage3.c
+This file implements stage 3 of the cracking process, namely finding
+a PkZip-password for a given internal state of key0, key1 and key2.
+It re-uses some code from stage2.c
+See section 3.6 of the paper.
+
+stage3.h
+This is a header file for stage3.c
+
+zipdecrypt.c
+This program can be used for decrypting a .ZIP-file when only the key0,
+key1 and key2 values are known. It produces a .ZIP-file which can be
+unzipped using pkunzip under DOS or unzip under UNIX.
+I wrote this be cause stage 3 (password generation) is quite slow for long
+passwords.
+
+For further information on the attack refer to the paper describing the
+algorithm (pkzip.ps.gz). Information on the format of pkzip-archives is
+contained in pkzip.txt (this was taken from a pkzip distribution).
+
+That's it. Some of the less obvious sections of the code are commented.
+Most aren't. I don't feel like writing more now. It's just too hot today...
+
+Bye,
+	Peter
+
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6.2i
+
+iQCVAgUBMb6Ui7FFskV8RCVHAQFoGAP5AZYUTGVfFkfTVB90JzMMg4myrZTez6gh
+KWURSSSylN5MdGfbJ6sAdSPOWtxIYXzn1c24QLqEhUwaHJxMyH4FeXwj5FTJwkVE
+7lrMRKZJ6IAizCQywsTSQGFMeooKHIbBEIUG09JqCWEH/t1rhgzfziW5dNhe5vOW
+YaCziSrLoks=
+=NZ61
+-----END PGP SIGNATURE-----

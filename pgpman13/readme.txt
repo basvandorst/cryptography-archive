@@ -1,0 +1,1 @@
+This program requires PGP.EXE version 26i.

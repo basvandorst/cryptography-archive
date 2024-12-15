@@ -1,0 +1,3 @@
+
+SET VCH=C:\VCH\PRV
+

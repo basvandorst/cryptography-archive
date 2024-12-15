@@ -1,0 +1,164 @@
+<!-- HTML file produced from file: pgformat.tex>
+<!-- using Hyperlatex v 1.1 (c) Otfried Schwarzkopf>
+<HTML><HEAD><TITLE>File Formats Used by PGP 2.6 (22 May 94) -- Signature packet
+</TITLE>
+<LINK REV="Precedes" HREF="pgformat_8.html">
+<LINK REV="Subdocument" HREF="pgformat_1.html">
+<LINK REL="Precedes" HREF="pgformat_10.html">
+</HEAD><BODY>
+<A NAME="0"></A>
+<A HREF="pgformat_8.html"><IMG SRC="../images/previous.xbm" ALT="[Previous]"></A>
+<A HREF="pgformat_1.html"><IMG SRC="../images/up.xbm" ALT="[Up]"></A>
+<A HREF="pgformat_10.html"><IMG SRC="../images/next.xbm" ALT="[Next]"></A>
+<BR>
+<B>Go backward to <A HREF="pgformat_8.html">RSA public-key-encrypted packet
+</A></B><BR>
+<B>Go up to <A HREF="pgformat_1.html">Data represeentation
+</A></B><BR>
+<B>Go forward to <A HREF="pgformat_10.html">Message digest "packet"
+</A></B><BR>
+<HR>
+<H2>Signature packet</H2>
+<PRE>
+Offset  Length  Meaning
+0       1       CTB for secret-key-encrypted (signed) packet
+1       2       16-bit (or maybe 8-bit) length of packet
+3       1       Version byte (=2).  May affect rest of fields that follow.
+                Version byte (=3) for &gt;= PGP2.6 after 9/1/94
+4       1       Length of following material that is implicitly included 
+                in MD calculation (=5).
+5       1       Signature classification field (see below). 
+                Implicitly append this to message for MD calculation.
+6       4       32-bit timestamp of when signature was made.  
+                Implicitly append this to message for MD calculation.
+10      8       64-bit Key ID
+18      1       Algorithm byte for public key scheme (RSA=0x01).  
+                --Algorithm byte affects field definitions that follow.
+19      1       Algorithm byte for message digest (MD5=0x01).
+20      2       First 2 bytes of the Message Digest inside the 
+                RSA-encrypted integer, to help us figure out if we 
+                used the right RSA key to check the signature.
+22      ?       RSA-encrypted integer, encrypted message digest
+                (MPI with bitcount prefix).
+</PRE>
+If the plaintext that was signed is included in the same file as the
+signature packet, it begins right after the RSA secret-key-signed
+packet that contains the message digest.  The plaintext has a
+<I>literal</I> CTB prefix.
+<P>The original idea had a variable length field following the length
+of following material byte, before the Key ID.  In particular, the
+possibility of a 2-byte validity period was defined, although no
+previous version of PGP ever generated those bytes.
+<P>Owing to the way the MD5 is computed for the signature, if that field
+is variable length, it is possible to generate two different messages
+with the same MD5 hash.  One would be a file of length N, with a 7-byte
+following section consisting of a signature type byte, 4 bytes of
+timestamp, and 2 of validity period, while the other would be a file of
+length N+2, whose last two bytes would be the siganture type byte and
+the first byte of timestamp, and the last three bytes of timestamp and
+the validity period would instead be interpreted as a signature type
+byte and a timestmap.
+<P>It should be emphasized that the messages are barely different and
+special circumstances must arise for this to be possible, so it is
+extremely unlilely that this would be exploitable, but it is a
+potential weakness.  It has been plugged by allowing only the currently
+implemented 5-byte option.  Validity periods will be added later with
+a different format.
+<P>The signature classification field describes what kind of 
+signature certificate this is.  There are various hex values:
+<PRE>
+        00 -    Signature of a message or document, binary image.  
+        01 -    Signature of a message or document, canonical text.  
+        10 -    Key certification, generic.  Only version of key
+                certification supported by PGP 2.5.
+                Material signed is public key pkt and User ID pkt.
+        11 -    Key certification, persona.  No attempt made at all 
+                to identify the user with a real name.
+                Material signed is public key pkt and User ID pkt.
+        12 -    Key certification, casual identification.  Some
+                casual attempt made to identify user with his name.
+                Material signed is public key pkt and User ID pkt.
+        13 -    Key certification, positive ID.  Heavy-duty
+                identification efforts, photo ID, direct contact 
+                with personal friend, etc.
+                Material signed is public key pkt and User ID pkt.
+        20 -    Key compromise.  User signs his own compromise
+                certificate.  Independent of user ID associations.
+                Material signed is public key pkt ONLY.
+        30 -    Key/userid revocation.  User can sign his own 
+                revocation to dissolve an association between a key
+                and a user ID, or certifier may revoke his previous 
+                certification of this key/userid pair. 
+                Material signed is public key pkt and User ID pkt.
+        40 -    Timestamping a signature certificate made by someone
+                else.  Can be used to apply trusted timestamp, and
+                log it in notary's log.  Signature of a signature.
+                (Planned, not implemented.)
+</PRE>
+When a signature is made to certify a key/UserID pair, it is computed
+across two packets--the public key packet, and the separate User ID
+packet.  See below.  
+<P>The packet headers (CTB and length fields) for the public key packet
+and the user ID packet are both omitted from the signature
+calculation for a key certification.  
+<P>A key compromise certificate may be issued by someone to revoke his
+own key when his secret key is known to be compromised.  If that
+happens, a user would sign his own key compromise certificate with
+the very key that is being revoked.  A key revoked by its own
+signature means that this key should never be used or trusted again,
+in any form, associated with any user ID.  A key compromise
+certificate issued by the keyholder shall take precedence over any
+other key certifications made by anyone else for that key.  A key
+compromise signed by someone other than the key holder is invalid.  
+<P>Note that a key compromise certificate just includes the key packet
+in its signature calculation, because it kills the whole key without
+regard to any userid associations.  It isn't tied to any particular
+userid association.  It should be inserted after the key packet,
+before the first userid packet.  
+<P>When a key compromise certificate is submitted to PGP, PGP will place
+it on the public keyring.  A key compromise certificate is always
+accompanied in its travels by the public key and userIDs it affects.
+If the affected key is NOT already on the keyring, the compromise
+certificate (and its key and user ID) is merely added to the keyring
+anywhere.  If the affected key IS already on the keyring, the
+compromise certificate is inserted after the affected key packet. 
+This assumes that the actual key packet is identical to the one
+already on the key ring, so no duplicate key packet is needed.
+If a key has been revoked, PGP will not allow its use to encipher any
+messages, and if an incoming signature uses it, PGP will display a
+stern warning that this key has been revoked.
+<P>NOTE:  Key/userid revocation certificates ARE NOT SUPPORTED in
+this version of PGP.  But if we ever get around to supporting them,
+here are some ideas on how they should work...
+<P>A key/userid revocation certificate may be issued by someone to
+dissolve the association between his own key and a user ID.  He would
+sign it with the very key that is being revoked.  A key/userid
+revocation certificate issued by the keyholder shall take precedence
+over any other key certifications made by anyone else for that
+key/userid pair.  Also, a third party certifier may revoke his own
+previous certification of this key/userid pair by issuing a
+key/userid revocation certificate.  Such a revocation should not
+affect the certifications by other third parties for this same
+key/userid pair. 
+<P>When a key/userid revocation certificate is submitted to PGP, PGP
+will place it on the public keyring.  A key/userid revocation
+certificate is always accompanied in its travels by the public key it
+affects (the key packet and user ID packet precedes the revocation
+certificate).  If the affected key is NOT already on the keyring, the
+revocation certificate (and its key and user ID) is merely added to
+the keyring anywhere.  If the affected key IS already on the keyring,
+the revocation certificate is integrated in with the key's other
+certificates as though it were just another key certification.  This
+assumes that the actual key packet is identical to the one already on
+the key ring, so no duplicate key packet is needed.
+<P>
+<ADDRESS>
+<HR>Comments and suggestions
+  concerning this WWW page should be mailed to arne@acm.org.
+</ADDRESS>
+<P>
+<A HREF="pgformat_8.html"><IMG SRC="../images/previous.xbm" ALT="[Previous]"></A>
+<A HREF="pgformat_1.html"><IMG SRC="../images/up.xbm" ALT="[Up]"></A>
+<A HREF="pgformat_10.html"><IMG SRC="../images/next.xbm" ALT="[Next]"></A>
+<BR>
+</BODY></HTML>

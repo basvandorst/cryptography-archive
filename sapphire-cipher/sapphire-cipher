@@ -1,0 +1,342 @@
+From vince@ghost.dsi.unimi.it Thu Dec 29 23:02:05 1994
+Received: from ghost.dsi.unimi.it by idea.sec.dsi.unimi.it with SMTP
+	(1.38.193.4/16.2) id AA21706; Thu, 29 Dec 1994 23:02:05 +0100
+Return-Path: <vince@ghost.dsi.unimi.it>
+Received: by ghost.dsi.unimi.it id AA23748
+  (5.65+/IDA-1.3.5 for vince@idea.sec.dsi.unimi.it); Thu, 29 Dec 94 23:01:49 +0100
+Date: Thu, 29 Dec 94 23:01:49 +0100
+From: David Vincenzetti <vince@ghost.dsi.unimi.it>
+Message-Id: <9412292201.AA23748@ghost.dsi.unimi.it>
+To: vince@ghost.dsi.unimi.it
+Subject: /
+X-Filter: mailagent [version 3.0 PL22] for vince@ghost.dsi.unimi.it
+Status: RO
+
+
+>Path: ghost.dsi.unimi.it!univ-lyon1.fr!jussieu.fr!math.ohio-state.edu!uwm.edu!cs.utexas.edu!swrinde!gatech!bloom-beacon.mit.edu!news.starnet.net!wupost!waikato!auckland.ac.nz!news
+>From: olson@umbc.edu (Bryan G. Olson; CMSC (G))
+>Newsgroups: sci.crypt.research
+>Subject: Re: The Sapphire Stream Cipher
+>Date: 28 Dec 1994 19:00:32 GMT
+>Organization: University of Maryland, Baltimore County
+>Lines: 311
+>Sender: crypt-submission@cs.aukuni.ac.nz (sci.crypt.research co-moderator)
+>Approved: crypt-submission@cs.aukuni.ac.nz
+>Message-ID: <3dsckg$ovg@net.auckland.ac.nz>
+>References: <mpjD1HnD5.3ur@netcom.com>
+>Reply-To: olson@umbc.edu (Bryan G. Olson; CMSC (G))
+>NNTP-Posting-Host: cs13.cs.aukuni.ac.nz
+>X-Newsreader: NN version 6.5.0 #7 (NOV)
+
+
+
+
+
+Before I go trying to show his cipher is weak, I'd like to thank
+Michael for helping me in this attack.  He's been e-mailing me with
+info I needed and encouraging me to try to find flaws in his cipher.
+ 
+I believe I can call this differential cryptanalysis of the Sapphire
+Stream Cipher.
+ 
+Michael Paul Johnson (mpj@netcom.com) wrote:
+ 
+: In response to some posts by Bryan G. Olson <olson@umbc.edu>, I have done
+: some more analysis of the Sapphire Stream Cipher with respect to adaptive
+: chosen plain text attacks.  After making a computer slave away over the
+: Christmas break (while I was off celebrating), I found some interesting
+: things.
+ 
+: Bryan's observation was that there were certain small changes in plain text
+: (easiest to do with two or three byte differences, followed by a single byte
+: the same) that result in all five of the index variables and most of the
+: permutation vector state the same.  This can result in identical output for
+: identical subsequent input for some number of bytes after the change.  Bryan
+: expressed concern that this might be helpful in recovering some key
+: information.
+ 
+Right.  Let's consider distinct sequences three characters long,
+ending with the same character, and let's assume they are the first
+characters encrypted, so we know all the state variables when we
+start.  I'll use lower case letters for single character variable, so
+these sequences are of the form:
+ 
+   <a,b,c>
+   <d,e,c>
+ 
+First, how many such pairs are there, and how many leave the five
+variables in the same state?  Since there are five characters, each of
+which could be any of 2^8 values, there are 2^40 such pairs, though we
+have to rule out the 2^24 which are the same string twice and the
+order is not significant, so there are 2^39 - 2^24 which is still
+about 2^39.
+ 
+Two of the state variables, rotor and last_plain are sure to be the
+same after each of the two sequences.  The chance of the other three
+being the same after either pair is about one in 2^24.
+ 
+Thus we expect there exist about 2^39/2^24 = 2^15 such pairs.
+ 
+The attack I'm considering allows me a black-box encryptor, and I can
+re-set it to the starting state at any time.  Since any random pair
+<a,b,c> and <d,e,c> has a one in 2^24 chance of leaving all five
+variables the same, I can exhaustively search for such pairs, provided
+I can recognize them.
+ 
+: My modeling of the above described situation shows that the above described
+: departure from the ideal certainly happens frequently enough to be of
+: concern, but not for the reasons Bryan gave.
+ 
+ 
+Let's look at the encryption function.
+ 
+ 
+: unsigned char sapphire::encrypt(unsigned char b)
+:     {
+:     // Picture a single enigma rotor with 256 positions, rewired
+:     // on the fly by card-shuffling.
+ 
+:     // This cipher is a variant of one invented and written
+:     // by Michael Paul Johnson in November, 1993.
+ 
+:     unsigned char swaptemp;
+ 
+:     // Shuffle the deck a little more.
+ 
+:     ratchet += cards[rotor++];
+:     swaptemp = cards[last_cipher];
+:     cards[last_cipher] = cards[ratchet];
+:     cards[ratchet] = cards[last_plain];
+:     cards[last_plain] = cards[rotor];
+:     cards[rotor] = swaptemp;
+:     avalanche += cards[swaptemp];
+ 
+:     // Output one byte from the state in such a way as to make it
+:     // very hard to figure out which one you are looking at.
+ 
+:     last_cipher = b^cards[cards[(cards[ratchet] + cards[rotor] +
+:                                  cards[last_plain] +
+:                                  cards[last_cipher] +
+:                                  cards[avalanche])&0xFF]];
+:     last_plain = b;
+:     return last_cipher;
+:     }
+ 
+ 
+The five state variables are rotor, ratchet, last_cipher, last_plain
+and avalanche.  First, Michael says up to five elements of the cards
+array are moved for every encrypted byte.  I only count four, those in
+the four consecutive lines where cards[<something>] is assigned a
+value.  Where's the other?  For now I'll count the four, and I'll
+revise it if Michael can show me the other.
+ 
+So how many elements of cards[] do I expect to have different values
+after <a,b,c> than after <d,e,c> ?  Well, four cards elements get
+moved each time we encrypt a byte, and let's say none are moved twice
+within the encryption of one of the sequences.  The four byte moves
+when encrypting the first character of each sequence depend only on
+the previous state, so the cards array is the same after the a in
+<a,b,c> as after the d in <d,e,c>.
+ 
+That will, however, (probably) leave last_plain, last_cipher, and
+the next value of swaptemp different when encrypting <b,c> than when
+encrypting <e,c>.  In each of these iterations, rotor will change the
+same location to different values, while the other three will change
+different locations, for 1+2*3 different per round, times two rounds,
+for 14.  That is, we expect 14 elements of cards to have different
+values after encrypting <a,b,c> than they have after encrypting
+<d,e,c>, provided the encryptions start in the same state.
+ 
+Next question: can I recognize when <a,b,c> leaves the five variables
+in the same state as <d,e,c> ?  As noted, rotor and last_plain will
+always be in the same state.  I can see last_cipher.  So I need to be
+able to tell if ratchet and avalanche hold the same values.
+ 
+Suppose they do not; at least one of avalanche or ratchet is different.
+The chance the next character, call it x, will encrypt to the same
+byte in <a,b,c,x> as in <d,e,c,x> is about one in 256 or .0039.
+ 
+Now suppose ratchet and avalanche are the same.  The character x will
+encrypt to the same value in <a,b,c,x> as it does in <d,e,c,x> if none
+of the 14 differing cards elements are used in computing the
+encryption of x (but it's not an only-if).  Looking at the encryption
+function, eight elements of the cards array are used in encrypting the
+next byte.  The chance of hitting a 14/256 shot it 8 tries is about
+0.44, so the chance of x encrypting the same way is about 0.56.
+ 
+What's more, the eight elements of cards which are used to encrypt the
+next byte always include the four which are moved in that iteration.
+If x encrypts to the same value, it probably still leaves only 14
+cards elements different after <a,b,c,x> as after <d,e,c,x>.
+ 
+Note that if any x works, all values work, since x isn't fed-back till
+the next round.  But consider the next character y.  If x encrypted
+the same way in <a,b,c,x> as in <d,e,c,x> then from the above we think
+there is a 0.56 chance of the next character also encrypting the same
+way in <a,b,c,x,y> as <d,e,c,x,y>.  Furthermore, if it doesn't we can
+divide the reason into two cases: the first is that rotor or ratchet
+subscripted to one of the 14 differing elements, the second is that
+one of the other 6 cards locations used to encrypt y was one of the
+differing elements.
+ 
+If rotor or ratchet points to one of the 14, there's nothing much we
+can do, but thats a 0.11 chance.  On the average that won't happen for
+nine or ten characters.
+ 
+The second case is more likely.  The other six cards elements used to
+encrypt y all depend on the value of x, so I can try various values
+for x in <a,b,c,x,y> and <d,e,c,x,y>.  We have 256 tries to make those
+six subscripts miss those 14 elements, and each try does miss with a
+probability of about 1-(14/256 *6), or .67.  I should be able to find
+about 172 values for x which don't change the encryption of y.  Then,
+as long as rotor and ratchet miss, I should be able to find about 172
+values of y so that the z encrypts the same in <a,b,c,x,y,z> as in
+<d,e,c,x,y,z>.
+ 
+So I figure rotor or ratchet will select a differing element after
+about 9 or 10 characters.  Until they do I can extend each sequence a
+hundred-some ways at each character position while keeping matching
+output.  When rotor or ratchet do select a differing element, I'll
+know it because I'll only find one or two characters which can extend
+the sequence.
+ 
+Given a pair <a,b,c> and <d,e,f> that leave all five state variables
+the same, we should be able to find many suffixes which encrypt the
+same way after either, many more than I need.  Eventually rotor or
+ratchet will hit one of the moved elements, maybe after nine or ten
+character, and we won't be able to go any farther.  By that time we
+should have a large number of suffixes which work.  They will form a
+kind of suffix tree.  I'll find all values x such that y encrypts the
+same way, then all values y so that z encrypts the same way.
+ 
+Sometimes I will get coincidental matches, where one of the 14
+differing elements was used, when I hit a 256 to one shot.  These
+should be rare, and I will usually not be able to extend the sequence
+any farther.
+ 
+Now the real question,
+ 
+: I still have no idea how this
+: correlation could be used to either (1) help solve for key information or
+: equivalent permutation vector state, or (2) help solve for the contents of an
+: encrypted message that used the same key as the one being attacked with the
+: adaptive chosen plain text attack.
+ 
+First note that given the black box I can easily solve for any given
+ciphertext, since I can exhaustively search one character at a time.
+ 
+But can I infer useful state information from my sequences <a,b,c> and
+<d,e,c> and the collection of pairs of suffixes which encrypt the same
+way?  First, I want to know which 14 positions of the cards array were
+changed in encrypting <a,b,c> and <d,e,c>, then I want to know what
+values were moved.  If I can find both these things, then I have only
+to find a few (a hundred?) of the 2^15 pairs which leave the five
+variables in the same state, and by seeing which sets of locations
+contain which sets of values, I can weave the starting state together.
+ 
+How do I know which cards positions changed?  Well, I can see the
+values of last_plain, and last_cipher, and rotor is known.  Rotor is
+responsible for 2 of the 14 changes, and the other two are responsible
+for 8.  I only need to know which four were subscripted by ratchet.
+In fact, I don't think I even need to find those.  If I use a lot of
+sequence pairs knowing 10 of 14 locations should be enough, but here
+is how I'd find them.
+ 
+Consider any cards location which is one of the 14 differing.  If
+last_plain or last_cipher is the subscript of this location, I'm sure
+to use it in encrypting the next character.  Thus there will be
+certain characters which can never extend a sequence, except
+coincidentally.  The characters which are never, or very rarely, one
+of the 200 which can extend a sequence are the ones which point to the
+differing elements of the cards array.  Note that I would not expect
+the characters a,b,c,d, or e to be able to extend the sequences.
+ 
+Now the hard part.  I know the locations in the cards array which
+changed.  Can I tell what values they held?
+ 
+Yes.  In my set of pairs of suffixes which encrypt the same way after
+two distinct prefixes I can compute the values which were exclusive
+or'ed to each plaintext byte to produce the ciphertext byte.  I'm
+looking at the last subscripting of cards in the encryption function.
+Most of the matches are because I missed the 14 differing elements
+with all seven subscripts into the cards array -- including this last
+one.  All the bytes which were not moved should appear about as often
+as the output of this last subscript.  The ones which were moved
+should appear only in non-matches and the rare coincidental matches.
+ 
+By collecting a large number of suffixes which have the same
+ciphertext when they follow <a,b,c> as when they follow <d,e,c>, I can
+tell which bytes tend not to appear as the result of the last
+subscripting of cards.  These are values of the critical 14 cards
+elements.
+ 
+I have to repeat the search for some <a,b,c> and <d,e,c> a number of
+times, and collect several sets of the form "these 14 locations of the
+initial state held these 14 values".  With a few dozen of these I
+should be able to completely solve for the initial state.
+ 
+ 
+ 
+[...]
+: When comparing an encrypted sequence from a given plain text and an encrypted
+: sequence from a plain text string that is identical except for the first two
+: bytes (and using the same key and origin point), I found that more bytes
+: matched than would be expected for an ideal stream cipher with feedback.
+ 
+But not nearly as many as I say should exist.  The reason, I believe,
+is that Michael simply searched over a random collection of strings.
+I suggest a much more directed search strategy.  First, try to find
+the strings which leave the five variables in the same state, then try
+to extend the suffixes one character at a time.
+ 
+[...]
+: I thought about redesigning the Sapphire Stream Cipher for a faster internal
+: avalanche (and I probably will try that and give the result a different
+: name), but the trade-off in speed is not likely to be very favorable.  The
+: speed and ease of use of the Sapphire Stream Cipher make it seem worth
+: investigating further to see if it can withstand adaptive chosen plain text
+: attacks or not.
+ 
+ 
+I think there is a fundamental trade-off here.  Sapphire has a two
+part state: one part, the five variables, changes radically on each
+encryption, but its space is small enough to search.  The other part,
+the cards array, is far to large to search, but we can only afford to
+make a small change on each iteration.
+ 
+ 
+[...]
+: ADAPTIVE CHOSEN PLAIN TEXT ATTACKS
+ 
+: Let us give the attacker a keyed black box that accepts any input and
+: provides the corresponding output.  Let us also provide a signal to the black
+: box that causes it to reoriginate (revert to its initial keyed state) at the
+: attacker's will.  Let us also be really generous and provide a free copy of
+: the black box, identical in all respects except that the key is not provided
+: and it is not locked, so the array can be manipulated directly.
+ 
+: Since each byte encrypted only modifies at most 5 of the 256 bytes in the
+: permutation vector, and it is possible to find different sequences of two
+: bytes that leave the five index variables the same, it is possible for the
+: attacker to find sets of chosen plain texts that differ in two bytes, but
+: which have cipher texts that are the same for several of the subsequent
+: bytes.  Modeling indicates that as many as ten of the following bytes
+: (although not necessarily the next ten bytes) might match.  This information
+: would be useful in determining the structure of the Sapphire Stream Cipher
+: based on a captured, keyed black box.  This means that it would not be a good
+: substitute for the Skipjack algorithm in the EES, but we assume that the
+: attacker already knows the algorithm, anyway.  This departure from the
+: statistics expected from an ideal stream cipher with feedback doesn't seem to
+: be useful for determining any key bytes or permutation vector bytes,
+ 
+ 
+I still disagree.  I've just taken a full-time job and will not have
+much time to devote to this.  Let me know if there are parts of my
+attack which are unclear or which you think are incorrect.  I believe
+the Sapphire Stream Cipher is breakable by adaptive chosen plaintext
+attack.
+ 
+ 
+--Bryan
+
+

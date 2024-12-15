@@ -1,0 +1,73 @@
+Xref: msuinfo comp.arch:30515 sci.crypt:8045
+Path: msuinfo!netnews.upenn.edu!jvnc.net!darwin.sura.net!mips!spool.mu.edu!uunet!mcsun!sunic2!dkuug!diku!torbenm
+From: torbenm@diku.dk (Torben AEgidius Mogensen)
+Newsgroups: comp.arch,sci.crypt
+Subject: Re: The NSA Instruction
+Message-ID: <1992Apr30.105646.7265@odin.diku.dk>
+Date: 30 Apr 92 10:56:46 GMT
+References: <29354@hoptoad.uucp>
+Sender: torbenm@freke.diku.dk
+Organization: Department of Computer Science, U of Copenhagen
+Lines: 61
+
+gnu@hoptoad.uucp (John Gilmore) writes:
+
+>	Population Count -- tell me how many 1-bits are in this word
+
+>I have gotten the impression that the Pop Count instruction has been
+>added to more than one architecture upon direct request from the US National
+>Security Agency, because it apparently occurs frequently in their inner
+>loops, but is slow to emulate in software (table lookup on parts of the word,
+>followed by addition of the table entries, seems best to me).
+
+There was a discussion about similar instructions that are
+(apparently) easy to do in hardware and slow to do in software.
+The outcome of the discussion was that some of the things that would
+seem to require a number of instrunctions that is linear in the number
+of bits in a word, can with some thought be done in a logarithmic
+number of instructions. The PopCount instruction is one of these. Here
+is is written in ARM assembler for 32 bit words:
+
+	\ Assume Rm1 contains 10101010101010101010101010101010 (binary),
+	\        Rm2 contains 11001100110011001100110011001100,
+	\        Rm3 contains 11110000111100001111000011110000,
+	\        Rm4 contains 11111111000000001111111100000000,
+	\        Rm5 contains 11111111111111110000000000000000,
+	\        R0 contains word to be PopCounted
+	\ At exit R0 contains PopCount, R1 is destroyed
+    .popcount
+	AND R1,R0,Rm1	    \ use mask 1 to zero all even bits
+	SUB R0,R0,R1	    \ R0 contains the even bits
+	ADD R0,R0,R1, LSR 1 \ R0 contains PopCount of every bit pair
+	AND R1,R0,Rm2	    \ use mask 2 to zero all even bit pairs
+	SUB R0,R0,R1	    \ R0 contains the even bit pairs
+	ADD R0,R0,R1, LSR 2 \ R0 contains PopCount of every nibble
+	AND R1,R0,Rm3	    \ use mask 3 to zero all even nibbles
+	SUB R0,R0,R1	    \ R0 contains the even nibbles
+	ADD R0,R0,R1, LSR 4 \ R0 contains PopCount of every byte
+	AND R1,R0,Rm4	    \ use mask 4 to zero all even bytes
+	SUB R0,R0,R1	    \ R0 contains the even bytes
+	ADD R0,R0,R1, LSR 8 \ R0 contains PopCount of every halfword
+	AND R1,R0,Rm5	    \ use mask 5 to zero LS halfword
+	SUB R0,R0,R1	    \ R0 contains the LS halfword
+	ADD R0,R0,R1, LSR 16 \ R0 contains PopCount of full word
+
+This takes 15 cycles for a 32 bit word. Doing it for a 64 bit word (on
+a 64 bit processor) would only requite 3 more cycles (and one more
+mask word). By using immediate addressing, the last mask word can be
+replaced by a constant (since at most 5 bits can be set in the MS
+halfword).
+
+OK, 15 cycles is more than a hardware solution would need, but your
+program would have use PopCount a lot to justify the hardware. Using
+the find-first-1-bit instruction would tend to make PopCount slower
+than the above, unless you have very sparse bitstrings. I assume that
+cryptographic processors implement PopCount and possibly bit-reverse
+and similar instructions in hardware.
+
+	Torben Mogensen (torbenm@diku.dk)
+
+P.S.
+This is a modified version of a article, which I cancelled and
+replaced by this. There was an error in the program in the first
+posting.

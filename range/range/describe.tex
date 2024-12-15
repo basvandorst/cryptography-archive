@@ -1,0 +1,617 @@
+\parskip 10pt plus 1pt
+\def\_{\char'137} % underline char in typewriter text
+\def\^{\char'136} %  ^ char in typewriter text
+\def\~{\char'176} %  ~ char in typewriter text
+\def\pms{\raise.8ex\hbox{$\scriptscriptstyle+$}\kern-1.2ex
+\raise.1ex\hbox{$\scriptscriptstyle-$}}
+\def\t{\textstyle}
+\def\s{\scriptstyle}
+\def\oo#1#2{\t{\s#1\over\s#2}}
+\def\section#1{\bigskip\bigskip\medskip\line{\bf #1 \hfil}\par}
+\centerline{\bf Aberth--Schaefer C++ Module for Range Arithmetic,
+version September 1993}
+\bigskip
+The module has files for generating precise computation demonstration 
+programs, and for writing your own precise computation programs using
+range arithmetic.
+
+\section{Demonstration programs}
+Below are listed all the demo programs with a brief description of what
+they do. Most programs compute answers correct to the number of decimal
+places that is requested.
+A program's upper bound on
+the number of correct decimal places is in force either to keep
+the display of answers intelligible or to
+keep the execution time of the program from becoming too long.
+The two programs in the middle group compute rational answers as pairs
+of integers, and require no decimal place setting.
+$$\vbox{\halign{\tt#\hfil&\quad#\hfil\cr
+calc&computes quantities like a simple calculator\cr
+func&evaluates a function $f(x)$ at evenly spaced $x$ arguments\cr
+triangle&solves triangles for unknown sides and angles\cr
+findzero&finds where $n$ functions of $n$ variables are simultaneously zero\cr
+equat&solves a system of linear equations\cr
+deriv&finds derivatives or partial derivatives of a function\cr
+integ&finds the definite integral of a function $f(x)$\cr
+dif&solves the initial value problem for a single ODE of order $\leq 9$\cr
+difsys&solves the initial value problem for a system of first order ODEs\cr
+difbnd&solves the two-point boundary value problem for a system of
+linear ODEs\cr
+p\_ roots& finds the roots of a polynomial with real coefficients\cr
+eigen&finds the eigenvalues and eigenvectors of a real square matrix\cr
+\cr
+r\_calc& computes rational quantities like a simple calculator\cr
+r\_equat&solves a system of rational linear equations for rational answers\cr
+\cr
+c\_calc& computes complex quantities like a simple calculator\cr
+c\_equat&solves a system of complex linear equations for complex answers\cr
+cp\_ roots&finds the roots of a polynomial with complex coefficients\cr
+c\_eigen&finds the eigenvalues and eigenvectors of a complex square matrix\cr
+}}$$
+
+You will need an up-to-date C++ compiler to convert the text files into
+executable files that can be run on your computer.  The text files have been
+checked with the following compilers: Semantec's ZORTECH C++ 3.1 compiler,
+Borland's TURBO C++ 3.0 DOS compiler, and the Free Software Foundation's
+gcc 2.2.2 C++ compiler.  (If you use the gcc compiler, all the code files
+must have their filetype changed from {\tt cpp} to {\tt cc}.)
+
+The text files use the standard C include files {\tt ctype.h},
+{\tt stdlib.h}, and {\tt string.h},
+and also the standard C++ include files {\tt iostream.h} and {\tt fstream.h}.
+
+The construction of an executable file for a demo program
+can be done with the help of the module file {\tt gen\_ make} which
+lists the dependencies. For instance, this file has for
+the demo program {\tt calc} the entry
+$$\hbox{\tt calc:\ \ range.o calc.o}$$
+This indicates that two object files {\tt range} and {\tt calc} are
+needed to construct the {\tt calc} executable file.  An object file is
+formed by  compiling the corresponding textfile of filetype {\tt cpp}. 
+Thus the files {\tt range.cpp}
+and {\tt calc.cpp} must be compiled into object files before the {\tt calc}
+executable file can be formed.
+
+The demo programs that work problems which may take
+many keyboard entries
+to define, keep a record of the entries in a like-named file of
+filetype {\tt log}. Thus after completing a run with {\tt difsys},
+you will find an entry record in {\tt difsys.log}.
+(If for some reason, this recording process is inconvenient, it can be
+turned off by changing a single {\tt TRUE} value to {\tt FALSE}
+in a clearly marked line near the end of the {\tt range.h} header file.)
+
+A record of
+keyboard strokes is useful when one wishes to view at leisure
+the complete record of a problem's solution, after first seeing
+the console display of the solution, which may have flashed by too quickly.
+Continuing the {\tt difsys} example, this can be done in MS-DOS or UNIX
+by the command 
+$$\hbox{\tt difsys < difsys.log > output\_file}$$
+using the {\tt log}
+file for standard input, and using the {\tt output\_file} for
+standard output. The {\tt output\_file} (perhaps named {\tt difsys.out})
+then can be examined with any convenient editor program.
+
+The keyboard record is also convenient when 
+working a set of similar problems.
+After the first problem is solved, the {\tt log} file can be
+edited to specify the next problem, and then made standard input.
+Using a file as standard input is also a simple way of getting around
+an operating system's upper bound on the number of keystrokes in
+a keyboard entry.
+
+\section{Range arithmetic}
+The accuracy of the demo programs is accomplished by using {\sl range}
+arithmetic in place of ordinary
+floating-point arithmetic. Range arithmetic
+has two advantages over floating-point: (1) the precision
+of computation is under the control
+of an executing program, and can be changed at any time;
+(2) a bound on a number's computational error, the {\sl range}, 
+is part of the number's internal representation. The range can
+be examined before results are displayed, and when the range shows
+that there are fewer correct decimal places than are wanted,
+the computation can be repeated at a higher precision.
+
+Range arithmetic is essentially a modification of floating-point
+arithmetic, and like floating-point, can take either
+a binary or a decimal form. Our representation is decimal, so
+consider first the usual form of a number in decimal floating-point:
+$$ \hbox{(sign)} .d_1d_2\dots d_n \cdot 10^e$$
+The decimal digits $d_1$, $d_2$, \dots, $d_n$ form the number's
+{\sl mantissa}, with $d_1$ required to be nonzero (unless the
+number itself is zero), and $e$ is the
+number's {\sl exponent}. The number $n$ of digits in the mantissa
+varies with the floating-point size, for which there are usually
+several choices.
+Normally $n$ can be changed only by revising a program to change 
+the floating-point sizes.
+
+A simple range arithmetic system uses the representation
+$$ \hbox{(sign)} .d_1d_2\dots d_n \pms r\cdot 10^e$$
+Here the number $n$ of mantissa digits is variable, being allowed to
+be as small as 1 and as large as the implementation upper bound, which can
+be huge.
+The decimal digit $r$ is the range, giving
+the maximum error of the number, with the decimal significance of $r$ 
+matching the least significant mantissa digit $d_n$. By
+adding $r$ to $d_n$, or subtracting $r$ from $d_n$, we form the endpoints
+of the {\sl interval} in which the number must lie.
+The range gives the mantissa's error bound, which may be found
+by taking account of the range's mantissa position and ignoring the exponent.
+When this value is multiplied by $10^e$, we obtain the number's error bound.
+Below these two values are given for some typical numbers.
+$$\vbox{\halign{$#$\hfil&\qquad$#$\hfil&\qquad\hfil$#$\hfil\cr
+\hfill\hbox{Ranged number}\hfill&\hfill\hbox{Mantissa error bound}\hfill
+&\hbox{\ Number error bound}\cr
+\noalign{\smallskip}
++.2355555555\pms3\cdot10^4& .0000000003=3\cdot10^{-10}&3\cdot10^{-6}\cr
+-.7244666\pms2\cdot10^{-2}&.0000002=2\cdot10^{-7}&2\cdot10^{-9}\cr
++.8888\pms9\cdot10^1&.0009=9\cdot10^{-4}&9\cdot10^{-3}\cr}}$$
+When constants are converted to this range arithmetic
+form, only as many mantissa digits are used as are needed to fully
+represent the constant, and the range digit is set to zero since
+the constant is without error. Thus the constant $2.5$ would obtain the
+ranged form
+$+.25\pms0\cdot 10^1$. Ranged numbers like this one, with a
+range of zero, are called {\sl exact}.
+
+If two exact numbers are added, subtracted, or multiplied,
+the result can also be represented as an exact number, but this
+often requires more mantissa digits than either operand has.
+And a division of one exact number by another often yields
+a non-terminating quotient mantissa. So an internal constant,
+{\tt PRECISION}, is used to set the maximum mantissa length allowed
+for results of the four rational operations \hbox{$+$, $-$, $\times$, $\div$}.
+On a typical computation involving just these four operations, starting
+with exact input constants of short
+mantissa length, the mantissas of intermediate results usually
+quickly attain the {\tt PRECISION} length. If a result mantissa could
+have been exact, but being longer in length than {\tt PRECISION}, gets
+truncated to this length, then it acquires a nonzero range digit of 1,
+indicating a maximum error of one unit in the last mantissa place.
+The accuracy of the rational operations gets changed simply by
+changing the {\tt PRECISION} value.
+
+When a rational operation is performed with one or both operands having
+a nonzero range, the result also has a nonzero range,
+which is computed taking into account the ranges of both operands.
+As a computation proceeds, using numbers with nonzero ranges, the
+error bound of successive mantissas generally increases, and, accordingly,
+the length of successive mantissas tends to decrease. In one respect
+this is helpful, in
+that suspect mantissa digits get discarded automatically.
+Shorter mantissas mean that rational operations execute faster,
+so usually the later part of a computation runs quicker than the earlier
+part. If the final results have too few mantissa digits to yield the
+required number of correct decimal places, then the whole computation
+can be repeated at a higher {\tt PRECISION}.  
+
+\section{The C++ range arithmetic system}
+In our description of range arithmetic, we allowed the mantissa of a ranged
+number to change in length by a single decimal digit, and used a single
+decimal digit for the range.
+We presented this type of range arithmetic because it is easy
+to describe and easy to understand. For a practical C++ system,
+it is necessary to take into account the number of 
+decimal digits that will
+fit into a C type {\tt integer}, or the {\sl decimal width}
+of an {\tt integer}. 
+The decimal width is commonly four, but occasionally is larger,
+depending on the particular computer and particular C++ compiler used.
+Our C++ system assumes a width of four, but this setting can be increased
+beyond four (see the last section).
+A mantissa is allowed to change in length only
+by as many decimal digits as equal the width, and the number of digits
+in the range equals the width.
+
+To revise the description of range arithmetic given earlier to
+apply to a system with a decimal width of $m$ digits,
+just change the interpretation of a mantissa digit $d_i$ and a
+range digit $r$, from a single digit to a block of $m$ decimal digits.
+The exponent base, which was 10, must be changed to $10^m$, that
+is, 1 followed by $m$ zeros. The {\sl References} article [1]
+has more technical details. In our examples we continue
+using the simple system.
+
+Our C++ system has two basic classes for convenient range arithmetic: 
+{\tt rvar} (ranged variable) and {\tt svar} (string variable). 
+The header file {\tt range.h} defines both classes,
+listing all operations and supplied functions
+in the `public' sections. Generally,
+each ranged number variable is an {\tt rvar}, and is converted
+into {\tt svar} form for console display or printing. A keyboard
+entry is converted to an {\tt svar}, which then may be read to
+change an {\tt rvar}'s value.
+
+\section{The rvar constructors}
+The examples below show the ways of initializing rvars.
+$$\hbox{{\tt rvar X = 22, Y = "2.4 e2", Z = X;} \quad or
+\quad {\tt rvar X(22), Y("2.4 e2"), Z(X);}}$$
+A decimal constant of any length may be assigned to an rvar as long 
+as that constant is enclosed by quotes. Here the usual notation
+`{\tt e}' or `{\tt E}' to denote a power of 10 may be used. A constant
+that gets converted by the compiler to C type {\tt int} or {\tt long}
+does not require quotes.
+
+\section{Some precalculated rvar constants}
+Certain constants are provided as
+rvars, and these can be used to save constructor time. These constant rvars
+are {\tt zero}, {\tt one}, {\tt two}, {\tt ten}, {\tt tenth}, {\tt half},
+{\tt pi}, and {\tt logten}. Thus \hbox{\tt rvar X = ten}  is equivalent
+to \hbox{\tt rvar X = 10}, or to \hbox{\tt rvar X = "10"}.
+Note that if an rvar is not initialized, it is set equal
+to {\tt zero}, so that {\tt rvar X} is equivalent to \hbox{\tt rvar X = zero}.
+\section{The rvar operators}
+There are the four rational operators {\tt +},  {\tt -}, {\tt *}, and {\tt /},
+a prefix minus, and the exponentiation operator~{\tt \^}.
+These are used in the same way as floating-point operators would be
+used. 
+
+The range arithmetic comparison operators  
+{\tt ==}, {\tt !=}, {\tt >}, {\tt >=}, {\tt <}, and {\tt <=}
+compare intervals, and so they differ from similar floating-point
+operators which compare numbers without ranges, that is, points.
+Here \hbox{\tt X == Y} is counted
+true when the {\tt X} interval overlaps or just touchs the {\tt Y} interval,
+and so from {\tt X == Y} one can not conclude that {\tt X} is identical
+to {\tt Y}. On the other hand, {\tt X > Y} is counted true when
+the {\tt X} interval is to the right of the {\tt Y} interval, and
+then it is certain that the variable {\tt X} is larger than
+the variable {\tt Y}. Similarly for the case {\tt X < Y}.
+
+There is also a range modification operator {\tt \%},
+where {\tt X \% E} returns {\tt X} with its range increased
+by the maximum absolute value of {\tt E}. 
+
+\section{The rvar functions}
+There are the usual arithmetic functions
+{\tt abs}, {\tt acos}, {\tt asin}, {\tt atan}, {\tt cos}, {\tt cosh},
+{\tt exp}, {\tt log} (equivalent to {\tt ln}), {\tt sin}, {\tt sinh},
+{\tt sqrt}, {\tt tan}, and {\tt tanh}. There are an additional three
+functions which return exact values (zero ranges):\smallskip
+\halign{\indent#\qquad&#\hfil\cr
+{\tt mid(X)}&midpoint of the {\tt X} interval, that is, {\tt X} with its range
+set to zero\cr
+{\tt range(X)}&the range of {\tt X} converted to an exact value\cr
+{\tt trunc(X)}& the largest integer less than or equal to {\tt abs(mid(X))} \cr
+& \qquad with the same sign as {\tt mid(X)}\cr}
+
+Three functions required internally are made public because
+they may be useful in a program:  the function {\tt is\_int(X)}
+which returns 1 or 0 ({\tt TRUE} or {\tt FALSE}) according as
+{\tt X} is or is not
+an exact integer, the function {\tt is\_zero(X)}
+which returns 1 or 0 according as {\tt X} is or is not
+an exact zero, and the function {\tt div2(X)} which returns {\tt X/2}
+by means of a fast division algorithm.
+
+To obtain the larger of two rvar quantities, the right interval endpoints
+of the two quantities should be examined. The rvar chosen as larger is
+the one with the greater right endpoint.
+To make this decision easy, the function {\tt max}, taking two rvar
+arguments, is provided.
+For instance, \hbox{\tt Z = max(X, Y)} sets rvar {\tt Z} equal to the larger 
+of the two rvars {\tt X} or {\tt Y}.
+Similarly, the function {\tt min}, also taking two {\tt rvar} arguments,
+is provided for obtaining the smaller of two rvar quantities.
+
+The {\tt swap} function, taking two rvar arguments, provides a convenient
+way of exchanging values between two rvars. For instance, {\tt swap(X, Y)}
+switches the values of rvars {\tt X} and {\tt Y}.
+
+\section{Control of the precision of range arithmetic}
+The precision of range arithmetic can be varied from a low
+of 12 decimal digits, the default value, up to many thousands of
+decimal digits. The higher precision is set, the slower range arithmetic
+performs, and the more memory space is needed, so
+it is important not to set precision excessively high.
+
+There are several functions which access and alter the precision of
+range arithmetic. One of these is \hbox{\tt set\_ precision(n)} which sets
+the precision to {\tt n} decimal digits. Actually, precision changes
+by multiples of four decimal digits, so the setting will be at
+least {\tt n} decimal digits, but possibly a few digits higher.
+The function {\tt current\_ precision()} returns the true value,
+in decimal digits, of the current precision setting.
+
+A function which indirectly affects precision is
+\hbox{\tt test(X, t, n)} which examines rvar {\tt X} to determine if
+{\tt X} could be printed to {\tt n} correct decimals in a format
+determined by the integer {\tt t}. If {\tt t} is 1, the format is
+fixed decimal, e.g., \hbox{\tt 325.5573}; if {\tt t} is 2,
+the format is scientific floating-point, e.g., \hbox{\tt 5.3456 E3}.
+The results of the test affect the global variable \hbox{\tt test\_ failure}
+which always equals 0 as a program begins execution. If {\tt X} meets
+the printing specification, \hbox{\tt test\_ failure} is unchanged. 
+But if {\tt X} fails by $k$ digits from it, then \hbox{\tt test\_ failure}
+is changed to $k$ but only if this represents an increase for 
+{\tt test\_ failure}. That is, the {\tt test} function never
+decreases {\tt test\_ failure} from an earlier setting.
+After a series of {\tt test} calls have been made, {\tt test\_ failure}
+is at the maximum encountered deficit.
+
+The function {\tt add\_ precision(q)} increases the number 
+of decimal digits of range arithmetic precision by the value
+of {\tt test\_ failure} plus the integer argument {\tt q}. The
+parameter {\tt test\_ failure} is then reset to zero, so that another series
+of {\tt test} calls can be made afterwards. If the argument {\tt q}  is omitted,
+it is presumed zero.
+
+\section{The svar constructors}
+The examples below illustrate the ways an svar can be initialized.
+$$\hbox{{\tt svar A = "abc", B = A;} \quad or \quad
+{\tt svar A("abc"), B(A);}}$$
+If an svar is not initialized, it is set equal to the svar constant 
+{\tt empty} which is the string {\tt ""}.
+
+\section{The svar operators}
+The operator {\tt +} is provided for concatenation, along with 
+the related operator {\tt +=}. Thus if {\tt S} is an svar, then one can write
+$$\hbox{{\tt S = S + "defgh";} \quad or \quad {\tt S += "defgh";}}$$
+The two comparison operators {\tt ==} and {\tt !=} are provided, along with
+the prefix operator {\tt !} and the member {\tt len()}. Here {\tt !S} returns a 
+pointer to the {\tt S} string, and {\tt S.len()} returns the integer length
+of the string. The operator {\tt <<} is provided for console display of
+an svar.
+
+\section{Program input}
+A variety of functions are provided to make it easy to obtain data via
+the console keyboard. These functions are all to be used as
+complete C++ statements. The function
+$$\hbox{\tt svar\_ entry(message\_ init, S)}$$
+displays {\tt message\_ init} at the console, and then sets svar {\tt S} equal
+to the string of symbols entered at the keyboard, up to, but not including, the
+carriage return. We will call such a string a {\sl keyboard line}. For this
+function, and for all other input functions described in this section,
+if the keyboard line consists of just the single letter `{\tt q}', this
+causes an exit from your program.
+
+It is frequently necessary to obtain an integer via the console keyboard, and
+to check that the integer received is within prescribed bounds. For this
+purpose, the function below is provided:
+$$\hbox{\tt int\_ entry(message\_ init, I,
+lower\_ bound, upper\_ bound, message\_ lo, message\_ hi)}$$
+This function displays {\tt message\_ init} at the console, converts the
+keyboard line to an integer, and sets the argument {\tt I} equal to this
+integer if the bounds are satisfied. If they are not satisfied, the
+appropriate message selected from {\tt message\_ lo} or {\tt message\_ hi}
+is displayed, and the entire process is restarted. The function
+arguments {\tt message\_ lo} and {\tt message\_ hi} are not required
+and may be omitted.
+
+Two functions are provided for general rvar input. They are {\tt entry}
+and {\tt evaluate}, and they can be used to change any rvar variable
+according to the instructions of a keyboard line, which is allowed
+to have the usual arithmetic functions and operators.
+The {\tt entry} function
+checks the syntax of the entry line, and displays for correction any errors
+found.
+Suppose that rvar {\tt X} is to be changed via the keyboard. Then 
+one may use the line
+$$\hbox{\tt entry(message\_ init, X, S)}$$
+Here {\tt message\_ init} is displayed at the console, and the
+keyboard line is evaluated to 
+give {\tt X} its new value.
+After {\tt entry} returns, svar {\tt S}
+holds the keyboard line string, along with a code
+representation of the string which is used in case a recalculation
+is necessary later. The recalculation is called by the line
+$$\hbox{\tt evaluate(X, S)}$$
+
+It is also possible to obtain a function from the keyboard, a feature used by
+several demo programs. It is usually desirable to first display
+to the keyboard operator all the allowed function symbols, and this
+is done via the statement
+$$\hbox{\tt list\_ tokens(Q)}$$
+Here any convenient rvar can serve as the argument {\tt Q}. This argument is
+not used, and is present only to let the compiler distinquish among
+several alternate \hbox{\tt list\_ token} functions.
+The conversion of a keyboard line to a function may be done by the line
+$$\hbox{\tt entry(message\_ init, X, S, SS)}$$
+Here svar {\tt S} records the keyboard line as described
+previously. The second
+svar {\tt SS} supplies a list of allowed function arguments,
+with commas separating arguments. Thus if we intend to obtain a
+function $f(x,y)$ by keyboard entry, we need a statement
+of the form \hbox{\tt SS = "x,y"} before the {\tt entry} statement.
+When the second svar is supplied as an argument to {\tt entry},
+no evaluation of the keyboard line takes place. An rvar argument,
+such as {\tt X} in our example, 
+must be designated, but it is ignored.
+
+To evaluate a function whose representation is held in
+svar {\tt S}, with rvar {\tt F} to hold the
+function's value, use the statement
+$$\hbox{\tt evaluate(F, S, P)}$$
+Here the extra argument {\tt P} is an rvar pointer, pointing to an array
+of the function arguments, in the order designated by {\tt SS}.
+If our function has only a single argument held in rvar {\tt X},
+then {\tt P} can equal {\tt \&X}. Otherwise, if our function
+has {\tt n} arguments, then statements like the following are needed:
+$$\hbox{{\tt rvar P[n]; P[0] = {\sl first argument};}
+\dots {\tt \  ;  P[n-1] = {\sl last argument};}}$$
+
+The {\tt entry} method of reading in a function can be used
+without the necessity of actually typing in the function at
+the console. The function can be designated within a program by
+initializing some svar to the function, another svar
+to the function's variables, and then {\tt entry}
+is called with an empty {\tt message\_init}. Thus if we want to use
+the function $e^x\sin yz$ in our program, we can first set 
+{\tt S = "exp(x)*sin(y*z)"} and {\tt SS = "x,y,z"}, and then call
+$$\hbox{\tt entry("", X, S, SS)}$$
+This function would be evaluated in the way described
+in the preceding paragraph. Constants can be dealt with in a similar fashion.
+Whenever the {\tt entry} function receives an empty {\tt message\_init} string,
+it assumes that the {\tt S} argument has been set by the program, and it
+does not try to load {\tt S} by console input. 
+
+The {\tt entry} function uses three different interpretations
+for the exponentiation operator {\tt \^}, corresponding to different
+mathematical usages. The function $x^n$ is defined for all $x$ if
+$n$ is a positive integer, and defined for nonzero $x$ if $n$ is a negative
+integer or zero, while a function such as $x^{0.4}$ is
+undefined when $x$ is negative. This is the usual mathematical usage.
+However, the function $x^{\oo13}$
+can be defined for negative $x$ by using the relation
+$(-x)^{\oo13} = -x^{\oo13}$.
+Similarly, the function $x^{\oo25}$ can be defined for negative $x$ by
+using the relation $(-x)^{\oo25} = x^{\oo25}$. To accomodate this second
+and third usage, whenever the keystroke sequence {\tt ...\^\ ( p / q)}
+is encountered, {\tt p} and {\tt q} being integers, if {\tt p} and {\tt q}
+are both odd, the second usage is assumed, and if {\tt p} is even and
+{\tt q} is odd, the third usage is assumed. Thus the function $x^{\oo13}$
+can be specified as {\tt x\^(1/3)}, and the function $x^{\oo25}$ can
+be specified as {\tt x\^(2/5)}.
+
+Two parmeters allow program control of the behavior of {\tt evaluate},
+both parameters
+being set to either {\tt TRUE} or {\tt FALSE}.  One parameter is
+$$\hbox{\tt rvar::evaluate\_error\_display}$$
+With the default {\tt TRUE} setting, an {\tt evaluate} computation error
+leads to an error message, and then a display of 
+the point in the controlling svar string where the error occurred.
+With the {\tt FALSE} setting, all {\tt evaluate} error messages are blocked
+from console display. The second parameter is
+$$\hbox{\tt rvar::evaluate\_exit\_on\_error}$$
+With the default {\tt TRUE} setting, there is an exit from your program
+after an
+{\tt evaluate} error. With the {\tt FALSE} setting, an error ends
+{\tt evaluate} computation and the function returns,
+but there is no exit from the program. 
+When the {\tt FALSE} setting is used, the parameter {\tt rvar::evaluate\_error}
+should be sampled after
+each {\tt evaluate} call, to determine from its {\tt TRUE} or {\tt FALSE}
+value whether an error occurred.
+
+\section{Program output}
+The string contents of an svar {\tt S} are displayed at the console by
+the command {\tt cout << S}. On the other hand, 
+an rvar can be displayed only after it is converted to
+an svar, and the function {\tt rtos} is provided for making the conversion.
+To convert an rvar {\tt X} to an svar {\tt S} one can write
+$$\hbox{ \tt S = rtos(X, t, n)}$$
+Here if {\tt t} is 1, then {\tt X} is converted to fixed decimal format
+with {\tt n} decimal places. If {\tt t} is 2, then {\tt X} is converted
+to scientific floating-point format with {\tt n} decimal places.
+Note that the range of {\tt X} is always consulted by the {\tt rtos} function,
+and if a decimal place cannot be filled accurately as requested, it is
+filled with an asterisk instead. Occasionally an extra correct
+decimal place is supplied, when the original request
+for {\tt n} correct decimal places cannot be fulfilled, but
+$\hbox{\tt n}+1$ correct places
+are obtainable. (This happens sometimes when {\tt X} is near
+the halfway point separating two adjacent $n$ decimal output numbers;
+the extra digit is always a~`5'.) If {\tt t} is 3, then {\tt X} is
+converted to an integer format; in this case the {\tt n} argument is
+unnecessary and may be omitted. If both {\tt t} and {\tt n} are omitted,
+the {\tt rtos} function makes the decision as to the best form of output
+and number of decimals displayed; the maximum number of decimals
+consistent with the range of {\tt X} will be chosen.
+
+\section{Rvar error detection}
+Because an rvar defines an interval, this complicates the reporting and
+detection of
+errors. For instance, suppose
+after some computation, the variable {\tt X} gets the value
+$+.2\pms3\cdot 10^{-2}$,
+defining an interval stretching from $-.001$ to $+.005$. The true value
+of {\tt X} lies somewhere within this
+interval, and could be positive, negative,
+or zero. The division operation of {\tt Y = two / X} cannot be successful
+because the divisor interval contains the zero point,
+so an error must be reported, yet the trouble may disappear
+if higher precision were used. An error message for a possible error is
+made distinct from an error message for a definite error by containing
+the word `approximation'.
+Thus {\tt two / zero} yields the error message ``{\tt division by zero}",
+while the operation above, {\tt two / X},  yields
+``{\tt division by zero approximation}".
+Similarly, {\tt log(zero)} yields the error message
+``{\tt log(a) with zero a}",
+while {\tt log(X)} yields ``{\tt log(a) with zero approximation a}".
+
+A related difficulty occurs with function evaluation. Continuing with
+our example where {\tt X} has become $+.2\pms3\cdot 10^{-2}$,
+what should be the outcome when we compute {\tt sqrt(X)}? This is
+an ambiguous situation, since we have an error if {\tt X} is actually
+negative, but not if {\tt X} is actually positive or zero. We could
+halt computation and report the possible error, but this would prevent
+treating the more likely case where {\tt X} is actually positive or zero,
+but through computation has had its interval widened to contain
+negative numbers. In this latter case, it is appropriate for the {\tt sqrt}
+function to ignore the negative part of {\tt X}'s interval,
+and return a value which bounds {\tt sqrt(X)} when {\tt X}
+extends from $0$ to $+.005$. A similar ambiguous situation would be
+the evaluation of {\tt asin(Y)} or {\tt acos(Y)}, when the {\tt Y}
+interval straddles $+1$ or $-1$, for instance, when {\tt Y} is
+$+.10000\pms2\cdot 10^{1}$. 
+
+The rvar functions which may encounter ambiguous situations are controlled
+by the parameter
+$$\hbox{\tt rvar::strict\_ambiguity\_treatment}$$
+The parameter's default is {\tt FALSE}, and with that setting the functions
+{\tt sqrt}, {\tt asin}, and {\tt acos} return rvar values in the cases
+mentioned above.
+If the parameter had been set by the program to {\tt TRUE}, then 
+these functions would have issued an error message instead.
+If the default setting is not used, the {\tt evaluate} function
+described earlier gives an error message when called upon to compute 
+various common functions at certain arguments. A typical example is
+{\tt sqrt(sin(U))} when {\tt U} is zero, since here {\tt sin(U)}
+always supplies to {\tt sqrt} an interval straddling the zero point.
+
+\section{Other defined classes}
+The header file {\tt rational.h} lists the operators and functions supplied
+for doing rational arithmetic, and the file {\tt rational.cpp} supplies
+the code. Whenever rational arithmetic is done, the precision of
+range arithmetic is automatically set to maximum and needs no control
+statements. The textfiles of the rational demo programs
+can be consulted to see how to use the rational
+functions and operators. The rational input and output functions have been
+made identical to the rvar input and output functions, except for
+the replacement of any rvar argument by a rational one. This makes it
+easier to recall the names and usages of the functions.
+
+Similarly the header file {\tt complex.h} lists the operators and functions
+for doing complex range arithmetic, the file {\tt complex.cpp} has the code,
+and the textfiles of the complex demo programs can be consulted for help
+in understanding how the complex functions are used. The complex input
+and output functions also have been made identical to the rvar input
+and output functions, except for the replacement of any rvar argument by
+a complex one.
+
+The other classes defined are for vector and matrix arithmetic
+of various types, for Taylor series evaluation, for formal interval arithmetic
+using a pair of rvars,
+and for manipulation of lists and stacks of rvars.
+
+\section{Changing the decimal width}
+Calculations with an rvar proceed by treating 4 digits at a time.
+In certain cases, it is possible to treat 6 or
+even 8 digits at a time, with a corresponding major improvement of
+computation speed. (It is inconvenient to allow an odd width
+because of difficulties this would make for the
+{\tt sqrt} function.)
+Whether or not a higher width is possible depends on the type of computer
+you are using and your C++ compiler.  The program {\tt digit\_ck} is
+provided as a way of deciding.  Simply
+compile and run the program to obtain a line of output. 
+If improvement is possible, {\tt digit\_ck}
+will indicate a change to make in a control line in the range.h file.
+\bigskip\bigskip
+\centerline{\bf References}
+\def\paper#1#2#3#4#5#6#7{\par\smallskip\noindent%
+[#1]\ #2,\ #3,\ {\sl#4\/}\ {\bf#5}\ (#6),\ #7.}
+\def\book#1#2#3#4{\par\smallskip\noindent
+[#1]\ #2,\ {\sl#3\/},\ #4.}
+\paper{1}{O.~Aberth and M.J.~Schaefer}{Precise computation
+using range arithmetic, via C++}{ACM Trans. Math. Software}{18}{1992}{481--491}
+\paper{2}{O.~Aberth and M.J.~Schaefer}{Precise matrix eigenvalues using
+range arithmetic}{SIAM J. Matrix Analysis and Applications}
+{14}{1993}{235--241}
+\book{3}{O.~Aberth}{Precise Numerical Analysis}
+{Wm. C. Brown Publishers, Dubuque, Iowa, 1988}
+\bye

@@ -1,0 +1,574 @@
+Path: csn!luna!massive!ncar!newsxfer.itd.umich.edu!sol.ctr.columbia.edu!spool.mu.edu!agate!darkstar.UCSC.EDU!news.hal.COM!decwrl!waikato!auckland.ac.nz!news
+From: schneier@chinet.chinet.com (Bruce Schneier)
+Newsgroups: sci.crypt.research
+Subject: BLOWFISH: New Source Code Version Available
+Date: 30 Oct 1994 11:27:27 GMT
+Organization: Chinet - Public Access UNIX
+Lines: 559
+Sender: crypt-submission@cs.aukuni.ac.nz (sci.crypt.research co-moderator)
+Approved: crypt-submission@cs.aukuni.ac.nz
+Message-ID: <38vvuv$e8u@net.auckland.ac.nz>
+Reply-To: schneier@chinet.chinet.com (Bruce Schneier)
+NNTP-Posting-Host: cs13.cs.aukuni.ac.nz
+X-Newsreader: NN version 6.5.0 #7 (NOV)
+
+
+
+
+/*********************blowfish.h********************/
+ 
+/* $Id: blowfish.h,v 1.2 1994/09/22 04:28:43 cj Exp cj $*/
+ 
+#define MAXKEYBYTES 56          /* 448 bits */
+#define bf_N             16
+#define noErr            0
+#define DATAERROR         -1
+#define KEYBYTES         8
+#define subkeyfilename   "Blowfish.dat"
+ 
+ 
+#define UWORD_32bits  unsigned long
+#define UWORD_16bits  unsigned short
+#define UBYTE_08bits  unsigned char
+ 
+/* choose a byte order for your hardware */
+/* ABCD - big endian - motorola */
+#ifdef ORDER_ABCD
+union aword {
+  UWORD_32bits word;
+  UBYTE_08bits byte [4];
+  struct {
+    unsigned int byte0:8;
+    unsigned int byte1:8;
+    unsigned int byte2:8;
+    unsigned int byte3:8;
+  } w;
+};
+#endif  /* ORDER_ABCD */
+ 
+/* DCBA - little endian - intel */
+#ifdef ORDER_DCBA
+union aword {
+  UWORD_32bits word;
+  UBYTE_08bits byte [4];
+  struct {
+    unsigned int byte3:8;
+    unsigned int byte2:8;
+    unsigned int byte1:8;
+    unsigned int byte0:8;
+  } w;
+};
+#endif  /* ORDER_DCBA */
+ 
+/* BADC - vax */
+#ifdef ORDER_BADC
+union aword {
+  UWORD_32bits word;
+  UBYTE_08bits byte [4];
+  struct {
+    unsigned int byte1:8;
+    unsigned int byte0:8;
+    unsigned int byte3:8;
+    unsigned int byte2:8;
+  } w;
+};
+#endif  /* ORDER_BADC */
+ 
+ 
+short opensubkeyfile(void);
+unsigned long F(unsigned long x);
+void Blowfish_encipher(unsigned long *xl, unsigned long *xr);
+void Blowfish_decipher(unsigned long *xl, unsigned long *xr);
+short InitializeBlowfish(unsigned char key[], short keybytes);
+ 
+ 
+/*********************blowfish.c*********************/
+ 
+*** 1.4	1994/10/07 01:59:28
+--- blowfish.c  1994/10/11 03:52:57
+***************
+*** 33,39 ****
+ 
+  #include "blowfish.h"
+ 
+! static char rcsid[] = "$Header: /user3/contrib/cj/blowfish02/RCS/blowfish.c,v 1.4 1994/10/07 01:59:28 cj Exp $";
+ 
+                                /* P-box P-array, S-box  */
+  static UWORD_32bits bf_P[bf_N + 2];
+--- 33,39 ----
+ 
+  #include "blowfish.h"
+ 
+! static char rcsid[] = "$Header: /user3/contrib/cj/blowfish02/RCS/blowfish.c,v 1.5 1994/10/11 02:55:47 cj Exp cj $";
+ 
+                                /* P-box P-array, S-box  */
+  static UWORD_32bits bf_P[bf_N + 2];
+***************
+*** 82,88 ****
+ 
+  /*   fprintf (stderr, "copy0x%08x shift0x%08x (line %d)\n", temp.w.byte3, d, __LINE__); /* DEBUG */
+ 
+-    /* these aren't the same under gcc */
+     /* Exactly which compilers (with version number) don't work? */
+  #ifdef BUGGY_COMPILER
+     y = bf_S[0][a] + bf_S[1][b];
+--- 82,87 ----
+***************
+*** 254,260 ****
+         temp.w.byte0 = key[j];
+         temp.w.byte1 = key[(j+1)%keybytes];
+         temp.w.byte2 = key[(j+2)%keybytes];
+!        temp.w.byte3 = key[(j+3)%data];
+         data = temp.word;
+           bf_P[i] = bf_P[i] ^ data;
+         j = (j + 4) % keybytes;
+--- 253,259 ----
+         temp.w.byte0 = key[j];
+         temp.w.byte1 = key[(j+1)%keybytes];
+         temp.w.byte2 = key[(j+2)%keybytes];
+!        temp.w.byte3 = key[(j+3)%keybytes];
+         data = temp.word;
+           bf_P[i] = bf_P[i] ^ data;
+         j = (j + 4) % keybytes;
+ 
+ 
+/*********************blowfish.c*********************/
+ 
+/* TODO: test with zero length key */
+/* TODO: test with a through z as key and plain text */
+/* TODO: make this byte order independent */
+ 
+ 
+#ifdef MSDOS
+   #include <dos.h>             /* FIXME: do we need this? */
+   #include <graphics.h>        /* FIXME: do we need this? */
+   #include <io.h>              /* FIXME: do we need this? */
+#endif
+ 
+#include <stdio.h>              /* used for debugging */
+#include <stdlib.h>             /* FIXME: do we need this? */
+#include <math.h>               /* FIXME: do we need this? */
+#include <time.h>               /* FIXME: do we need this? */
+ 
+#ifdef MSDOS
+   #include <alloc.h>           /* FIXME: do we need this? */
+#endif
+ 
+#include <ctype.h>              /* FIXME: do we need this? */
+ 
+#ifdef MSDOS
+   #include <dir.h>             /* FIXME: do we need this? */
+   #include <bios.h>            /* FIXME: do we need this? */
+#endif
+ 
+#ifdef MACINTOSH
+   #include <Types.h>           /* FIXME: do we need this? */
+#endif
+ 
+#include "blowfish.h"
+ 
+static char rcsid[] = "$Header: /user3/contrib/cj/blowfish02/RCS/blowfish.c,v 1.5 1994/10/11 02:55:47 cj Exp cj $";
+ 
+                                /* P-box P-array, S-box  */
+static UWORD_32bits bf_P[bf_N + 2];
+static UWORD_32bits bf_S[4][256];
+FILE*         SubkeyFile;
+ 
+short opensubkeyfile(void) /* read only */
+{
+   short error;
+ 
+   error = noErr;
+ 
+   if((SubkeyFile = fopen(subkeyfilename,"rb")) == NULL) {
+      error = DATAERROR;
+   }
+ 
+   return error;
+}
+ 
+UWORD_32bits bf_F(UWORD_32bits x)
+{
+   unsigned short a;            /* FIXME: unsigned char? */
+   unsigned short b;            /* FIXME: unsigned char? */
+   unsigned short c;            /* FIXME: unsigned char? */
+   unsigned short d;            /* FIXME: unsigned char? */
+   UWORD_32bits  y;
+ 
+   union aword temp;
+ 
+   /* TODO: hmmm... are we byte swapping again? */
+   temp.word = x;
+   d = temp.w.byte3;
+   c = temp.w.byte2;
+   b = temp.w.byte1;
+   a = temp.w.byte0;
+ 
+#ifdef OLD
+   d = x & 0x00FF;
+   x >>= 8;
+   c = x & 0x00FF;
+   x >>= 8;
+   b = x & 0x00FF;
+   x >>= 8;
+   a = x & 0x00FF;
+#endif /* OLD */
+ 
+/*   fprintf (stderr, "copy0x%08x shift0x%08x (line %d)\n", temp.w.byte3, d, __LINE__); /* DEBUG */
+ 
+   /* Exactly which compilers (with version number) don't work? */
+#ifdef BUGGY_COMPILER
+   y = bf_S[0][a] + bf_S[1][b];
+   y = y ^ bf_S[2][c];
+   y = y + bf_S[3][d];
+#else
+   y = ((bf_S[0][a] + bf_S[1][b]) ^ bf_S[2][c]) + bf_S[3][d];
+#endif
+ 
+/*   fprintf (stderr, "0x%08x ", y);*/
+ 
+   return y;
+}
+ 
+void Blowfish_encipher(UWORD_32bits *xl, UWORD_32bits *xr)
+{
+   UWORD_32bits  Xl;
+   UWORD_32bits  Xr;
+   UWORD_32bits  temp;
+   short          i;
+ 
+   Xl = *xl;
+   Xr = *xr;
+ 
+   for (i = 0; i < bf_N; ++i) {
+      Xl = Xl ^ bf_P[i];
+      Xr = bf_F(Xl) ^ Xr;
+ 
+      temp = Xl;
+      Xl = Xr;
+      Xr = temp;
+   }
+ 
+   temp = Xl;
+   Xl = Xr;
+   Xr = temp;
+ 
+   Xr = Xr ^ bf_P[bf_N];
+   Xl = Xl ^ bf_P[bf_N + 1];
+ 
+   *xl = Xl;
+   *xr = Xr;
+}
+ 
+void Blowfish_decipher(UWORD_32bits *xl, UWORD_32bits *xr)
+{
+   UWORD_32bits  Xl;
+   UWORD_32bits  Xr;
+   UWORD_32bits  temp;
+   short          i;
+ 
+   Xl = *xl;
+   Xr = *xr;
+ 
+   for (i = bf_N + 1; i > 1; --i) {
+      Xl = Xl ^ bf_P[i];
+      Xr = bf_F(Xl) ^ Xr;
+ 
+      /* Exchange Xl and Xr */
+      temp = Xl;
+      Xl = Xr;
+      Xr = temp;
+   }
+ 
+   /* Undo last exchange */
+   temp = Xl;
+   Xl = Xr;
+   Xr = temp;
+ 
+   Xr = Xr ^ bf_P[1];
+   Xl = Xl ^ bf_P[0];
+ 
+   *xl = Xl;
+   *xr = Xr;
+}
+ 
+bf_read_four (fp, buf)
+     FILE *fp;
+     UWORD_32bits * buf;
+{
+  int iii;
+  int ccc;
+  union aword temp;             /* must set byte order ORDER_ABCD, etc */
+  union aword swap;
+ 
+  temp.word = *buf;
+ 
+/*  for (iii = 0 ; iii < 4; iii++)
+    temp.byte[iii] = '\0'; */
+  memset(&temp.word, '\0', 4);
+ 
+  for (iii = 0 ; iii < 4; iii++)
+    {
+      ccc = fgetc(fp);
+ 
+      if (ccc == EOF)
+        break;                  /* should not see EOF when reading subkey */
+      temp.byte[iii] = (unsigned)ccc;
+    }
+ 
+/*  *buf = temp.word;
+  return;
+abort();
+*/
+ 
+#define NEWSWAP
+#ifdef NEWSWAP
+  swap.w.byte0 = temp.byte[0];
+  swap.w.byte1 = temp.byte[1];
+  swap.w.byte2 = temp.byte[2];
+  swap.w.byte3 = temp.byte[3];
+  *buf = swap.word;
+#else
+ 
+  *buf = temp.word;
+  *buf = ((*buf & 0xFF000000) >> 24) |
+         ((*buf & 0x00FF0000) >>  8) |
+         ((*buf & 0x0000FF00) <<  8) |
+         ((*buf & 0x000000FF) << 24);
+#endif  /* NEWSWAP */
+/*  return (buf);*/
+}
+ 
+/* FIXME: Blowfish_Initialize() ??? */
+short InitializeBlowfish(UBYTE_08bits key[], short keybytes)
+{
+   short          i;            /* FIXME: unsigned int, char? */
+   short          j;            /* FIXME: unsigned int, char? */
+   short          k;            /* FIXME: unsigned int, char? */
+   short          error;
+   short          numread;
+   UWORD_32bits  data;
+   UWORD_32bits  datal;
+   UWORD_32bits  datar;
+   union aword temp;
+ 
+   /* First, open the file containing the array initialization data */
+   error = opensubkeyfile();
+ 
+   if (error) {
+     printf("Unable to open subkey initialization file : %d\n", error);
+     return error;
+   }
+ 
+      for (i = 0; i < bf_N + 2; ++i) {
+         data = 0;
+         bf_read_four (SubkeyFile, &data);
+         bf_P[i] = data;
+       }
+ 
+/*   fprintf (stderr, "0x%x 0x%x ", bf_P[0], bf_P[1]);  /* DEBUG */
+/*   fprintf (stderr, "%d %d\n", bf_P[0], bf_P[1]);     /* DEBUG */
+ 
+      for (i = 0; i < 4; ++i) {
+         for (j = 0; j < 256; ++j) {
+           bf_read_four (SubkeyFile, &data);
+           bf_S[i][j] = data;
+         }
+      }
+ 
+      fclose(SubkeyFile);
+ 
+      j = 0;
+      for (i = 0; i < bf_N + 2; ++i) {
+ 
+#define NEWCOPY
+#ifdef NEWCOPY
+         temp.word = 0;
+         temp.w.byte0 = key[j];
+         temp.w.byte1 = key[(j+1)%keybytes];
+         temp.w.byte2 = key[(j+2)%keybytes];
+         temp.w.byte3 = key[(j+3)%keybytes];
+         data = temp.word;
+         bf_P[i] = bf_P[i] ^ data;
+         j = (j + 4) % keybytes;
+#else
+         data = 0x00000000;
+         for (k = 0; k < 4; ++k) {
+            data = (data << 8) | key[j];
+            j = j + 1;
+            if (j >= keybytes) {
+               j = 0;
+           }
+         }
+         bf_P[i] = bf_P[i] ^ data;
+#endif
+ 
+/*       fprintf (stderr, "copy0x%08x shift0x%08x (line %d)\n", temp.word, data, __LINE__); /* DEBUG */
+ 
+      }
+ 
+      datal = 0x00000000;
+      datar = 0x00000000;
+ 
+      for (i = 0; i < bf_N + 2; i += 2) {
+         Blowfish_encipher(&datal, &datar);
+ 
+         bf_P[i] = datal;
+         bf_P[i + 1] = datar;
+      }
+ 
+      for (i = 0; i < 4; ++i) {
+         for (j = 0; j < 256; j += 2) {
+ 
+            Blowfish_encipher(&datal, &datar);
+ 
+            bf_S[i][j] = datal;
+            bf_S[i][j + 1] = datar;
+         }
+      }
+ 
+   return error;
+}
+ 
+ 
+ 
+********************BLOWFISH.DAT.UU********************
+ 
+ 
+begin 0700 "Blowfish.dat"
+Mic]JBhvCbmlsfxHN`WaSqjpinbhIGSgpbb[ZFnQn;hEejbgFnm`s=[YtyL\T
+MZpQLPjPIM\E\tmT_AmvUMt<ieYhvU=Fi>?L;TsdkIIC?MzPO_wk;TaK?M[CA
+MK^UJiGZvNGRpq?dL?YDDHyEgLYeL]P@a\NjeCOPvxVD@VgewsFFDvoZC]il]
+M?@Vu=h]RCKyx<xOmvhhurNY[ujp=PEIyMyPPUsDJ\F`sQ=fPhRA@A?cjpwDx
+MNmLX[XYYWka@nA@n;iXnB[`>BC[wew?aOsekiWBOk]IuxeQ@YEtE\ZIuJYqw
+MriABx^@tpewjnvHJJQbVMlQ<maeaZlZAuhzO?gkID[oNeaeC;[PJjZGewwpx
+Ml?;nwcXvFX>sgJ_vNCmLil]<>Cis@rBuAG<[CTBxzTNYK\r_ZaMFjbfsx=@i
+MSoLAJyeh?jQ@w>R`lN^dwuWIAwvQWbxC`NMEfX@CBsZaTYzLQp]M;_nc]dhY
+Mk@Md@Jrdh`qIRoajGA^;wBgfzdkVZvRzyPR<xzOsBoaJtzcrVepOzixoIRBK
+MtsnC;N\k;amZn^rZn_ap?OLJFjgQyqTYKPeVyLIyoHiccHBl[Hxyqv^?MgVd
+MI<l[BUZ^Xf]UVhwahgm`fDr?uLeJID[sJFhVoW<ff_[?<Dj;`CTWTm<DT`Hr
+MrmLoZMmi\<b;aUmRRxbyfWLEUgGx]NC>]^o^taJV>tP[EVS@Ops`aKKaJt^V
+Mpi]@QeY<GLhyzBqCzoMOKSYLt[tsn;kKnUkL;VW\tq^;litLSheeqj]>OpF^
+MX]`dWCmj_vxoj`<ykDNSPlNHuTwh=`_rbU\YN=o[VUuYPkTzxchjUJd`QD`L
+M<GEGGRw^^Q^CShZEZ?C;lBkXogtvW_UAzQtOta[hKpurJSh]M?K]hX=@tSe[
+MrcX`WXj>we>[RF^lHaJguB[?eVG;UtjH]BA^_\nLySkfCd]u<VE;i[b[RECh
+MX?^Cw;CPdz`p^CVx_rfcNdK\MvPMT=m;FEoD>;;XqvwrCDF\r_NwDng=\MJD
+MRWXSxOLsp<[DQNCOhlKzmG=l`=a^GOXK\q^TE=OzszZpDyCJKxYQzYouHmbn
+MT=bOQRw@CCQ;kXYUEk>o]Nk[\AhKyhBhNajpc?`<sZU>HfBoPQSqS_fqLZCa
+MKr\OhAB^cA=WZGtM_HLbgZgEHlPoMv]TZaBL\];nB>jyMjAoXoTsXk=\QcNa
+MTJVHVqy?HFz`Ew<eD\QSebdzeg?FKraE=[wZAL=tpOw[GswoZ\VOcgL^Bzcv
+MpqOsKAY^rp`EcBT@<;m>hF@`NU>XXj\Dycz;\`FYgEuCDqUyWZzJ>lecB=Ez
+MtW\@?uNB`NvYQxlF`WyBE<^Id<@yzdYSrDfSqRWj>QrIrAMq`ejztRDuU@]w
+Mo[R;QNpKxjqV@>yT``BZ;[uwf^D?\I;LzRHmVqvVxVtAY[GYMO\Tar[eAuyD
+Mt[`MwzF?CZdhND>y;HtgzDMZ<nFULREdVWtikLpyiBnM;JzPrz???ySNxkBo
+M[;iF[jJl<vFze_]vyeiLPKf>XqDV`JuUbtPIHeDspnpxnCX_uiBzvTj=yvNo
+MYmzy]S_vH=j<a^_HloumksCF\bu=PtS=hhzd<nLFxXkIQ@h>SeXizfL_oKKO
+MRsRwfaqKzGbAzg\UAej@XHzWGeleJE`gmSXgAaQ_WJY<CGUd[e<v\KBPnMHW
+M\e`lc?`<gPpb`ko_K@SUfCRU=khE@WIxW`DAO=fqd_E\Jr_VEcig<RkUqPdZ
+MY>vam\kzWlBU=Crz\]VGJtqAq@_p`P[LRl<^Igt>p>hXSyD[Z@XOlHb[Hq@^
+MLSenuhLXsVVYbf]bcpoVb@r_kk@rDbrw?gEv>;aROj^iK]Zz=Q_yDP@pLXNN
+MdMSooRYudGh?kFMQie`zW>z?AlVg>EAgfgphVA>\GYJ\ZtM]CnQZ[cK;AqWZ
+MxPEcyLqDP]kOgaAglAwybmUcnS<DPKHvdJempRIEQeepE``bdSKDWwg?^iXp
+MltYu@zQWUE\qfyLdmu;QUZogzSPqfcMyijti\H_F[y?Q^_J>NK\LgAt\;H;C
+MqwcJZv^QA@Y>bEH^jKmWg^<<sCTf^BEEWkFyYQTo@cZiUEiFRbtNslEXGabS
+MzLxucKJtXNIXI?P\tQXjk?sR]TZGmATKoqDYi@\yPGE@tBnGbo<sdK;KK?YN
+MZLl?yNn\qyvF>\BcLw\WTpfl_RCclMWOOFQzIvuxhxuHJY@b[LZEc]LOEsLJ
+M[WVMvVXOAatAMB@IaVeP[mUg=vf?eq`sSj@PZVf]E@lT_AZJ`VooMwm<DdQP
+MHCGuGIXkRZK>en[lAKQ@xBRGGjM<J[kSAfYDBQZOf;WPRJ`Cz;EEvKMppfAz
+MlCPJMklQGNGuPbfX]YMtbQFgwZbyE?>y?Fh]?zCXmXBzE^lM=QgMDU\vzaja
+McCvhj<?Fg]zvWM^A>eBZFu?UAjt;hGiCFXoc_QKbqI;mLPKKtRXPuh_yrnqM
+MOcdHvnOR[Ssf_^K^jnUA[GP\<UUjemGHyk?CpAa=eb`^d^ae[NjVHZJKZMML
+MsQwZRT_pQTkTpN]JN[uEsSL=p<TAa=@>>yZfAtWgYdMgzCVaxEcoxJgRvXTF
+MqORh@ZcaQ[zC?QtDPVGk=iigAhHkuIjRApE;OPbMftB=efjQ=bnbc@axpHTJ
+McewUZAVM]cXCoWaAlWkPDHVs?Dgvw^SQ;bh[VWS>mUGk[Gq@phwRI\YWlFZF
+MaXbdf?ApGNCOVeuAVy<UJvFGJLtlaLizajO\@`OjWiYd>B[cqsrd_=uGapX>
+MGLG;<]OsdevhSv=?VGGCyTm`Q<pTywd^nm@]joB>\vW_hat^h>>oLcUjYNn?
+Mj]NcK??IouIHEhe`]_yliARtzrDTpqt@]WxbUo>\]fLNUjh`zmphigdShoqJ
+Mp[?tMU``xz\>n?xNERqeqApAsWr_BXA`syw\gyzUDz]P]mWsyJ`Oq;^\b>Pc
+MOy>e?ZQMTcgkAprvZR>Su?TYp=HEq^zKR@JzjeaXiuldj?pjkh;zZ;yM^VC<
+MefkwrfD`z`[`Ib>AC>Yoo_ZBZh>MCkvlX`yZ]mzVJLX>?mlWw^Sn>jnypfLJ
+MpBc^GCwy\XvY[CGwJSLrsHL=R?KWrVTxuBzCyCgJXY>RnF[Z=mU;pSiHp>?W
+MRG@@^_Lj]t[x_KnwqtavKkIhEr=utSHZhhnmA_YKJ;?pEIukuzAGOjduFECl
+MJrECF>g;lZxJrEx_lrwYwOq^gi`IlwS]^n@bab<O<hb[euPejbSCE<durnsf
+M;rihPql_QP^fW`?YR>Yaaa\opd=YIeVh;A<RwUgKUyO`T?j\Px]adsuDiwMX
+Mmf`JGfc?^nBCgVmLfPXrMlhbXsj>KVyoT<Kq@quKhYw@lSZrXsLDbVkNOKDB
+MA;jBcNzZcyG><@RlkzkWjm`r>dvuMYs]ygThxN?l]?atrzmOAWUh^Ln=_r?S
+MoHT>bD=CpyDN_WpZ;VZK]oC]mZ@rWfbAZ]WXFqOAsmMNzPWf>Utp;v<LmR=E
+MUcO<Tn@d\rDmQ\P`_ZnUnp^rzp_MbVy[G_OnVWV<Higob]DuwJn[dR^htuNM
+MigNt>;]Vn];KmSDNL\PqvwF`iNjw]bXQkvAbKz?fzBL[dGulSg@N\qQJdDhW
+MMYiqYPzAN^yk^VmpfFLpfagj[?H]i;WxXNgcRtqbeEDjdAnfVpSL;MvKZBID
+MKV=nVHzHw[Z_ZxADYlo^G;R`u_cWPhy@>gOXx`m@s=g]@T;Vna^P=TvNam<V
+M_lRcpFLS\aZK<;b`px<\`eY?=ZawOKWHKBquqDjyOU@NxtYx]h_RW?VB]gsO
+Mnh>iO<isyOGcRknn=kqU\Euf_mFY>NLFxxL=WXrdz@YYDu^uXDyNvxX@Me=P
+MCmuuD<DbWDRYbZSANXheTafHxDAU=jF>MW\yMNbIW`EFkpFAQcifl^AzgPhi
+M\kZlrIF@iqUN_A`zNsT=bZvDWZff\@\HzoeIWk?z@U<YaOZAXLZ;s\U_tE`q
+Mw@fGaHoZH`jUQ`WFTb>z^hPG=S^fp<m@s`yAJ`zU\a=ZjlcUAN``xeBJlmQ]
+MxAgFGM<CnnICt\k=ElkbeCr[R^YvDkRVWNO\?zgnvqUV;PwDbtM\`x@Y<@H]
+M?ii\ih;C<E]RsyVYfLe;Mmn>NoSMueuXboREM=@]?mmmKp_dgEcOwKeAYOBB
+MAqsy;edsof_uQ^=vXt[dmBJ_SMWfRc?wFChTDFnbdF<n^HY`x`c@nCGnm]oZ
+M]<^KPG<WvLtMfURPyYYoHS=bTXhGpiF\F[[udxZ=OP]Se=xMgg[g`lq[MXP;
+MzRfADdvR;Kf^zCyNMe=hJR^\EfYYQJmVTFuiPLAsc_CNqHW>?=uSbAUlTdWf
+MjsF[VZFZqEbLEr;HOE[CajgZU?aJkufzx^^lXIJf[Bk`B<jXpRpN]Jt>`ZJ<
+M\MbD@\aANIOIzDVoYqupNFq;UB@FHOFGnCKArZFuAN]uxNGgk^_s]UkWVC\d
+M;VEW^@Iy@nrIex>PA@f;b>zMnS[ED^Fp_uJ>mm>wkobWVphKBUfvUzPZ`wVF
+M?=gooMy\?rTHgY\ESZWRNiMzUKqRvHCUsn`IKgg@fzwFq[bL_>Vs^IOHT\rm
+MjcMwSoCuyBEYdRXH>e\aD>UUxewWE@YdX]m>Cate;=rh]fVZ`ZeAipuD\kWc
+MZYXuoiawHI<GfNRIn@<JfS]MFQYCh?wUGf;[iMSSfwtSVrBQu?WU`UxT@HJZ
+MokLHtw<qP@Ky^jOltv?lKyi?s>@wts@PWhXWGuABDRcYD>IZDlk[oGOntrgn
+Myg=oOCjHMNm^PRD]qDC>tVEDd^z`HJXhdmUMLBqIArW]bp<AyKnzq@IDq<c=
+MvfS>SQP@RjY;OO?=fUBmplSr`w]KMnn[WziJ?CIy_Tt^mpIdOksmUwkJSJCZ
+Myhr[CvxrKK\\;T?rF^qCub]=GJ[b=QOVsFmP=`XmC>=;dU?X<AyQKUm]wta`
+MRPAnMnklmmifz@duKXsAL`pHEy@ZgpzXG[sn;Jah;S\[@Ct@JXhafAUkiWhG
+M^fduxkgGDS_<NSIYjSqei;V@BcGAt<YYrR\RR;>@g[KiXaSh?KSgT?;o`qgc
+MH>BJQQJpATGts[VzTmK>R]tjVC@cn<lJQIdVyXWYlwS@LrMo]YYyMToUNSKR
+MUqG_i]EeGk^whBPuYOPJcYg\<yNterwZYymASKz<Z\jHyeDrNJCqMLdgwNle
+Mz@PpTEaERPnDpNcL;@XvFmL[siB@OCiXZvr?gYtRXmnrW]n@mbNi<?h>fPIT
+MptNCmhSeOGd@PWxRVm\UGXV;Fr\NY@MOqP_C\qWEsmItgMKxD<YB><_moGYO
+MeABQyOTLgpvdC]ke]OLBF?tC\U>FlGxCDZ@Ulu;lSpjL\heBvGwKMvXvmI>h
+MTGolWIyBDHfYr=alti`;<<yven;fQ[TR>Apjq>gpaLoR>YKiJEo]xJ@o`kLE
+MO^hUO=kV<qiIa;hd`BjVR\]\Swz<jUlqoL`vpnosnjN]xbugK?bZnbb<]T;n
+M=G>OH<t@=va@A<O^sHKHC=AZJOFPsoFJ?AEhPEPb^XJl`<mJYm;KX?FpUoAI
+MIES>Hc\iirWbbnz?MTYAlLYWXEMwC]_CnLmRYK@ZRPh@`CEZ;L;[v__oUmUl
+MOU[q]c_E@C[TZblMerKPYQCi<eF]Fb`?rIUBYZtINHGAihT[^hyvQqemcKQl
+M[AxcsxHYhnqX@NFNC[WCJ]P?;zt>tEVRNNda^fYZ;yQHJr<h_mDIokPlLcRf
+M^jBMkb\`pD[KRLMekxGl<?SuGg^q?PxBOfVjbkfcsrdRzhsj@NnJR_mWAOkZ
+MkjMNo<YsvMgRbLxgQKCAsUZTnhYWtarFyvyE][yjp^rZncTaLNpp>xZRFf^p
+MG@RDgWLW=RPrxcbebh<xQn?qOtaE_\ZcDOVjJC;qj[shR=bys[bWeoEHfoFE
+MnyB@HwCfiHrHgHKI<OzXpEZV>BGtAEt;UQFOlLfiUqqua=RaUsYhpD[zMY;O
+MqJaiCPmF?>[>`ZPjL\rw<SUseJBqljBoSixdq`KnZXDZ=RvXjPX>]ITPjERn
+MY[Am[UHQLi;iZ_BmtrUXCGY``NZgXbKVPUBANPkHUZ_?G[cG>pZtjCL\fKKf
+M_Z>OG?>v^sh;Nypa=jBH[rhvkl_QNYGzJmuqImwDr^S=X^RHc<ti`YoN\Gir
+MosgtCCH<hDZVwFarPZpAb<lOar[CBnV??JFqQB^w=[u;HatlOjlZ[ftEWSfc
+M@TnISBzsxJVk`sptbXWUSXd>G_uyeG\eyc@r]naxBEjPR[CIqn];eJmSQnVA
+M??S^ZOukR[Zg<^orQsg<TewdyREr=T\Zu\IKPdy]nCLD=XpEMYD>FMVbwb;D
+MtLCN_jS>gHrcnOmAhqTceSkal<RMLD?FaKZl<rLY\xBT[SDZG\WeQwuqzq_V
+MFt\Y@IRPdpeE<SmcR^MAT]bTqolj[ZBN<WtJnAR=Mk<iemzKipRenWlHru^t
+MC]jD[xYL]UgDPRb[==GjHknkIviBsHrPo^ZHaVYTHg_E@cG@cc;_VO@c<Qmx
+MN>yQN=KdSARRvQcMs=ouL?SRMhafmouYi>Kd`jFLu>IRBsk?a@p=auTQ]pke
+Mn<kCjXGyVUOlbIC`v_UOfRtfhBXAO@Y@ESLd[mujy[uoYCBF[vxuFaJqbEVr
+MDHVL;\zwYSQCKtuNWU]e>Heetx=zylTPF?eIM?fjCgoNbUYwmH]L>?r[>EEy
+kiJJTGLzjRoS[@`a
+`
+end
+ 
+************** TEST VECTORS ***********************************
+ 
+This is a test vector.
+Plaintext is "BLOWFISH".
+The key is "abcdefghijklmnopqrstuvwxyz".
+ 
+#define PL 0x424c4f57l
+#define PR 0x46495348l
+#define CL 0x324ed0fel
+#define CR 0xf413a203l
+        static char keey[]="abcdefghijklmnopqrstuvwxyz";
+ 
+This is another test vector.
+The key is "Who is John Galt?"
+ 
+#define PL 0xfedcba98l
+#define PR 0x76543210l
+#define CL 0xcc91732bl
+#define CR 0x8022f684l
+
+

@@ -1,0 +1,121 @@
+Path: msuinfo!agate!howland.reston.ans.net!wupost!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: Weak keys in variable s-box ciphers
+Date: Thu, 14 Apr 94 21:57:39 CDT
+Organization: University of Missouri, Columbia
+Lines: 110
+Message-ID: <16F98134D3S86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+Keywords: REDOC, Khufu, BLOWFISH
+
+ 
+   In the course of playing with interesting attacks against BLOWFISH,
+I came across an idea that seems like it should be obvious:
+ 
+   Let S() be an m->n s-box, where m < n.  (For example, m = 8 and n=32.)
+Also let S's entries be totally random.  Now, let's imagine looking at
+a bunch of values formed as
+ 
+    X = S(a) xor S(b) xor S(c) xor S(d)
+ 
+   where a,b,c, and d are random 8-bit values, unknown to us.
+ 
+   After looking at a few thousand X's, we're going to learn some
+interesting statistics.  Two simple ones:
+ 
+   1.  Are any bits of the X's biased?  Ie, do we usually get 0's in
+       bit position 19?
+ 
+   2.  Are any pairs of bits in X's biased?  Ie, when we get 0's in
+       bit position 19, do we usually get 1's in bit position 21?
+ 
+   Obviously, similar statistics may be useful for larger groups of
+bits, as well as for whole bytes.  And knowing about any stats that
+are very far from being balanced will weaken ciphers based on these
+S-boxes.
+ 
+   Let's look at 3 ciphers:
+ 
+   Wood's REDOC-III seems to be the most likely to be weakened by
+skewed bit distributions in its key table.  (REDOC-III calls it a
+key table, Khufu and BLOWFISH call it an s-box.)  My cursory glance
+at the key-scheduling algorithm used for REDOC-III didn't show me any
+features to control weak s-box choices beyond a basically pseudorandom
+key-based choice of s-box entries, however I may have missed something.
+ 
+   In REDOC III, each plaintext byte is XORed with two mask bytes and two
+bytes selected from an 8-bit to 80-bit s-box.  There are no bit rotations
+or anything involved there, and no mixing of operations.  Suppose
+bit 1 of the s-box entries is seriously skewed, so that it's 80% 0's.
+Then, with a reasonable number of known plaintexts (in the thousands),
+you will notice that the XOR difference between the plaintext and
+ciphertext block is not balanced--it usually doesn't change.  (68 %
+of the time, it stays constant.)  Similar statistics can be gathered
+on correlation between the different bits of the XOR difference.
+ 
+   In Merkle's Khufu, this attack is *much* harder, for three reasons:
+ 
+1.  The s-boxes change each octet.
+2.  The 32-bit words are rotated multiples of 8 bits each round,
+    so any skew detected is for 4 bit positions in the s-boxes
+    combined.
+3.  The s-boxes are chosen so that each possible 0..255 value
+    appears once in each byte position.  This means there are
+    never skews in single-bit positions.
+ 
+   I think Merkle thought about the possibility of skews in the
+s-box entries, and what attacks they would make possible, and
+designed Khufu and Khafre to resist them.
+ 
+   Schneier's BLOWFISH also resists this sort of attack pretty well.
+The F() function in BLOWFISH combines addition and XORing, which seems
+to mask most weak s-box patterns.  Only the low-order bit of the F()
+output can show this sort of bias directly.  Getting any information
+about the other bit positions in the s-boxes is much harder--the skew
+has to make it past two addition operations, where the bit-positions
+to a weak bit-position's right have the chance to mask its weaknesses.
+Also, for a reasonable number of BLOWFISH rounds, the s-box skew
+would have to be pretty awful to be exploitable.
+ 
+   The skews can be exploited in a few different ways.  First, if there
+is a skew in the ciphertext XOR plaintext for bit i, then ciphertext
+leaks information to us about unknown plaintexts.  If there's a
+correlation between bit i and bit j of the ciphertext XOR plaintext,
+then, similarly, information is leaked about plaintext.
+ 
+   Second, for some key-scheduling algorithms, this sort of skew
+may make keysearch easier.  (You can stop searching for a new key if
+you don't find evidence of a skew in the right bit positions of the
+key-derived s-boxes.)  This looks generally impractical for all three
+of these ciphers.  However, if one or more of the parity bits are
+the ones with the skew, then it's possible to learn of it *and*
+to exploit it in a keysearch attack, with only ciphertext and the
+knowledge that the message was originally in ASCII english.  Other
+bits are also skewed in standard ASCII english, which may also be
+usable.  And this might be usable in conjunction with other attacks,
+to help guess subkeys or s-box entries.
+ 
+   Third, a serious skew in s-box entries might make it easier to
+carry out chosen-plaintext and -ciphertext attacks, especially ones
+related to differential attacks.  If nothing else, this sort of
+knowledge allows you to make a better guess about which s-box entry
+will be chosen by a byte which is being affected by a skewed s-box
+column.  And, an attacker may be able to guess from both sides, to
+meet in the middle and guess some useful information (with high
+probability) about the internal state of the cipher.
+ 
+   In general, I think weak s-boxes (ie, s-boxes where most entries
+have a 0 or 1 in a given bit position, or where the value of two
+bit positions in most entries XORs to the same value) are going to
+lead to potential attacks.  Usable skews in the s-box entries seem
+to be highly unlikely--this is basically a problem of a small number
+of weak keys.  I think it might be a good idea for variable-s-box
+ciphers to check their s-box statistics, and do some kind of tweaking
+to improve them if they find a problem.
+ 
+   I'd like to hear comments on this, if anyone's interested.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu
+ 
+ 

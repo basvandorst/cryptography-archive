@@ -1,0 +1,551 @@
+From daemon Wed Feb 28 11:57:09 1996
+X-Sender: pate@pop.wp-lag.mindspring.com
+X-Mailer: Windows Eudora Light Version 1.5.2
+Mime-Version: 1.0
+Content-Type: multipart/mixed; boundary="=====================_825537175==_"
+Date: Wed, 28 Feb 1996 06:52:55 -0500
+To: Paul Leyland <pcl@sable.ox.ac.uk>
+From: "James Pate Williams, Jr." <pate@mindspring.com>
+Subject: Re: Classical Encryption Algorithms
+X-Attachments: C:\MAYA\MAYA.CPP; C:\MAYA\KNOWN.CPP;
+
+--=====================_825537175==_
+Content-Type: text/plain; charset="us-ascii"
+
+Hopefully export restrictions do not apply to the attached material.
+I am sending you copies of the encryption source code and the
+cryptanalytic attack. Remember that the encryption source assumes
+a "little endian" machine. To convert to a "big endian" environment
+then one must change the function LongToBits in MAYA.CPP.
+
+==Pate Williams==
+pate@wp-lag.mindspring.com
+
+--=====================_825537175==_
+Content-Type: text/plain; charset="us-ascii"
+Content-Disposition: attachment; filename="MAYA.CPP"
+
+/*
+  Author:  Pate Williams c 1996
+
+  The following program is designed to decrypt/encrypt files.
+
+  usage : maya inp_file out_file op key_1 key_2 key_3 key_4 seed
+
+  where inp_file is the input file, out_file is the output
+  file, op is either d = decrypt or e = encrypt, key_# is
+  a long integer, and seed is in the range 0 - 65535. The code
+  is written specifically for a "little endian" machine.
+*/
+
+#include <ctype.h>
+#include <fcntl.h>
+#include <io.h>
+#include <iostream.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys\stat.h>
+
+const int BitsPerByte = 8;
+const int BitsPerLongWord = 32;
+const int BitsPerLongWordMinusOne = BitsPerLongWord - 1;
+const int BitsPerExtraLongWord = 128;
+const int BlocksPerBuffer = 16;
+const int BytesPerBlock = 256;
+const int CodesPerByte = 256;
+const int BytesPerBuffer = BytesPerBlock * BlocksPerBuffer;
+const int BytesPerLongWord = BitsPerLongWord / BitsPerByte;
+const int BytesPerExtraLongWord = BitsPerExtraLongWord / BitsPerByte;
+const int ExtraLongWordsPerBlock = BytesPerBlock / BytesPerExtraLongWord;
+const int LongWordsPerExtraLongWord = BitsPerExtraLongWord / BitsPerLongWord;
+const int LongWordsPerExtraLongWordMinusOne = LongWordsPerExtraLongWord - 1;
+
+int permTable[BlocksPerBuffer][BitsPerExtraLongWord],
+	 codeTable[BlocksPerBuffer][CodesPerByte],
+	 invsTable[BlocksPerBuffer][CodesPerByte],
+	 scrmTable[BlocksPerBuffer][BytesPerBlock];
+
+typedef unsigned char Byte;
+
+union LongWord
+{
+  long lwInte;
+  Byte lwByte[BytesPerLongWord];
+};
+
+union ExtraLongWord
+{
+  Byte ewByte[BytesPerExtraLongWord];
+  LongWord ewWord[LongWordsPerExtraLongWord];
+};
+
+union Block
+{
+  Byte bkByte[BytesPerBlock];
+  ExtraLongWord bkWord[ExtraLongWordsPerBlock];
+};
+
+union Buffer
+{
+  Block bfBloc[BlocksPerBuffer];
+  Byte bfByte[BytesPerBuffer];
+};
+
+void LongToBits(long number, int* bits)
+{
+  for (int i = BitsPerLongWordMinusOne; i >= 0; i--)
+	 bits[BitsPerLongWordMinusOne - i] = (int) ((number >> i) & 1);
+}
+
+long BitsToLong(int* bits)
+{
+  long number = 0;
+
+  for (int i = 0; i < BitsPerLongWord; i++)
+	 number |= ((long) bits[i]) << (BitsPerLongWordMinusOne - i);
+  return number;
+}
+
+void Permute(ExtraLongWord& inp, ExtraLongWord& out, int* table)
+{
+  int bit, ewBits[BitsPerExtraLongWord], lwBits[BitsPerLongWord], i, j, number,
+		shift = 0, temp, ti;
+
+  for (i = 0; i < LongWordsPerExtraLongWord; i++)
+  {
+	 LongToBits
+		(inp.ewWord[LongWordsPerExtraLongWordMinusOne - i].lwInte, lwBits);
+	 for (j = 0; j < BitsPerLongWord; j++)
+		ewBits[shift + j] = lwBits[j];
+	 shift += BitsPerLongWord;
+	 out.ewWord[i].lwInte = 0;
+  }
+  for (i = 0; i < BitsPerExtraLongWord; i++)
+  {
+	 ti = table[i];
+	 temp = ewBits[ti];
+	 number = i / BitsPerLongWord;
+	 bit = i % BitsPerLongWord;
+	 out.ewWord[LongWordsPerExtraLongWordMinusOne - number].lwInte
+		|= ((long) temp) << (BitsPerLongWordMinusOne - bit);
+  }
+}
+
+void Unpermute(ExtraLongWord& inp, ExtraLongWord& out, int* table)
+{
+  int bit, ewBits[BitsPerExtraLongWord], lwBits[BitsPerLongWord], i, j, number,
+		shift = 0, temp[BitsPerExtraLongWord];
+
+  for (i = 0; i < LongWordsPerExtraLongWord; i++)
+  {
+	 LongToBits
+		(inp.ewWord[LongWordsPerExtraLongWordMinusOne - i].lwInte, lwBits);
+	 for (j = 0; j < BitsPerLongWord; j++)
+		ewBits[shift + j] = lwBits[j];
+	 shift += BitsPerLongWord;
+	 out.ewWord[i].lwInte = 0;
+  }
+  for (i = 0; i < BitsPerExtraLongWord; i++)
+	 temp[table[i]] = ewBits[i];
+  for (i = 0; i < BitsPerExtraLongWord; i++)
+  {
+	 number = i / BitsPerLongWord;
+	 bit = i % BitsPerLongWord;
+	 out.ewWord[LongWordsPerExtraLongWordMinusOne - number].lwInte
+		|= ((long) temp[i]) << (BitsPerLongWordMinusOne - bit);
+  }
+}
+
+void Shift(int number, int* table, int* temp)
+{
+  int i, n = number - 1, t = table[n];
+
+  for (i = 0; i < number; i++) temp[i] = table[i];
+  for (i = 0; i < n; i++) table[i + 1] = temp[i];
+  table[0] = t;
+}
+
+void Xor(ExtraLongWord& inp, const ExtraLongWord& key)
+{
+  inp.ewWord[0].lwInte ^= key.ewWord[0].lwInte;
+  inp.ewWord[1].lwInte ^= key.ewWord[1].lwInte;
+  inp.ewWord[2].lwInte ^= key.ewWord[2].lwInte;
+  inp.ewWord[3].lwInte ^= key.ewWord[3].lwInte;
+}
+
+void Decrypt(int bytes, const ExtraLongWord& key,
+				 Buffer& inpBuffer, Buffer& outBuffer)
+{
+  int blocks = bytes / BytesPerBlock, i, j,
+		left = bytes % BytesPerBlock, temp[CodesPerByte],
+		extra = left / BytesPerExtraLongWord;
+  ExtraLongWord inp, out;
+
+  for (i = 0; i < blocks; i++)
+  {
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+		Xor(inpBuffer.bfBloc[i].bkWord[j], key);
+	 for (j = 0; j < BytesPerBlock; j++)
+		outBuffer.bfBloc[i].bkByte[j]
+		  = inpBuffer.bfBloc[i].bkByte[scrmTable[i][j]];
+	 Shift(BytesPerBlock, scrmTable[i], temp);
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+		Xor(outBuffer.bfBloc[i].bkWord[j], key);
+	 for (j = 0; j < BytesPerBlock; j++)
+		outBuffer.bfBloc[i].bkByte[j]
+		  = (Byte) invsTable[i][outBuffer.bfBloc[i].bkByte[j]];
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+	 {
+		inp = outBuffer.bfBloc[i].bkWord[j];
+		Xor(inp, key);
+		Unpermute(inp, out, permTable[i]);
+		Xor(out, key);
+		outBuffer.bfBloc[i].bkWord[j] = out;
+		Shift(BitsPerExtraLongWord, permTable[i], temp);
+	 }
+  }
+  for (j = 0; j < extra; j++)
+	 Xor(inpBuffer.bfBloc[blocks].bkWord[j], key);
+  for (j = 0; j < left; j++)
+	 outBuffer.bfBloc[blocks].bkByte[j]
+		= (Byte) invsTable[blocks][inpBuffer.bfBloc[blocks].bkByte[j]];
+  for (j = 0; j < extra; j++)
+  {
+	 inp = outBuffer.bfBloc[i].bkWord[j];
+	 Xor(inp, key);
+	 Unpermute(inp, out, permTable[blocks]);
+	 Xor(out, key);
+	 outBuffer.bfBloc[blocks].bkWord[j] = out;
+	 Shift(BitsPerExtraLongWord, permTable[blocks], temp);
+  }
+}
+
+void Encrypt(int bytes, const ExtraLongWord& key,
+				 Buffer& inpBuffer, Buffer& outBuffer)
+{
+  int blocks = bytes / BytesPerBlock, i, j,
+		left = bytes % BytesPerBlock, temp[CodesPerByte],
+		extra = left / BytesPerExtraLongWord;
+  ExtraLongWord inp, out;
+
+  for (i = 0; i < blocks; i++)
+  {
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+	 {
+		inp = inpBuffer.bfBloc[i].bkWord[j];
+		Xor(inp, key);
+		Permute(inp, out, permTable[i]);
+		Xor(out, key);
+		inpBuffer.bfBloc[i].bkWord[j] = out;
+		Shift(BitsPerExtraLongWord, permTable[i], temp);
+	 }
+	 for (j = 0; j < BytesPerBlock; j++)
+		inpBuffer.bfBloc[i].bkByte[j]
+		  = (Byte) codeTable[i][inpBuffer.bfBloc[i].bkByte[j]];
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+		Xor(inpBuffer.bfBloc[i].bkWord[j], key);
+	 for (j = 0; j < BytesPerBlock; j++)
+		outBuffer.bfBloc[i].bkByte[scrmTable[i][j]]
+		  = inpBuffer.bfBloc[i].bkByte[j];
+	 Shift(BytesPerBlock, scrmTable[i], temp);
+	 for (j = 0; j < ExtraLongWordsPerBlock; j++)
+		Xor(outBuffer.bfBloc[i].bkWord[j], key);
+  }
+  for (j = 0; j < extra; j++)
+  {
+	 inp = inpBuffer.bfBloc[blocks].bkWord[j];
+	 Xor(inp, key);
+	 Permute(inp, out, permTable[blocks]);
+	 Xor(out, key);
+	 inpBuffer.bfBloc[blocks].bkWord[j] = out;
+	 Shift(BitsPerExtraLongWord, permTable[blocks], temp);
+  }
+  for (j = 0; j < left; j++)
+	 outBuffer.bfBloc[blocks].bkByte[j]
+		= (Byte) codeTable[blocks][inpBuffer.bfBloc[blocks].bkByte[j]];
+  for (j = 0; j < extra; j++)
+	 Xor(outBuffer.bfBloc[i].bkWord[j], key);
+}
+
+void Generate(int* table)
+{
+  int done, i, j, vector[BytesPerBlock];
+
+  for (i = 0; i < BytesPerBlock; i++) vector[i] = 0;
+  for (i = 0; i < BytesPerBlock; i++)
+  {
+	 done = 0;
+	 do
+	 {
+		j = random(BytesPerBlock);
+		if (vector[j] == 0) done = 1, vector[j] = 1;
+	 }
+	 while (done == 0);
+	 table[i] = j;
+  }
+}
+
+void GenerateTables(void)
+{
+  int done, i, j, k, bits[BitsPerExtraLongWord];
+
+  for (k = 0; k < BlocksPerBuffer; k++)
+  {
+	 for (i = 0; i < BitsPerExtraLongWord; i++) bits[i] = 0;
+	 for (i = 0; i < BitsPerExtraLongWord; i++)
+	 {
+		done = 0;
+		do
+		{
+		  j = random(BitsPerExtraLongWord);
+		  if (bits[j] == 0) done = 1, bits[j] = 1;
+		}
+		while (done == 0);
+		permTable[k][i] = j;
+	 }
+	 Generate(codeTable[k]);
+	 Generate(scrmTable[k]);
+	 for (i = 0; i < BytesPerBlock; i++) invsTable[k][codeTable[k][i]] = i;
+  }
+}
+
+void main(int argc, char *argv[])
+{
+  if (argc < 9 || argc > 9)
+  {
+	 cout << "usage : maya inp_file out_file op key_1 key_2 "
+			<< "key_3 key_4 seed\n\n"
+			<< "where inp_file is the input file, out_file is the output\n"
+			<< "file, op is either d = decrypt or e = encrypt, key_# is\n"
+			<< "a long integer, and seed is in the range 0 - 65535"  << endl;
+	 exit(1);
+  }
+  int bytes, error, inpAccess = O_RDONLY | O_BINARY, inpMode = S_IREAD;
+  int inpHandle = open(argv[1], inpAccess, inpMode);
+  if (inpHandle == - 1)
+  {
+	 cout << "*error*\nunable to open input file" << endl;
+	 exit(1);
+  }
+  int outAccess = O_WRONLY | O_BINARY | O_CREAT | O_TRUNC, outMode = S_IWRITE;
+  int outHandle = open(argv[2], outAccess, outMode);
+  if (outHandle == - 1)
+  {
+	 cout << "*error*\unable to open output file" << endl;
+	 exit(1);
+  }
+  char command = tolower(argv[3][0]), message[64];
+  if (command != 'd' && command != 'e')
+  {
+	 cout << "*error*\nunknown command indicator must be d or e" << endl;
+	 exit(1);
+  }
+  ExtraLongWord key;
+  key.ewWord[0].lwInte = atol(argv[4]);
+  key.ewWord[1].lwInte = atol(argv[5]);
+  key.ewWord[2].lwInte = atol(argv[6]);
+  key.ewWord[3].lwInte = atol(argv[7]);
+  srand((unsigned) atol(argv[8]));
+  GenerateTables();
+  Buffer inpBuffer, outBuffer;
+  do
+  {
+	 bytes = read(inpHandle, &inpBuffer, BytesPerBuffer);
+	 if (bytes == - 1)
+	 {
+		cout << "*error*\nread I/O error" << endl;
+		perror(message);
+		exit(1);
+	 }
+	 if (bytes != 0)
+	 {
+		if (command == 'd')
+		  Decrypt(bytes, key, inpBuffer, outBuffer);
+		else
+		  Encrypt(bytes, key, inpBuffer, outBuffer);
+		error = write(outHandle, &outBuffer, bytes);
+		if (error == - 1)
+		{
+		  cout << "*error*\nwrite I/O error" << endl;
+        perror(message);
+		  exit(1);
+		}
+	 }
+  }
+  while (bytes != 0);
+  close(inpHandle);
+  close(outHandle);
+}
+
+--=====================_825537175==_
+Content-Type: text/plain; charset="us-ascii"
+Content-Disposition: attachment; filename="KNOWN.CPP"
+
+/*
+  Author:  Pate Williams c 1996
+
+  The following program carries out a known ciphertext
+  known plaintext attack against the maya algorithm.
+
+  usage: known ciphertext plaintext key_file
+
+  where the key file is of the format below:
+
+  lower_key_1 upper_key_1
+  lower_key_2 upper_key_2
+  lower_key_3 upper_key_3
+  lower_key_4 upper_key_4
+  lower_seed  upper_seed
+*/
+
+#include <dos.h>
+#include <fstream.h>
+#include <iostream.h>
+#include <math.h>
+#include <process.h>
+#include <stdio.h>
+#include <string.h>
+
+typedef unsigned char Byte;
+
+int Compare(fstream& file1, fstream& file2)
+{
+  Byte byte1, byte2;
+
+  while (file1.get(byte1) != 0)
+  {
+	 file2.get(byte2);
+	 if (byte1 != byte2) return 0;
+  }
+  return 1;
+}
+
+void Convert(double seconds, time& t)
+{
+  double ipart, fraction = modf(seconds, &ipart);
+  long sec = (long) ipart;
+
+  fraction = 100.0 * fraction;
+  t.ti_hour = (char) (ipart / 3600.0);
+  sec = sec % 3600L;
+  t.ti_min = (char) (sec / 60L);
+  t.ti_sec = (char) (sec % 60L);
+}
+
+void GetKeys(long* lowerKey, long* upperKey, unsigned& lowerSeed, unsigned& upperSeed,
+				 fstream& file)
+{
+  for (int i = 0; i < 4; i++)
+	 file >> lowerKey[i] >> upperKey[i];
+  file >> lowerSeed >> upperSeed;
+}
+
+double Seconds(time& t)
+{
+  return 3600.0 * (double) t.ti_hour + 60.0 * (double) t.ti_min +
+			(double) t.ti_sec + (double) t.ti_hund / 100.0;
+}
+
+void main(int argc, char* argv[])
+{
+  char cipher[64], is[16], js[16], ks[16], ls[16], ms[16],
+		 plain[64], plain1[16];
+  const char Plain1[16] = "pq6789.dec";
+  double seconds;
+  int done = 0;
+  long i, j, k, l, m;
+  long count = 0L, lowerKey[4], upperKey[4];
+  unsigned lowerSeed = 0, upperSeed = 0;
+  fstream keyFile, plaintext, plaintext1;
+  struct time time1, time2;
+
+  gettime(&time1);
+  if (argc != 4)
+  {
+	 cout << "usage: known ciphertext plaintext key_file\n" << endl;
+	 cout << "where the key file is of the format below:\n" << endl;
+	 cout << "lower_key_1 upper_key_1" << endl;
+	 cout << "lower_key_2 upper_key_2" << endl;
+	 cout << "lower_key_3 upper_key_3" << endl;
+	 cout << "lower_key_4 upper_key_4" << endl;
+	 cout << "lower_seed  upper_seed" << endl;
+	 exit(1);
+  }
+  strcpy(cipher, argv[1]);
+  strcpy(plain, argv[2]);
+  strcpy(plain1, Plain1);
+  keyFile.open(argv[3], ios::in);
+  if (!keyFile)
+  {
+	 cout << "*error\ncould not open key_file" << endl;
+	 exit(1);
+  }
+  GetKeys(lowerKey, upperKey, lowerSeed, upperSeed, keyFile);
+  for (i = lowerKey[0]; i <= upperKey[0]; i++)
+  {
+	 sprintf(is, "%ld", i);
+	 for (j = lowerKey[1]; j <= upperKey[1]; j++)
+	 {
+		sprintf(js, "%ld", j);
+		for (k = lowerKey[2]; k <= upperKey[2]; k++)
+		{
+		  sprintf(ks, "%ld", k);
+		  for (l = lowerKey[3]; l <= upperKey[3]; l++)
+		  {
+			 sprintf(ls, "%ld", l);
+			 for (m = lowerSeed; m <= upperSeed; m++)
+			 {
+				sprintf(ms, "%ld", m);
+				spawnl(P_WAIT, "maya.exe", "maya.exe", cipher, plain1,
+						 "d", is, js, ks, ls, ms, NULL);
+				count++;
+				plaintext.open(plain, ios::binary | ios::in);
+				if (!plaintext)
+				{
+				  cout << "*error*\ncould not open ciphertext" << endl;
+				  exit(1);
+				}
+				plaintext1.open(plain1, ios::binary | ios::in);
+				if (!plaintext1)
+				{
+				  cout << "*error*\ncould not open plaintext" << endl;
+				  exit(1);
+				}
+				done = Compare(plaintext, plaintext1);
+				plaintext.close();
+				plaintext1.close();
+				if (done == 1) break;
+			 }
+			 if (done == 1) break;
+		  }
+		  if (done == 1) break;
+		}
+		if (done == 1) break;
+	 }
+	 if (done == 1) break;
+  }
+  gettime(&time2);
+  seconds = Seconds(time2) - Seconds(time1);
+  Convert(seconds, time2);
+  cout << "Total time required = " << (int) time2.ti_hour
+		 << ':' << (int) time2.ti_min  << ':' << (int) time2.ti_sec
+		 << '.' << (int) time2.ti_hund << endl;
+  seconds /= count;
+  cout << "Total number of iterations = " << count << endl;
+  cout << "Seconds per iteration = " << seconds << endl;
+  if (done == 0)
+	 cout << "Could not determine key" << endl;
+  else
+	 cout << "Key 1 = " << i << '\n' << "Key 2 = " << j << '\n'
+			<< "Key 2 = " << k << '\n' << "Key 4 = " << l << '\n'
+			<< "Seed = " << m << endl;
+}
+
+--=====================_825537175==_
+Content-Type: text/plain; charset="us-ascii"
+
+
+--=====================_825537175==_--
+
+
+

@@ -1,0 +1,55 @@
+Here's a start for mh + MIME users: an "editor" that runs out of the MH
+"What now?" prompt, and PGP encodes your message in a nice mhn-processable
+format.  Note that this works only on MH 6.7.2-MIME+mtr or later.
+
+Call this script "pgpedit" and make links to it called: pgpe, pgpes, pgpk,
+pgka.
+
+After you're done writing your message, type "edit pgpe" at the What now?
+prompt, it will try to figure out who you're sending to, encode with their
+key if you have it, and format it for MHN.  Then type "edit mhn" and voila
+your message is ready to go.  The type is "text/x-pgp" and needs an
+.mh_profile line like:
+
+mhn-show-text/x-pgp: pgp -m %F
+
+You can call it by different names for different options, notable "pgpk" to
+send someone your public key, or "pgpka" to send the whole keyring.
+Anyway, here's the script.
+
+#!/bin/sh
+
+case `basename $0` in
+	pgpes) opt="-feast" ;;
+	pgps) opt="-staf +clearsig=on" ;;
+	pgpe) opt="-feat" ;;
+	pgpka) pgp -kxa "" pubkey$$
+                (echo '#<text/x-pgp';cat pubkey$$.asc;echo '#') >> $*
+                rm -f pubkey$$.asc
+                exit 0 ;;
+	pgpk)	pgp -kxa $USER pubkey$$
+		(echo '#<text/x-pgp';cat pubkey$$.asc;echo '#') >> $* 
+		rm -f pubkey$$.asc 
+		exit 0 ;;
+esac
+
+if head -20 $* | grep -s '^--------$' ; then
+	sed -ne '1,/^--------$/p' $* > header$$
+	sed -e '1,/^--------$/d' $* > body$$
+else
+	sed -ne '1,/^$/p' $* > header$$
+	sed -e '1,/^$/d' $* > body$$
+fi
+
+to=`sed -ne 's/^[tT]o: //p' header$$`
+
+if [ -n "$to" ] ; then
+	if pgp -kv "$to" 2>&1 | grep -s '^pub' ; then
+		echo Using public key for $to.
+		opt="$opt $to"
+	fi
+fi
+
+(cat header$$;echo '#<text/x-pgp';pgp $opt < body$$;echo '#')  > $*
+rm -f header$$ body$$
+# End of script

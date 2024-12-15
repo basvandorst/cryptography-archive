@@ -1,0 +1,56 @@
+Path: msuinfo!agate!usenet.ins.cwru.edu!magnus.acs.ohio-state.edu!math.ohio-state.edu!zaphod.mps.ohio-state.edu!cs.utexas.edu!not-for-mail
+From: 73277.620@CompuServe.COM (Steve Allen)
+Newsgroups: sci.crypt
+Subject: Triple-DES in stream mode
+Date: 15 May 1993 19:32:06 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 45
+Sender: daemon@cs.utexas.edu
+Message-ID: <930516002726_73277.620_EHB34-1@CompuServe.COM>
+NNTP-Posting-Host: cs.utexas.edu
+
+   I'm looking for some advice about the following code. It's a
+fragment of a program that implements triple-DES in stream mode.
+  I used stream mode because the file size doesn't change. This simplifies
+in-place encryption, which directly overwrites a file (I'm sure to have
+sufficient disk space to work with, and don't need tempfiles).
+  The IV is made from the filename. With the error-propogation code
+(xor64( iv,buf)) that perpetuates the IV, the filename becomes in effect 
+yet another password.
+  My question is this: Is this method OK? To wit, does this:
+Encrypt IV with password 1
+Decrypt IV with password 2
+Encrypt IV with password 1
+XOR text, IV
+constitute good triple-des? Or must I abandon stream-mode encryption and 
+deal with tempfiles and short blocks?
+ 
+ mov64 and xor64 (64-bit mov and xor) have the form mov64(dest,source);
+ 
+   char *buf;
+   while((count=fread(buffer,1,BUFFERSIZE,fp1))>0)
+    {
+      readsize=count;   /* save for file writes */
+      buf=buffer;
+      while((chunksize=min(count,8))>0)         /* do while (buffer) */
+       {
+         mov64(block,iv);      /* move IV to crypt workspace */
+         encrypt_block();      /* encrypt IV       */
+         decrypt_block();      /* decrypt IV       */
+         encrypt_block();      /* encrypt IV       */
+         if(on_decrypt)        /* we're decrypting */
+          xor64(iv,buf);       /* get new IV data  */
+         xor64(buf,block);     /* diddle the text  */
+         if(!on_decrypt)       /* we're encrypting */
+          xor64(iv,buf);       /* get new IV data  */
+         count -= chunksize;
+         buf += chunksize;
+        }
+      if(fwrite(buffer,1,readsize,fp2)!=readsize)
+       {
+         display_pain("Disk full\n");
+         return(-1);    /* fatal error */
+        }
+     }
+-Steve Allen 73277.620@compuserve.com <-please send email to this address!
+

@@ -1,0 +1,30 @@
+From: drtr@ast.cam.ac.uk (David Robinson)
+Subject: Trap recursive includes
+Affects: util.c
+ChangeLog: Trap recursive includes.
+Comments: Recursive includes can occur if the client supplies PATH_INFO data
+          and the server provider uses relative links; as
+          file.html relative to /doc.shtml/pathinfo is
+          /doc.shtml/file.html.
+
+*** mod_include.c.orig	Fri Nov 17 21:33:17 1995
+--- mod_include.c	Mon Dec 11 16:19:03 1995
+***************
+*** 381,386 ****
+--- 381,396 ----
+  		&& (strncmp (rr->content_type, "text/", 5)))
+  	        error_fmt =
+  		  "unable to include potential exec %s in parsed file %s";
++ 
++ 	    if (error_fmt == NULL)
++ 	    {
++ 		request_rec *p;
++ 
++ 		for (p=r; p != NULL; p=p->main)
++ 		    if (strcmp(p->filename, rr->filename) == 0) break;
++ 		if (p != NULL)
++ 		    error_fmt = "Recursive include of %s in parsed file %s";
++ 	    }
+  	    
+  	    if (!error_fmt && run_sub_req (rr))
+  	        error_fmt = "unable to include %s in parsed file %s";

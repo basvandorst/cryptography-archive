@@ -1,0 +1,117 @@
+10 '**** RAGBABY/ENC by Mike Barlow 1985 July 20ab Oct 8 aug 87 end ibm version july 88
+20 'based on a core program by XACT and PHOENIX
+30 GOSUB 5010:PRINT:PRINT TAB(30)"By Mike Barlow, 1985"
+40 CLEAR 3500:DEFINT A-Z:DIM WD$(50),PW$(50):FI$="rb/ptx"
+50 GOSUB 2000  ' get example
+70 AL$="ABCDEFGHIKLMNOPQRSTUVWYZ":NK$="" '24 letter alphabet
+80 '
+   ----> help routine <----
+90 LOCATE 9,33:PRINT"NEED HELP? (Y/N*) ";:LINE INPUT Q$:IF Q$="Y"OR Q$="y"THEN GOSUB 5010:GOTO 100 ELSE LOCATE 9,1:PRINT SPC(79):GOTO 220
+100 LOCATE 7,1:PRINT"     This cipher numbers the letters of each word of the plaintext starting with 1 for the first letter of the first word, 2 for the first letter of the second, etc. ";
+110 PRINT"The numbers go up to 24 and then repeat.":PRINT
+120 PRINT:PRINT TAB(18)"For example, THE RAGBABY CIPHER is numbered
+130 PRINT TAB(18)"             123 2345678 345678.
+140 PRINT:PRINT:PRINT" The 25th word starts at 1 again."
+150 GOSUB 5020 : GOSUB 5010
+160 LOCATE 4,1: PRINT"     A keyword is chosen, from which a key alphabet is made. The keyword may be offset in the alphabet. E.g:
+170 PRINT:PRINT TAB(30) "Keyword: GROSBEAK": PRINT TAB(30) "Offset : 21": PRINT TAB(39)"|":PRINT TAB(5) "Key alphabet: BEAKCDFHILMNPQTUVWYZGROS (J=I and X=W)"
+180 PRINT:PRINT"Each plaintext letter is encoded by finding it in the key alphabet, then moving to the right the designated number of places, and using the letter found there  as the substitute.
+182 PRINT:PRINT TAB(14)"In the example:   THE RAGBABY CIPHER
+183 PRINT TAB(19)"             123 2345678 345678.
+190 PRINT:PRINT"RAG of "+CHR$(34)+"RAGBABY"+CHR$(34)+" starts at 2; find the R in the key alphabet, and move to the   right 2 places = S. Find the A and move 3 = D, and so on."
+195 PRINT:PRINT TAB(7) "The ciphertext starts:   ULC SDBDIHA HPWQID."
+200 GOSUB 5020: GOSUB 5010: LOCATE 10,1
+210 '
+    ----> get keyword, eliminate J,X & duplicate letters <----
+220 PRINT"ENTER KEYWORD OR PHRASE (UPPER CASE, without spaces): ";:LINE INPUT KW$:IF KW$=""THEN KW$=XK$:PRINT KW$:ELSE XK$=KW$
+225 FOR N=1 TO LEN(KW$):ZZ$=ZZ$+CHR$(ASC(MID$(KW$,N,1)) AND 223):NEXT:KW$=ZZ$ 'force upper case
+230 PRINT"ENTER KEYWORD OFFSET (0-23): ";:LINE INPUT OS$:OS=VAL(OS$):IF OS<0 OR OS >23 THEN 230ELSE IF OS$=""THEN OS=XOS:PRINT OS
+240 FOR N=1 TO LEN(KW$)
+250   DU$=MID$(KW$,N,1)          'for each keyword letter
+260   IF DU$="J"THEN DU$="I"     'elim J and X
+270   IF DU$="X"THEN DU$="W"
+280   IF INSTR(NK$,DU$)THEN 300  'has it been used already?
+290   NK$=NK$+DU$                'if not, add to new key
+300 NEXT:KW$=NK$                 'restore variable name
+310 PRINT"Keyword with duplicates removed is "KW$:PRINT
+320 '
+    ----> notch out KW letters from alphabet AL$ <----
+330 FOR N=1 TO LEN(KW$):X=INSTR(AL$,MID$(KW$,N,1)):IF X=0 THEN PRINT"FAULT - TRY AGAIN.":GOTO 220   ' find position of char in alphabet
+340 X$=LEFT$(AL$,X-1):AL$=X$+RIGHT$(AL$,LEN(AL$)-X)' cut it out
+350 NEXT
+360 '
+    ---->  now assemble the key alphabet <----
+370 L=24-LEN(KW$)                       'a little maths
+380 IF OS=0 THEN AL$=KW$+AL$:GOTO 410   'key goes at front
+390 IF OS<=L THEN AL$=LEFT$(AL$,OS)+KW$+RIGHT$(AL$,LEN(AL$)-OS):GOTO 410  '        key goes in middle of AL$
+400  AL$=RIGHT$(KW$,OS-L-1)+AL$+LEFT$(KW$,LEN(KW$)-OS+L+1)'
+                    AL$ goes in middle of key
+410 PRINT"Key alphabet is ";AL$
+420 '
+    ----> enter plaintext <----
+430 PRINT:PRINT"Will you enter the plaintext from <K*>eyboard or <D>isk? ";:LINE INPUT Q$:GOSUB 5010
+435 IF Q$<>"D" AND Q$<>"d"THEN 450 ELSE PRINT:PRINT"Press ENTER for <"FI$">":PRINT"What is the file name? :  ";:LINE INPUT X$:IF X$=""THEN X$=FI$ ELSE FI$=X$
+440 GOSUB 5060
+450 PT$="":LOCATE 23,28:PRINT"(Press ENTER for example)";:LOCATE 5,1:PRINT"Enterthe plaintext (no punctuation, one space between words, 80-150 letters).":Y=CSRLIN:X=POS(0):LINE INPUT PT$
+455 LOCATE 23,1:PRINT SPC(79):IF PT$=""THEN PT$=XPT$:LOCATE Y,X:PRINT PT$
+460 '
+     prepare the plaintext
+470 PRINT:PRINT"Eliminating any punctuation, combining I/J and W/X, and counting the words: "
+480 WC=1:FOR N=1 TO LEN(PT$) ' WC is word counter
+490  X$=MID$(PT$,N,1):X=ASC(X$):IF X>32 AND X<65 THEN 550 'elim punctuation
+500  IF X$="J"THEN X$="I"
+510  IF X$="X"THEN X$="W"
+520  CN$=CN$+X$             'form new text string c/w spaces
+530  IF X=32 THEN WC=WC+1:PRINT"*";:GOTO 550 ' count spaces
+540  WD$(WC)=WD$(WC)+X$     'add letter to word in array
+550 NEXT:PRINT
+560 PRINT:PRINT "Sanitized plaintext is:":PRINT CN$
+570 PRINT:PRINT "There are"WC"words in the text.":GOSUB 5020: GOSUB 5010
+580 '         ---  now encipher it! ---
+585 COLOR 0,7:PRINT "The Plaintext is:":COLOR 7,0:PRINT PT$
+590 MM=0:CT$="":LOCATE 8,1:COLOR 0,7: PRINT "The ciphertext with keyword "KW$" is:":COLOR 7,0:PRINT
+600 FOR M=1 TO WC:MM=MM+1        'for each word
+610  FOR N = 1 TO LEN(WD$(M))    'for each letter
+620    X$=MID$(WD$(M),N,1)       'get the letter
+630    X=ASC(X$)                 'get its #
+640    Y=INSTR(AL$,X$)           'find # in key
+645    IF MM>24 THEN MM=MM-24    'mod 24
+650    Y=Y+MM+N-1:IF Y>24 THEN Y=Y-24*INT(Y/24)'incr the # mod 24
+655    IF Y=<0 THEN Y=Y+24
+660    Y$=MID$(AL$,Y,1)          'get the key letter
+670    PRINT Y$;:CT$=CT$+Y$      'assemble ct$ for storage
+680  NEXT:PRINT" ";:CT$=CT$+" "  'space the words
+690 NEXT
+700 PRINT:FI$="rb/ctx":PRINT:PRINT"Shall I store this ciphertext as <"FI$">? (Y/N*) ";:LINE INPUT Q$:IF Q$="Y"OR Q$="y"THEN GOSUB 5050:PRINT"TEXT STORED AS <"FI$">"
+710 OP$=CT$:GOTO 9260
+720 PRINT:PRINT TAB(16)"Ragbaby encipherment by Mike Barlow on the IBM/AT.":END
+2000 ' --- examples ---
+2010 XPT$="MOCK TURTLE, WE ARE TOLD, "+CHR$(34)+"ONLY TOOK THE REGULAR COURSE"+CHR$(34)+": REELING AND WRITHING, TO BEGIN WITH; AND THEN THE DIFFERENT BRANCHES OF ARITHMETIC- AMBITION, DISTRACTION, UGLIFICATION, AND DERISION."
+2020 XK$="OLDMATH":XOS=21' JA85 E-11
+2030 RETURN
+5000 '   --- misc subs ---
+5010 CLS:PRINT DATE$; TAB(27)"RAGBABY ENCIPHERING PROGRAM":PRINT TAB(27)"===========================":RETURN
+5020 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,28:PRINT"Press <ENTER> to continue ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+5050 OPEN"O",1,FI$:PRINT#1, CT$: PRINT#1, AL$: CLOSE : RETURN
+5060 PRINT"Looking for file "FI$:OPEN "I",1,FI$: INPUT#1,PT$: INPUT #1,AL$:CLOSE:RETURN
+9250 '
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,9500,9500:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255    'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT "RAGBABY encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT OP$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9500 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+9510 LOCATE 23,1:END
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+60000 'Cm printout added; trap for y=0 added at 655.
+65000 SAVE"ragbaby.enc",A
+

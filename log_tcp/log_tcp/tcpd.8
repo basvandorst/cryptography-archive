@@ -1,0 +1,132 @@
+.TH TCPD 8
+.SH NAME
+tcpd \- access control facility for internet services
+.SH SYNOPSIS
+.B /some/where/tcpd [arguments]
+.SH DESCRIPTION
+.PP
+The \fItcpd\fR program can be set up to monitor incoming requests for
+\fItelnet\fR, \fIfinger\fR, \fIftp\fR, \fIexec\fR, \fIrsh\fR,
+\fIrlogin\fR, \fItftp\fR, \fItalk\fR, \fIspray\fR, \fIrusers\fR,
+\fIcomsat\fR and other services that have a one-to-one mapping onto
+executable files.
+.PP
+Optional features are:  access control based on pattern matching,
+remote username lookups with the RFC 931 protocol, and protection
+against hosts that pretend to have someone elses host name.
+.PP
+Requirements are: network daemons should be launched on-demand, e.g. by
+a central process such as the \fIinetd\fR; a syslog(3)-like interface.
+.SH LOGGING
+Connections that are monitored by
+.I tcpd
+are reported through the \fIsyslog\fR(3) facility. Each record contains
+a time stamp, the remote host name and the name of the service
+requested. The information can be useful to detect unwanted activities,
+especially when logfile information from several hosts is merged.
+.SH ACCESS CONTROL
+Optionally,
+.I tcpd
+supports a simple form of access control that is based on pattern
+matching.  The access-control software provides hooks for the execution
+of shell commands when a pattern fires.  For details, see the
+\fIhosts_access\fR(5) manual page.
+.SH HOST NAME VERIFICATION
+The authentication scheme of some protocols (\fIrlogin, rsh\fR) relies
+on host names. Some implementations believe the host name that they get
+from any random name server; other implementations are more careful but
+use a flawed algorithm.
+.PP
+.I tcpd
+verifies the remote host name that is returned by the DNS server
+responsible for the address->name mapping, by looking at the host name
+and address that are returned by the DNS server responsible for the
+name->address mapping. If any discrepancy is detected,
+.I tcpd
+concludes that it is dealing with a host that pretends to have someone
+elses host name.
+.PP
+If the sources are compiled with the \*QPARANOID\*U option,
+.I tcpd
+will drop the connection in case of a host name/address mismatch.
+Otherwise,
+.I tcpd
+just pretends that host name lookup failed when logging the connection
+and consulting the optional access control tables.
+.SH RFC 931
+When RFC 931 lookups are enabled (compile-time option) \fItcpd\fR will
+attempt to establish the name of the remote user. This will succeed
+only if the client host runs an RFC 931-compliant daemon.  Remote user
+name lookups will not work for datagram-oriented connections, and may
+cause noticeable delays in the case of connections from PCs.
+.SH EXAMPLES
+The details of using \fItcpd\fR depend on pathname information that was
+compiled into the program.
+.SH EXAMPLE 1
+This example applies when \fItcpd\fR expects that the original network
+daemons will be moved to a "secret" place.
+.PP
+In order to monitor access to the \fIfinger\fR service, move the
+original finger daemon to the "secret" place and install tcpd in the
+place of the original finger daemon. No changes are required to
+configuration files.
+.SH EXAMPLE 2
+This example applies when \fItcpd\fR expects that the network daemons
+are left in their original place.
+.PP
+In order to monitor access to the \fIfinger\fR service, perform the
+following edits on the \fIinetd\fR configuration file (usually 
+\fI/etc/inetd.conf\fR):
+.nf
+.sp
+.ti +5
+finger  stream  tcp  nowait  nobody  /usr/etc/in.fingerd  in.fingerd
+.sp
+becomes:
+.sp
+.ti +5
+finger  stream  tcp  nowait  nobody  /some/where/tcpd     in.fingerd
+.sp
+.fi
+.PP
+The example assumes that the network daemons live in /usr/etc.
+.PP
+Similar changes will be needed for the other services that are to be
+covered by \fItcpd\fR.  Send a SIGHUP to the \fIinetd\fR(8) process to
+make the changes effective.
+.SH EXAMPLE 3
+In the case of daemons that do not live in a common directory ("secret"
+or otherwise), edit the \fIinetd\fR configuration file so that it
+specifies an absolute path name for the process name field. For example:
+.nf
+.sp
+    ntalk  dgram  udp  wait  root  /some/where/tcpd  /usr/local/lib/ntalkd
+.sp
+.fi
+.PP
+Only the last component (ntalkd) of the process name will be used for
+access control and logging.
+.SH BUGS
+Some UDP (and RPC) daemons linger around for a while after they have
+finished their work, in case another request comes in.  In the
+\fIinetd\fR configuration file these services are registered with the
+`wait\' option. Only the request that started such a daemon will be
+logged. This restriction does not apply to connection-oriented (TCP)
+services.
+.SH FILES
+.PP
+The host access control tables are:
+.PP
+/etc/hosts.allow
+.br
+/etc/hosts.deny
+.SH SEE ALSO
+hosts_access(5), format of the access control tables.
+.SH AUTHORS
+.na
+.nf
+Wietse Venema (wietse@wzv.win.tue.nl),
+Department of Mathematics and Computing Science,
+Eindhoven University of Technology,
+The Netherlands.
+\" @(#) tcpd.8 1.1 92/06/11 22:21:43

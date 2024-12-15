@@ -1,0 +1,121 @@
+###########################################################################
+#									  #
+# 	       Lucas-Lehmer tests as described in \cite{CoLe87}		  #
+#									  #
+#				(Section 4)				  #
+#									  #
+###########################################################################
+
+LucasFindNorm1 := proc(m0, u, a, N)
+
+	local i, m, x;
+
+	m:=m0;
+	for i to 50
+	do
+	  m:=m+1;
+	  x:=LucasNorm1(m, u, a, N);
+	  if(LucasNorm(x, u, a, N)=1)then
+	    lprint(`x=`, x);
+	    break;
+	  fi;
+	od;
+	if(i = 51)then ERROR(`no m found`); fi;
+	RETURN([m, x]);
+
+end:
+
+LucasMultiply1 := proc(x, y, a, N)
+
+	local p0, p1, s0, s1;
+	
+	p0:=x[1] * y[1] mod N;
+	p1:=x[2] * y[2] mod N;
+	s0:=x[1] + x[2] mod N;
+	s1:=y[1] + y[2] mod N;
+	RETURN([p0 + a * p1 mod N, s0 * s1 - p0 - p1 mod N]);
+	
+       end:
+
+LucasMultiply3 := proc(x, y, u, N)
+
+	local p0, p1, s0, s1;
+	
+	p0:=x[1] * y[1] mod N;
+	p1:=x[2] * y[2] mod N;
+	s0:=x[1] + x[2] mod N;
+	s1:=y[1] + y[2] mod N;
+	RETURN([p0 + p1 mod N, s0 * s1 + (u-1) * p1 - p0 mod N]);
+	
+       end:
+
+LucasMultiply := proc(x, y, u, a, N)
+
+	if(u = 0)then RETURN(LucasMultiply1(x, y, a, N));
+		 else RETURN(LucasMultiply3(x, y, u, N));
+	fi;
+
+       end:
+
+LucasSquare := proc(x, u, a, N)
+
+	local s;
+	
+	s:=u * x[2] + 2 * x[1] mod N;
+	RETURN([x[1] * s - 1 mod N, x[2] * s mod N]);
+	
+       end:
+
+# Left-to-right
+LucasExp := proc(x, e, u, a, N)
+
+	local y, n, pow2, lg2;
+
+#	lg2:=trunc(evalf(log(e)/log(2)+1)); # 2**(lg2-1) <= e < 2**lg2
+	lg2:=length(convert(e, binary));
+	pow2:=2**(lg2-1);
+	n:=e-pow2; pow2:=pow2/2;
+	y:=x;
+	while(pow2 >= 1)
+	do
+	  y:=LucasSquare(y, u, a, N);
+#	  lprint(`y^2=`, y);
+	  if n >= pow2 then
+	    y:=LucasMultiply(x, y, u, a, N);
+#	    lprint(`y*x=`, y);
+	    n:=n-pow2;
+	  fi;
+	  pow2:=pow2/2;
+	od;
+	y;
+	
+       end:
+
+LucasNorm1 := proc(m, u, a, N)
+	
+	local den;
+
+	den:=(m*(m+u)-a) mod N;
+	den:=1/den mod N;
+	RETURN([(m^2+a)*den mod N, (2*m+u)*den mod N]);
+	
+       end:
+
+LucasNorm := proc(x, u, a, N)
+
+	x[1]^2 - a * x[2]^2 + x[1] * x[2] * u mod N;
+
+       end:
+
+LucasIsOne := proc(x) evalb((x[1] = 1) and (x[2] = 0)); end:
+
+# Use the GF[p^2] presentation: x^e = (x[1]+T*x[2])^e mod (N, T^2-u*T-a).
+LucasExp := proc(x, e, u, a, N)
+
+	local y;
+
+	y:=Powmod(x[1]+t*x[2], e, t^2-u*t-a, t) mod N;
+	RETURN([coeff(y, t, 0), coeff(y, t, 1)]);
+
+end:
+

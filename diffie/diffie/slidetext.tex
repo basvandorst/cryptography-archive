@@ -1,0 +1,386 @@
+% slidetext.tex - mixed slides and text in several sized and formats.
+
+\input slideborder
+
+\ig{\input /usr/staff/diffie/tex/macros/pageout} % Using \plainoutput
+                                                 % from plain.tex
+
+% The slidetext format mixes slides and text on a page.
+
+%       A---------------------------------------B
+%       |                                       |
+%       |    Left Head          Right Head      |
+%       |   E--------------    --------------F  |
+%       |   |   -------    |  |    <title>   |  |
+%       |   |  | Slide |   |  | - bullet     |  |
+%       |   |  | Title |   |  | - bullet     |  |
+%       |   |   -------    |  |              |  |
+%       |    --------------    --------------   |
+%       |                 1                 2   |
+%       |                                       |
+%       |   a--------------b  i half text   j   |
+%       |   | e----------f |  half text  half   |
+%       |   | |          | |  text  half text   |
+%       |   | |          | |  half text  half   |
+%       |   | g----------h |  text half text    |
+%       |   c--------------d  k half text   l   |
+%       |         <slideno>                     |
+%       |                                       |
+%       |   m text text text text text text n   |
+%       |   text text text text text text       |
+%       |   text text text text text text       |
+%       |   text text text text text text       |
+%       |   text text text text text text       |
+%       |   G text text text                 H  |
+%       |                                       |
+%       |                                       |
+%       |    Left Foot   <pageno>  Right Foot   |
+%       |                                       |
+%       C---------------------------------------D
+
+\newdimen\paperheight   % height of paper: A to C or B to D.
+\newdimen\paperwidth    % width of paper: A to B or C to D.
+
+\newdimen\pageheight    % height of page: E to G or F to H.
+\newdimen\pagewidth     % width of page: E to F or G to H.
+% A page typically holds several slides.
+
+\newdimen\slideheight   % height of page within slide: e to g or f to h.
+\newdimen\slidewidth    % width of page within slide: e to g or f to h.
+
+\newdimen\borderheight  % height of slide border: a to c or b to d.
+\newdimen\borderwidth   % width of slide border: a to c or c to d.
+
+\newdimen\textheight    % height of text annotating slides: m to G
+\newdimen\textwidth     % width of text annotating slides: m to n
+
+\newdimen\halftextwidth % width of text annotating half slides:
+                        % i to j or k to l.
+
+\newdimen\frameheight   % height of frame, whether slide or text
+\newdimen\framewidth    % width of frame, whether slide or text
+
+\newdimen\vershim       % vertical distance between slides
+\newdimen\horshim       % horizontal  distance between slides
+\newdimen\numshim       % distance from bottom of frame to slide number
+
+\newdimen\fullslidewidth \fullslidewidth=7in
+\newdimen\fullslideheight \fullslideheight=8.5 in
+\newdimen\fullborderwidth \fullborderwidth=7.5in
+\newdimen\fullborderheight \fullborderheight=9in
+%\newdimen\fullborderwidth \fullborderwidth=\pagewidth
+%\newdimen\fullborderheight \fullborderheight=\pageheight
+\newdimen\halfslidewidth \halfslidewidth=7in
+\newdimen\halfslideheight \halfslideheight=5.5in
+\newdimen\halfborderwidth \halfborderwidth=7.5in
+\newdimen\halfborderheight \halfborderheight=6in
+
+\newcount\rowlim        % maximum number of rows of slides per page
+\newcount\collim        % maximum number of columns of slides per page
+
+\newcount\colnum        % number of the column in which a slide sits
+\newcount\rownum        % number of the row in which a slide sits
+
+\newbox\rowbox          % box containing slides being assembled into a row
+\newbox\pagebox         % box containing rows being assembled into a page
+
+\newcount\slidecount
+\newcount\contslidecount
+\newtoks\slidetitle
+\newtoks\talktitle
+
+\newcount\oneslidemag
+\oneslidemag=2400  % ratio of oneslide size to sixslide size
+
+% A tiny font used to write date of production, slide number, etc.
+% at the bottom of pages is specified in each of the styles because
+% it would otherwise occur before \magnification and since it
+% is in truepts it would cause a magnification error.
+
+\macromode
+\def\slidestyleinit
+% set all the paramters that are global to a set of slides
+{\font\tinyfont=cmr5_at_5truept
+ \slidecount=0  % reset slide number
+ \colnum=0      % reset column number
+ \rownum=0      % reset row number
+ \pageno=1
+ %? These were previously global, but that doesn't work if they are
+ %? variables rather than macros
+ \textheight=\borderheight
+ \textwidth=\pagewidth
+ \halftextwidth=\borderwidth
+ \hsize=\pagewidth \vsize=\pageheight}
+
+% Slides only:  omit \text and \halftext and the formatting
+% commands \endrow and \endpage.
+
+\def\slidesonly{\long\gdef\text##1{} \long\gdef\halftext##1{}%
+                \gdef\endrow{} \gdef\endpage{}}
+
+
+% One slide per page.
+%? At present this slide is in landscape mode.  A portrait mode slide
+%? could be defined equally easily.
+
+\def\oneslide   % 7 by 9 border in landscape mode
+{\magnification=\oneslidemag
+ \vin=.45in % will be magnified by 2.4 to equal 1.08in
+ \rowlim=1              \collim=1
+ \slideheight=180pt     \slidewidth=240pt
+ \borderheight=210pt    \borderwidth=270pt
+ \vershim=0pt           \horshim=0pt    \numshim=2pt
+ \pageheight=\borderheight      \pagewidth=\borderwidth
+ \voffset=-1truein % Figure from actual top left corner of paper
+ \hoffset=-1truein
+ \paperheight=8.5truein \paperwidth=11truein
+ \gdef\botrighttag
+      {{\tinyfont \the\talktitle\ ---\ \datetime\ --- \slidenum}}%
+
+ \slidesonly{}
+ \let\fullslide=\slide \let\halfslide=\slide
+ \gdef\pageout{{\hsize\paperwidth \vsize\paperheight
+                \shipout\vbox to \paperheight
+                             {\vfill\hbox to \paperwidth
+                                         {\hfill\box255\hfill}\vfill}}%
+               \advancepageno}
+ \gdef\topleftgap{} \gdef\toprightgap{} \def\botleftgap{}
+ \landscapemode
+ \slidestyleinit}
+
+\def\sixslides
+{\vin=.45in
+ \rowlim=3 \collim=2
+ \slideheight=180truept         \slidewidth=240truept
+ \borderheight=210truept        \borderwidth=270truept
+ \vershim=15truept      \horshim=10truept       \numshim=2truept
+ \pageheight=10in       \pageheight=660truept
+ \pagewidth=7.5truein   \pagewidth=550truept
+ \voffset=-.3truein     % Change top margin to .5 in for 9.4 in page
+ \hoffset=-.5truein     % Change left margin to .5 in for 7.5 in page
+ \paperheight=11truein  \paperwidth=8.5truein
+ % This \plainoutput differs from the plain.tex version in moving
+ % the titles a little further from the page proper.  It should be
+ % possible to do this by adjusting \makeheadline and \makefootline
+ \gdef\plainoutput{\ifodd\pageno \hoffset=-.4truein \else
+                                 \hoffset=-.8truein \fi
+                   \shipout\vbox{\makeheadline\vskip2ex
+                                 \pagebody\vskip2ex\makefootline}%
+                   \advancepageno
+                   \ifnum\outputpenalty>-10000 \else\dosupereject\fi}
+ \gdef\pageout{\plainoutput}
+ \gdef\topleftgap{} \gdef\toprightgap{} \def\botleftgap{}
+ \def\endrow{\endarow} \def\endpage{\endapage}
+ \let\fullslide=\realfullslide \let\halfslide=\realhalfslide
+ \portraitmode
+ \slidestyleinit}
+
+\def\fifteenslides
+{\vin=.3in % magnification may not work for this
+ \rowlim=5 \collim=3
+ \slideheight=120truept         \slidewidth=160truept
+ \borderheight=135truept        \borderwidth=180truept
+ \vershim=5truept       \horshim=7truept        \numshim=2truept
+ \pageheight=10in       \pageheight=750truept
+ \pagewidth=7.5truein   \pagewidth=554truept
+ \voffset=-.5truein     % Change top margin to .5 in for 9.4 in page
+ \hoffset=-.6truein     % Change left margin to .5 in for 7.5 in page
+ \paperheight=11truein  \paperwidth=8.5truein
+ \gdef\pageout{\plainoutput}
+ \gdef\topleftgap{} \gdef\toprightgap{} \def\botleftgap{}
+ \def\endrow{\endarow} \def\endpage{\endapage}
+ \let\fullslide=\realfullslide \let\halfslide=\realhalfslide
+ \portraitmode
+ \slidestyleinit}
+
+\def\landscapemode
+{\def\enddoc{\sendtty{}
+             \sendtty{\tab\tab\tab ******************}%
+             \sendtty{\tab\tab\tab *    \tab\tab    *}%
+             \sendtty{\tab\tab\tab *_LANDSCAPE_MODE_*}%
+             \sendtty{\tab\tab\tab *    \tab\tab    *}%
+             \sendtty{\tab\tab\tab ******************}%
+             \sendtty{}
+             \endapage\end}}
+
+\def\portraitmode
+{\def\enddoc{\sendtty{}
+             \sendtty{\tab\tab\tab **********}%
+             \sendtty{\tab\tab\tab *  \tab  *}%
+             \sendtty{\tab\tab\tab *PORTRAIT*}%
+             \sendtty{\tab\tab\tab *  \tab  *}%
+             \sendtty{\tab\tab\tab *\spc\spc MODE \spc\spc*}%
+             \sendtty{\tab\tab\tab *  \tab  *}%
+             \sendtty{\tab\tab\tab **********}%
+             \sendtty{}
+             \endapage\end}}
+
+\def\slidenum
+{\the\slidecount\ifnum \contslidecount>0 {\alph\contslidecount}\fi}
+
+% Two types of large slides.  Not, perhaps, entirely debugged.
+% \fullslide is a full page regardless of the packed mode.
+% \halfslide is two thirds of a page in 6 per page mode.
+
+\long\def\realfullslide
+#1% text of fullslide
+{\endapage
+ \def\frameout{\fullslideout}
+ \frameheight=\fullslideheight \vsize\frameheight
+ \framewidth=\fullslidewidth \hsize\framewidth
+ \output{\frameout}
+ #1 \par\vskip\botskip\eject
+ \endapage}
+
+\def\fullslideout
+{{\global\advance\slidecount by 1
+  \def\borderheight{\fullborderheight}
+  \def\borderwidth{\fullborderwidth}
+  \addframe{\slideborder{\box255}}
+  \sendtty{\tab\tab Full_Slide_No._\the\slidecount
+                    (page_\the\pageno):_\the\slidetitle}}}
+
+\long\def\realhalfslide
+#1% text of halfslide
+{\def\frameout{\halfslideout}
+ \frameheight=\halfslideheight \vsize\frameheight
+ \framewidth=\halfslidewidth \hsize\framewidth
+ \output{\frameout}
+ #1 \par\vskip\botskip\eject}
+
+\def\halfslideout
+{{\endarow \ifnum \rownum>1 \endapage \fi
+  \global\advance\slidecount by 1
+  \def\borderheight{\halfborderheight}
+  \def\borderwidth{\halfborderwidth}
+  \global\advance\rownum by 1_
+  \addframe{\slideborder{\box255}} \endarow}
+  \sendtty{\tab\tab Half_Slide_No._\the\slidecount
+                (page_\the\pageno):_\the\slidetitle}}
+
+\long\def\halftext
+#1% the text
+{\def\frameout{\halftextout}
+ \frameheight=\textheight \vsize\frameheight
+ \framewidth=\halftextwidth \hsize\framewidth
+ \output{\frameout}
+ #1 \par\vfil\eject}
+
+\def\halftextout
+{\addframe{\vbox to \textheight{\vfil\unvbox255\vfil}}}
+
+\long\def\slide
+#1% contents of the slide
+{\contslidecount=0
+ \frameheight=\slideheight \vsize\frameheight
+ \framewidth=\slidewidth \hsize\framewidth
+ \def\frameout{\slideout}
+ \output{\frameout}
+  #1 \par\vskip\botskip\eject}
+
+\def\slideout
+{\global\advance\slidecount by 1
+ \addframe{\slideborder{\box255}}
+ \sendtty{\tab\tab\spc Slide_No._\the\slidecount\spc\spc
+                (page_\the\pageno):_\the\slidetitle}
+ \global\def\frameout{\contslideout}
+ \output{\frameout}}
+
+\def\contslideout
+{\global\advance\contslidecount by 1
+ \addframe{\slideborder{\box255}}
+ \sendtty{\tab Overflow_Slide_No._\the\slidecount
+               \alph{\the\contslidecount}\spc
+               (page_\the\pageno):_\the\slidetitle}}
+
+\long\def\text
+#1% the text
+{\def\frameout{\textout}
+ \frameheight=\textheight \vsize\frameheight
+ \framewidth=\textwidth \hsize\framewidth
+ \output{\frameout}
+ #1 \par\vfill\eject}
+
+\def\textout{\endarow
+               \setbox\rowbox\hbox{\vbox to \textheight{\vfil\unvbox255\vfil}}
+               \endarow
+               \output{{\def\vershim{0pt}\textout}}}
+
+\def\endarow
+   {\global\colnum=0
+    \ifvoid \rowbox \else
+     {\global\advance\rownum by 1
+      \global\setbox\pagebox
+       \vbox{\unvcopy\pagebox
+             \ifvoid \pagebox \else \vskip\vershim \fi
+             \hbox to \pagewidth{\hfil \unhbox\rowbox \hfil}}
+      \ifnum \rowlim=\rownum{\endapage} \fi} \fi}
+
+% From slide routines developed for three column Scientific American
+% article format - Fall 1990
+
+\def\endapage{\endarow \global\rownum=0
+              \ifvoid \pagebox \else \global\output{\pageoutput}
+                                      \global\hsize=\pagewidth
+                                      \global\vsize=\pageheight \fi
+              \unvbox\pagebox \par\vfill\eject}
+
+\def\pageoutput{\pageout
+                \global\output{\frameout}
+                \global\vsize=\frameheight
+                \global\hsize=\framewidth}
+
+\def\addframe
+#1% frame
+{\global\setbox\rowbox
+ \hbox{\unhcopy\rowbox \ifvoid \rowbox \else \hskip\horshim \fi #1}
+ \global\advance\colnum by 1_
+ \ifnum \colnum=\collim {\endarow} \fi}
+
+% Copied in from fifteen-fmt.  Previously used \null\slidetopglue
+\topskip=0pt plus 1fil
+\newskip\botskip \botskip=0pt plus 1fil
+\newskip\titleskip \titleskip=1ex plus .1fil
+
+\def\title
+#1% the title
+{\centerline{\boxit{#1}}
+ \vskip \titleskip
+ \slidetitle=\expandafter{#1}}
+
+\def\enddoc{\endapage\end}
+
+%? \commentary occurs in some files and is intended to be used in
+%? a slidecues form.  \leftlabel and \rightlabel come from Lynn
+%? Price's old versions.  Why they have been defined to do nothing
+%? escapes me.
+\def\commentary#1{} \def\leftlabel#1{} \def\rightlabel#1{}
+
+% copied in from course-fmt.tex - 6 Dec 90
+\def\cit#1#2{}
+
+\newdimen\vin % virtual inch.  This replaces some cases of the old \VU
+\let\VU=\vin  % but not all.  Both should probably be replaced
+              % by `in' and use of the magnify feature.
+
+\endmacromode
+
+% slidetext.tex --- macros to mix slides and text
+% previous version --- spring 1991
+% changed \savetitle to a tokenlist --- 14Sep91
+% changed \savetitle to \slidetitle --- 26Nov91
+% changed \textheight, \textwidth, \halftextwidth to counts --- 26Nov91
+% change \slidebotglue to \botskip --- 1 Jan 92
+% changed \endoc in \oneslide to avoid extra page --- 9Feb92
+% spaces ==> underlines in `LANDSCAPE MODE' in \oneslide --- 9Feb92
+% \title altered to include \expandafter --- 8Mar92
+% added space before --- in tiny print at bottom of oneslide borders - 9Mar92
+
+% \titleglue ==> \titleskip --- 26 Apr 92
+%box255 ==> \unvbox255 in \textout --- 26 Apr 92
+% removed extra grouping in definition of slide --- 26 Apr 92
+% added \s \ss \sss to produce one, two, or three spaces in
+% \sendtty output.  These are defined locally so as not to
+% conflict with the German \ss.  If I could think of the rigth
+% names I would put them in texinit with \tab.
+

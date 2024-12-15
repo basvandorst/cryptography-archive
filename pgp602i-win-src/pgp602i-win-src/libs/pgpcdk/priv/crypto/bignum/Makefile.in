@@ -1,0 +1,117 @@
+#
+# priv/crypto/bignum/
+#
+# $Id: Makefile.in,v 1.12 1998/07/31 22:03:35 hal Exp $
+#
+
+# Ignore post-processed dependencies here
+DEPEND=:
+
+# Architecture-dependent asm code
+.SUFFIXES: .s
+.s.o:
+	$(CC) -c $(CFLAGS) $<
+
+DEFS_sparc=-DBNINCLUDE=bnisparc.h
+OBJS_sparc=bnisparc.o
+
+DEFS_alpha=-DBNINCLUDE=bnialpha.h
+OBJS_alpha=bnialpha.o
+
+DEFS_i386=-DBNINCLUDE=bni80386.h
+DEFS_i486=-DBNINCLUDE=bni80386.h
+DEFS_i586=-DBNINCLUDE=bni80386.h
+DEFS_i686=-DBNINCLUDE=bni80386.h
+OBJS_i386=bni80386.o
+OBJS_i486=bni80386.o
+OBJS_i586=bni80386.o
+OBJS_i686=bni80386.o
+OBJS_i386_aout=bni80386_aout.o
+OBJS_i486_aout=bni80386_aout.o
+OBJS_i586_aout=bni80386_aout.o
+OBJS_i686_aout=bni80386_aout.o
+
+# These come out blank on unknown architectures
+LOCALDEFINES=$(DEFS_@host_cpu@)
+LOCALOBJS=$(OBJS_@host_cpu@@host_obj_type@)
+
+# We use more aggressive optimization options than normal
+CCOPTS=@TUNE@
+
+# The BigNum library in various word sizes
+BN16OBJS = bn16.o bni16.o bninit16.o
+BN32OBJS = bn32.o bni32.o bninit32.o
+BN64OBJS = bn64.o bni64.o bninit64.o
+# This one auto-detects
+BN00OBJS = bn00.o bni00.o
+
+# If you don't know what size to use, use BN00OBJS.
+BNOBJS = $(BN00OBJS)
+
+# Size-independent auxiliary files.
+BNAUXOBJS = bn.o bnimem.o bnsieve.o bnprime.o bngermain.o bnjacobi.o \
+	bnprint.o bnlegal.o pgpBigNum.o
+
+# Auto-generated aux sources
+BNSOURCES = bni32.c bni32.h bn32.c bn32.h bninit32.c \
+	bni64.c bni64.h bn64.c bn64.h bninit64.c pgpBigNum.c
+bnsources: $(BNSOURCES)
+
+LOCALINCLUDES = -I.
+OBJS = $(BNAUXOBJS) $(BNOBJS) $(LOCALOBJS)
+
+# The interfaces exported from this module
+PRIVHDRS = bn.h bnprime.h bngermain.h
+
+INSTALLLIBS = $(BNLIB)
+LIBTARGET = $(BNLIB)
+LIBTDEPS = DONE
+
+clean::
+	$(RM) $(OBJS) $(BN00OBJS) $(BN16OBJS) $(BN32OBJS) $(BN64OBJS)
+
+very-clean:: clean
+	$(RM) $(BNSOURCES)
+
+depend:: bnsources
+
+all:: DONE
+
+### Some manual dependencies needed by the bignum library
+# The 16-bit versions of the code are the master versions; all else is
+# generated from them.  (You didn't know that suffixes for suffix rules
+# didn't have to begin with a period, did you?  It's portable.)
+
+.SUFFIXES: 16.c 16.h 32.c 32.h 64.c 64.h
+16.c32.c:
+	sed -e s/32/64/g -e s/16/32/g $< > $@
+
+16.h32.h:
+	sed -e s/32/64/g -e s/16/32/g $< > $@
+
+16.c64.c:
+	sed -e s/32/128/g -e s/16/64/g $< > $@
+
+16.h64.h:
+	sed -e s/32/128/g -e s/16/64/g $< > $@
+
+## Dependencies ##
+### Bignum library dependencies
+# The bignum library does a lot of preprocessor trickery with
+# <limits.h> and conditional #includes.  Here are all the dependencies
+# that might happen, even though only some of them will be used on any
+# given platform.
+bni00.o: bni16.c bni32.c bni64.c bnlegal.h
+bn00.o: bn16.c bn16.h bni16.h bn32.c bn32.h bni32.h bn64.c bn64.h bni64.h \
+	bninit16.c bninit32.c bninit64.c
+bni16.o: bni.h bni16.h bnimem.h bnlegal.h
+bni32.o: bni.h bni32.h bnimem.h bnlegal.h
+bni64.o: bni.h bni64.h bnimem.h bnlegal.h
+bninit16.o: bn.h bn16.h
+bninit32.o: bn.h bn32.h
+bninit64.o: bn.h bn64.h
+bn16.o: bni.h bnimem.h bn.h bni16.h bn16.h
+bn32.o: bni.h bnimem.h bn.h bni32.h bn32.h
+bn64.o: bni.h bnimem.h bn.h bni64.h bn64.h
+bnsieve.o: bn.h bnsieve.h
+bnprime.o: bnprime.h bn.h bnsieve.h

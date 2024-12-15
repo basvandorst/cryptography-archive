@@ -1,0 +1,203 @@
+Path: msuinfo!netnews.upenn.edu!newsserver.jvnc.net!yale.edu!qt.cs.utexas.edu!cs.utexas.edu!sun-barr!ames!olivea!decwrl!waikato.ac.nz!comp.vuw.ac.nz!cavebbs!tornado!sai
+From: sai@tornado.welly.gen.nz (Simon McAuliffe)
+Newsgroups: sci.crypt,alt.security.pgp
+Subject: The Sidelnikov Saga... Now he's wrong again.
+Message-ID: <D0F1XB1w165w@tornado.welly.gen.nz>
+Date: 26 Jan 93 11:52:00 GMT
+Organization: Tornado BBS, Wellington, New Zealand.
+Lines: 193
+Xref: msuinfo sci.crypt:13245 alt.security.pgp:1287
+
+A while ago, I wrote:
+
+> It looks like _THIS_IS_ what Dr. Sidelnikov also did, and it means one
+> of three things:  (ranked in order of likelihood as I see it)
+>
+>    1)  Both Dr. Sidelnikov and I stuffed up.
+>
+>    2)  This correlation test isn't appropriate for this situation.
+>
+>    3)  Something funny is going on and either the RNG is badly
+>        implemented or IDEA has a problem.
+>
+> Number 1 sounds like the most likely and number 3 is just plain scary.
+
+After looking at things more closely, I have decided that both number 1
+and number 2 are true.  This is not to say that a correlation test is
+not suitable, but that the correlation test performed was meaningless.
+
+The correlation formula posted recently makes good sense, but looking at
+the formula for the mean, you can't help feeling something is wrong.
+
+                    1
+           mu  =  -----,  n >= 2
+                  n - 1
+
+Correlation is basically a fairly simple idea.
+
+            |       .     .        |                 .    |         .
+            | .  .            .  . |                      |  .
+            | .  . .          . .  |               .   .  |      .
+         . .|  .                .  | .                    |.
+  ----------+----------  ----------+----------  ----------+----------
+    .  .   .|                      |  . .        .  .   . |       .
+   .     .  |                      |..      .         .   | .
+     .      |                      |  .     .      .      |     .
+            |                      |     .                |
+
+     Correlation ~1         Correlation ~-1        Correlation ~0
+
+Very roughly and informally, when the data is plotted as above
+correlated data tends to form fuzzy lines.  A positive gradient gives a
+positive correlation and a negative gradient gives a negative
+correlation.  In our situation the correlation is close to 0, we are
+just trying to decide if it is close enough.
+
+Okay, back to the formula for the mean.  Substituting n = 2 into the
+equation yields mu = 1.  Really?!  Lets now imagine placing two points
+on our graph.  The correlation measures how good a line forms between
+all the points.  With only two points there is a perfect line.  Given
+any two random (continuous) points connected by a line we must either
+have a positive gradient or a negative gradient (assuming a probability
+of 0 of them being horizontally or vertically adjacent).  If the
+gradient is positive we have a correlation of 1, and if the gradient is
+negative we have a correlation of -1, therefore the expected value
+(mean) of the correlation for n = 2 is
+
+     mu = P(gradient is -ve) * -1 + P(gradient is +ve) * -1
+
+        = -0.5 + 0.5
+
+        = 0
+
+Not only does the working above show this to be true, but intuitively
+you would expect random numbers to be completely uncorrelated and
+therefore have a correlation value of 0.  Why then does the formula give
+a value of 1?  This is the maximum possible value of correlation, how
+can we have a maximum as the mean?!
+
+This problem is also true for n = 3, n = 4 and upwards, it just becomes
+less ridiculous for larger n.
+
+Correlation values range from -1 to +1.  A formula which is always
+positive must be a little worrying in this case.  Should the correlation
+be biased towards positive?  Why so?  Why not negative? The random
+variables are supposedly from a uniform distribution. The mean simply
+_MUST_ be 0 for a truely random source.  Not just "nearly random."  For
+any given random sample, we won't actually get a value of 0, but the
+expected value (the mean) is _EXACTLY_ 0. If this were not true, there
+would never really be any random numbers.
+
+So I think we can assume that the given equation is not really what it
+was intended to be.  I don't know what Knuth's book really says because
+I don't have it, but perhaps there was something lost in the posting of
+it?
+
+If we take the square of the correlation values, then the mean variation
+from 0 seems to be roughly equal to this function.  This hasn't been
+tested of course, but there is a tendency there.  Perhaps then, this is
+what the equations are (the mean deviation from the mean of the squared
+correlation).  That's not the impression I got from the posting.  Never
+mind, in any case it isn't particularly useful.
+
+I now know why my last test gave such suprising results.  Time to try a
+different approach.
+
+We can still use the correlation data obtained earlier (see my last
+post).  Following is a list of the correlation values I used last time.
+These values are still valid as they do not involve the dubious
+correlation mean and standard deviation.  Each correlation value is
+taken from an independent sample of 1048576 bytes (524288 byte pairs).
+
+    -0.000151
+     0.001282
+    -0.001413
+     0.001116
+     0.001013
+    -0.002072
+     0.000340
+    -0.001034
+    -0.001972
+    -0.000230
+     0.000508
+    -0.000425
+     0.002383
+    -0.001605
+     0.000506
+     0.002695
+    -0.001196
+     0.000450
+     0.000016
+     0.002822
+
+We now wish to construct a hypothesis test with the null hypothesis
+                  _
+              H0: x  =  mu   (ie the data is random)
+
+and the alternative
+                  _
+              H1: x =/= mu   (the data is _not_ random)
+
+
+The test statistic is,
+                         _
+                         x - mu
+               t  =  -------------
+                      s / sqrt(n)
+                _
+where the mean, x is
+                  _
+                  x = 0.0001517
+
+and the sample standard deviation, s is
+
+                  s = 0.001463
+
+As mentioned above, the mean correlation, mu is 0 for random data.
+
+So we now have,
+
+            t  =          0.0001517
+                   ---------------------
+                    0.001463 / sqrt(20)
+
+               =    0.4634
+
+This test statistic should approximate a t distribution with n - 1 = 19
+degrees of freedom.  So, to test H0 for truth at the alpha = 5% level,
+we require that
+
+               0.4634  <   t      (19)
+                            0.05/2
+
+        =>     0.4634  <   2.093
+
+Which is obviously true, so at the 5% level we do not have enough
+evidence to reject H0.  In fact, for this test we have an observed
+significance level of 64.8% so we can clearly see that H0 cannot be
+rejected and we can safely assume that the data is indeed random[ish]
+(at least as far as a contiguous byte correlation test is concerned).
+
+Of course what I have done here does not show that the random numbers
+are "cryptographically strong" it only shows that Dr. Sidelnikov's claim
+of "strong correlation between contiguous bytes" is false. He probably
+made the same mistake I made earlier!  There's nothing to say I didn't
+make more mistakes of course.  It wouldn't suprise me at all.  That's
+why you're here - to find my mistakes. :)
+
+There may still be correlation between other bits.  I believe somebody
+is working on this area as we speak however.  There may also be other
+weaknesses in IDEA which result in weak random numbers. I imagine some
+people are working in this area too.
+
+Anyway, I hope this is of more interest than my last balls-up.  And I
+hope that this isn't another one...  :-)
+
+
+Disclaimer:  As I said in my last post, I am not a statistician
+             by any stretch of the imagination.  Don't take what
+             I say as gospel.
+
+
+    Sai  (e-mail sai@tornado.welly.gen.nz)
+         (s-mail PO Box 3598 Wellington, New Zealand)

@@ -1,0 +1,148 @@
+
+
+
+                       DES.C, 3DES.C, AND DES486.ASM
+
+     These are high-speed, 486-only implementations of the Data Encryption 
+Standard (DES) for IBM pc clones running DOS. They may over-write the 
+original files, or they may send the output to the same filenames on 
+another path. Default is to over-write. 
+     DES.EXE uses Stream Cipher mode with IV/Ciphertext Feedback, which 
+helps hide patterns in repetitive data.
+     3DES.EXE is similar, but uses three full rounds of DES with two 
+passwords. The procedure is to encrypt with password 1, decrypt with 
+password 2, re-encrypt with password 1. This procedure gives much higher 
+security. You'll note that if password 1 is set the same as password 2, 
+3DES is equivalent to regular DES.
+     The assembly source is designed to be used with C. I used Turbo 
+Assembler and Turbo C to develop this code.
+
+     Usage: DES -c|d [-oPATH] [-h] [password] filespec.
+     -c crypt (encrypt)
+     -d decrypt
+     -o output path (optional)
+     -h hide password input (optional)
+     For DES, but not for 3DES, password may be optionally entered on the 
+command line.
+
+     You must specify -c (for crypt) or -d (for decrypt).
+     The default action of DES.EXE is to over-write the original file. To 
+preserve the original, and make a new file of the same name on a new path, 
+use the -o (output) option. For example, 'DES -c -od:\temp\ password 
+myfile' will encrypt myfile to d:\temp\myfile. You can't change the name, 
+only the path. THERE MUST BE NO SPACES BETWEEN "-o" AND THE PATH.
+     Wildcards are permissible in the filespec. 'DES -d "Better Angels of 
+our Nature" *.dbf' decrypts all .dbf files.
+
+                            PASSWORD SELECTION:
+     You have 4 options for passwords. 
+     If you simply type in text, it will be used more or less verbatim. 
+Characters after the first 8 will be combined with the first 8 bytes.
+     If you type the character '#', followed by text, the password will be 
+an MD5 hash of the text. For example, 'DES -c "#I love the lovely bully" 
+myfile' will use the MD5 hash of 'I love the lovely bully' as the password. 
+(Note: an MD5 hash is 16 bytes. DES simply combines the 1st 8 with the 2nd 
+8 to form the 8-byte password.)
+     It's also possible to use a file as a source for a password. To do 
+this,  use the character '@' or '!' and a filename, possibly followed by a 
+comma and an offset value, for the password. F'rinstance, 
+"DES -c @hidstuff,1025 myfile" takes 8 bytes for the password from hidstuff 
+starting at the 1025th byte. The offset is optional, and defaults to 0.
+     If you use '!' instead of '@' as the first character, the 8 bytes 
+taken from the file will be DES decrypted using a second password, for 
+which you'll be prompted. The "-h" switch will hide the input for this 
+password also. 
+     Example: "DES -c -h !b:secrets *.dbf" will encrypt all .dbf files. 
+You'll be prompted for an auxiliary password. Its input will be hidden, and 
+it will be used to decrypt the first 8 bytes of the file b:secrets. Those 8 
+decrypted bytes will be used as the password for the .dbf files. 
+     Another example: "3DES -c myfile" will triple-encrypt myfile. If you 
+enter !c:\command.com,102 at the password prompt, you'll be prompted for an 
+
+
+
+
+
+
+auxiliary password. It'll be used to decrypt the 8 bytes at offset 102 in 
+the file c:\command.com. Those 8 bytes will form the first password. Then 
+you'll be prompted for the second password-- if you enter, for example, 
+"Stiffen the sinews, conjure up the blood," that text will be mashed down 
+to the 8 bytes that form the second password.
+     For DES (not for 3DES), the password may be specified on the command 
+line. If it isn't specified on the command line, you'll be prompted for it. 
+If you want the password concealed on the terminal, use the "-h" option 
+(for 'hide'), and asterisks will be echoed back instead.
+     Ultimately, the password is reduced to 8 bytes. If your password 
+doesn't come from a file, please feel free to specify a longer password: 
+the extra characters are mashed into the first 8. Long passwords are 
+recommended. 
+     To specify a multi-word password on the command line, use quotes. E.g. 
+DES -c "de tongues of de mans is be full of deceits" *.asp. If you let DES 
+prompt for the password, don't use quotes. For example, 'DES -c 
+"break up their drowsy grave" myfile' puts the password on the command 
+line. If you just type 'DES -d myfile', when you're prompted for the 
+password, don't type the quotes. Just type break up their drowsy grave.
+     To help see what the password ends up looking like, use password.exe, 
+which displays a password. Type "password password" or 
+"password @filename<,offset>" or "password !filename<,offset>" or 
+"password #password" to see what 8 bytes end up as your password. 
+     You can type "DES" or "3DES" with no arguments at the dos prompt for 
+help with password usage.
+
+     The DES algorithm specifies how to encrypt or decrypt 8 bytes of data 
+at a time. It's called a block cipher because it operates on a block of 
+data. There are many ways to implement a block cipher in a program-- 
+DES.EXE uses Stream Cipher Mode with IV/Ciphertext feedback. This kind of 
+feedback gives Error Propogation-- that is, an error in any bit of the 
+cryptotext cascades and propogates all the way to the end of the file, 
+blasting the decryption. In addition, DES.EXE uses a second, internal 
+password made from the filename. What all this means to you is this: if you 
+encrypt a file, then change its name, it is unrecoverable even with the 
+right password. To successfully decrypt it you have to rename it back to 
+its original name first. For instance, to more securely encrypt a .pcx 
+graphics file called graphic.pcx, first rename it to graphic.tif. Then use 
+DES.EXE to encrypt that file, then rename it back to graphic.pcx. Anyone 
+attacking that file without knowing to rename it, is outa luck. The only 
+drawback is that you have to remember the changed name as well, or you're 
+the one outa luck.
+
+     To use this DES486 code in your C programs you need to: declare an 8-
+byte block for your password and put your password in it. Then call 
+schedule(password,keytbl) to set up the key schedule. Please note that for 
+regular DES there is one keytable (called keytbl), but for 3DES there are 
+two (en_keytbl and de_keytbl). Then you may encrypt_block() or 
+decrypt_block() 8 bytes at a time in the supplied space unsigned char 
+block[8]. You'll need to assemble des486.asm and table.asm and link them 
+with your C code (being sure to use the /mx and /3 options). Use the small 
+model.
+     The password is the only space required by DES486 which it doesn't 
+supply itself.
+     The included makefile (DES.MAK) will do all this automatically. 
+     If you are having trouble grokking the DES486.asm algorithms, have a 
+look at maketabl.c, the program that precomputes the tables.
+
+
+
+
+
+
+
+     My DES486.ASM owes a big debt of gratitude to Phil Karn, whose ideas 
+on combining the E, S and P tables led to the biggest single speed 
+increase.
+     My knowledge of DES started with Al Stevens's programs in his DDJ 
+columns of Sept. and Nov. 1990. (The Sept. version is busted)
+     Thanks to Allen Wyatt for his asm module CPU, which returns the cpu 
+type of the current machine.
+     The timing code is lifted almost verbatim from IDEA.C in Phil 
+Zimmerman's PGP21, which also supplied some of the stream-cypher algorithm.
+     MD5 is the RSA Data Security, Inc. MD5 Message-Digest Algorithm. 
+Please see the file "MD5.C" for licensing details.
+     I can be reached as Steve Allen on CompuServe 73277,620 (internet: 
+73277.620@compuserve.com). Feel free to use this software in a non-
+commercial environment, and to distribute it within the United States. 
+Please be sure my name is associated with it.
+
+
+

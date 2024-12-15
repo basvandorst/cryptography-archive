@@ -1,0 +1,86 @@
+10 '*** MYSZKOW.ENC *** MYSZKOWSKI ENCIPHERING PROGRAM BY M.Barlow Nov 1984 mod Oct 27 1985 aug 87; ibm version aug 88a
+30 '
+40 KEY OFF:CLS:CLEAR:DEFINT A-Z              'housekeeping
+50 GOSUB 620                                 'load example
+60 '
+                    ---- start here ----
+70 CLS:PRINT DATE$ TAB(28)"* MYSZKOWSKI ENCIPHERMENT *":PRINT TAB(30)STRING$(23,"-")
+80 PRINT:PRINT TAB(34)"By Mike Barlow"
+85 '
+90 PT$="":PRINT:PRINT"Enter the plaintext (either case, with or without spaces, but no punctuation,   max 240 chars): ";:LINE INPUT PT$:PRINT
+100 IF PT$=""THEN PT$=XP$
+105 LOCATE 6,1:FOR N=1 TO 3:PRINT SPC(79):NEXT:LOCATE 5,1:COLOR 0,7:PRINT "The Plaintext is:":COLOR 7,0: PRINT PT$
+110 GOSUB 510                     'delete blanks in plaintext
+120 LP=LEN(P$):CC$="   ("+RIGHT$(STR$(LP),LEN(STR$(LP))-1)+" letters).":PRINT CC$:PT$=PT$+CC$                     'add char count
+130 '
+135 LL=LP/15:HL=LP/12             'ACA limits
+140 KW$="":PRINT:PRINT"Enter the keyword (UPPER CASE; ACA limits with this text"LL"-"HL"chars): ";:X=POS(0):Y=CSRLIN:LINE INPUT KW$
+150 IF KW$=""THEN KW$=XK$:LOCATE Y,X:PRINT KW$
+160 LK=LEN(KW$):IF LK>9 THEN PRINT"KEYWORD TOO LONG. TRY AGAIN.":GOTO 140
+170 IF ASC(MID$(KW$,2,1))>96 THEN PRINT"UPPER CASE PLEASE. TRY AGAIN.":GOTO 140
+180 GOSUB 430                     'get pattern of KW$
+190 NB=-INT(-LP/LK)               'NB is # of blocks of text
+200 DIM P$(NB),OP$(NB)
+205 '
+216 PRINT:PRINT "Pattern = "PA$"
+220 FOR N=1 TO NB: P$(N)=MID$(P$,1+(N-1)*LK,LK): NEXT
+230 PRINT
+250 COLOR 0,7:PRINT "The Ciphertext is:":COLOR 7,0:PRINT
+260 '
+    ---- get posn numbers for same pattern # and repeat for each block ----
+270 M=1:N=1:K=0             ' M is block #, N is pattern #, K is # of same pattern #s
+280 K=K+1:X=INSTR(PA$,RIGHT$(STR$(N),1)): IF X=0 THEN 290ELSE MID$(PA$,X,1)="*":X(K)=X:GOTO 280
+290 K=K-1: IF K=0 THEN 350
+300 OP$(M)="": FOR J=1 TO K: OP$(M)=OP$(M)+MID$(P$(M),X(J),1): NEXT
+310 OP$=OP$+OP$(M)
+320 M=M+1:
+    IF M=NB+1 THEN 330ELSE 300
+330 N=N+1:M=1:K=0:GOTO 280
+340 '
+                   ---- print in fives ----
+350 OQ$="":FOR N=0 TO-INT(-LP/5)
+360    X$= MID$(OP$,1+N*5,5)+"   ":OQ$=OQ$+X$:PRINT X$;
+370 NEXT
+380 OP$=OQ$:GOTO 9260
+430 '
+          ---- conv keyword KW$ into pattern PA$ ----
+440 PA$=KW$:N=1:M=1          'N is alpha #, M is # of different alphas.
+450 K=K+1: Y$=CHR$(64+N): X=INSTR(PA$,Y$): IF X=0 THEN 460ELSE MID$(PA$,X,1)=RIGHT$(STR$(M),1):RC=RC+1: IF RC=LK THEN 490ELSE 450   ' RC counts # of replacements of chars in PA$ by numbers.
+460 K=K-1:IF K=0 THEN 480ELSE 470
+470 M=M+1
+480 K=0:N=N+1:GOTO 450
+490 RETURN
+500 '
+           ---- eliminate blanks in plaintext ----
+510 P$=""
+520 FOR N=1 TO LEN(PT$) 
+530  X$=MID$(PT$,N,1)
+540  IF X$=" "THEN 560
+550  P$=P$+CHR$(ASC(X$) AND 223)  'force upper case
+560 NEXT:RETURN
+620 '
+                    ----  examples ----
+630 XP$="INCOMPLETE COLUMNAR WITH PATTERN WORD KEY AND LETTERS UNDER SAME NUMBER TAKEN OFF ACROSS":XK$="BANANA":XS$="ACA&U p29"
+640 XP$="HAVE YOU NOTICED THAT THE EARLY BIRDS GET THE MORNING WORMS EVERY TIME":XK$="YOYOS":XS$="M.Barlow"
+650 RETURN
+9250 '
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,9500,9500:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255           'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT  "MYSZKOWSKI encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT OP$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9500 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+9510 LOCATE 23,1:END
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+60000 ' Cm printout added Oct 1989, unspaced output option removed in 230/240 Oct 11 1989
+65000 SAVE"myszkow.enc",A
+

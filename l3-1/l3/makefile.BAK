@@ -1,0 +1,93 @@
+GMPDIR=../gmp-1.3.2/
+GMPLIB=libgmp.a
+#GMPDIR=../fgmp/
+#GMPLIB=gmp.o
+INSTDIR=/usr/local/bin
+# use these for debugging
+#
+#CFLAGS=-g -I$(GMPDIR)  -DDEBUG -v
+#LFLAGS=-g
+
+CFLAGS=-O -I$(GMPDIR) -I/usr/include # -DSHORTNAMES # -DPCBC
+LFLAGS=-s
+CC=cc
+LOBJS=lucas.o prandom.o md5.o d3des.o misc.o idea.o
+RANLIB=ranlib
+
+all: vsign sign decrypt encrypt genkey md5 chpwd prv2pub ssk vfk mg prvdump
+
+libl3.a: $(LOBJS)
+	rm -f libl3.a;	ar q libl3.a $(LOBJS); $(RANLIB) libl3.a
+
+mg: mg.o libl3.a
+	$(CC) $(LFLAGS) -o mg mg.o libl3.a $(GMPDIR)/$(GMPLIB)
+vfk: vfk.o libl3.a
+	$(CC) $(LFLAGS) -o vfk vfk.o libl3.a $(GMPDIR)/$(GMPLIB)
+prvdump: prvdump.o libl3.a
+	$(CC) $(LFLAGS) -o prvdump prvdump.o libl3.a $(GMPDIR)/$(GMPLIB)
+ssk: ssk.o libl3.a
+	$(CC) $(LFLAGS) -o ssk ssk.o libl3.a $(GMPDIR)/$(GMPLIB)
+chpwd: chpwd.o libl3.a
+	$(CC) $(LFLAGS) -o chpwd chpwd.o libl3.a $(GMPDIR)/$(GMPLIB)
+md5: md5.o md5driver.o libl3.a
+	$(CC) $(LFLAGS) -o md5 md5driver.o libl3.a $(GMPDIR)/$(GMPLIB)
+vsign: vsign.o libl3.a
+	$(CC) $(LFLAGS) -o vsign vsign.o  libl3.a $(GMPDIR)/$(GMPLIB)
+sign: sign.o libl3.a
+	$(CC) $(LFLAGS) -o sign sign.o  libl3.a $(GMPDIR)/$(GMPLIB)
+decrypt: decrypt.o libl3.a
+	$(CC) $(LFLAGS) -o decrypt decrypt.o libl3.a $(GMPDIR)/$(GMPLIB)
+encrypt: encrypt.o libl3.a
+	$(CC) $(LFLAGS) -o encrypt encrypt.o libl3.a $(GMPDIR)/$(GMPLIB)
+genkey: genkey.o libl3.a
+	$(CC) $(LFLAGS) -o genkey genkey.o libl3.a $(GMPDIR)/$(GMPLIB)
+prv2pub: prv2pub.o libl3.a
+	$(CC) $(LFLAGS) -o prv2pub prv2pub.o libl3.a $(GMPDIR)/$(GMPLIB)
+rtest: prandom.c libl3.a
+	$(CC) -DTEST $(LFLAGS) -o rtest prandom.c libl3.a $(GMPDIR)/$(GMPLIB)
+luctest: lucas.c lucas.h
+	$(CC) -I$(GMPDIR) -DTEST -g -o luctest lucas.c $(GMPDIR)/$(GMPLIB)
+luct2: lucas.c lucas.h
+	$(CC) -I$(GMPDIR) -DTEST2 -g -o luct2 lucas.c $(GMPDIR)/$(GMPLIB)
+luct3: lucas.c lucas.h
+	$(CC) -I$(GMPDIR) -DTEST3 -g -o luct3 lucas.c $(GMPDIR)/$(GMPLIB)
+
+clean:
+	(cd utils && make clean)
+	(cd prencode && make clean)
+	rm -f vsign sign decrypt encrypt genkey *.o core cscope.out test.pub test.prv md5 prv2pub chpwd rtest vfk ssk luctest luct2 luct3 mg libl3.a prvdump
+
+signdist: 
+	@rm -f ./MANIFEST
+	@find . -type f -print | sort | xargs md5 >./MANIFEST
+	@what lucas.c >>./MANIFEST
+	@echo 'this file contains the md5 hash of the files in L3' >>./MANIFEST
+	@echo 'the file MANIFEST.sig should contain a valid signature' >>./MANIFEST
+	@echo ' which can be verified via' >> ./MANIFEST 
+	@echo ' vsign mch3 MANIFEST.sig <MANIFEST ' >>./MANIFEST
+	@date >>./MANIFEST
+	sign mch3 <./MANIFEST >MANIFEST.sig
+
+install: all
+	(cd utils && make install INSTDIR=$(INSTDIR) )
+	(cd prencode && make install INSTDIR=$(INSTDIR) )
+	install -c -m 0755 encrypt $(INSTDIR)
+	install -c -m 0755 decrypt $(INSTDIR)
+	install -c -m 0755 vsign $(INSTDIR)
+	install -c -m 0755 sign $(INSTDIR)
+	install -c -m 0755 genkey $(INSTDIR)
+	install -c -m 0755 md5 $(INSTDIR)
+	install -c -m 0755 chpwd $(INSTDIR)
+	install -c -m 0755 prv2pub $(INSTDIR)
+	install -c -m 0755 ssk $(INSTDIR)
+	install -c -m 0755 vfk $(INSTDIR)
+	install -c -m 0755 mg $(INSTDIR)
+	install -c -m 0755 prvdump $(INSTDIR)
+	cd $(INSTDIR) ; rm -f unmg ucat ; ln mg unmg ; ln mg ucat
+
+lucas.o: lucas.c lucas.h
+prandom.o: prandom.c
+md5.o: md5.c
+d3des.o: d3des.c
+genkey.o: genkey.c
+idea.o: idea.c

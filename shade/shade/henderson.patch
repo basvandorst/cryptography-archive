@@ -1,0 +1,58 @@
+Subject: shade
+
+I pulled this off your archive a while ago, and have played around
+with it some.
+
+Interestingly enough (maybe), I needed to patch it to work on an IBM 
+RS/6000 (AIX 3.2, native compiler). Basically, the encoding was 
+screwing up, so if I encoded/split a file with -u, I couldn't decode it. 
+
+I thought that you might want this. 
+
+Mark
+
+apply with patch -l
+
+*** uucode.c~   Wed Mar 17 13:45:07 1993
+--- uucode.c    Wed Mar 17 13:57:52 1993
+***************
+*** 18,24 ****
+   * stuff on the line. n is normally 45 and uu_size(45) ==
+   * 62.
+   */
+! #define uue(c) ((c)?(c)+' ':'`')
+  #define uuee(out,v) c = (v); (out) = uue(c);
+  void uue_line( char *out, UBYTE *in, ULONG len)
+  {
+--- 18,24 ----
+   * stuff on the line. n is normally 45 and uu_size(45) ==
+   * 62.
+   */
+! #define uue(c) ((unsigned char)((c)?((c)&077)+' ':'`'))
+  #define uuee(out,v) c = (v); (out) = uue(c);
+  void uue_line( char *out, UBYTE *in, ULONG len)
+  {
+***************
+*** 25,34 ****
+      int i; UBYTE c;
+      uuee( *out++, len)
+      for (i=0;i<len;i+=3) {
+!         uuee( *out++,                     ((*in)>>2))
+!         uuee( *out++, (((*in++)& 3)<<4) + ((*in)>>4))
+!         uuee( *out++, (((*in++)&15)<<2) + ((*in)>>6))
+!         uuee( *out++, ( (*in++)&63    )             )
+      }
+      *out++ = '\n';
+      *out++ = '\0';
+--- 25,35 ----
+      int i; UBYTE c;
+      uuee( *out++, len)
+      for (i=0;i<len;i+=3) {
+!       uuee( *(out++), *in >> 2);
+!       uuee( *(out++), ((*in << 4) & 060 | (*(in+1) >> 4) & 017));
+!       uuee( *(out++), ((*(in+1) << 2) & 074 | (*(in+2) >> 6) & 03));
+!         uuee( *(out++), ( (*(in+2))&077    )             )
+!       in+=3;
+      }
+      *out++ = '\n';
+      *out++ = '\0';

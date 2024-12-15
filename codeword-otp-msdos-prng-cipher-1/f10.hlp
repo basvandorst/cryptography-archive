@@ -1,0 +1,698 @@
+ F10 Procs.  Overview.                                              OTP V1.1
+
+ Contents.
+
+ 1.  General Discussion.
+ 2.  Screen Layout and Terminology
+ 3.  Using the Keyboard
+ 4.  File Access.
+ 5.  Procedures (Encrypting for Storage).
+ 6.  Protocols (Encrypting for transmission).
+ 7.  Some Important Numbers.
+
+ 1.  General Discussion ------------------------------------------------------
+
+ OTP V1.1 translates (encrypts or decrypts) files using an implementation of
+ the Vernam cipher, also known as a one time pad.  A special random number
+ generator is used to create a key that is the same size as the file being
+ translated.  As an example, a 72,376 byte file is encrypted using a 72,376
+ byte key.  OTP keys exhibit the requisite properties demanded by a one time
+ pad application.  Most importantly, they are not compressible.
+
+ Ciphertext produced by a one time pad cipher is provably unbreakable.  There
+ are, however, two constraints:
+
+    C1. A key must be at least as long as the file being encrypted.
+    C2. Adversaries must be denied the opportunity to acquire multiple
+        ciphertexts encrypted by one key.
+
+ Constraint C1 derives from analytical considerations and is absolute.  There
+ are two interpretations of constraint C2.
+
+    C2.1. When encrypting files for the purpose of transmission, it is the
+          responsibility of the user to select a key that has never been
+          used before and will never be used again (Key and file management
+          features built into OTO greatly assist the user in this task).
+
+    C2.2. When encrypting files for storage-only, constraint C2.1 is inverted.
+          That is, it is the responsibility of the user to ensure that one key
+          is used repeatedly but not indefinitely (again, OTP design features
+          assist the user in this respect).
+
+ Constraint C2.1 is classical.  It describes the way one time pads have always
+ been used.  However, the one time pad was invented in 1917, long before there
+ were computers to store files.  Traditionally, one time pad encryptions were
+ used to protect sensitive information in transient.  Protecting information in
+ storage (disk files in particular) presents a set of significantly different
+ challenges.  Consider the following contrasting scenarios:
+
+  ... Producing multiple ciphertexts with one key violates constraint
+      C2.  If transmitted out of your system, the encrypted files incur
+      the risk of interception by an adversary and, if intercepted, these
+      ciphertexts are vulnerable to cryptanalytic attack.
+     
+  ... A given file, containing a financial data base or, say, the source code
+      of a program under development, may be encrypted daily for the purpose
+      of storage-only.  If the file is encrypted by a different key each day
+      and if a copy of the encrypted file is surreptitiously taken from your
+      system on a frequent basis, an adversary will be in possession of many
+      ciphertexts derived from one plaintext and, perhaphs surprisingly,
+      constraint C2 is violated.
+
+ So, there are two risky scenarios...many files encrypted for transmission
+ using only one key and one file encrypted for storage-only using many keys.
+ In either case, constraint C2 is violated.  Here is why:
+
+  ... A file is a byte stream and so is a key.  When using a one time pad, a
+      key is the same size as the encrypted message; there is no essential
+      difference between the message and the key.  The key can be regarded as
+      the message or vice versa.  A cryptanalyst would be delighted to recover
+      either one.  Hence,
+
+          DIFFERENT FILES ENCRYPTED FOR TRANSMISSION USING THE
+          SAME KEY AND ONE FILE REPEATEDLY ENCRYPTED FOR STORAGE
+          USING DIFFERENT KEYS PRESENT EQUIVALENT RISKS.
+
+      Exchanging the key words (ciphertexts, key) in C2 produces the following
+      constraint C3:
+
+      C3. Adversaries must be denied the opportunity to acquire multiple
+          keys encrypted by one plaintext.
+
+      This last statement seems rather confused and it is ... until one
+      realizes there is no essential mathematical difference between a
+      one time pad key and the ciphertext produced by that key.  Finally,
+      it is possible to abandon constraint C3 and restate C2:
+
+      C2. ADVERSARIES MUST BE DENIED THE OPPORTUNITY TO AQUIRE MULTIPLE
+          BYTE STREAMS (OF THE SAME LENGTH) RELATED BY A VERNAM CIPHER.
+      
+      Suggestion:  Run the OTP demonstration program, DEMO.EXE.  In this
+      program, plaintext, keys, and ciphertext are color coded.  Plaintext
+      is green, keys are blue, and ciphertext is red.  While the program
+      is running, mentally exchange blue keys with red ciphertext.  Either
+      way, blue-red or red-blue, the green plaintext comes out the same!
+
+ The above discussion raises an additional question.  When SHOULD you change
+ keys when encrypting files for storage-only?  It is certainly not prudent to
+ use one key indefinitely.  The answer to this question depends to a large
+ extent on the physical security afforded to your computer system.  If your
+ machine is located in a controlled access area (e.g., in your home) you
+ probably do not have much to worry about.  If it is located in an open bay
+ or present as a node in a network, you might have a lot to worry about.  In
+ the absence of rational criteria or mandated policy, the best rule of thumb
+ is: When ecnrypting for the purpose of storage-only, change keys as seldom
+ as possible.  As seldom as possible might be once per day, once per week, or
+ once per month.  In the final analysis only you can make this determination.
+ If it is determined, or even suspected, that your current keylist has been
+ compromised:
+
+    - Decrypt all files that were encrypted using the compromised keylist.
+    - Create a new keylist file using F2 Newk in the integrated user interface
+      or the command line utility G.EXE.
+    - Reencrypt the affected files using the newly created keylist.
+    - Destroy the compromised keylist using the F6|Remove File option in the
+      integrated user interface or the command line utility R.EXE.  The OTP
+      file removal technique ensures that removed files cannot be recovered
+      by any means.
+
+ Finally, it is the responsibility of the utility to ensure that it does not
+ generate identical (or even nearly identical) keys when distinct keypairs are
+ used.  Part of keylist file KL012345 is shown below.  The last entry in the
+ file, [04], is called an "iterations count." There are eleven of them, 02 to
+ 12, and these counts have a pronounced effect on the output of the generator.
+  
+                       Keylist:   KL012345
+                       Sitecode:  1234567890
+
+                  -01  0641132425 1124055672 
+                  -02  1784368076 0322923224 
+                  @03  2146400662 0631443414 
+                  @04  0997705215 0802654954 
+                  -05  0462887195 1236048491 
+                  @06  1833529233 0557385146 
+                  .
+                  .
+                  .
+                  @54  0516178316 0350367853 
+                  @55  0565524669 1760575127 [04]
+
+ Function F2 Newk generates keylist files.  The keylist filename (KL012345)
+ and the sitecode (1234567890) are shown above the keypairs.  The numeric field
+ of the keylist filename (012345) and the sitecode are used to seed the random
+ number generator which, in turn, emits 55 keypairs per run.  Each of the 55
+ keypairs in a keylist file is a function of the filename numeric field, the
+ sitecode, and the iterations count.
+
+ Keypair indices that have NEVER been used in a translation run are prefixed
+ with an @ sign.  A keypair that has been used AT LEAST ONCE is identified by
+ a hyphen prefix.
+
+ The utility main window contains a black field called the message strip.  At
+ this moment the message strip contains the word Help above F10 Procs in red.
+ Upon successfully translating a file, the relative entropy of the file content
+ is displayed in the message strip.  A red warning block, when present in the
+ left margin of the message strip, indicates that file translation was carried
+ out with a previously used key.  When encrypting a file for storage-only, this
+ is usually good.  When encrypting a file for transmission, it is definitely
+ bad...do not release the resulting ciphertext from your system...decrypt the
+ file and encrypt it once more using a keypair that has never been used.
+
+ An iteration count is assigned to a loop limit variable in the random number
+ generator.  Actually there are two loops, one nested inside of the other.  The
+ outter loop index counts key characters emitted by the generator.  The inner
+ loop limit (iteration count) determines the number of iterations through the
+ generator required to emit one key character.  The F6|Iterations option is
+ used to assign iteration counts.  Valid counts are 2 through 12.  The default
+ count is 4.  An iteration count is a session parameter.  Once it is assigned,
+ it remains assigned until changed or until you exit the user interface.  You
+ may reassign the iterations count default by editing OTP.CFG and replacing
+ ITER=04 with a default value of your choice in the range of 02 to 12.
+
+ 2.  Screen Layout and Terminology --------------------------------------------
+
+ Moving from the top of the screen downward, there are five regions or zones.
+ The small blue-green-red field in the upper left corner of the screen is the
+ "TAG."  From left to right, the TAG contains:
+
+     - The current iterations count displayed against a BLUE background.
+       The iterations counts range from 02 to 12 and can be changed using
+       the Iterations option in F6 Opts.
+
+     - The current state of the transaction log displayed against a GREEN
+       background.  There are four possible file states:
+
+           a.  NU -- Nonempty and Unprotected (normal or archive attribute).
+           b.  EU -- Empty and Unprotected (normal or archive attribute).
+           c.  NP -- Nonempty and Protected (read only attribute assigned).
+           d.  EP -- Empty and protected (read only attribute assigned).
+
+       Use the Attribute option in F6 Opts to query and assign DOS attributes
+       to files.
+
+     - The path of the current working directory (CWD) displayed against a
+       RED background.  Use the Change Dir option in F6 Opts to change to
+       other directories.
+
+ The TAG field can be toggled off and on by pressing Alt-D from the main window
+
+ Immediately below the TAG display is the main window which is comprised of
+ three functional areas.  The large blue rectangular area is the PROMPT FIELD.
+ The black area running across the bottom of the prompt field is called the
+ MESSAGE STRIP.  Immediately below the message strip you will find the labeled
+ function keys, F1 Tr, F2 Newk,...,F10 Help.
+
+ The lower half of the screen is called the DISPLAY SUBSYSTEM (DSS) WINDOW.
+ This area of the screen is used by various functions to display informative
+ messages and by the DSS to display directories and files.
+
+ In addition to the zones described above, there is a popup window called the
+ OPTIONS MENU.  This window is activated by selecting the F6 Opts function.
+
+ 3.  Using the Keyboard ------------------------------------------------------
+
+ Access to interface functions and options is via the keyboard.  Functions are
+ invoked by labeled function keys.  Function key F6 provides access to the pop-
+ up Options Menu.  Items in this menu may be accessed by using the up or down
+ arrow keys to highlight an option and then pressing the Enter key.  Options
+ may also be accessed by "hot keys" which are displayed in dark blue in each
+ option entry.  For example, the hot key for the View File option is the letter
+ V or v (hot keys are not case sensitive).  Accessing the View File option from
+ the main window may be indicated by F6|V or F6|v; in either case, when working
+ in the main window, press F6 and then press the V key.  In a like manner, the
+ instruction for accessing the Remove File option is F6|F, and so forth.  When
+ the Options Menu is on-screen it is active.
+
+ Functions referenced by keys F1 through F6, and Esc may also be invoked by
+ alias keys A, S, D, F, E, and the space bar, respectively. There is no alias
+ for F10.
+
+     F1 Tr   F2 Newk   F3 Newt   F4 Hrel   F5 Tlog   F6 Opts   Esc Exit
+       A       S         D         F         E         W       space bar
+
+ Notice that alias keys are accessible by fingers of the left hand without hand
+ movement.  The keyboard pattern is:
+
+                                   W E
+                                  A S D F
+                                 space bar
+
+ Alis keys operate only in lower case and may be disabled by pressing the Caps
+ Lock key.
+
+     -------------------------------------------------------------------
+     If you are attempting to use alias keys and not getting a response,
+     check the Caps Lock key -- If it is ON, turn it OFF.
+     -------------------------------------------------------------------
+
+ When responding to function and option prompts, the up and down arrow keys
+ access the "recall list" which stores previous prompt response keystrokes.
+ Some functions and options require the user to respond to several prompts.
+ In any case, it is the top-line (or 1st prompt) response that is recorded in
+ the recall list.
+
+ Recall is implemented as a 10-entry circular list -- the eleventh entry 
+ wraps around to overwrite the first.  The recall list may be cleared at
+ any time by pressing the Delete key while in the main window.  Press the
+ Insert key to toggle the recall list display off and on.
+
+ The right-arrow key recalls the currently indexed entry without incrementing
+ or decrementing the recall list index.  Therefore, it is possible to move
+ across functions and options without having to retype file specifications.
+ Note: The right-arrow function has to be "set" by first recalling the prompt
+ response of interest via the up or down arrow key.  Once set, the right-
+ arrow function may be used indefinitely.
+
+ Alias keys are hair-triggers and can be disconcerting at first. However, once
+ they are mastered it is possible to move very quickly between functions and
+ options with very little effort.
+
+ The SPACE BAR has a special use when used in conjunction with the Dir option.
+ With the Options Menu on-screen, press hot key D to activate the directory
+ option then press the space bar.  Notice that the system responds to the File
+ prompt for you by entering the current working directory specification and a
+ double wildcard (e.g., c:\k\*.*).  This is the most direct method of calling
+ up a full directory display.  After the directory display appears in the DSS
+ display area, the DSS options appear in the gray strip along the bottom of the
+ screen.  You may use Home, End, PageUp, PageDown, and the up and down arrow
+ keys to browse through the directory (or any file).  You may also use F1 Find
+ to locate a particular directory entry and F2 Find Next to find all subsequent
+ occurrences of the search argument.  For example, if you want to see all of
+ the directory entries describing batch files, press F1 Find and enter .BAT.
+ If there are no batch files, there will be no response.  Otherwise, the first
+ batch file entry will appear as the top line in the DSS display area.  Press
+ F2 Find Next to locate subsequent (if any) .BAT directory entries.  The F1
+ Find search algorithm is case sensitive.  When you have finished with the
+ directory display, press the SPACE BAR once again to release the file.
+
+ Observe that file names are shown in upper case in the directory display. If
+ you prefer lower case, press Alt-C while in the main window.  This action 
+ toggles the display to lower case.  Press x to release the toggle function or
+ any other key to toggle between upper and lower case.  If you want lower case
+ to be the default, edit the configuration file OTP.CFG and change the entry
+ CASE=U to CASE=L.
+
+ While editing OTP.CFG you may also change the default CLICK=ON to CLICK=OFF.
+ CLICK=ON provides a subtle clicking sound that induces a feeling of positive
+ system response to keyboard entries (CLICK operates on commands, not on each
+ keystroke).
+
+ You may view the entire recall list by pressing the Insert key while in the
+ main window.  After toggling the recall list display to ON, pressing the up or
+ down arrow key in response to a top-line prompt causes the recall list to be
+ displayed in light blue in the DSS display area.  A red cursor is used to
+ indicate the recall list element currently indexed.  Here is an example of
+ viewing a file using the displayed recall list (this example applies to all
+ functions and options):
+
+	 - Press the Insert key while in the main window.
+
+     - Press F6 Opts to activate the Options Menu.
+
+     - With the Options Menu on-screen, press the V key to activate the
+       View File option.  Use the up or down arrow key to position the red
+       cursor to the filename of interest and press the right arrow ( -> )
+       key.
+
+ This example assumes that the recall list is not empty.  To toggle the recall
+ list display to OFF, return to the main window and press the Insert key again.
+
+ Pressing Alt-F from the main window produces a buffer limit message in the
+ DSS display area.  This limit is defined in the configuration file OTP.CFG.
+ Valid limits, expressed in Kbytes, are 16 to 64.  To change the buffer limit,
+ edit OTP.CFG and change DBUF=64 to a new value in the valid range.
+
+ Finally, you may display the Author's Tag by pressing Alt-U while in the main
+ window.  The OTP version-date-release identifer is displayed in the message
+ strip along with the author's name and telephone number.
+
+ Summary of special key strokes:
+
+    - Alt-C .... toggle between upper and lower case in directory displays.
+    - Alt-D .... toggle the current working directory display on and off.
+    - Alt-F .... display the current DSS buffer limit.
+	- Alt-S .... toggle sound (click) on and off.
+    - Alt-U .... display author's tag in the message strip.
+    - Insert ... toggle recall list display on and off.
+    - Delete ... clear the recall list (reset).
+	- Ctrl-T ... set tabs in display subsystem (0 to 8).
+
+ 4.  File Access --------------------------------------------------------------
+
+ Files are translated in place.  That is, files are encrypted and decrypted
+ over themselves using only the disk space allocated to the file at the time
+ it was created.  There are no ancillary files used in, or created by, the
+ the translation process.  There are two important consequences of this
+ feature:
+
+     a.  Translation does not alter file size.
+
+     b.  Only one copy of a given file exists in your system at
+         any one time, the plaintext copy or the ciphertext copy.
+
+ Consequence 4.b requires some discussion.  The files text.doc and text.bak
+ are test files supplied with the utilities.  As installed, there is only one
+ copy of text.doc and only one copy of text.bak.  If you encrypt text.doc,
+ there is still only ONE copy of this file in your system and it is stored as
+ ciphertext.  The plaintext of text.bak is still present and accessible.  If
+ you read 4.b once more in the light of these comments, you will discover that
+ the statement applies only to the mechanics of of accessing files during the
+ translation process.  Indeed, due to the operating system requirement that
+ files have unique names, it is not possible to maintain two or more files
+ whose filenames are identical.  However, it possible to maintain two or more
+ files whose contents are identical, irrespective of their filenames.  This
+ is the case with text.doc and text.bak.
+
+ If text.doc contained truly sensitive information, allowing a plaintext copy
+ of this file (text.bak) to reside in your system along with the ciphertext
+ (text.doc) would pose a serious threat.  Maintaining backup files is neverthe-
+ less good practice.  Backup files containing information requiring crypto-
+ graphic protection should be stored on diskettes. Keep in mind that backing up
+ sensitive files on floppy disks demands that all such diskettes be afforded a
+ degree of physical protection commensurate with the sensitivity of the MOST
+ SENSITIVE information on the diskette.
+
+ In general, backing up files on diskettes is good practice for two reasons.
+ First, sensitive information is often difficult or expensive to acquire and
+ second, cryptographic considerations aside, hard disk failure is always a
+ possibility.  
+
+ 5.  Procedures (Encrypting for Storage) -------------------------------------
+
+ In this document procedures differ from protocols.  Procedures describe the
+ mechanics of using OTP in a safe, secure, and effective manner.  Protocols
+ apply specifically to transmitting and receiving encrypted files.
+
+ The ten procedures recommended below are quite simple and to the point.  They
+ must be clearly understood prior to using OTP V1.1 for the purpose of securing
+ sensitive information.  The following definition is prerequisite:
+
+    CRYPTOGRAPHIC RESOURCES.  The following files are defined as cryptographic
+    resources:
+
+         TOP.EXE     <-- user interface containing an embedded copy of SSCV04.
+         SSCV04.EXE  <-- Codeword OTP V1.1 Vernam cipher.
+         G.EXE       <-- command line keylist generator used with SSCV04.EXE.
+         SSCV03.EXE  <-- Codeword V3.0 symmetric stream cipher.
+         K.EXE       <-- command line keyset generator used with SSCV03.EXE.
+         R.EXE       <-- file removal utility.
+         E.EXE       <-- command line version of the relative entropy utility.
+         TRLOG       <-- OTP transaction log.
+
+    In addition to the above named files, keylist files produced by G.EXE
+    and translation batch files containing SSCV03 keysets produced by K.EXE
+    are defined as cryptographic resources.  The ten procedures are:
+
+    a.  Store all cryptographic resources in one subdirectory dedicated
+        to that purpose.  The OTP installation utility will do this for
+        you.  INSTALL.EXE will not copy the utilities to an existing
+        subdirectory.  EXCLUDING THE RESOURCE FILES NAMED ABOVE, you may
+        move installed (or any other) files in or out of the installation
+        resources directory (IRD).
+
+    b.  Files operated on BY the cryptographic resources may be dispersed
+        throughout the file system hierarchy.
+
+    c.  USE AN ACCESS DISK TO SECURE CRYPTOGRAPHIC RESOURCES WHEN THEY ARE
+        NOT IN USE.  To create an access disk:
+
+        1.  Insert a newly formatted disk into the A drive.
+
+        2.  C:\K>k a:access          <-- Use OTP utility K.EXE to create an
+                                         SSCV03 translation batch file named
+                                         ACCESS.BAT on the diskette in the
+                                         A drive.
+
+        3.  C:\K>copy sscv03.exe a:  <-- copy SSCV03.EXE to the diskette in
+                                         the A drive.
+
+        4.  Done.
+
+        To use the access disk to secure cryptographic resources when
+        not in use (and in particular when your computer is unattended):
+
+        1.  Insert your access disk into the A drive.
+
+        2.  C:\K>a:               <-- change drive to A:
+
+        3.  A:\>access c:\k\*.*   <-- encrypt all files in C:\K
+
+        4.  Remove your access disk and store it in a SAFE place.
+
+        5.  Done.
+
+        To use the access disk to gain access to your cryptographic
+        resources in C:\K:
+
+        1.  Insert your access disk into the A drive.
+
+        2.  C:\>a:                <-- change drive to A:
+
+        3.  A:\>access c:\k\*.*   <-- decrypt all files in C:\K
+
+        4.  A:\>c:                <-- change drive to C:
+
+        5.  C:\>cd k              <-- change directory to C:\K
+
+        6.  C:\K> ... done.       <-- cryptographic resources are now stored
+                                      as plaintext and available for use.
+
+ -------------------------  *** IMPORTANT ***  -------------------------------
+ An access disk, once created, could be used indefinitely. Don't!  Change keys
+ on occasion by creating a new SSCV03 translation batch file on the diskette:
+
+            A:\>access c:\k\*.*   <-- decrypt all files in C:\K.
+
+            C:\K>k a:access       <-- overwrite the current access disk on the
+                                      A drive with an new one.
+
+ That's all there is to it.  The OTP utility K.EXE generates SSCV03 2-key key-
+ sets using seeds derived from the system clock.  You do not have to select,
+ enter, remember, or even look at an SSCV03 2-key keyset if you don't want to. 
+ ------------------------------------------------------------------------------
+
+    d.  Using G.EXE, create a keylist file that is to be used ONLY when
+        encrypting files for storage-only.  In this case, the sitecode
+        may be chosen arbitrarily.
+
+    e.  Do not regenerate a keylist file using a previously used parameter set
+        (i.e., keylist filename, sitecode, and iterations count).  A keylist
+        filename may safely be reused by choosing a sitecode that has NEVER
+        been used before and will NEVER be used again or by varying the
+        iteration count, or both.
+
+    f.  Maintain a text file containing previously used sitecodes.  Reference
+        the contents of this file when creating a new keylist file to ensure
+        that a previously used sitecode is not reused.  THIS TEXT FILE MUST
+        BE STORED IN THE SUBDIRECTORY CONTAINING YOUR CRYPTOGRAPHIC RESOURCES.
+        After reading the F2 Newk file, F2.HLP, it can be replaced with the
+        recommended sitecodes file.  Another copy of the original F2.HLP can
+        always be obtained from the distribution diskette if needed.  If you
+        do replace F2.HLP with a "previously used sitecodes" file, be sure to
+        use an ASCII editor.
+
+    g.  Choose a keypair index from the 55 available indices in the keylist
+        file and use it repeatedly, BUT NOT INDEFINITELY.  Choosing a keypair
+        index is equivalent to choosing an encryption key.  WHEN ENCRYPTING
+        FOR STORAGE-ONLY, USE ONE KEY WITH ONE FILE: repeated translation of
+        a given file requires the selection of one keypair.  If you have
+        forgotten a keylist filename or keypair index, this information can be
+        recovered by examining the OTP transaction log.  Note that sitecodes
+        are recorded in keylist files but NOT in transaction log entries.
+        
+        Note: To display the transaction log file, TRLOG, press F5 Tlog in the
+        main window or, at the DOS prompt, type:  C:\K\>type trlog | more.
+
+    h.  Use the F6|r function in the Options Menu to remove exhausted keylist
+        files.  The command line utility, R.EXE is functionally equivalent to
+        the user interface option F6|r and can be used for this purpose.
+
+    i.  Encryption protects ONLY the information content of files, it cannot
+        protect files from theft or erasure.  Therefore, if your operating
+        system offers logon password protection, you should use it.  If your
+        system unit has a keyboard lock, it should be used when the machine is
+        unattended.  Passwords and locked keyboards are not necessarily strong
+        protection mechanisms, nevertheless every little bit helps.
+
+    j.  Strive to minimize your ciphertext inventory.  DO NOT ENCRYPT FILES
+        WHOSE CONTENTS CANNOT PROFIT FROM CRYPTOGRAPHIC PROTECTION.
+
+ 6.  Protocols (Encrypting for Transmission) ---------------------------------
+
+     A protocol is a formal agreement between two or more individuals.  The
+     various parties must agree on:
+
+     a.  Which cryptographic system to use (assumed here to be OTP V1.1).
+
+     b.  Who is responsible for assigning keylist filenames, sitecodes and
+         iteration counts used in the creation of keylist files (sitecode
+         assignments should be unique -- NEVER ASSIGN A SITECODE TO MORE
+         THAN ONE INDIVIDUAL AND NEVER SHARE YOUR "ENCRYPTION FOR STORAGE"
+         SITECODE WITH ANYONE).
+
+     c.  How the encryption parameters are to be communicated to the various
+         parties.  An excellent means of accomplishing this is by public key
+         cryptography, if available.  If not, personal delivery or registerd
+         mail may be used.
+ 
+ ---------------------------  ***IMPORTANT***  -------------------------------
+ Codeword OTP V1.1 is an example of a symmetric cryptosystem.  IT IS IMPORTANT
+ TO REALIZE THAT PROTOCOLS DESIGNED FOR USE WITH SYMMETRIC CRYPTOSYSTEMS MUST
+ ULTIMATELY BE BASED ON MUTUAL TRUST.  This statement qualifies as a universal
+ truism because there is simply no way to get around it, try as you may!
+ -----------------------------------------------------------------------------
+
+ The following scenario is a detailed example of using a simple protocol.
+
+ Assumptions:  1.  We both support an OTP V1.1 installation.
+               2.  We have not transmitted encrypted files to one another.
+               3.  We have agreed that the first one with the requirement
+                   to transmit an encrypted file is the one responsible
+                   for defining and communicating the encryption parameters.
+               4.  We have agreed that reception of any and all encryption
+                   parameters must be promptly acknowledged.
+
+ As the originator, I create the following OTP keylist file using keylist file-
+ name KL430981.498, sitecode 1730095418, and an iterations count of 07
+
+ As the originator, I must now communicate the above encryption parameters to
+ you.  Assume that I use registerd mail.  I have to think ahead because using
+ registered mail means there is a "start up time" associated with transmitting
+ secured information.
+
+ As the recipient, you acknowledge receipt of the encryption parameters.  You
+ can do this over the telephone, via on-line service, etc.
+
+ Upon receiving your acknowledgement of receipt of encryption parameters, I
+ can now encrypt and send the file in question.  However, I must provide you
+ with one vital piece of information.  Namely, I must tell you which of the
+ 55 keypairs in keylist file KL430981.498 that I used to encrypt the file.
+
+ I did not include the keypair index as one of the encryption parameters
+ because I do not want to preceed each subsequent encrypted transmission
+ with a registered letter.  There are 55 keypairs in the keylist file so
+ we may as well use all of them.  Moreover, once secure communication is
+ established, either party can define new encryption parameters at will.
+
+ I encrypt the file using, say, keypair index 27 and send the encrypted file
+ to you via an on-line service (e.g. CompuServe).  If I list the subject of
+ the file as simply @27, you will have all of the information you need to
+ recover the plaintext.
+
+ Having received the encrypted file you can use the F1 Tr function in TOP.EXE
+ to decrypt it.  Since I did not send you the iterations count used when I
+ encrypted the file, you (correctly) assume I used the default count of 4.
+ Press F1 and respond to the three prompts:
+
+                     Filename:  filename.ext
+                     Keyfile:   KL430981.498
+                     Keypair:   27
+
+ Done!  Press F6|View, enter the name of the file in response to the File
+ prompt, and read the plaintext.  If you choose to decrypt the file using the
+ command line utility SSCV04.EXE, you must submit the following directive at
+ the DOS prompt:
+
+                 C:\K>v filename.ext KL430981.498 27      <-- your input
+                 Hr 0.603421176 FILENAME.EXT 1024 bytes   <-- v.bat response
+
+ Whether you use TOP.EXE or SSCV04.EXE to decrypt the file, you know the
+ relative entropy of the plaintext file, 0.603421176.  If you want to verify
+ that the transmission is indeed from me, all you have to do is ask for the
+ plaintext relative entropy (the one-way hash number).  If our numbers match,
+ you can be sure that I am the one that sent the encrypted file.  If they do
+ not match:
+
+       - You DO NOT know who sent the encrypted file.
+       - you DO NOT know if the file content has been altered.
+       - You DO know that the encryption parameters have been compromised.
+         Otherwise, you could not have recovered the plaintext using those
+         parameters.
+
+ 7.  Some Important Numbers ---------------------------------------------------
+
+     Keylist filenames may have numeric extensions comprised of one to three
+     digits with each digit in the range of 0 to 9.  When a keylist filename
+     extension is detected the period (or dot) is removed and the extension is
+     concatenated to the numeric field of the filename.  As an example, the
+     first generator seed derived from KL903871.894 is 903871894 (the second
+     seed is the unmodified sitecode).  Seed values derived from keylist file
+     names are, therefore, in the range of 000000000 999999999.
+
+     When creating a keylist file, the output of the generator depends on the
+     seed values and the iterations count.  There are 10^9 available keylist
+     filenames, 4.29 x 10^9 sitecodes, and 11 iterations counts.  Thus, there
+     are (10^9)(4.29 x 10^9)(11) = 4.7 x 10^19 keylists containing 55 keypairs
+     each.  This gives a total of (55)(4.7 x 10^19) = 2.6 x 10^21 or 2,600,000
+     billion) keypairs.
+
+     When encrypting a file using one of the 2,600,000 billion keypairs you
+     once again have a choice of 11 iterations counts.  Therefore, there are
+     (11)(2.6 x 10^21) = 2.9 x 10^22 (or 29 million trillion) ways to encrypt
+     any given file.
+
+     In the context of OTP, the factors producing the product 2.9 x 10^22 are
+     referred to collectively as a "parameter set."  Expressing the general
+     parameter set P in set theoretic notation gives:
+
+            P = { keylist_filename[ic], sitecode, keypair_index, ic }
+   
+     Notice that iterations count, ic, appears twice in P -- once enclosed in
+     square brackets and again as the right-most element.  [ic] is the count
+     used when creating the keylist file and ic is the count used to encrypt
+     a file.  An example of a particular parameter set is:
+
+            P = { KL900371.497[11],1009321475,49,08 }
+
+     This parameter set is, in fact, a prescription for encryption.  It says
+
+          - Create a keylist file using keypair(900371497,1009321475)
+            and an iterations count of 11.
+
+          - Encrypt the file in question using keypair #49 in KL900371.497
+            and an iterations count of 8.
+
+ Assume an adversary has the capability to examine parameter sets at the very
+ slow rate of 1 per second, how long would be required to perform an exhaustive
+ search?  Ans.  2.9 x 10^22 sec, or approximately 910 trillion years.  At the
+ more realistic rate of of 20,000,000 parameter-sets/second, exhaustive trials
+ would require over 45 million years.  Finally, on average, working 24 hours
+ per day every day, it would require approximately 23 million years of effort
+ to "encounter" the correct parameter set.
+
+ A cryptanalyst may attempt to recover plaintext by trying key parameters or
+ by direct systematic or random key trials.  In either case, it was tacitly
+ assumed above that he has the capability to recognize THE plaintext when he
+ encounters it.  During the course of trials, many trillions of meaningful
+ texts will be produced. If collateral information is available, it may be
+ possible to identify the plaintext in question.  In the absence of collateral
+ information, plaintext may hide in plain sight indefinitely (it is important
+ to keep in mind that, due to the magnitudes of the numbers involved, this is
+ all very academic).
+
+ It is clear that attacks based on trying parameter sets and attacks based on
+ systematic or random key trials have no chance of succeeding.  Attacks based
+ on statistical techniques are no better.  OTP produced ciphertext exhibits 
+ relative entropy > 0.99.  This means that ASCII characters are distributed
+ uniformly throughout the ciphertext.  Therefore, statistical correlations
+ between plaintext and ciphertext do not exist.
+
+ There are two circumstances under which an adversary may recover plaintext:
+
+     - Practical cryptanalysis (i.e., steal the parameter set).  This is
+       why it is important to protect installed cryptographic resources.
+       Note that the definition of cryptographic resources specifically
+       includes sscv04 keylist files and sscv03 2-key keysets.  Refer to
+       paragraph 5.c above for details concerning protecting cryptographic
+       resources with an access disk.
+
+     - Violations of procedures and protocol.  If a user persists in using
+       the same key to encrypt files for transmission or uses different keys
+       to encrypt a given file for storage, sufficient information may be
+       derived from the analysis of intercepted or stolen ciphertext to enable
+       recovery of plaintext.
+
+       Please take the time to carefully review sections 5 and 6 of this
+       document.
+ ----------------------------------------------------------------------------
+

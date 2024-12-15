@@ -1,0 +1,912 @@
+SSLeay 0.6.6 13-Jan-1997 eay
+	- Various fixed and enhancements from
+	  Michael Rendell <michael@cs.mun.ca>
+	  Peter Gutman <pgut001@cs.auckland.ac.nz>
+	- Added blowfish algorithm.
+	- Even faster DES assmber thanks to
+	  Svend Olaf Mikkelsen <svolaf@inet.uni-c.dk>.
+	- Added a 'get client certificate callback'.  It is called if
+	  a client cert is not set and can return -1 if it would block.  The
+	  application can use SSL_want_x509_lookup(ssl) to determin
+	  that the SSL_connect(ssl) returned because of this reason.
+	  It does help to use SSL_set_app_data() to set some
+	  application state that can be passed around.
+	  SSL_CTX_set_client_cert_cb() is used to set the callback.
+	  Have a read of doc/callbacks.doc
+	- Fixed a bug in i2d_ASN1_bytes() where sequences and sets
+	  would be written as 'primative', not constructed.
+	- The d2i_X509_bio() type functions have been changed so that instead
+	  of reading all possible data from the 'BIO' (or file) into memory
+	  and then parsing it, it instead reads as much as is required.
+	  At most it will read 8 extra bytes.
+	- ASN1_get_object() has been changed so that if there is an error
+	  the 0x80 bit is set in the return value, instead of returning
+	  0xff.  This is so one can parse headers without knowing how many bytes	  should have been loaded.
+	- Added SSL_peek(), peek at next decrypted message, thanks to
+	  Laurent Berthod <berthod@concepto.ch> for the idea.
+	- A few fixups in apps/ca.c Paco Garcia <pgarcia@ctv.es>
+	- A few memory leaks in apps/req.c
+	- Fixed up so that SSL 'escape' flag works correctly.
+	- Woops, not all client session-id reuse issues fixed, they are now.
+	- CRYPTO_set_mem_functions() can be used to specify the
+	  malloc/free/realloc functions for the library to use.
+	  Have a look in crypto/crypto.h. Either MFUNC or WIN32 needs
+	  to be defined during the build to enable this.
+Version 0.6.5 05/12/96 eay
+	- Last minute client side session ID reuse 'problem' fixed.
+	- The 'des_opts' command can be built in the crypto/des directory.
+	  It tries all the possible compile time flags with the des library
+	  and reports on which are probably the best to use.
+	- Better BIO documentation, doc/bio.doc
+	- hmm... some time between 0.6.4 and 0.6.5 I added a -text option
+	  to the 'crl' command.
+	- Error message sending was a bit broken.... fixed now, thanks to
+	  Elad Baron <elad@softlinkusa.com> for point this one out.
+	- When a certificate public key could not be decoded, 
+	  X509_cert_verify() would fail due to a verify failure instead of
+	  just a 'decode failure', the callback would be called for each error.
+	  Thanks to Elad Baron <elad@softlinkusa.com> for pointing this out.
+	- BIO_printf() added.  I mostly re-used Tim Hudsons portable vararg
+	  stuff that he had put in ssl/ssl_trc.[ch].
+	- ssleay.conf is now ssleay.cnf to keep the Windows 3.1 file systems
+	  happy, sorry about that.
+	- Renamed the following so things were less that 8.3 chars, I have not
+	  been using a real dos/windows box for some time
+	  cryptoall.h -> cryptall.h
+	- SSL_read() and SSL_write(), when asked to read or write <= 0 bytes
+	  do not actually send any data.  Also, if a 0 byte packet is sent, and
+	  SSL_read() has been called, it will return(0).  Previously it would
+	  keep on trying to read until at least one byte was read.
+	- Fixed a reuse of 'SSL->length'.  There is now rlength and wlength.
+	- Fixed a few return argument inconsitancies in crypto/evp/e_enc.c
+	  noticed by Larry V. Streepy, Jr. <streepy@healthcare.com>
+	- Re-organising X509 functions to a more high level interface.
+	- x86 assmeber inner loop in DES, big speedup on x86 unix boxes.
+	- Cut and Paste bug in ssl/s2_clnt.c, causing the session-id
+	  cache to only be auto-flushed when 255 accepts had been made
+	  against the SSL_CTX :-( - Matthias Loepfe <this@AdNovum.CH>
+	  found this one.
+	- Fixed a bug when bn_mod_exp() was used with the first 2
+	  parameters the same - thanks to Ian Goldberg <iang@cs.berkeley.edu>.
+	- netscape extensions can be put in certs.
+	- Fixed a \r\n problem under Windows in pem_lib.c
+	- Added some 'text' to say which config file is being used.
+	- I've finally decided to add a function to check that a key and
+	  a certificate match - it is called X509_check_cert_private_key.
+	  SSL_CTX_check_private_key() and SSL_check_private_key()
+	  can be called to check the cert/key pair for the SSL_CTX default
+	  cert/key or for a particular SSL session.  Please note that the SSL
+	  library functions should only be called after asignements have been
+	  made to the SSL_CTX or SSL via the SSL_CTX_use_XXXX and SSL_use_XXXX
+	  funtions.
+	- Added base64 and cipher BIOs.
+	- Added the Windows RAND_screen() function posted to ssl-users
+	  by Gertjan van Oosten <gertjan@West.NL> to crypto/rand/md5_rand.c.
+	  It is only available under Windows.
+/*	- fcrypt mod so that it is compatable with hpux 10's crypt
+	  function which can take more than 8 characters for input,
+	  thanks to Jens Kupferschmidt <bt1cu@hpboot.rz.uni-leipzig.de>
+	  for the patch.  Define -DLONGCRYPT to compile with this. */
+	- Consensus seems to be that the PKCS#10 documentation is
+	  wrong.  The attributes are OPTIONAL.  I have now made the
+	  default behaviour of 'req' generate this.
+	- Minor bug when generating using self signed certs from 'x509',
+	  the notBefore was always being set to 'Jan  1 12:00:00 1970 GMT'.
+	- Removed all the ssl_des, ssl_idea etc files from ssl.  I now
+	  use the EVP_CIPHER and EVP_MD structures to do digests and
+	  ciphers.  I should have done this from the start but I wrote
+	  the EVP_XXXX stuff after the SSLv2 :-).
+	- Modified BIO_set_fd so it accepts just an integer, not the
+	  address of the integer.  This used to be an artifact of the
+	  BIO functions, but I've just added another to handle the case
+	  where the arguments are 2 integers, not an int and a char *.
+	  The method gets passed and integer and a pointer to an integer
+	  still.
+	- The ASN.1 string types can now be of constructed type.  This
+	  means the library will load BER.  Only the ASN1_BIT_STRING type
+	  does not do this now.  There has been quite a few modifications
+	  to the ASN1 stuff, mostly that all 'strings' are ASN1_STRING
+	  type, including dates.
+	- WARNING BIO_set_fd has bee changed so it takes an 'int' not a
+	  'int *'.
+	- Back into ASN.1 - the base type for all the strings has been
+	  changed from ASN1_BIT_STRING to ASN1_STRING.  I should have done
+	  this from the start.  I have also changed the ASN1_UTCTIME type
+	  to be one of these.  So now all of the underlying types keep their
+	  values in the one data type.  Gordon Chaffee
+	  <chaffee@odie.cs.berkeley.edu> was after this a while back.
+	- Changed crypto/des/read_pwd.c so that the SIGWINCH signal
+	  does not stop a password read - thanks to xxxx
+	- Added a few mods to crypto/asn1/asn1_par.c.
+	- Added printing of X509v3 fields to the x509 printing routine.
+	- Added a simple way to include text extentions to x509v3
+	  certs in apps/ca.c
+	- cleanup bug in pem_mail.c - Sampo Kellamaki <sampo@neuronio.pt>
+	- Fixed a memory leak in the M_ASN1_D2I_Finish() macro in
+	  crypto/asn1/asn1_mac.h when an error occurs and the variable
+	  passed in NULL.
+	- Fixed some stuff in crypto/asn1/asn1_par.c so that 'asn1parse'
+	  actually check the length of sub-elements correctly.  This
+	  'bug' was noticed when I was parsing some CRL's that were bad.
+	- Typos in a few header files.
+	- Fixed a 16bit bug in crypto/buffer/buffer.c.  Do not
+	  u=(unsigned int)((int)i*3/2); where i == 16000 :-).
+	- As pointed out by Dominique de Waleffe <ddw@miscrit.be>, BN_add()
+	  and BN_div() did not handle negatives correctly.  He provided
+	  patches which I used with modification because I also realised that
+	  quite a bit of my code to handle negative numbers was not thread
+	  safe.  I have also modified bntest.c to use negative numbers.
+	- Many thanks to Rene Grosser <<grosser@HiSolutions.com> for
+	  a simple 'int i;' -> 'long i' fix which was breaking things
+	  for 16 bit machines in ASN1_dup().
+	- Fixed a base64 decoding bug in apps/enc.c (did not decode
+	  an entry of a single line)
+	- Modified X509_NAME_print() so that it will only convert
+	  /([A-Z]{1,2})=([^/]*) into $1=$2, in perl RE syntax :-).
+	  This is just so that the -text option will print
+	  '/CN=Miss/Ms tester' as 'CN=Miss/Ms tester, ' instead of
+	  'CN=Miss, Ms tester, '.
+	- A data base clash in apps/ca will now cause the application
+	  to exit with an error code of 1.
+        - fixed typo in makevms.com
+	- meth.h had INF0 [zero] rather than INFO [oh] <john@math.nwu.edu>
+
+Version 0.6.4 30/08/96 eay
+	- ca -preserve added, this will sign without modifying the DN, if
+	  it passes the other tests.  Not tested much.
+	- test/Makefile.ssl reorganisation so that the tests can be run
+	  indervidually, thanks to Clifford Heath <cjh@osa.com.au>.
+	- CRL ASN.1 encoding fixed I belive.  Thanks to
+	  Gordon Chaffee <chaffee@odie.CS.Berkeley.EDU> for prompting me
+	  to look at the X509v3 specs again.
+	- VMS support, including the VMS tcp BIO, thanks to
+	  David L. Jones <jonesd@kcgl1.eng.ohio-state.edu>
+	- Read doc/callback.doc
+	- Read doc/memory.doc
+	- X509_cert_verify() modified so the callback can override _ANY_
+	  error.
+	- Bug in ASN1_put_object(), would only show up if ASN.1 tags
+	  were > 0x3f.  Thanks to Dirk Kuhlmann <derek@prz.tu-berlin.de>.
+	- Bug in BN_ascii2bn(), basically the function was never being used :-(
+	  thanks to Emanuele Pucciarelli <emanuele@debian.org>
+	- Config files have been cleaned up.  \n and \r represent newlines
+	  and a \ will join the next line with the \n removed.
+	- Fix for the error case in ASN.1 paring for the M_ASN1_D2I_Finish()
+	  macro in asn1_mac.h, thanks again to 
+	  Gordon Chaffee <chaffee@odie.CS.Berkeley.EDU>
+	- HPUX config changed, sugested by Rene Eberhard <reberhar@itr.ch>.
+	- The get session-id SSL_CTX callback has had a 'copy' int * added.
+	  If 1 the reference count is incremented, else the origional
+	  of the SSL_SESSION passed in is used.
+	- VERIFY_ROOT_OK (self signed cert) now prints the correct thing
+	  from X509_cert_verify_error_string().
+	- 'ssleay ciphers' added, lists the default cipher list for SSLeay.
+	  'ssleay ciphers -v' lists a more textual listing of all ciphers.
+	- Added a memory leak define.  If CRYPTO_MDEBUG is defined while
+	  SSLeay is being built, memory leak detection is compiled in.
+	  SSLeay will report memory leaks if they occur when it exits.
+	  Don't worry about this too much normally.
+	- crypto/rc2/rc2_skey.c has been changed so there is now a
+	  4th argument to RC2_set_key().  This is the 'bits' argument.
+	  The previous version of RC2 was equivilant to setting this
+	  parameter to 1024.  BSAFE sets this to the key size, eg 128.
+	  Thanks to Peter Gutmann <pgut01@cs.auckland.ac.nz> for his
+	  help on this stuff.  The term used by Peter for the BSAFE
+	  modification is 'espionage-enabled' rc2 :-).
+	- Added doc/threads.doc
+	- Prototypes added in the XXXX_dup() macros.
+	- Added another arg to X509_cert_verify().  It is passed
+	  through to the callback function.  This is needed for a
+	  multithreaded environment.  The SSL protocol passes the SSL
+	  structure.
+	- Modifed server side of SSL protocol so that '2' writes are 
+	  coalesed into one, make a big performance difference when
+	  using session-id reuse, the TCP/IP protocol was timing out.
+	  Problem noticed by Tim Hudson <tjh@mincom.oz.au>
+	- Found a bug in multi-threading finally :-).  It would cause my
+	  100 threads, 100 times to fail about 1 in 4 :-).
+	- mt/mttest.c - solaris/nt multithreading test, very very beta
+	- Fix to WIN32 Endian_Reverse32 in md5_locl.h and sha_locl.h,
+	  apps/ca.c was not printing crl's out,
+	  Replaces some code with a call to a2i_ASN1_INTEGER().
+	  All of these, thats to Gordon Chaffee <chaffee@odie.CS.Berkeley.EDU>
+	- Changed some session-id callback parameters.
+	- -outform text added to apps/crl.c, thanks to 
+	  Simon J. Gerraty <sjg@frodo.dn.itg.telecom.com.au> for the
+	  patches.
+	- Fixed a wrong lock and a 'non-multithreading' problem in
+	  bn_mont.c that only showed up when using the 'word' version.
+	- 'util\mk1mf no-asm VC-NT' was not working.
+
+Version 0.6.3 08/08/96 eay
+	- A few minor memory leaks in the pkcs7 stuff.
+	- Added -modulus option to 'rsa'.
+	- A fix to SSL_set_rbio(), if was free()ing the ssl->wbio.
+	- A few mods to crypto/rand/randfile.c
+	- Error in ASN1_INTEGER_set, I had the endian around the wrong way
+	  when loading the 'long'.
+	- 2 out[1]='\n' instead of out[0]='\n' bugs in evp/encode.c.
+	  If you were using the returned 'data' length this error
+	  would not be noticed, thanks to Andreas Persson <andper@rsv.se>.
+	- Fixed the checking on the return code from X509_verify().
+	  I was not checking for <= 0, where < 0 indicates an error
+	  that is not related to a bad signature (0).  This was
+	  letting unknown message digests type pass as ok signatures.
+	- A few fixes to the pkcs7 signed type, this stuff was not being
+	  tested before.  I used a pkcs7 example from
+	  Francisco Jordan <jordan@ac.upc.es>.
+	- A few BIO routine fixes from Raph Levien <raph@cs.berkeley.edu>.
+	- memcpy()  replaced by memmove() in crypto/stack/stack.c:sk_insert()
+	  thanks to Richard Dorman <richard@tns.co.za> for the bug report.
+	- Mods so that apps/ca can now be driven from a CGI script taking a
+	  SPKI structure as input, donated by
+	  Jeff Barber <jeffb@issl.atl.hp.com>
+	- From Tom Titchener <tomt@osf.org>, a NO_RC2 fix.
+	- Fixes for EVP_EncryptInit()/EVP_DecryptInit() to make them
+	  behave as the documentation expects them to and a fix
+	  for PEM_SealInit() which was bad :-(.  Thanks to
+	  Andreas Persson <andper@rsv.se> for these.
+	- Added sha1WithRsaSignature object ID, I can now finally do
+	  SHA1 signatures :-).
+
+Version 0.6.2 25/07/1996 eay
+	- Cleanup of CA.sh - prompted by John Franks <john@math.nwu.edu>
+	- Added DESX, I need to get some test vectors for it.
+	  It takes a 24 bit key, 56 bits are the DES key and the
+	  2 whitening 8 byte blocks are indenedantly supplied.
+	- More thread related patches from
+	  David Weisman <weisman@oberon.osf.org>.
+	- Added SSL_CTX_set_default_passwd_cb() which sets the password
+	  retrieval callback.  If present it is used, else system default.
+	- Bug in crypto/bss_mem.c mem_gets(), thanks to
+	  Santeri Paavolainen <sjpaavol@cc.helsinki.fi>
+	- -kfile option for apps/enc.  This can be used to read a key from
+	  a file.  This has mostly been put in because of the problems with
+	  clearing a password from a command line argument which does
+	  not work from OS's like solaris.
+	- Fixed the X509v3 attributes stuff.  I was not reading the
+	  optional boolean value and I was also assuming that the
+	  X509v3 stuff was the same as PKCS#10 attributes.  Wrong!
+	  There is now a X509_EXTENSION type which is used by CRLv2 and
+	  X509v3.  I have also updates CRL to the new format but I need
+	  test cases.
+	- Cleaned up the error message for a bad decrypt in s_server.c
+	- Modifed the signature type generated in a_sign.c
+	- Fixed a problem with X509 structure re-use.  I have also
+	  added a new flag to the ASN1_OBJECT type so dynamically
+	  allocated structures can be diferentiated from static ones
+	- Some new Netscape object identifiers have been added.
+	- Added -print_certs to apps/pkcs7.c.  This will now extract CRL and
+	  certificates from PKCS7 data. 
+	- Found and fixed a bug in PEM_X509_INFO_read_bio().
+	- With "Simon J. Gerraty" <sjg@zen.void.oz.au> prompting, the
+	  PEM pass phrase, when you are using the default callback, is
+	  now only used if the EVP_set_pw_prompt() function has not been
+	  used to set a default library prompt.
+	- Some modes to i2d_X509_NAME to make it thread safe - thanks
+	  to Gordon Chaffee <chaffee@odie.CS.Berkeley.EDU>
+	- crypto/Makefile.ssl 'make depend' problem fixed. - thanks to
+	  Eugene Crosser <crosser@online.ru>
+	- More C++ things I missed for the headers - thanks to
+	  Sampo Kellomaki <sampo@neuronio.pt>
+
+Version 0.6.1 13/07/1996 eay
+	- WIN32_rename added for apps/ca.c, thanks to 
+	  Andy Brown <a.brown@nexor.co.uk> for the patch.
+	- Added doc/ssl.doc which is a minimal function list.
+	- Added lots of SSL_CTX_xxx calls to set default values.
+	- I have added a session_cache_mode to the SSL_CTX structure.  This
+	  is used to control how the session-id cache is used.
+	  SSL_set_session_cache_mode(ctx,mode) and
+	  SSL_get_session_cache_mode(ctx) manipulate this variable.
+	  SSL_SESS_CACHE_OFF means the library does not automatically add
+	  to the cache
+	  SSL_SESS_CACHE_CLIENT means that SSL_connect() add the session id
+	  to the cache if everything works
+	  SSL_SESS_CACHE_SERVER means that SSL_accept() adds session id's
+	  to the cache.  This is on my default.
+	  SSL_SESS_CACHE_BOTH - what you think it means :-)
+	  SSL_SESS_CACHE_AUTO_CLEAR.  This, which is on by default, will
+	  'flush' timed up entries from the cache automatically whenever
+	  a new SSL_accept() or SSL_connect() complete successfully.  This
+	  potentially will be expensive on a heavily loaded server, so in this
+	  case it would be better to turn this off and manualy flush the cache
+	  every 20-30 connections via SSL_flush_sessions(ctx,time(NULL));
+	  Please note that you need to 'or' the auto_clear with whatever mode
+	  you want, if you want it on, that or play funny tricks like
+	  (SSL_get_sesson_cache(ctx)&~SSL_SESS_CACHE_BOTH)|mode_we_want
+	- Memory leak in crypto/x509/x509_crt.c, thanks to
+	  Ruben Osendarp <rosen@philips.oz.au> for the fix.
+	- Error in use of DEVRANDOM, thanks to
+	  Gertjan van Oosten <gertjan@West.NL>
+	- Put in montgomery multiplication and the improved expotentaion (sp?)
+	  windowing system used by Colin Pump.  
+	  The RSA times for the old and new version on linux pentium 100
+	  	     512   1024   2048   4096
+	  0.6.0    0.048  0.222  1.413  9.955
+	  0.6.1    0.024  0.119  0.749  5.425
+	  Just about 2 times faster.  I'm finally happy with my maths library
+	  performance :-).  Montgomery muliplication requires an odd
+	  modulus and for my implementation, the modulus must be a multiple
+	  of the word size.  If these conditions are not met, I fall back
+	  to my old reciprical system which is basically the old numbers
+	  with a 20% speedup.
+	  Many many thanks to Colin Pumb for putting up with my questions
+	  about montgomery multiplication and his exponetiation (sp?) system.
+	  Also thanks to Wei Dai <weidai@eskimo.com> for helpfull comments in
+	  the past.  I have looked at the big number libraries of
+	  both these people and have now surpased the performance of
+	  their libraries, at least on my linux pentium x86 (I compared
+	  my non-assember version with Colin Plums library since he had
+	  no assember for linux).
+
+Version 0.6.0a 24/06/1996 eay
+	- BN_sqr() 20% faster and speed up BN_mul() by %5,, mostly by removing
+	  BN_clear() calls.  512 bit RSA operations are now %20 faster and
+	  1024 bit operations are %9 faster.  This picked up an error in
+	  BN_rshift(), is was expecting bn->d[bn->top] to be zero which
+	  was never a reasonable thing to expect.
+	- Thanks to Clifford Heath <cjh@osa.com.au> who sent me a patch
+	  to put in the macros I had left out for the BIO functions, so 
+	  there are now the full set of PEM_write_xxx and PEM_read_xxx macros..
+	- Had a 'bug' in that a cert with a signature type of rsa, instead
+	  of rsaEncryption was not being accepted.  I broke this and so
+	  it now works again and has a test certificate.
+	- We were not making externally visable DSA in DLL's
+	- More patches for FreeBSD from Mark Murry <xxxx???>
+	- correct negaitve support for BN_div.c
+	- ssltest, a program that talks SSL to it's self :-)
+	- a few tweaks to distribution.
+
+Version 0.6.0 21/06/1996 eay
+	- I've decided to go to version 0.6.0 due to all the API changes.
+
+Version 0.5.3
+	- LOTS AND LOTS OF THINGS NOT LISTED IN THIS FILE
+	- Added a 'default' prompt, see EVP_set_pw_prompt() and
+	  EVP_get_pw_prompt().
+	- Lots of other minor tweaks.
+	- Lots and lots of fixes and enhancments (80k) from
+	  Gordon Chaffee <chaffee@odie.cs.berkeley.edu>.  He added the
+	  crl2pkcs7 program which wraps a crl and x509's into a pkcs7
+	  structure.  Gordon obviouly has been working with the ca
+	  program quite a lot since lots of his fixes and enhancements
+	  were in that area.
+	  He also provided about unreported 15 bug fixes.  Some were
+	  'real bad' and some were benign but wrong.
+	- Many thanks to Steven Schoch <schoch@sheba.arc.nasa.gov> for
+	  full patches for DSA support.  The library can now accept DSS
+	  signed certificates.
+	- I have now written BIO_ssl, BIO_null and BIO_md, they need testing.
+	- Changed the EVP_ routines over to use EVP_PKEY, which contains
+	  a 'public key', one of RSA, DSA or DH.  This is needed for DSA code.
+	- I have added the patches supplied by a 'contributer' for DSA support
+	  for signature verification.  I have not yet added the stuff required
+	  to generate DSA certificates.
+	- unsigned int bugs, thanks to Ian Goldberg <iang@cs.berkeley.edu>
+	- crypto/asn1/x_cinf.c version checking had problems.
+	- free(NULL) in ssl/ssl_srvr.c - Ben Groeneveld <bjg@snowmass.inel.gov>
+	- Small memset(str,0,SIZE) overeagerness in apps/enc.c
+	  Thanks to Larry J. Hughes Jr. <hughes@indiana.edu>
+	- A few Nextstep tweaks, thanks to Juergen Moellenhoff <jurgen@oic.de>.
+	- Lots of mods of Windows 3.1 and NT.  I have completly removes
+	  FILE pointer access to the libraries under Win16.  There are now
+	  _bio routines for all the functions and the _fp functions now
+	  setup a BIO structure and call the _bio form.  What is a BIO I
+	  hear you ask?  It is what I have renamed the BUF_IO stuff too.
+	  Each one consists of a set of functions and data to do IO
+	  as either a source or a sink or both.  The semantics are that
+	  of non-blocking IO on a socket :-).  I will document this stuff
+	  further.
+	- Added a linux/FreeBSD mod for use of /dev/rand devices,
+	  define DEVRANDOM when building to be the device and it will
+	  be used during initalisation.  Thanks to
+	  Anthony Rumble <anthony@rumble.waratah.id.au> for sending in
+	  the patch.
+	- Big speedups in MD5 for little endian 32bit (if L_ENDIAN is
+	  defined) and speedups in SHA/SHA1 on big endian 32bit
+	  machines if (B_ENDIAN) is defined.  Thanks to
+	  Wei Dai <weidai@eskimo.com> for this
+	- Fixed quite a few things the 16bit VC compiler complained about.
+	  I now have a test.bat script in the ms directory that should
+	  be run to test things.  It picked up a few problems in base64
+	  encoding.  Also it should be noted that BN_mod_word() has problems
+	  if 'long' < 32 bits.
+	- I've been building DLL's under NT and due to the fact that
+	  exporting variables is a big no-no, all the EVP_md5 type
+	  variables are now functions that return their value.
+	  This does not really affect things much other than having to
+	  put in some brackets.
+	- I had stuffed up the client authenication when I did the 
+	  SSL_SESSION stuff :-(, all fixed now.
+	- Using the BUF_IO functions, all the *_print(FILE *fp,..)
+	  functions have been converted to use *_print_buf(BUF_IO *bp,..)
+	  functions.  These new functions are also visable to applications
+	  and can be used to print/read from a, MEM_BUF *, and FILE * or
+	  a file descriptor.  I still need to document the BUF_IO
+	  functions.
+	- Netscape spki format routines now present, they were
+	  sent to me by Pat Richard <patr@x509.com>.
+	- Added BUF_IO functions and renamed BUFFER to BUF_MEM
+	  and all the BUF_ functions to BUF_MEM.  The new
+	  BUF_IO functions are used as a source/since for a memory
+	  buffer of file descriptor/pointer, depending on how they
+	  are setup.  Various library routines are going to be
+	  modified to use this interface.
+	- More work on mk1mf.pl
+
+Version 0.5.2a
+	- All operating system dependant stuff is in os.h at the top
+	  level.
+	- More memory leaks and purify complaints fixed.  Mostly in
+	  the ssl library.  Reworked where 'peer' is kept.
+	- Changed SSL_copy_session_id() back to a function.  It needs to
+	  not only copy the SSL_SESSION but also the 'CERT' (which is
+	  the certificate and private key) and the 'peer' certificate.
+	  I have also fixed things so that if the 'CERT' is missing,
+	  it does not matter if the session can be reused.
+	- I've added options to util/mk1mf.pl to build the 'makefile.one'
+	  without RC2, RC4, IDEA or socket based demos.  There is also
+	  the option to not build in my md2, md5 or des libraries, but
+	  to use system ones.  This maps the MD5_Update etc over to
+	  the more normal MD5Update.  I did make the name different
+	  for a reason :-).
+	- Cleaned things up in the apps directory so all those
+	  #ifdef WIN32's are now gone.  All apps now include apps.h
+	  which is the correct place to put these 'hacks'.
+	- Memory leaks in apps/req.c, apps/x509.c and apps/ssleay.c.
+	  Most of these relate to not free()ing the CONF structure,
+	  rather benign.
+	- Fixed an 'Array bounds read' in crypto/bn/bn_div.c.
+	- Put in a 'free' function to clean up the 'cipher' state when
+	  a SSL structre is free()ed.  I'm told this makes BSAFE
+	  easier.  Thanks to Bill O'Donnell <billo@server.net> for the patches.
+	- C++ mods from Neil Sharman <neil@mds.rmit.edu.au>.
+	- Lots of little problems fixed, thank to
+	  Eugene Crosser <crosser@online.ru>
+	  Martin Carpenter <mjc@uk.ibm.com>
+	  Eike Dierks <eike@ilink.de>
+	- Modified crypto/asn1/f_int.c so that f2i_ASN1_INTEGER() can
+	  operate when there is 'stuff' on the end of the line and/or
+	  the newline is missing.  This plus other fixes were from
+	  Holger Reif <Holger.Reif@PrakInf.TU-Ilmenau.DE>
+
+Version 0.5.2 29/04/1996 eay
+	- Added s_mult to ssleay.  The code needs cleaning up (I currently
+	  don't do any close(2)s :-).  It is a demo event loop app that will
+	  multiplex multiple sockets.  It can run in non-blocking mode using
+	  SSL connections.  Yes, I have finally gotten the non-blocking to
+	  include the SSL_accept(), which normally will block twice if the
+	  client is running with the -pause option.
+	- Added a debug flag to the SSL structure which if 0x01, will
+	  cause a 1 second sleep after each read(2) and write(2) made
+	  by the library.  This has been added to help test non-blocking
+	  and ultimatly muli-threading the library.
+	- Changed SSL_set_pref_cipher() to SSL_set_cipher_list() because
+	  the meanings are different for server/client SSL connection and
+	  'pref' was confusing the issue for the server side.
+	  I have also added SSL_CTX_set_cipher_list() so a 'system'
+	  default can be specified, not a per SSL basis.  A SSL cipher
+	  preference list overrules a SSL_CTX list which over rules the
+	  library default.
+	- Added more memset(ctx,0,sizeof(ctx)) to clear cipher and message
+	  digest contexts.
+	- I've globally changed the CONN type to SSL_SESSION in the ssl
+	  directory.  It was sort of miss named and calling it SSL_SESSION
+	  better describes what it is.  This will make diff's between
+	  0.5.1 and 0.5.2 blow out a bit :-).  Session reuse may not
+	  have been working quite as expected.  I belive I have fixed this
+	  now and I have also added some stats gathering routines for
+	  server side session id reuse.  I've basically reworked the complete
+	  sesson caching system.  Have a read of doc/session.doc.
+	- Make makefile.one generates a single makefile by using util/mk1mf.pl
+	  and the file MINFO which is generated from the other makefiles.
+	- Added a 'version' command to ssleay.
+	- Added ASN1_HEADER data type, it is used to read/write the
+	  netscape certificates/public keys.
+	- 'asn1parse' and 'enc' have been changed to 'scan' for base64
+	  encoded data.  The lines must be > 60 bytes long which seems ok.
+	- Fixed a bug in 'enc -a -d' where the base64 decoding of the input
+	  file was not processing the complete file.  We now also have a
+	  flag to specify buffer size, mostly for testing.
+	- Fixed and generally fixed up apps/x509 so that the generation of
+	  self signed certificates works again and is similer to follow.  I
+	  added test/sstest to check generation of self signed certificates.
+	- Bug in x509.c, missing a 'x509'->references++, just after the call
+	  to X509_add_cert().  This function 'keeps' the passed 'x509' and so
+	  the reference count needs to be incremented otherwise, there
+	  are 2 free()'s done on the structure.
+	- Free()ing a null pointer in apps/x509.c - thanks to
+	  David Eagles <eaglesd@planets.com.au>
+	- Fixed a problem where disabled ciphers could be used by the server.
+	- Fixed a strcmp() which should have been a strncmp() in
+	  d2i_Netscape_RSA(), thanks to
+	  Wolfgang Platzer <wplatzer@iaik.tu-graz.ac.at>
+	- Fixed the perl scripts to work with perl5.
+	- Moved certs/tools to tools, and improved c_rehash so that
+	  it works much better.
+	- The bignum libraries can be compiled to run with 8 bit words :-).
+	  Why people would want to do this I don't know but it was very
+	  usefull for testing the division routines :-)
+	- Re-wrote BN_div/BN_mod.  It now runs 10 times faster :-).
+	  See 'Seminumerical Algorithms vol 2' by Knuth, section 4.3.1,
+	  Algorithm D.  I have implemented both a bignum div and a
+	  'double word'/word => word.  The second is needed on machines that
+	  don't support the 'long long' type and for which I have not written
+	  an assembler version.
+	- Fixed the linux assember version of crypto/bn/bn_mulw.c and also
+	  Tweaked the assember for all x86 boxes and got a %10 speedup.
+	- Fixed a few problems with ASN1_dup and i2d_X509_NAME().
+	  Thanks to Pat Richard <patr@cyberstore.ca>.
+	- From Steven Schoch <schoch@sheba.arc.nasa.gov>
+	  > However, there is one element in the CONN structure that
+	  > is connection-specific: key_material.  The problem arises when
+          > SSL_copy_session_id() is called, which causes two SSL
+	  > (connections) to share one CONN (session?).
+	  > When the SSL_connect is called, key_material is updated on
+	  > the 1 CONN structure.  This breaks the MAC check on
+	  > the first SSL connection.
+	  Thats what happens when one normally writes programs that
+	  only do single socket connects :-(.
+	- Extended X509_NAME_oneline() and fixed a bug in it.
+	- Changes to d2i_asn1_print_type() (crypto/asn1/a_print.c).
+	  The type argument is now a bitmap of acceptable types.
+	  See asn1.h for the B_ASN1 types supported.  This is mostly
+	  used to load X509 RDNs.
+	- PEM header for certificates requests changed from
+	  'NEW CERTIFICATE REQUEST' to 'CERTIFICATE REQUEST', backward
+	  compatable.
+	- PEM header for certificates changed from 'X509 CERTIFICATE'
+	  to 'CERTIFICATE', backward compatable.
+	- modified a few macro names in the ASN.1 stuff, I now do
+	  X509v3 correctly I belive.  It was wrong before :-(.
+	- Fixed Tim's fix in the certificate request stuff.
+	- Fixed a bug in crypto/rand/randfile.c.  The rand_load_file() was
+	  only loading the 'stat' structure from the random file, not any of
+	  the contents :-(.  Many thanks to
+	  John B. Plevyak <jplevyak@cs.uiuc.edu> for this one.
+	- Wrong error filename in apps/ca.c, thanks to
+	  Patrick Richard <patr@cyberstore.ca>
+
+Version 0.5.1b 22/12/1995 tjh
+        - fixed the prototype for BN_CTX_new *again* ... will kick Eric
+	  for having .org files around to complicate maintainence :-)
+	- removed the ASM reference for solaris-x86-gcc until I can test
+	  it as it appears broken
+	- added unixware support to the Configure script
+	- allow for new and class being reserved words in C++
+	- fixed choosing of negotiated ciphers (which broke connecting to 
+	  export versions of the netscape server) ... thanks to 
+	  Paul Wilkinson <paulw@sydsun1.comtech.com.au> for reporting the
+	  problem and pointing me at a system to test my fixes against :-).
+
+Version 0.5.1a 22/12/1995 tjh
+
+	Eric will edit the following to include/remove whatever he thinks
+	should be ... for the moment this is a note from tjh to eay about
+	what's been changed (in order of the changes ...)
+
+        - fixed typo in ssl_locl.h (-l -> -1 for MISSING_IDEA) thanks to
+	  David Weisman <weisman@osf.org>
+        - crypto/asn1/n_pkey.c NORC4 wasn't there needed <weisman@osf.org>
+        - apps/gendh.c <sys/types.h> before <sys/stat.h> for FreeBSD (sameer)
+	- apps/req.c ... yet another problem with fclose() thanks to
+	  Dean Roth <dean@myp.com>
+	- README ... tjh edited typing/spelling errors out (finally)
+	- Changed makefile in crypto/bn to remove bn_mulw.s during make
+	  clean.  It stuffs up the build and should never be present.
+	- bsdi-gcc config modified - sameer <sameer@c2.org>.
+	- Added more #ifdef FIONBIO to make sure things run when it is
+	  not defined :-)
+	- SSL_free() -> fixed problems with freeing the ctx which is
+	  the wrong thing to do - sameer <sameer@c2.org> pointed out
+	  the problem that was causing FreeBSD Apache-SSL to coredump
+
+Version 0.5.1 21/12/1995 eay
+	- s_time added, it times SSL connections, written and donated by
+	  Larry Streepy <streepy@healthcare.com>
+	- Flipped things so proto types are on unless -DNOPROTO
+	- I can now read/write netscape comercial server RSA private
+	  keys.  Try the -inform n and -outform n with the rsa
+	  program.
+	- Moved around the configuration again.
+	- Added back assember versions of crypto/bn/bn_mulw.c.  I have
+	  writen the x86 (since there are so few registers) and DEC alpha
+	  (so I can get access to the 128bit result).
+	- Added a fclose(io) in x509.c, thanks to
+	  Tim Hudson <tjh@mincom.oz.au>.  I should also add that Tim
+	  has found lots of other bugs that have not been mentioned in
+	  the file.
+	- Messing with the BN_mul/BN_sqr routines again.
+	- Changed a few things for BSDI - thanks to
+	  Vivek Khera <khera@kci.kciLink.com>
+
+Version 0.5.0a 13/12/1995 eay
+	- Fixed the version number in certificate requests, I was
+	  setting it to one for some reason :-(.
+	- Fixed a few Makefile problems
+	- Fixed the prototypes.
+	- Fixed a bug in x509_vrf.c, I was verifying the signature of
+	  the issuer instead of the subject :-(
+
+Version 0.5.0 12/12/1995 eay
+	- TOO MANY OTHER CHANGES TO MENTION
+	- Added an ERR_free_strings, Larry Streepy <streepy@healthcare.com>
+	  for the prompting and for reporting the memory leak in the
+	  lhash library.
+	- Checking the wrong field for NULL in SSL_accept, thanks
+	  to sameer <sameer@c2.org>
+	- Quite a few more last minute bugs :-(
+	- Many thanks to Rhys Weatherley <rweather@us.oracle.com>
+	  for pointing out that I was
+	  assuming little endian byte order for input objects when idea 
+	  actually used bigendian.  No where in the spec does it mention 
+	  this, it is all in terms of 16 bit numbers and even the
+	  example does not use byte streams for the input example :-(.
+	- %5 speedup in the idea routines, thanks to 
+	  Colin Plumb <colin@nyx10.cs.du.edu> for the pointers.  He
+	  has also be a great help in pointing out areas for
+	  improvment in the future.
+	- Bug in pem_lib.c, Simon J. Gerraty <sjg@frodo.dn.itg.telecom.com.au>
+	- Bug in x509 with fclose(io); - Archie Cobbs <archie@tribe.com>
+	- An potential runtime error in ssl_srvr.c - sameer <sameer@c2.org>.
+	- Fixed 15 memory leaks, and 8 errors thanks to the Purify package :-).
+	- Fix for make install, thanks to Nicolas Pioch <pioch@Email.ENST.Fr>.
+	- Error in x509_vrf.c, missing a ERR_GET_REASON(), thanks to
+	  Larry Streepy <streepy@healthcare.com>.
+	- Lots and lots and lots of internal changes.  Too many to
+	  mention.
+	- Client authentication was sending back the wrong checksum.
+	  It should have been encoded with the digest algorithm
+	  encoded as well as just the checksum.  My stupidity,
+	  Marc VanHeyningen <marcvh@spry.com> pointed this out.
+	  
+Version 0.4.5? 28/10/1995 eay
+	- It appears that '*' can only appear in T61STRING type,
+	  not PRINTABLESTRING.
+	- Lots and Lots of ASN1 parsing rewriting.
+	- Bug in client authenication fixed, thanks to
+	  Stephen O. Berger <sberger@tlogic.com> for pointing this one
+	  out.
+	- Major code renaming and reoganisation.
+	- Fixed a problem with SSL, a clear text master key was
+	  acceptable by the server process, not anymore.
+	- X509_CRL, the actual list of cancled certificates is optional, I
+	  have fixed this in my code now.
+	- By parts base64 encoding is working.
+	- All the object routines have been renamed from PEM_ to OBJ_
+	- By parts encryption and message digest is working.
+	- I've been mutilating the verification routines.
+	- Fixed the use of the wrong variable in cipher to determin
+	  the size of the master key.  This was causing NULL-MD5
+	  to break.
+	- Changed the ssl library to use bsearch and qsort to make
+	  matching of ciphers more efficent.  The linear search I was
+	  using was ugly, especially when there were lots and lots of
+	  ciphers (I currently have 9).
+	- Changed the 'object' look up tables so that instead of using
+	  a hash table initiated at runtime, I now use a 'static'
+	  pregenerated table, which used bseach to look things up.
+	  Part of the plan to remove all global variables :-).
+	- A few tweaks for BSD/OS 2.0.1 but they are general fixes
+	  from Vivek Khera <khera@kciLink.com>
+	- A few mixed variables in PEM_proc_type() - thanks to
+	  emanuele@freenet.hut.fi <Emanuele Pucciarel>
+	- SHA added and tested.  DES_CBC_SHA and DES_EDE_SHA added,
+	  needed for SSLv3.
+
+Version 0.4.5b 28/08/1995 eay
+	- A few stupid errors on my part in the previous release :-(.
+	- I have been leaving out attribution to Tim Hudson (tjh@mincom.oz.au)
+	  for doing the body of the port and testing of the windows DLL's.
+	  He found quite a few 'interesting features' of the Borland
+	  C compiler.  Many thanks to him for doing this work.
+
+Version 0.4.5a 27/08/1995 eay
+	- Improved 'req' so that it can be used to generate
+	  certificate requests directly.
+	- Finally got certificate requests correct.  My sign code has
+	  also probably been doing the wrong thing for quite some time
+	  now.
+	- Fixed a 'bug' in lib/ssl/ssl_pkt.c, SSL->act_data is now
+	  SSL->ract_data and SSL->wact_data, if there is data still
+	  to be read and a write occurs, the pointer was pointing in
+	  the wrong place when we tried to read again.
+	- Fixed some memory leaks pointed out thanks to
+	  Alex Tang <altitude@cic.net> and the Purify package.
+	- Changed lib/x509/x509_req so that REQ verification checks
+	  that the algorithm in the checksum agrees with what is in
+	  the REQ object.
+
+Version 0.4.5 24/08/1995 eay
+	- bn_mul is faster and there is support for the use of asm.
+	  I now ship an x86 asm version, makes the routines 2 times
+	  faster.
+	- Apps all build into a monster program - ssleay
+	- non-blocking io finished in the ssl client and server.
+	- 'Bug' in lib/der_lib.c DER_put_object().  There are 2 ways
+	  to encode length of 0, I was doing the wrong one :-(.
+	  Thanks to the long suffering Alex Tang <altitude@cic.net>
+	  for 'testing' the fuctionality of the certificate request
+	  generation code.
+	- ssl_pkt.c rewritten SSL_write to handle non-blocking io.
+	- ssl_cnt.c rewriten to be able to handle non-blocking io.
+	- Found a bug in s_socket.c, returning a non static variable.
+	- Merged most programs in apps into one big one.
+	- Tweaked lib/md/md_rand.c to hopefully do better random
+	  numbers :-) thanks to Robert J. LeBlanc <rjl@renaissoft.com>
+	  for comments.
+	- Reorganised the directory layout and makefiles.
+	- Fixed a deficency in the loading of X509_ALGOR type objects.
+	  Many thanks to Steven Schoch <schoch@sheba.arc.nasa.gov> for
+	  the patches for this.
+
+Version 0.4.4 17/07/1995 eay
+	- Fixed a bug in time_cmp (stuffed up different years :-(.
+	- Fixed things so that I can accept more that one SEQUENCE in
+	  a SET in X509_NAME structures.  Again this will not work to
+	  'text' mode but does for der/pem.
+	- Added PEM_Open(Init,Update,Final) - needs testing
+	- Added PEM_Seal(Init,Update,Final) - needs testing
+	- Added PEM_Digest(Init,Update,Final)
+	- Added PEM_Sign(Init,Update,Final)
+	- Added PEM_Verify(Init,Update,Final)
+	- %70 speedup in RC4_set_key.
+	- File names shortened so windows can compile them.
+	- Configure perl script at top level.
+	- Speedups in md2/md5/rc4.
+	- Add -days to x509
+	- Can now build with gcc -Wall and not get too many complaints.
+	- Text mode operations will input and output the text object
+	  strings as well are object number sequences.
+	- I have changed the short form of stateOrProvince from SOP to
+	  SP which is what is used by other people.  This will break
+	  all current hash values :-(.
+	- Fixed a typo in STRING_CERTIFICATE_BEGIN and
+	  STRING_CERTIFICATE_END.  This will affect text mode
+	  operations.
+	- Some speedups in bn_mul() when LONGLONG is not defined.
+	- Changed makefile so it now builds a distribution to unpack
+	  into SSLeay-0.4.3b/ and I don't use perl for make dclean.  I
+	  actually had a read of the sed man page and put it in
+	  instead :-).
+	- Finished reworking the error system.  This should make the
+	  windows DLL porting much easier.  It also cleans things up
+	  and make a single interface.  It also allows people to not
+	  bother loading all the text strings for the errors.
+	- Bug fix in call to gethostbyname() in socket, and a
+	  reordering of my server_verify() and get_client_finished()
+	  calls in SSL_accept() so that we work with netscape clients
+	  :-). Thanks to holtzman@mit.edu.
+	  Adam Douglas Cain <acain@ncsa.uiuc.edu> has also confirmed
+	  that with these changes SSLeay servers can have netscape
+	  clients talk to it.
+	- Bug in RSAref.c, calling decrypt instead of encrypt :-(.
+	- Added support for -DNO_IDEA and -DNO_RC4 to build without
+	  these algorithms.
+	- ssl_client/ssl_server now print the certificate they
+	  retrieve. SSL_get_peer_certificate() works.  It is assuming
+	  X509 but when more type become defined I'll rework this
+	  code.
+	- Found and removed some code that did nothing in ssl/.
+	- Added IDEA encryption of public key when in PEM
+	  encoding.
+	- Finished der_chopup.  This command will take a DER file (as
+	  sent by RSA and printout in PEM encodeing any X509 certs or
+	  CRL it finds in the file.
+	- Added a header length field to der_parse.
+	- Adding CRL.  We can now load and manipulate them.
+Version 0.4.3a 19/06/1995 eay
+	- RSAref support added.  It needs to be tested since I have
+	  been unable to do so since I don't have access to the code.
+	- All bcopy/bcmp/bzero references have been removed, I
+	  actually did this last week but forgot to add it to this file :-).
+Version 0.4.3 15/06/1995 eay
+	- PROTOTYPES!
+	- Fixed a bug in SSL_write.  When writes were larger than the
+	  max for 3 byte headers, the padding variable was being
+	  stuffed up.  Another Tim Hudson <tjh@mincom.oz.au> discovery, 
+	  it turned up under IRIX with ftpd.
+	- Removed some code in socket.c that caused an endless loop on
+	  machines with 2+ ethernet interfaces.  Fixed some errors in
+	  ssl/ssl_server.c.  Tim Hudson <tjh@mincom.oz.au> discoveries.
+	- Removed RSA->num and RSA->buf from the RSA struct, they are
+	  now 'created' as needed in the RSA routines.
+	- Fixed a 'memory reuse' bug in x509.
+	- der_parse was a quick 'throw away' program to use a routine
+	  that I saw in my code when I was cleaning :-).  I have
+	  made it useful now.
+	- Make depend added, make dclean removes the dependancies.
+	- Changed the make test is rsa/ so that it runs gentest which
+	  generate self signs and the certifies a certificate.
+	- Add a flag so that RSA_generate_key can set 'e' to
+	  0x03 or 0x10001.
+	- Bug in IDEA code, data overrun in idea_set_key.
+	- Was setting key_file to TEST_CERT in ssl/ssl_server, now
+	  set to NULL, also other problems with signing certificates,
+	  to certify, it MUST be self signed now.
+	  thank Dave Goldblatt <dg@server.net>.
+	- 2 Makefile fixes for NeXT (intel) from
+	  Richard Frith-Macdonald <richard@brainstorm.co.uk>
+Version 0.4.2b 07/06/1995 eay
+	- Missed a htons() in ssl/net.h that needed to be removed :-(.
+	- As was pointed out by Paul Riethmuller <par@sequent.com>,
+	  my bn_mul() had 19 lines of code to deal with the 'carry'
+	  bits from r=a*b[i].  This was all unneeded.  I must have
+	  been working on the r=a+b stuff (where a is larger that b)
+	  just before :-).  This will not speed things up much, but it
+	  definitly make the code look nicer :-).
+Version 0.4.2 06/06/1995 eay
+	- Quickly hacked into ssl/ssl_client.c some code to report
+	  cipher that can be used.  Evil code accessing things that
+	  should not be known to an application.  I'll probably put a
+	  nice interface in place in the next release :-).
+	- I had broken rsa/x509.c when I changed X509_verify to cause
+	  an error for the callback for a 'depth 0' self signed
+	  certificate.  I have this as an error because there is no
+	  way to authenticate the certificate in this case.  Thanks to
+	  Dave Goldblatt <dg@server.net> for pointing out this error.
+	- destest now return a non-zero value on failure.
+	- Quickly put in CBC-IDEA-MD5 :-)  I was preparing the new
+	  release when Andreas Bogk <bogk@inf.fu-berlin.de> sends
+	  email saying that he has nearly finished IDEA as well.  And my
+	  god is his code nearly the same as mine :-).  In fact there
+	  are whole sections (files and subroutines I should say) that are
+	  %90 identical :-)  So if I had not done it last night,
+	  Andreas would have gotten the credit for adding IDEA :-)
+	- added des_ncbc_encrypt() to the DES library.  This is a
+	  'normal' des_cbc that copies back the new value to the
+	  passed iv variable.  I also changed the des_ede3_encrypt()
+	  call to do the same.
+	- Added a file contains the differences between
+	  https://www.netscape.com and the SSL documentation from
+	  netscape; bugs/SSLref.diff.
+	- Put in some missing htons(), in ssl/ssl_client.c and
+	  ssl/ssl_server.c.  Error reported by
+	  James G. Speth <speth@end.com>.
+	- Expanded and improved the RAMBLINGS file after traffic on
+	  ssl-users@mincom.oz.au and solicited comments from
+	  Seth Robertson <seth@soscorp.com>.
+	- Added the -cipher option to ssl/ssl_client.c
+	- Ran ispell over a few of my files (my spelling was never good but I
+	  now just call them all typos :-)
+	- An optimisation for md/md5_locl.h that reduces the F() and
+	  G() functions from 4 operations to 3.  For more evil xor magic,
+	  look at the IP() and FP() macros from des/des_locl.h if you
+	  want to see more of this type of thing :-).  Thanks to
+	  Wei Dai <weidai@eskimo.com> pointed this one out, he
+	  attributes the optimisations to Peter Gutmann's SHS code,
+	  and Peter attributes it to Rich Schroeppel.
+
+Version 0.4.1 01/06/1995 eay
+	- www.rsa.com has a certificate with a DN containing a type
+	  T61STRING instead of a PRINTABLESTRING.  It now handles any type,
+	  except the TEXT format routines expect them to be PRINTABLESTRINGs.
+	  So conversion to and from TEXT converts all DN fields to type
+	  PRINTABLESTRING.  In theory the DN fields can be any type, so I
+	  will not bother to fix the TEXT format limitation unless people
+	  really want me to or I become a perfectionist (which means I
+	  probably will :-).
+	- A Couple of tweaks so that things will compile under linux,
+	  Thanks to Bill P <wmperry@spry.com> for the patches to
+	- ssl/client.c and ssl/server.c have been renamed to
+	  ssl_client and ssl_server and have been given lots of
+	  parameters and they now support testing of authentication.
+	  They are actual useful now :-)  The full authentication
+	  model is now working and tested.  ssl/README covers the
+	  authentication model and runs though how it works.
+	- Fixed a fclose of an 'undefined' file handle in rsa/x509.c.
+	  It caused a core dump on some boxes when the -noout option
+	  was used.
+
+Version 0.4 31/05/1995 eay - Initial alpha release.
+
+Version 0.1 01/04/1995 eay - Started work and soon realised that SSL
+	is a hell of a lot more than just SSL.  Thanks to
+	Tim Hudson (tjh@mincom.oz.au) for pointing me at the SSL spec.
+	as a worthy 'library' to implement since I was in the mood for
+	some mindless obsesive programming :-).
+
+Large numbers of the unattributed bugs have been found by
+Tim Hudson (tjh@mincom.oz.au).
+

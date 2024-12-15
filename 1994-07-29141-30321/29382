@@ -1,0 +1,145 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!darkstar.UCSC.EDU!news.hal.COM!decwrl!netcomsv!netcom.com!adamt
+From: adamt@netcom.com (Adam Thornton)
+Subject: Idea for Stream Cryptosystem
+Message-ID: <adamtCsHIwz.GrJ@netcom.com>
+Organization: NETCOM On-line Communication Services (408 261-4700 guest)
+Date: Tue, 5 Jul 1994 20:43:08 GMT
+Lines: 136
+
+I had the following idea for a stream cryptosystem; it seems to be
+basically a variant of Maurer (as described in Schneier 366) but only
+requires _one_ very large public random number.  I'll be able to get my
+hands on a copy of the referenced papers sometime next week, so I can tell
+whether or not this variant has been described in the literature before.
+It seems like an obvious idea, which makes me think there must be something
+fatally wrong with it; I just don't have enough background to be able to
+tell the difference.  If anyone can tell me why a brute-force attack isn't
+necessary and thus how to break this in less than 2**(2n-2) attempts, I'd
+be much obliged.
+
+The major problem with it--if it actually works--is that the scheme
+requires 2**n bits of memory, so if n is 24 (2MB of ROM; cheap enough to
+put in a cheap, mass-produced device), 2**46 attempts aren't really all
+that much: since all you have to do is an XOR, 100 million/second doesn't
+seem unreasonable.  Put 1000 such machines in parallel, and you're looking
+at only 20 minutes to break any given block of the message.
+
+Anyway, here it is.
+
+Adam
+****************************
+-----BEGIN PGP SIGNED MESSAGE-----
+
+Adam Thornton							July 4, 1994 
+ 
+A METHOD FOR STREAM CRYPTOGRAPHY USING A LARGE PUBLIC POOL OF RANDOM 
+NUMBERS 
+ 
+This scheme appears to be a variant of Maurer (cf. [Schneier 366,592]);
+however, I have not had access to the original papers, so I do not know 
+whether he mentions this variant.  The principal distingction between my
+scheme and the scheme described in _Applied Cryptography_ is that, rather
+than using multiple streams of public random bits, I rely on a single pool
+that can be reshuffled into different streams.
+ 
+First, a large pool (2**20 or more) of random bits is needed.  This pool 
+can--and probably should--be public; perhaps the first few million bits 
+of a binary expansion of a well-known constant, such as pi or e can be 
+used, if either of those turn out to have a random bit distribution (if 
+not, they can still be used, but more digits will be required for 
+equivalent security [Schneier 372]).  Making the pool's source public is 
+merely a convenient way to ensure that people believe that your random 
+numbers truly are random.  We will assume a pool of 2**n bits, as this 
+is both a convenient memory size and makes selection of one of our 
+parameters easy; however, nothing in the algorithm strictly requires 
+such a size. 
+ 
+Second, a true random number source is necessary; amplifier noise, 
+radioactive decay, or atmospheric noise are all reasonable methods for 
+producing random bits.  The important thing is that the random number 
+generator must generate a random sequence--probably based on 
+environmental phenomena--rather than a pseudorandom sequence. 
+ 
+Third, a method of providing secure data exchange will be necessary.  
+The obvious approach is to use RSA public-key algorithms to generate an 
+IDEA session key, since this does not presuppose secure channels of 
+communication.  Using a strong one-way hash function, voice verification 
+of the hash value will provide reasonable assurance that the keys are 
+not being spoofed.  RSA is patented under patent number 4,405,829 and 
+possibly under 4,218,582 as well.  IDEA is covered by International 
+Patent PCT/CH91/00117, U.S. patent pending. 
+ 
+The cryptographic technique is very simple--essentially, it rests of the 
+generation of a succession of (for all practical purposes) one-time pads 
+drawn from the large pool of random bits.  There will be a stream of 
+plaintext bits P, which will be XOR'ed with a confusion stream C for 
+transmission, and XOR'ed again at the other end with the same stream for 
+decryption.  Generation of the stream C is, of course, the crux of the 
+matter. 
+ 
+Each cycle of encryption will consist of b bits.  b is determined in the 
+implementation and should not be an appreciable fraction of 2**n; this 
+is not expected to be a problem. 
+ 
+Once an IDEA session key has been generated and transmitted (encrypted 
+with a public-key algorithm as stated below), that key will be used to 
+encrypt bits drawn from the random number generator, transmitted in 
+blocks; each block will consist of some number (determined by the 
+implementation) of offset-increment pairs.  Each pair will remain valid 
+for one cycle of length b.  The offset will be n bits long and the 
+increment n-1--in actuality the increment is also n bits, but its least 
+significant bit is always 1. 
+ 
+This pair will be used to encrypt the plaintext bits P0 - Pb in the 
+following manner: C0 will be the bit at the address given by the offset, 
+C1 will be the bit at (offset + increment) modulo 2**n, and so on 
+through Cb, which gets the contents of (offset + b(increment)) modulo 
+2**n.  Making the LSB of the increment 1 ensures that it is relatively 
+prime to 2**n, and therefore yields a pseudo-random number generator 
+with period 2**n. 
+ 
+When b is reached, the next pair of random numbers is taken and a new 
+cycle begins; a new pair may not be necessary, however--a new increment 
+alone is probably just as effective.  Further modifications of the 
+scheme could include XOR'ing the increment with the last address for the 
+next increment (and providing a random "last address", i.e. C-1, in the 
+initial transmitted seed), or similar techniques.  Whether these 
+strengthen or weaken the algorithm is something I have not investigated. 
+ 
+In a practical application, one would probably be generating new blocks 
+of offset-increment pairs while the previous set was being used; after 
+some number of cycles, transmission would pause while the new blocks 
+were sent between the parties.  In this way, indefinitely long 
+transmissions can be maintained. 
+ 
+A naive analysis suggests that--assuming the security of the block 
+exchange, which if done via properly implemented RSA and IDEA ought to 
+be reasonably assured--a brute-force attack will take at most 2**(2n-1) 
+attempts: the initial offset can be any of the 2**n bits in the pool, 
+and the increment can be any odd number in the same range, which gives 
+2**(n-1) possibilities.  Thus a brute-force attack can expect to 
+succeed, on average, in 2**(2n-2) attempts.  If n is large, this should 
+provide reasonable security.  An n in the neighborhood of 24 should be 
+attainable cheaply, since that would require only 2MB of storage for the 
+random number pool. 
+ 
+This scheme may well have a fatal flaw; it is necessary to encourage 
+extensive review before implementing it anywhere, and certainly before 
+using it to encrypt real transmissions.
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6
+
+iQCVAgUBLhhtojBaGipcb5htAQFDpAP+Jg5MFHXMhuvRjK0F7WGLLjH6Sbnb2eEV
+f/MxXxqxo73uRuCmqnGScBAVTu3YPCDLUs3vw9/1SLzAuxtBqWr/i6o0aDGvbSZg
+6nRNDQOAzI4NzY6AaHD9XIF+50H40BoV8kxaEFtJYGCW531fRi4WW0OXHLNxGGAn
++nJj+gt1k10=
+=U4Ei
+-----END PGP SIGNATURE-----
+
+-- 
+adam@io.com | adamt@netcom.com | adam@phoenix.princeton.edu | Viva HEGGA!
+"Double integral is also the shape of lovers curled asleep" : Pynchon
+64,928 | TEAM OS/2 |   "Ich habe einen Bierbauch!"   |  Linux  | Fnord
+You can have my PGP passphrase when you pry it from my cold, dead brain.

@@ -1,0 +1,372 @@
+head	1.4;
+access;
+symbols;
+locks
+	vince:1.4; strict;
+comment	@ * @;
+
+
+1.4
+date	94.10.24.20.19.34;	author vince;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	94.06.06.10.57.48;	author vince;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	94.06.04.12.51.16;	author vince;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	94.06.04.12.24.05;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.4
+log
+@safety
+@
+text
+@/*
+ * $Author: vince $
+ * $Header: /res/usr/vince/src/dh/RCS/dhserver.c,v 1.3 1994/06/06 10:57:48 vince Exp $
+ * $Date: 1994/06/06 10:57:48 $
+ * $Revision: 1.3 $
+ * $Locker:  $
+ */
+
+#ifndef	lint
+static char *rcsid = "@@(#) $Id: dhserver.c,v 1.3 1994/06/06 10:57:48 vince Exp $";
+#endif	lint
+
+
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <errno.h>
+#include <syslog.h>
+#include <sys/utsname.h>
+#include <pwd.h>
+
+/*ARGSUSED*/
+main(argc, argv)
+int	argc;
+char	*argv[];
+{
+	struct sockaddr_in	from, to;
+	int			fromlen = sizeof(from);
+	int			on = 1;
+	struct hostent		*he;
+	char			user[32], *fromhost;
+
+	void			login();
+
+	/* set some sock options */
+	if (setsockopt(0, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+		perror("setsockopt(SO_REUSEADDR)");
+		exit(1);
+	}
+	if (setsockopt(0, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof (on)) < 0) {
+		perror("setsockopt(SO_KEEPALIVE)");
+		exit(1);
+	}
+
+	fromlen = sizeof(from);
+	if (getpeername(0, (struct sockaddr *)&from, &fromlen) == -1) {
+		perror("getpeername()");
+		exit(1);
+	}
+	if ((he = gethostbyaddr((char *) &from.sin_addr,
+				sizeof(struct in_addr), AF_INET)) != NULL)
+		fromhost = (char *) strdup(he->h_name);
+	else
+		fromhost = (char *)
+			strdup((char *) inet_ntoa(from.sin_addr.s_addr));
+
+	openlog("dhserver", LOG_PID | LOG_ODELAY, LOG_DAEMON);
+	syslog(LOG_NOTICE, "received call from %s\n", fromhost);
+
+	/* run a real telnet server to manage all the OOB and
+	  TELOPT stuff. we want to have a pty attached for the
+	  capability to get one-at-a-time input characters */
+	telnetd(0);
+
+	/* authenticate user */
+	banner();
+	printf("login: ");
+	if (fgets(user, sizeof(user), stdin) == NULL)
+		exit(1);
+	user[strlen(user) - 1] = '\0';
+
+	(void)sleep(2); /* slow down */
+
+	if (skeyauth(user)) {
+		(void)sleep(2); /* slow down */
+		printf("Login incorrect\n");
+	}
+	else {
+		login(user);
+		/* login failed if reached */
+		syslog(LOG_ERR, "error while logging in for %s\n", user);
+	}
+
+	(void)sleep(2); /* don't shut down too quickly, let buffers flush */
+	exit(1);
+}
+
+#define NOTREGISTERED	"login failed, `%s' is not a registered user"
+#define NOPWDFILE	"error: cannot open s/key password file!\n"
+int
+skeyauth(char *user)
+{
+	int	res;
+
+	switch (skey_haskey(user)) {
+		case	1:
+			syslog(LOG_ERR, NOTREGISTERED, user);
+			return(1);
+			break;
+		case	-1:
+			syslog(LOG_ERR, NOPWDFILE);
+			return(1);
+			break;
+	}
+	res = skey_authenticate(user);
+	if (res == -1) {
+		syslog(LOG_NOTICE, "attempted to login as %s\n", user);
+		return(1);
+	}
+	syslog(LOG_NOTICE, "authentication succeeded for %s\n", user);
+	return(0);
+}
+
+banner()
+{
+	struct utsname	name;
+
+	(void)uname(&name);
+	printf("\n\nDHServer ready for %s %s %s %s %s\n%s\n\n",
+		name.sysname, name.nodename, name.release,
+		name.version, name.machine);
+}
+
+
+#define MAX_ENV_NUM     15
+char    mailpath[] = "/usr/mail/\0\0\0\0\0\0\0\0\0\0";
+char    minusnam[16] = "-";
+char    *envinit[MAX_ENV_NUM] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+void
+login(user)
+{
+	char		*namep, *line;
+	struct passwd	*pwd;
+	int		fd;
+
+	if ((pwd = getpwnam(user)) == NULL) {
+		(void)fprintf(stderr, "%s non-existent in /etc/passwd\n");
+		return;
+	}
+
+	if ((line = (char *)ttyname(0)) == NULL) {
+		(void)fprintf(stderr, "terminal not attached\n");
+		return;
+	}
+
+	if(chdir(pwd->pw_dir) < 0) {
+		if ((pwd->pw_uid == 0) && (chdir("/") == 0))
+			printf("warning: $home is \"/\".\n");
+		else {
+			printf("unable to chdir to \"%s\"\n", pwd->pw_dir);
+			return;
+		}
+	}
+
+	if (chmod(line, 0622) == -1 ||
+			    chown(line, pwd->pw_uid, pwd->pw_gid) == -1) {
+		(void)fprintf(stderr, "cannot set terminal line\n");
+		return;
+	}
+
+#ifdef AUDIT
+	/* turn auditing on */
+	if (setaudproc(1)) {
+		perror("setaudproc()");
+		return;
+	}
+#endif
+
+	(void)initgroups(pwd->pw_name, -1);
+	if (setgid(pwd->pw_gid) || setresuid(pwd->pw_uid, pwd->pw_uid, 0)) {
+		(void)fprintf(stderr, "can not set UID/GID");
+		return;
+	}
+
+	(void)strncat(mailpath, pwd->pw_name, 8);
+	if (*pwd->pw_shell == '\0')
+		pwd->pw_shell = "/bin/sh";
+	if (putvar("HOME",      pwd->pw_dir)	||
+	    putvar("LOGNAME",   pwd->pw_name)	||
+	    putvar("SHELL",     pwd->pw_shell)	||
+	    putvar("TERM",	getenv("TERM"))	||
+	    putvar("MAIL",      mailpath)) {
+		(void)fprintf(stderr, "can not set environment\n");
+		return;
+	}
+
+	if ((namep = strrchr(pwd->pw_shell, '/')) == NULL)
+		namep = pwd->pw_shell;
+	else
+		namep++;
+	(void)strcat(minusnam, namep);
+	(void)execle(pwd->pw_shell, minusnam, 0, &envinit[0]);
+
+	(void)fprintf(stderr, "no shell\n");
+}
+
+putvar(name, value)
+char	*name, *value;
+{
+	char		*p;
+	static int	envcount;
+	size_t		size;
+	
+	size = strlen(name) + strlen(value);
+	size += 2; /* '=' + '\0' */
+	if (!*value)
+		return(0);
+	if (envcount == MAX_ENV_NUM - 1)	
+		return(1);
+	if ((p = (char *) malloc(size)) == NULL) {
+		perror("malloc()");
+		return(1);
+	}
+	(void)sprintf(p, "%s=%s", name, value);
+	envinit[envcount++] = p;
+	return(0);
+}
+@
+
+
+1.3
+log
+@safety
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/dh/RCS/dhserver.c,v 1.2 1994/06/04 12:51:16 vince Exp vince $
+ * $Date: 1994/06/04 12:51:16 $
+ * $Revision: 1.2 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: dhserver.c,v 1.2 1994/06/04 12:51:16 vince Exp vince $";
+d60 1
+a60 1
+	syslog(LOG_INFO, "received call from %s\n", fromhost);
+d109 1
+a109 1
+		syslog(LOG_INFO, "attempted to login as %s\n", user);
+d112 1
+a112 1
+	syslog(LOG_INFO, "authentication succeeded for %s\n", user);
+@
+
+
+1.2
+log
+@safety
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/dh/RCS/dhserver.c,v 1.1 1994/06/04 12:24:05 vince Exp vince $
+ * $Date: 1994/06/04 12:24:05 $
+ * $Revision: 1.1 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: dhserver.c,v 1.1 1994/06/04 12:24:05 vince Exp vince $";
+d20 3
+a31 1
+	int			s;
+a33 1
+	int			service;
+d35 2
+d59 2
+a60 4
+	/*
+	printf("incoming call from %s.\n", fromhost);
+	(void)fflush(stdout);
+	*/
+d68 3
+a70 5
+	printf("Login: ");
+	(void)fflush(stdout);
+	if (fgets(user, sizeof(user), stdin) == NULL) {
+		perror("fgets()");
+		(void)fflush(stderr);
+a71 1
+	}
+d73 3
+d77 1
+d79 5
+a83 2
+		(void)fflush(stdout);
+		exit(1);
+d86 2
+a87 1
+	(void)execl("/bin/sh", "-sh", NULL);
+d90 2
+d95 2
+d99 1
+a99 1
+			(void)fprintf(stderr, "no entry for user %s\n", user);
+d101 1
+d103 1
+a103 1
+			(void)fprintf(stderr, "could not open key file\n");
+a104 1
+		default:
+d107 35
+d143 68
+a210 1
+	if (skey_authenticate(user) == -1)
+d212 6
+@
+
+
+1.1
+log
+@safety
+@
+text
+@d2 5
+a6 5
+ * $Author:$
+ * $Header:$
+ * $Date:$
+ * $Revision:$
+ * $Locker:$
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id:$";
+d31 1
+a31 1
+	char			buf[BUFSIZ], *fromhost;
+d56 1
+d59 1
+d66 35
+a100 1
+	exit(0);
+@

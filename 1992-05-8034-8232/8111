@@ -1,0 +1,132 @@
+Xref: msuinfo comp.arch:31000 sci.crypt:8111
+Newsgroups: comp.arch,sci.crypt
+Path: msuinfo!caen!zaphod.mps.ohio-state.edu!mips!mips!decwrl!csus.edu!netcomsv!mork!pdh
+From: pdh@netcom.com (Phil Howard )
+Subject: Re: The NSA Instruction
+Message-ID: <0#lk0=g.pdh@netcom.com>
+Date: Mon, 11 May 92 19:43:59 GMT
+Organization: Netcom - Online Communication Services  (408 241-9760 guest) 
+References: <1992Apr29.214606.28406@dcc.uchile.cl> <1992Apr30.003348.6014@kithrup.COM> <1992May2.004537.1397@ultra.com> <1992May02.190414.12764@kithrup.COM>
+
+sef@kithrup.COM (Sean Eric Fagan) writes:
+
+>Once again, I am not aware of any compilers which will take code, such as
+>
+>int bitcnt(n)
+>register unsigned long n;
+>{
+>	register unsigned long tmp;
+>
+>	tmp = n - ((n >> 1) & 033333333333) - ((n >> 2) & 011111111111);
+>	return ((tmp + (tmp >> 3)) & 030707070707) % 63;
+>}
+>
+>and turn it into a pop count instruction.
+
+What a compiler COULD do is define something like a special psuedo-macro
+that will generate the pop count instruction.  A real macro would be there
+in case the program needs to be compiled on a machine without the instruction.
+
+It is just not in the nature of C to take any code like the above (which is
+NOT the only way accomplish this in C) and change it to an instruction.
+
+Anyway, I already use macros defined for the purposes.  Here is a copy of
+my header file (bits.h) to define the macros.  Now when you are writing a
+C compiler for a machine with instructions that do POP COUNT, make that
+compiler have an option to invoke special handling for these macros, and
+not use the macro as defined, but generate code with that instruction.
+
+/***********************************************************************\
+|macro:		COUNTBITS16						|
+|purpose:	count the bits that are 1 in a 16 bit lvalue		|
+|usage:		COUNTBITS16( bits );					|
+|   or:		count = COUNTBITS16( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define COUNTBITS16(b) (\
+	(b)=(((b)>> 1)&0x5555)+((b)&0x5555),\
+	(b)=(((b)>> 2)&0x3333)+((b)&0x3333),\
+	(b)=(((b)>> 4)&0x0707)+((b)&0x0707),\
+	(b)=(((b)>> 8)&0x000f)+((b)&0x000f),\
+	(b))
+
+/***********************************************************************\
+|macro:		COUNTBITS32						|
+|purpose:	count the bits that are 1 in a 32 bit lvalue		|
+|usage:		COUNTBITS32( bits );					|
+|   or:		count = COUNTBITS32( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define COUNTBITS32(b) (\
+	(b)=(((b)>> 1)&0x55555555)+((b)&0x55555555),\
+	(b)=(((b)>> 2)&0x33333333)+((b)&0x33333333),\
+	(b)=(((b)>> 4)&0x07070707)+((b)&0x07070707),\
+	(b)=(((b)>> 8)&0x000f000f)+((b)&0x000f000f),\
+	(b)=(((b)>>16)&0x0000001f)+((b)&0x0000001f),\
+	(b))
+
+/***********************************************************************\
+|macro:		COUNTBITS64						|
+|purpose:	count the bits that are 1 in a 64 bit lvalue		|
+|usage:		COUNTBITS64( bits );					|
+|   or:		count = COUNTBITS64( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define COUNTBITS64(b) (\
+	(b)=(((b)>> 1)&0x5555555555555555)+((b)&0x5555555555555555),\
+	(b)=(((b)>> 2)&0x3333333333333333)+((b)&0x3333333333333333),\
+	(b)=(((b)>> 4)&0x0707070707070707)+((b)&0x0707070707070707),\
+	(b)=(((b)>> 8)&0x000f000f000f000f)+((b)&0x000f000f000f000f),\
+	(b)=(((b)>>16)&0x0000001f0000001f)+((b)&0x0000001f0000001f),\
+	(b)=(((b)>>32)&0x000000000000003f)+((b)&0x000000000000003f),\
+	(b))
+
+/***********************************************************************\
+|macro:		REVERSEBITS16						|
+|purpose:	reverse the bit order in a 16 bit lvalue		|
+|usage:		REVERSEBITS16( bits );					|
+|   or:		value = REVERSEBITS16( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define REVERSEBITS16(b) (\
+	(b)=(((b)>> 1)&0x5555)|(((b)&0x5555)<< 1),\
+	(b)=(((b)>> 2)&0x3333)|(((b)&0x3333)<< 2),\
+	(b)=(((b)>> 4)&0x0f0f)|(((b)&0x0f0f)<< 4),\
+	(b)=(((b)>> 8)&0x00ff)|(((b)&0x00ff)<< 8),\
+	(b))
+
+/***********************************************************************\
+|macro:		REVERSEBITS32						|
+|purpose:	reverse the bit order in a 32 bit lvalue		|
+|usage:		REVERSEBITS32( bits );					|
+|   or:		value = REVERSEBITS32( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define REVERSEBITS32(b) (\
+	(b)=(((b)>> 1)&0x55555555)|(((b)&0x55555555)<< 1),\
+	(b)=(((b)>> 2)&0x33333333)|(((b)&0x33333333)<< 2),\
+	(b)=(((b)>> 4)&0x0f0f0f0f)|(((b)&0x0f0f0f0f)<< 4),\
+	(b)=(((b)>> 8)&0x00ff00ff)|(((b)&0x00ff00ff)<< 8),\
+	(b)=(((b)>>16)&0x0000ffff)|(((b)&0x0000ffff)<<16),\
+	(b))
+
+/***********************************************************************\
+|macro:		REVERSEBITS64						|
+|purpose:	reverse the bit order in a 64 bit lvalue		|
+|usage:		REVERSEBITS64( bits );					|
+|   or:		value = REVERSEBITS64( bits );				|
+|note:		the lvalue argument always ends up with the result	|
+\***********************************************************************/
+#define REVERSEBITS64(b) (\
+	(b)=(((b)>> 1)&0x5555555555555555)|(((b)&0x5555555555555555)<< 1),\
+	(b)=(((b)>> 2)&0x3333333333333333)|(((b)&0x3333333333333333)<< 2),\
+	(b)=(((b)>> 4)&0x0f0f0f0f0f0f0f0f)|(((b)&0x0f0f0f0f0f0f0f0f)<< 4),\
+	(b)=(((b)>> 8)&0x00ff00ff00ff00ff)|(((b)&0x00ff00ff00ff00ff)<< 8),\
+	(b)=(((b)>>16)&0x0000ffff0000ffff)|(((b)&0x0000ffff0000ffff)<<16),\
+	(b)=(((b)>>32)&0x00000000ffffffff)|(((b)&0x00000000ffffffff)<<32),\
+	(b))
+-- 
+/***********************************************************************\
+| Phil Howard  ---  KA9WGN  ---  pdh@netcom.com   |   "The problem with |
+| depending on government is that you cannot depend on it" - Tony Brown |
+\***********************************************************************/

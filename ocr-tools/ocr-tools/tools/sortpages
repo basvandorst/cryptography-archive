@@ -1,0 +1,185 @@
+#!/usr/bin/perl
+#
+# $Id: sortpages,v 1.8 1997/12/11 19:20:58 mhw Exp $
+#
+
+@fileNameFromNumber = ();
+@pagesFound = ();
+$theProductNumber = 0;
+
+for $fileIndex (0..$#ARGV)
+{
+	$fileName = $ARGV[$fileIndex];
+	open(FILE, "<$fileName") || die;
+	while (!eof(FILE))
+  	{
+  		$filePos = tell(FILE);
+  		$_ = <FILE>;
+ 		if (/^\f?-\S/)
+  		{
+  			my ($versionHex, $flagsHex, $pageCRCHex, $tabWidthHex,
+				$productNumberHex, $fileNumberHex, $pageNumber, $name)
+					  = (/^\f?-\S\S{4}\ 		# CRC followed by a space
+						 ([0-9a-f])				# Format version
+						 ([0-9a-f]{2})			# Flags
+						 ([0-9a-f]{8})			# Running CRC32
+						 ([0-9a-f])				# Tab width (0 means radix64)
+						 ([0-9a-f]{3})			# Product number
+						 ([0-9a-f]{4})			# File number
+						 \ Page\ (\d+)\ of\ (.*)/x);
+			my $version = hex($versionHex);
+			my $flags = hex($flagsHex);
+			my $productNumber = hex($productNumberHex);
+			my $fileNumber = hex($fileNumberHex);
+
+			unless ($version == 0 && $productNumber > 0
+						&& $fileNumber > 0 && $pageNumber > 0
+						&& $name ne "")
+			{
+				print STDERR "ERROR: Invalid header info ",
+							 "at $fileName line $.\n";
+				exit(1);
+			}
+
+			if (!defined($fileNameFromNumber[$fileNumber]))
+			{
+				$fileNameFromNumber[$fileNumber] = $name;
+			}
+			elsif ($fileNameFromNumber[$fileNumber] ne $name)
+			{
+				print STDERR "ERROR: Mismatched filename ",
+							 "at $fileName line $.\n";
+				exit(1);
+			}
+
+			if (!$theProductNumber)
+			{
+				$theProductNumber = $productNumber;
+			}
+			elsif ($theProductNumber != $productNumber)
+			{
+				print STDERR "ERROR: Different product number ",
+							 "at $fileName line $.\n";
+				exit(1);
+			}
+
+			push @pagesFound, (sprintf "%5d:%4d:%d:%d:%d",
+					 $fileNumber, $pageNumber, $flags, $fileIndex, $filePos);
+		}
+	}
+	close(FILE) || die;
+}
+
+@pagesFound = sort @pagesFound;
+
+$result = 0;
+$lastFileNumber = 0;
+$lastPageNumber = 0;
+$nextFileNumber = 1;
+$nextPageNumber = 1;
+$fileIndexOpen = -1;
+foreach (@pagesFound)
+{
+	my ($fileNumber, $pageNumber, $flags, $fileIndex, $filePos) = split /:/;
+
+	$fileNumber = int($fileNumber);
+	$pageNumber = int($pageNumber);
+
+	if ($fileNumber == $lastFileNumber && $pageNumber == $lastPageNumber)
+	{
+		print STDERR "DUPLICATE: File $fileNumber, page $pageNumber, skipped\n";
+		next;
+	}
+
+	if ($nextFileNumber < $fileNumber && $nextPageNumber != 1)
+	{
+		print STDERR "MISSING: File $nextFileNumber, ",
+					 "pages $nextPageNumber - END\n";
+		$nextPageNumber = 1;
+		$nextFileNumber++;
+		$result = 1;
+	}
+	if ($nextFileNumber < $fileNumber)
+	{
+		print STDERR "MISSING: Files $nextFileNumber - ",
+					 $fileNumber-1, "\n";
+		$nextFileNumber = $fileNumber;
+		$nextPageNumber = 1;
+		$result = 1;
+	}
+	if ($nextFileNumber != $fileNumber)
+	{
+		print STDERR "ERROR: Internal error, unexpected fileNumber\n";
+		exit(1);
+	}
+
+	if ($nextPageNumber < $pageNumber)
+	{
+		print STDERR "MISSING: File $fileNumber, pages $nextPageNumber - ",
+					 $pageNumber-1, "\n";
+		$nextPageNumber = $pageNumber;
+		$result = 1;
+	}
+	if ($nextPageNumber != $pageNumber)
+	{
+		print STDERR "ERROR: Internal error, unexpected pageNumber\n";
+		exit(1);
+	}
+
+	if ($fileIndexOpen != $fileIndex)
+	{
+		if ($fileIndexOpen >= 0)
+		{
+			close(FILE) || die;
+			$fileIndexOpen = -1;
+		}
+		$fileName = $ARGV[$fileIndex];
+		open(FILE, "<$fileName") || die;
+		$fileIndexOpen = $fileIndex;
+	}
+	seek(FILE, $filePos, 0) || die($!);
+
+	$_ = <FILE>;
+	print;
+	while (<FILE>)
+	{
+		last if /^\f?-\S/;
+		print;
+	}
+	$lastFileNumber = $fileNumber;
+	$lastPageNumber = $pageNumber;
+
+	if ($flags & 1)		# Bit 0 of flags indicates last page of file
+	{
+		$nextFileNumber++;
+		$nextPageNumber = 1;
+	}
+	else
+	{
+		$nextPageNumber++;
+	}
+}
+
+if ($nextPageNumber != 1)
+{
+	print STDERR "MISSING: File $nextFileNumber, ",
+				 "pages $nextPageNumber - END\n";
+	$nextPageNumber = 1;
+	$nextFileNumber++;
+	$result = 1;
+}
+
+print STDERR "Highest file number encountered: ", $nextFileNumber - 1, "\n";
+
+if ($fileIndexOpen >= 0)
+{
+	close(FILE) || die;
+	$fileIndexOpen = -1;
+}
+
+exit($result);
+
+#
+# vi: ai ts=4
+# vim: si
+#

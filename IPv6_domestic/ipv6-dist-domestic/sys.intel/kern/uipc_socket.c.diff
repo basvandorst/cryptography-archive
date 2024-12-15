@@ -1,0 +1,192 @@
+*** /usr/src/sys/kern/uipc_socket.c	Fri Feb  3 02:55:17 1995
+--- uipc_socket.c	Thu Sep 28 14:59:29 1995
+***************
+*** 1,3 ****
+--- 1,10 ----
++ /*
++  * This file has been slightly modified by NRL for use with IPv6.  Search
++  * for 'INET6' to see the ifdef blocks where this happens.
++  *
++  * See the NRL Copyright notice for conditions on the modifications.
++  */
++ 
+  /*	BSDI uipc_socket.c,v 2.1 1995/02/03 07:55:17 polk Exp	*/
+  
+  /*
+***************
+*** 48,53 ****
+--- 55,66 ----
+  #include <sys/socketvar.h>
+  #include <sys/resourcevar.h>
+  
++ #ifdef INET6
++ #include <netinet/in.h>
++ #include <netinet6/in6.h>
++ #include <netinet6/ipsec.h>
++ #endif /* INET6 */
++ 
+  /*
+   * Socket operation routines.
+   * These routines are called by the routines in
+***************
+*** 143,148 ****
+--- 156,204 ----
+  	}
+  	sbrelease(&so->so_snd);
+  	sorflush(so);
++ 
++ #ifdef INET6
++ 	/*
++ 	 * ...arguably should be IPSEC not INET6...
++ 	 *
++ 	 * Because of the "per-socket keying" nature of the IPsec extensions,
++ 	 * more cleanup needs to be done at sofree() time.  Because sockets
++ 	 * don't always go away when PRU_DETACH is called at the lower layers
++ 	 * (think about TCP), this cleanup must be put in here.
++ 	 */
++         if (so->so_proto->pr_domain->dom_family == PF_KEY) {
++           extern void key_unregister();
++           key_unregister(so, 0, 1);
++         }
++ 
++ 	/*
++ 	 * BEFORE freeing a socket, check to see if it is using 
++ 	 * security.  If it is, then call key_sodelete() with the 
++ 	 * socket ptr to tell the Key  Engine to delete references
++ 	 * to that socket.  This prevents the Key Engine from having 
++ 	 * or using bogon pointers to no longer existing sockets
++ 	 */
++ 	if (so->so_proto->pr_domain->dom_family == PF_INET6 ||
++ 	    so->so_proto->pr_domain->dom_family == PF_INET) {
++ 	  extern u_int ipsec_system_sec_level[];   /* from netinet6/ipsec.h */
++ 	  extern void key_sodelete();              /* from netinet6/key.h */
++ 	  extern void ipsec_remsock();
++ 	  
++ 	  if (ipsec_system_sec_level[SS_AUTHENTICATION] >= IPSEC_LEVEL_USE ||
++ 	      ipsec_system_sec_level[SS_ENCRYPTION_TRANSPORT] >= 
++ 	                                                   IPSEC_LEVEL_USE ||
++ 	      ipsec_system_sec_level[SS_ENCRYPTION_NETWORK] >= 
++ 	                                                   IPSEC_LEVEL_USE ||
++ 	      so->so_securitylevel[SS_AUTHENTICATION] >= IPSEC_LEVEL_USE ||
++ 	      so->so_securitylevel[SS_ENCRYPTION_TRANSPORT] >= 
++ 	                                                   IPSEC_LEVEL_USE ||
++ 	      so->so_securitylevel[SS_ENCRYPTION_NETWORK] >= 
++ 	                                                   IPSEC_LEVEL_USE) {
++ 	    key_sodelete(so, 0);
++ 	    ipsec_remsock(so);
++ 	  }
++ 	}
++ #endif /* INET6 */
+  	FREE(so, M_SOCKET);
+  }
+  
+***************
+*** 918,923 ****
+--- 974,1021 ----
+  			break;
+  		    }
+  
++ #ifdef INET6
++ 		/*
++ 		 * Per-socket security level setting.  In the future, this
++ 		 * may move down to lower layers, but often lower-layer PCBs
++ 		 * get freed way before sockets do.
++ 		 */
++                 case SO_SECURITY_AUTHENTICATION:
++                 case SO_SECURITY_ENCRYPTION_TRANSPORT:
++                 case SO_SECURITY_ENCRYPTION_NETWORK:
++                     {
++                     int security_level;
++ 
++                     if (!m || (m->m_len < sizeof(int))) {
++                         error = EINVAL;
++                         goto bad;
++                     }
++ 
++                     security_level = *(mtod(m, int *));
++ 
++                     if ((security_level < 0) && !(so->so_state & SS_PRIV)) {
++                         error = EPERM;
++                         goto bad;
++                     }
++ 
++                     switch(optname) {
++                       case SO_SECURITY_AUTHENTICATION:
++                           so->so_securitylevel[SS_AUTHENTICATION] = 
++                               security_level;
++                           break;
++                       case SO_SECURITY_ENCRYPTION_TRANSPORT:
++                           so->so_securitylevel[SS_ENCRYPTION_TRANSPORT] =
++                               security_level;
++                           break;
++                       case SO_SECURITY_ENCRYPTION_NETWORK:
++                           so->so_securitylevel[SS_ENCRYPTION_NETWORK] =
++                               security_level;
++                           break;
++ 			} /* end switch optname */
++                     } /* end case IPsec opts */
++                     break;
++ #endif /* INET6 */
++ 
+  		default:
+  			error = ENOPROTOOPT;
+  			break;
+***************
+*** 948,954 ****
+--- 1046,1058 ----
+  		} else
+  			return (ENOPROTOOPT);
+  	} else {
++ #ifdef INET6
++ /* This is a "bug" we thought we found in 4.4... */
++ 		if (!(m = m_get(M_WAIT, MT_SOOPTS)))
++                      return (ENOBUFS);
++ #else /* INET6 */
+  		m = m_get(M_WAIT, MT_SOOPTS);
++ #endif /* INET6 */
+  		m->m_len = sizeof (int);
+  
+  		switch (optname) {
+***************
+*** 1008,1013 ****
+--- 1112,1151 ----
+  			    (val % hz) * tick;
+  			break;
+  		    }
++ 
++ #ifdef INET6
++ 	       /*
++ 		* Per-socket security level getting.  In the future, this
++ 		* may move down to lower layers, but often lower-layer PCBs
++ 		* get freed way before sockets do.
++ 		*/
++ 		case SO_SECURITY_AUTHENTICATION:
++                 case SO_SECURITY_ENCRYPTION_TRANSPORT:
++                 case SO_SECURITY_ENCRYPTION_NETWORK:
++                     {
++                     if (!m || m->m_len < sizeof(int)) {
++                         m_free(m);
++                         return (EINVAL);
++                     }
++ 
++                     switch(optname) {
++                       case SO_SECURITY_AUTHENTICATION:
++                           *(mtod(m, int *)) = 
++                           so->so_securitylevel[SS_AUTHENTICATION];
++                           break;
++                       case SO_SECURITY_ENCRYPTION_TRANSPORT:
++                           *(mtod(m, int *)) = 
++                           so->so_securitylevel[SS_ENCRYPTION_TRANSPORT];
++                           break;
++                       case SO_SECURITY_ENCRYPTION_NETWORK:
++                           *(mtod(m, int *)) = 
++                           so->so_securitylevel[SS_ENCRYPTION_NETWORK];
++                           break;
++ 			} /* end switch optname */
++ 
++                     } /* end case IPsec opts */
++                     break;
++ #endif /* INET6 */
+  
+  		default:
+  			(void)m_free(m);

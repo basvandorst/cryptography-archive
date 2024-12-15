@@ -1,0 +1,39 @@
+#!/bin/sh
+if [ ! "$1" ]
+then
+  echo "You must specify a directory where your ID is stored"
+  exit 1
+fi
+
+if [ ! -f $HOME/.blind/$1/name ]
+then
+  echo "You need to first create an identity"
+  echo "Run an.createid $1"
+  exit
+fi
+
+PGPPATH=$HOME/.blind/$1
+export PGPPATH
+
+echo "Create the path that you want to add"
+
+an.createpath $1 /tmp/path.$$
+sed -e 's/^To: \(.*\)$/::addpath \1/' < /tmp/path.$$ >/tmp/command.$$
+rm /tmp/path.$$
+
+pgp -saf <<EOF > /tmp/signed.$$
+`cat /tmp/command.$$`
+--END OF PATH--
+EOF
+
+if [ -f $HOME/.blind/$1/serverpath ]
+then
+  cat $HOME/.blind/$1/serverpath /tmp/signed.$$ | /usr/lib/sendmail -t
+else
+  cat /tmp/signed.$$ | /usr/lib/sendmail `cat $HOME/.blind/$1/servername`
+fi
+
+rm /tmp/command.$$
+rm /tmp/signed.$$
+
+

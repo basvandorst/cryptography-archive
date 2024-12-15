@@ -1,0 +1,100 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!darkstar.UCSC.EDU!news.hal.COM!olivea!sgigate.sgi.com!odin!sgi!wdl1!io!koontzd
+From: koontzd@io.lrmsc.loral.com (David Koontz )
+Subject: Re: Clipper LEAF holes?
+Message-ID: <1994Apr28.011643.3580@wdl.loral.com>
+Sender: news@wdl.loral.com
+Organization: Loral Rolm Computer Systems
+References: <01HBJGKDI63C9TDZ96@delphi.com> <5oqeLc2w165w@tanda.on.ca>
+Date: Thu, 28 Apr 1994 01:16:43 GMT
+Lines: 89
+
+>MIKEINGLE@delphi.com (Mike Ingle) writes:
+>
+>> Even if the receiver can decrypt the first level of the LEAF and examine
+>> the checksum, it doesn't have your device-unique key, so it cannot check
+>> to see if the session key in the LEAF is the same session key that you
+>> sent to it. So it would seem that any valid LEAF would work, even if it
+>> is not the one for the current session key.
+>
+>        It seems like Mike is onto something here. Couldn't the LEAF
+>        be spoofed with a wedge between the chip and the line that
+>        discards the LEAF, and replaces it with a genuine but archaic
+>        LEAF? I can see a small, cheap RJ-11 "LEAF green box" with two
+>        functions:
+>
+>        1. Generate and save a dummy LEAF by simulating a conversation
+>           with the chip.
+>
+>        2. Monitor the line and replace the next LEAF output with the
+>           saved dummy.
+>
+>        This would keep traffic monitors happy by putting a valid LEAF
+>        on all traffic and, while not interfering with communications
+>        with "straight" units, selectively secure the contents of any
+>        traffic using "wedged" units at both ends. If Skipjack is not
+>        crippled, this is very strong encryption; if it isn't, any
+>        wedged message acts as a barium meal.
+>
+>        I wonder what the reaction would be when some LE gets a key
+>        from the escrows and it doesn't work? Seems to me the
+>        immediate reaction would be that they're being jerked around
+>        by one or the other escrow or that the machine is broken. The
+>        only way to show that neither of these is the case would be to
+>        activate a back door.
+>
+>        There are, of course, ways for NSA to combat this approach. I
+>        can think of a few myself. The thing is, each response can
+>        itself be spoofed in a similar, if more complicated, way. The
+>        basic principle operative here is that Clipper is not
+>        resistant to "man in the middle" attacks. Now, if you supply
+>        your own "man in the middle" ...
+>
+
+The LEAF is read out and loaded along with the IV.  One possibility is
+that the IV is indivisible, removing or changing it affecting the outcome
+of LEAF authentication.
+
+Through externally negotiated key exchange both ends use the same key.  
+Imagine that a secure means of exchanging an IV can be determined:
+
+After initializing the clipper chip and loading a randomizer seed:
+
+1) Generate IV, read out results.  This includes the LEAF.
+
+2) save crypto state (a command that reads the LR registers).  This
+   is the actual IV.
+
+3) load the crypto state with a faux IV known to both ends.
+
+4) encrypt the actual IV and transmit it to the distant end (DE).
+
+5) load the crypto state with the actual IV, for subsequent authentic
+   crypto state save/restore operations.
+
+6) Load the generated IV/LEAF assembly into your local clipper chip,
+   initiating decryption.  Restore crypto state with a known value
+   (possibly different) used by the DE. (Switching between encryption
+   and decryption implies a save crypto state and restore crypto state
+   operation). 
+
+7) Decrypt the IV sent from the DE.
+   Reload the crypto state with the IV actual from the DE.  
+
+8) Switch between encryption and decryption as needed, using the save/restore
+   crypto state commands to capture, save and reload the contents of the
+   LR registers.  Send and Receive have separate states.
+
+You have successfully started the clipper chip without transmitting the
+LEAF/IV assembly, and have exchanged the IVs the chips generated.
+Doing this in an existing product would require program capture for two
+segments:  operating the clipper chip, and sending the Escrowed Encryption
+Standard header information.  Both would be required to keep the byte counts
+right.  Note that no unit id encrypted by the family key is transmitted for
+traffic analysis and that you have effectively defined your own protocol 
+for interoperation.
+
+
+
+
+

@@ -1,0 +1,1242 @@
+
+
+Experimental                                   E. Rescorla, A. Schiffman
+Request For Comments XXXX            Enterprise Integration Technologies
+                                                               June 1994
+
+
+                 The Secure HyperText Transfer Protocol
+
+Status of this Memo
+
+   This memo describes a syntax for securing messages sent using the
+   Hypertext Transfer Protocol (HTTP), which forms the basis for the
+   World Wide Web. This is a working draft being circulated for public
+   review, distribution is unlimited.
+
+   This document should not be cited, except as a "working draft", nor
+   should it be used as a authoritative guide to S-HTTP implementation,
+   as its contents are subject to change. A revised version of this
+   document will be submitted to the RFC editor.
+
+Document Conventions
+
+   Editorial comments for this draft are in curly braces. This is ver-
+   sion 23 of the document, prepared on 10-Jun-94.
+
+1.  Introduction
+
+   The World Wide Web (WWW) is a distributed hypermedia system which is
+   rapidly gaining acceptance among Internet users.  Although many WWW
+   browsers support other, preexisting Internet application protocols,
+   the native and primary protocol used between WWW clients and servers
+   is the HyperText Transfer Protocol (HTTP) [18].  The ease of use of
+   the Web has prompted widespread interest in its employment as a
+   client/server architecture for many applications.  Many such applica-
+   tions require the client and server to be able to authenticate each
+   other and exchange sensitive information confidentially. Current HTTP
+   implementations have only modest support for the cryptographic
+   mechanisms appropriate for such transactions.
+
+   Secure HTTP (S-HTTP) provides secure communication mechanisms between
+   an HTTP client-server pair.  Our design intent is to provide a flexi-
+   ble protocol that supports multiple operation modes and cryptographic
+   algorithms and formats through option negotiation between the tran-
+   saction parties.
+
+1.1.  Summary of Features
+
+   Secure HTTP has been designed to enable incorporation of various
+   cryptographic message format standards into Web clients and servers,
+
+
+
+Rescorla, Schiffman                                              [Page 1]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   including, but not limited to, PKCS-7, PEM, and PGP. S-HTTP supports
+   interoperation among a variety of implementations, and is backward
+   compatible with HTTP.  S-HTTP aware clients can talk to S-HTTP
+   oblivious servers and vice-versa, although such transactions obvi-
+   ously would not use S-HTTP security features.
+
+   S-HTTP does not require client-side public key certificates (or pub-
+   lic keys), supporting a symmetric session key operation mode. This is
+   significant because it means that spontaneous private transactions
+   can occur without requiring individual users to have an established
+   public key.  While S-HTTP will be able to take advantage of ubiqui-
+   tous certification infrastructures, its deployment does not require
+   it.
+
+   S-HTTP supports end-to-end secure transactions, in contrast with the
+   existing de-facto HTTP authorization mechanisms which require the
+   client to attempt access and be denied before the security mechanism
+   is employed.  Clients may be "primed" to initiate a secure transac-
+   tion (typically using information supplied in an HTML anchor); this
+   may be used to support encryption of fill-out forms, for example.
+   With S-HTTP, no sensitive data need ever be sent over the network in
+   the clear.
+
+   S-HTTP provides full flexibility of cryptographic algorithms, modes
+   and parameters. Option negotiation is used to allow clients and
+   servers to agree on transaction modes (should the request be signed?
+   encrypted?  both? what about the reply?); cryptographic algorithms
+   (RSA vs. DSA for signing, DES vs. RC2 for encrypting, etc.); and cer-
+   tificate selection (please sign with your "Mastercard certificate").
+
+   S-HTTP attempts to avoid presuming a particular trust model, although
+   its designers admit to a conscious effort to facilitate multiply-
+   rooted hierarchical trust, and anticipate that principals may have
+   many public key certificates.
+
+1.2.  Modes of Operation
+
+   Message protection may be provided on two orthogonal axes: signature
+   and encryption. Any message may be either signed, encrypted, both, or
+   neither. In addition, provision has been made for prearranged crypto
+   keys in order to send to those who have no key pair, and for unsigned
+   authenticated messages.
+
+1.2.1.  Signatures
+
+   If the digital signature enhancement is applied, an appropriate cer-
+   tificate may either be attached to the message (possibly along with a
+   certificate chain) or the sender may expect the recipient to obtain
+
+
+
+Rescorla, Schiffman                                              [Page 2]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   the required certificate (chain) independently.
+
+1.2.2.  Encryption
+
+   In support of bulk encryption, S-HTTP defines two key transfer
+   mechanisms, one using public key in-band key exchange and another
+   with externally arranged keys.
+
+   In the former case, the symmetric key cryptosystem information is
+   passed encrypted under the receiver's public key.
+
+   In the latter mode, we encrypt the content using a prearranged ses-
+   sion key, with key identification information specified on one of the
+   header lines.
+
+1.2.3.  Authentication without Signatures
+
+   In addition to the obvious use of digital signatures to authenticate
+   transactions non-repudiably, S-HTTP supports a nonce-based mechanism
+   that allows parties to identify each other reliably in a transaction
+   without providing (third-party) non-repudiability for the transac-
+   tions themselves (see section 4.4). The provision of this mechanism
+   is motivated by our bias that the action of "signing" a transaction
+   should be explicit and conscious for the user, whereas many authenti-
+   cation needs (i.e., access control) can be met with a lighter-weight
+   mechanism that retains the scalability advantages of public-key cryp-
+   tography.
+
+1.3.  Implementation Options
+
+   In order to encourage widespread adoption of cryptographic facilities
+   for the World-Wide Web, Secure HTTP deliberately caters to a variety
+   of implementation options despite the fact that the resulting varia-
+   bility makes interoperation potentially problematic.
+
+   We anticipate that some implementors will choose to integrate an out-
+   board PEM program with a WWW client or server; such implementations
+   will not be able to use all operation modes or features of S-HTTP,
+   but will be able to interoperate with most other implementations.
+   Other implementors will choose to create a full-fledged PKCS-7 imple-
+   mentation (allowing for all the features of S-HTTP); in which case
+   PEM support will be only a modest additional effort. Without com-
+   pletely prescribing a minimum implementation profile (although see
+   section 6) then, we recommend that all S-HTTP implementations support
+   PEM message format.
+
+
+
+
+
+
+Rescorla, Schiffman                                              [Page 3]RFC XXXX                      Secure HTTP                      June 1994
+
+
+2.  HTTP encapsulation
+
+   A Secure HTTP message consists of a request or status line (as in
+   HTTP) followed by a series of RFC-822 style headers followed by an
+   encapsulated content. Once the content has been decoded, it should
+   either be another Secure HTTP message, an HTTP message, or simple
+   data.
+
+   For the purposes of compatibility with existing HTTP implementations,
+   we distinguish S-HTTP transaction requests and replies with a dis-
+   tinct protocol designator ('Secure-HTTP/1.0').  However, if a future
+   version of HTTP (i.e., 'HTTP/2.0') subsumes this RFC, use of a new
+   protocol HTTP designator would provide the same backwards compatibil-
+   ity function and a distinction between such a future version of HTTP
+   and Secure-HTTP would be unnecessary.
+
+2.1.  The Request line
+
+   For HTTP requests, we define a new HTTP protocol method, 'Secure'.
+   All secure requests (using this version of the protocol) should read:
+
+           Secure * Secure-HTTP/1.0
+
+   All case variations should be accepted.
+
+2.2.  Status line
+
+   For server responses, the first line should be:
+
+           Secure-HTTP/1.0 200 OK
+
+   whether the request succeeded or failed. This prevents analysis of
+   success or failure for any request. All case variations should be
+   accepted.
+
+2.3.  Secure HTTP Header lines
+
+   We define a series of new header lines to go in the header of the
+   Secure HTTP message. All except 'Content-Type' and 'Content-Privacy-
+   Domain' are optional. The message body shall be separated from the
+   header block by two successive CRLFs.
+
+   All data and fields in header lines should be treated as case insen-
+   sitive unless otherwise specified. Linear whitespace [6] should be
+   used only as a token separator unless otherwise quoted.  Long header
+   lines may be line folded in the style of RFC822 [6].
+
+
+
+
+
+Rescorla, Schiffman                                              [Page 4]RFC XXXX                      Secure HTTP                      June 1994
+
+
+2.3.1.  Content-Privacy-Domain
+
+   This header line exists to provide compatibility with PEM-based
+   Secure HTTP systems. The three values defined by this document are
+   'PEM', 'PKCS-7' and 'PGP'. PKCS-7 [2] refers to the privacy enhance-
+   ment specified in section 3.1. PEM refers to standard PEM message
+   format as defined in RFC1421 [1].  PGP refers to the message format
+   compatible with PGP 2.6 [14].
+
+2.3.2.  Content-Transfer-Encoding
+
+   The PKCS-7 protocol is designed for an 8-bit clear channel, but may
+   be passed over other channels using base-64 encoding (see RFC1421 [1]
+   for a description of base-64).
+
+   For 'Content-Privacy-Domain: PKCS-7', the only acceptable values for
+   this field are 'BASE64' or '8BIT'. Unless such a line is included,
+   the rest of the message is assumed to be 8-bit.
+
+   For 'Content-Privacy-Domain: PEM', the only acceptable value for this
+   field is '7BIT', since PEM messages are already encoded for RFC-822
+   (and hence 7-bit) transport.
+
+   For 'Content-Privacy-Domain: PGP', '8BIT', '7BIT', and 'BASE64' are
+   acceptable to refer to respectively binary, ASCII-armored, and base-
+   64 recoded PGP messages (the last seems unlikely to be useful).
+
+2.3.3.  Prearranged-Key-Info
+
+   This header line is intended to convey information about a key which
+   has been arranged in some way outside of the internal cryptographic
+   format. The purpose of this is to permit in-band communication of
+   session keys for return encryption in the case where one of the par-
+   ties does not have a key pair. However, this should also be useful in
+   the event that the parties choose to use some other mechanism, for
+   instance, a one-time key list.
+
+   This header line consists of a series of comma separated fields, with
+   the number and type dependent upon the first field, which describes
+   the key negotiation protocol.
+
+   The only such type defined by this document is 'Inband', which indi-
+   cates that the session key was exchanged in a previous message. The
+   syntax of an in-band information line is,
+
+        Prearranged-Key-Info: 'Inband,'<Hdr-Cipher>','<Key>[','<Key-ID>]
+
+   While chaining ciphers require an Initialization Vector(IV) [16] to
+
+
+
+Rescorla, Schiffman                                              [Page 5]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   start off the chaining, that information is not carried by this
+   field. Rather, it should be passed internal to the cryptographic for-
+   mat being used. Likewise, the bulk cipher used is specified in this
+   fashion.
+
+   <Hdr-Cipher> should be the name of the block cipher used to encrypt
+   the session key (see section 4.7.7).
+
+   <Key> should be the session key under which the message was
+   encrypted. It should be randomly generated by the sending agent, then
+   encrypted under the negotiated key (possibly disambiguated by <Key-
+   ID>) using the indicated header cipher and then converted into hex.
+
+   There is an optional key-ID field to select between multiple previ-
+   ously arranged session keys.
+
+2.3.4.  Content-Type
+
+   Under normal conditions, the terminal encapsulated content (after all
+   privacy enhancements have been removed) shall be considered to be an
+   HTTP/1.0 message. In this case, there shall be a Content-Type line
+   reading:
+
+           Content-Type: application/http
+
+   It is intended that this type be registered with IANA as a MIME con-
+   tent type. For backwards compatibility, 'application/x-http' is also
+   acceptable.
+
+   However, the terminal content may be of some other type provided that
+   that type is properly indicated by the use of an appropriate
+   Content-Type header line. In this case, the header fields for the
+   last (most deeply encapsulated) HTTP message should be applied to the
+   terminal content.  It should be noted that unless the HTTP message
+   from which the headers are taken is itself enveloped, then some pos-
+   sibly sensitive information has been passed in the clear.
+
+   This is a useful mechanism for passing pre-enhanced data (especially
+   presigned data) without requiring that the HTTP headers themselves be
+   pre-enhanced.
+
+2.4.  Content
+
+   The content of the message is largely dependent upon the values of
+   the Content-Privacy-Domain and Content-Transfer-Encoding fields.
+
+   For a PKCS-7 message, with '8BIT' Content-Transfer-Encoding, the con-
+   tent should simply be the message itself. The same should be true for
+
+
+
+Rescorla, Schiffman                                              [Page 6]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   8-bit or 7-bit encoded PGP messages (i.e., just the message as pro-
+   duced by PGP).
+
+   If the Content-Transfer-Encoding is 'BASE64', the content should be
+   preceded by a line that reads:
+
+           -----BEGIN PRIVACY-ENHANCED MESSAGE-----
+
+   and followed by a line that reads
+
+           -----END PRIVACY-ENHANCED MESSAGE-----
+
+   (see RFC1421) with the content simply being the base-64 representa-
+   tion of original content. If the inner (protected) content is itself
+   a PKCS-7 message, than the ContentType of the outer content should be
+   set appropriately. Else, the ContentType should be represented as
+   'Data'.
+
+   If the Content-Privacy-Domain is PEM, the content should consist of a
+   normal encapsulated message, beginning with:
+
+           -----BEGIN PRIVACY-ENHANCED MESSAGE-----
+
+   and ending with
+
+           -----END PRIVACY-ENHANCED MESSAGE-----
+
+   as defined in RFC1421.
+
+   It is expected that once the privacy enhancements have been removed,
+   the resulting (possibly protected) contents will be a normal HTTP
+   request. Alternately, the content may be another Secure-HTTP request,
+   in which case privacy enhancements should be unwrapped until clear
+   content is obtained or privacy enhancements can no longer be removed.
+   (This permits embedding of enhancements, as in, for instance, sequen-
+   tial Signed and Enveloped enhancements.) Provided that all enhance-
+   ments can be removed, the final de-enhanced content should be a valid
+   HTTP request/response unless otherwise specified by the Content-Type
+   line.
+
+3.  Message Format Options
+
+3.1.  Content-Privacy-Domain: PKCS-7
+
+   Content-Privacy-Domain 'PKCS-7' follows the form of the PKCS-7 stan-
+   dard.
+
+   Message protection may proceed on two orthogonal axes: signature and
+
+
+
+Rescorla, Schiffman                                              [Page 7]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   encryption. Any message may be either signed, encrypted, both, or
+   neither. In addition, provision has been made for prearranged keys in
+   order to send to those who have no key pair.
+
+3.1.1.  Signature
+
+   If the digital signature enhancement is applied, an appropriate cer-
+   tificate may either be attached to the message (possibly along with a
+   certificate chain) as specified in PKCS-7 or the sender may expect
+   the recipient to obtain its certificate (and/or chain) independently.
+   Note that an explicitly allowed instance of this is a certificate
+   signed with the private component corresponding to the public com-
+   ponent being attested to. This shall be referred to as a self-signed
+   certificate. What, if any, weight to give to such a certificate is a
+   purely local matter.  In either case, a purely signed message is pre-
+   cisely PKCS-7 compliant.
+
+3.1.2.  Encryption
+
+3.1.2.1.  Encryption -- normal, public key
+
+   This enhancement is performed precisely as enveloping under PKCS-7. A
+   message encrypted in this fashion, signed or otherwise, is PKCS-7
+   compliant.
+
+3.1.2.2.  Encryption -- prearranged key
+
+   This uses the "EncryptedData" type of PKCS-7. In this mode, we
+   encrypt the content using a prearranged session key (how this key may
+   be exchanged is discussed later), with key identification information
+   specified on one of the header lines. The IV is in the EncryptedCon-
+   tentInfo type of the EncryptedData element. To generate signed,
+   encrypted data, it is necessary to generate the SignedData production
+   and then encrypt it.
+
+3.2.  Content-Privacy-Domain: PEM/PGP
+
+   These Content-Privacy-Domains simply refer to using straight PEM or
+   PGP messages as per section 2.4. Note that clients and servers which
+   implement the original HTTP access authorization protocols (as pro-
+   posed by Tony Sanders and originally implemented by Rob McCool) can
+   be converted to use S-HTTP (using these Content-Privacy-Domains) sim-
+   ply by changing the request/results lines to match S-HTTP and by
+   adding the following three lines to the header:
+
+           Content-Privacy-Domain: PEM (or PGP)
+           Content-Type: application/http
+           Content-Transfer-Encoding: 7BIT
+
+
+
+Rescorla, Schiffman                                              [Page 8]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   It would be helpful (but not necessary) to remove the 'authorization'
+   line.  No cryptographic transformations are necessary.
+
+4.  New HTTP Header Lines
+
+   We define a series of new header lines which go in the HTTP header
+   block (i.e., in the encapsulated content) so that they may be crypto-
+   graphically protected.
+
+4.1.  Inband-Key-Info:
+
+   In order to permit communication between agent pairs in which one
+   (but not both) of the agents have key pairs, we use the in-band
+   exchange method. The key information is carried in a header line in
+   the secured HTTP request. The syntax of the Inband-Key-Info line is:
+
+           Inband-Key-Info: <Key>[','<Key-ID>(','<Header-Cipher>)+]
+
+   <Key> should be the desired session key encoded in hex.  <Key-ID> is
+   an optional value to allow for later key identification if multiple
+   session keys have been exchanged. <Header-Cipher> should be the
+   header ciphers (see section 4.7.7) for which this key is appropriate.
+   If this is not specified, it may be assumed to be appropriate for all
+   header ciphers that the agent will accept. Short keys should be
+   derived from long keys by reading bits from left to right.
+
+   The Inband-Key-Info field must ONLY be used in an enveloped message.
+   Using it in an un-enveloped message is obviously completely insecure.
+
+4.2.  Encryption-DN:
+
+   This header line identifies the DN associated with the public key
+   under which the returned message should be encrypted, this permits
+   return encryption under public key without the other agent signing
+   first (or under a different key than that of the signature). DNs are
+   represented as specified in RFC1485[13].
+
+4.3.  Certificate-Info
+
+   In order to permit public key operations on DNs specified in the
+   Encryption-DN line without explicit certificate fetches by the
+   receiver, the sender may include certification information in the
+   Certificate-Info header line. The format of this header line is:
+
+           Certificate-Info: <Cert-Fmt>','<Cert-Group>
+
+   <Cert-Fmt> should be the type of <Cert-Group> being presented.
+   Defined values are 'PEM' and 'PKCS-7'. PKCS-7 certificate groups
+
+
+
+Rescorla, Schiffman                                              [Page 9]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   (which may contain either PEM/X.509 or PKCS-6 certificates) are pro-
+   vided as a base64 encoded PKCS-7 SignedData message containing
+   sequences of certificates with or without the SignerInfo field. A PEM
+   format certificate group is a list of comma-separated base64-encoded
+   PEM certificates.
+
+   Multiple Certificate-Info lines may be defined.
+
+4.4.  Nonces
+
+   Nonces are opaque, transient, session-oriented identifiers which may
+   be used to provide a lightweight authentication mechanism as dis-
+   cussed in section section 1.2.3. Nonce values are a local matter,
+   although they are might well be simply random numbers generated by
+   the originator. The value is supplied simply to be returned by the
+   recipient. Given that both the nonce's original transmission and its
+   return were encrypted messages, the nonce suffices to securely iden-
+   tify the "echoing" party as the original recipient. If the nonce was
+   originally enveloped with a given public key, its return proves (to
+   the satisfaction of the  originator, but not to any third party) that
+   the sender possesses the corresponding private key.
+
+4.4.1.  Nonce:
+
+   This header is used by an originator to specify what value is to be
+   returned in the reply. The field may be any value. Multiple nonce
+   header lines may be used, each to be echoed independently.
+
+   An equivalent mechanism for use in HTML anchors is described in sec-
+   tion 5.2.2.
+
+4.4.2.  Nonce-Echo:
+
+   The header is used to return the value provided in a previously
+   received Nonce: field (or HTML anchor attribute -- see section
+   5.2.2).
+
+4.5.  Message Protection Negotiation
+
+   Both parties should be able to express their opinions about what
+   cryptographic enhancements they will permit/require the other party
+   to provide. We define new header lines lines (to be used in the HTTP
+   header, not in the S-HTTP header) to permit negotiation of this
+   matter. The general format for these header lines is:
+
+
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 10]RFC XXXX                      Secure HTTP                      June 1994
+
+
+
+           <Line>::=<Field> ':' <Key-val>(';'<Key-val>)*
+           <Key-val>::=<Key> '=' <Value>(','<Value>)*
+           <Key>::=<Mode>'-'<Action>
+           <Mode>::='orig'|'recv'
+           <Action>::='optional'|'required'|'refused'
+
+   The <Mode> value indicates whether this <Key-val> refers to what the
+   agent's actions are upon sending privacy enhanced messages as opposed
+   to upon receiving them. For any given mode-action pair, the interpre-
+   tation to be placed on the enhancements (<Value>s) listed is:
+
+         'recv-optional:' The agent will process the enhancement if
+        the other party uses it, but will also gladly process mes-
+        sages without the enhancement.
+
+         'recv-required:' The agent will not process messages
+        without this enhancement.
+
+         'recv-refused:' The agent will not process messages with
+        this enhancement.
+
+         'orig-optional:' When encountering an agent which refuses
+        this enhancement, the agent will not provide it, and when
+        encountering an agent which requires it, this agent will
+        provide it.
+
+         'orig-required:' The agent will always generate the
+        enhancement.
+
+         'orig-refused:' The agent will never generate the enhance-
+        ment.
+
+   The behavior of agents which discover that they are communicating
+   with an incompatible agent is at the discretion of the agents. It is
+   inappropriate to blindly persist in a behavior that is known to be
+   unacceptable to the other party. Plausible responses include simply
+   terminating the connection, or, in the case of a server response,
+   returning 'Not implemented 501'.
+
+   Optional values are considered to be listed in decreasing order of
+   preference. Agents are free to choose any member of the intersection
+   of the optional lists (or none) however.
+
+   If any <Key-Val> is left undefined, it should be assumed to be set to
+   the default. Any key which is specified by an agent shall override
+   any appearance of that key in any <Key-Val> in the default for that
+   field.
+
+
+
+Rescorla, Schiffman                                             [Page 11]RFC XXXX                      Secure HTTP                      June 1994
+
+
+4.6.  Parametrization for variable-length key ciphers
+
+   For ciphers with variable key lengths, values may be parametrized
+   using the syntax <cipher>'['<length>']'
+
+   For example, 'RSA[1024]' represents a 1024 bit key for RSA. Ranges
+   may be represented as
+
+           <cipher>'['<bound1>'-'<bound2>']'
+
+
+   For purposes of preferences, this notation should be treated as if it
+   read
+
+           <cipher>[x], <cipher>[x+1],...<cipher>[y] (if x<y)
+
+   and
+
+           <cipher>[x], <cipher>[x-1],...<cipher>[y] (if x>y)
+
+   The special value 'inf' may be used to denote infinite length.
+
+   Using simply <cipher> for such a cipher shall be read as the maximum
+   range possible with the given cipher.
+
+4.7.  Negotiation Headers
+
+4.7.1.  SHTTP-Privacy-Domains:
+
+   This header line refers to the Content-Privacy-Domain type of section
+   2.3.1. Acceptable values are as listed there. For instance,
+
+           SHTTP-Privacy-Domains: orig-required=pkcs-7;
+                                  recv-optional=pkcs-7,pem
+
+   would indicate that the agent always generates PKCS-7 compliant mes-
+   sages, but can read PKCS-7 or PEM (or, unenhanced messages).
+
+   All the negotiation headers described below can be considered to
+   apply to all privacy domains (message formats) or to a particular
+   one. To specify negotiation parameters which apply to all privacy
+   domains, those header line(s) should be provided before any privacy-
+   domain specifier. Negotiation headers which follow a privacy-domain
+   header are considered to apply only to that domain. Multiple
+   privacy-domain headers specifying the same privacy domain are permit-
+   ted, in order to support multiple parameter combinations.
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 12]RFC XXXX                      Secure HTTP                      June 1994
+
+
+4.7.2.  SHTTP-Certificate-Types:
+
+   This indicates what sort of Public Key certificates the agent will
+   accept. This is somewhat (but not completely) orthogonal to SHTTP-
+   Privacy-Domains. It seems strange but not unbelievable to accept
+   PKCS-6 Extended Certificates for a PEM formatted message.
+
+   Defined values include 'X.509', and 'PKCS-6' to refer respectively to
+   X.509 [3] certificates and the extended format of PKCS-6 [5].
+
+4.7.3.  SHTTP-Key-Exchange-Algorithms:
+
+   This line indicates which algorithms may be used for key exchange.
+   Defined values are 'RSA', and 'Inband' to refer to RSA and the in-
+   band protocol of sections 2.3.3 and 4.1, respectively.
+
+   So, the expected common configuration of clients having no certifi-
+   cates and servers having certificates would look like this (in a mes-
+   sage sent by the server):
+
+           SHTTP-Key-Exchange-Algorithms: orig-optional=Inband, RSA;
+                                          recv-required=RSA
+
+
+4.7.4.  SHTTP-Signature-Algorithms:
+
+   This indicates what Digital Signature algorithms may be used.
+   Defined values are 'RSA' and 'NIST-DSS' [17].  Since NIST-DSS and RSA
+   use variable length moduli the parametrization syntax of section 4.6
+   should be used.  Note that a key length specification may interact
+   with the acceptability of a given certificate, since keys (and their
+   lengths) are specified in public-key certificates.
+
+4.7.5.  SHTTP-Message-Digest-Algorithms:
+
+   This indicates what message digest algorithms may be used.  Defined
+   values are 'RSA-MD2' [7], 'RSA-MD5' [8], and 'NIST-SHS' [9].
+
+4.7.6.  SHTTP-Symmetric-Content-Algorithms:
+
+   This header specifies the symmetric-key bulk cipher used to encrypt
+   message content.  Defined values are:
+
+
+
+
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 13]RFC XXXX                      Secure HTTP                      June 1994
+
+
+
+        DES-CBC -- DES in Cipher Block Chaining (CBC) mode (FIPS 81 [11])
+        DES-EDE-CBC -- 2 Key 3DES using Encrypt-Decrypt-Encrypt in CBC mode
+        DES-EDE3-CBC -- 3 Key 3DES using Encrypt-Decrypt-Encrypt in CBC mode
+        DESX-CBC -- RSA's DESX in CBC mode
+        IDEA-CFB -- IDEA in Cipher Feedback Mode [12]
+        RC2-CBC -- RSA's RC2 in CBC mode
+        RC4 -- RSA's RC4
+
+   Since RC2 and RC4 keys are variable length, the syntax of section 4.6
+   should be used.
+
+4.7.7.  SHTTP-Symmetric-Header-Algorithms:
+
+   This header specifies the symmetric-key cipher used to encrypt mes-
+   sage headers.
+
+        DES-ECB -- DES in Electronic Codebook (ECB) mode (FIPS 81 [11])
+        DES-EDE-ECB -- 2 Key 3DES using Encrypt-Decrypt-Encrypt in ECB mode
+        DES-EDE3-ECB -- 3 Key 3DES using Encrypt-Decrypt-Encrypt in ECB mode
+        DESX-ECB -- RSA's DESX in ECB mode
+        IDEA-ECB -- IDEA
+        RC2-ECB -- RSA's RC2 in ECB mode
+        RC4 -- RSA's RC4
+
+
+   Since RC2 and RC4 keys are variable length, the syntax of section 4.6
+   should be used.
+
+4.7.8.  SHTTP-Privacy-Enhancements:
+
+   This header indicates security enhancements to apply.  Possible
+   values are 'sign' and 'encrypt', indicating whether messages are
+   signed or encrypted, respectively.
+
+4.7.9.  SHTTP-DN-Pattern:
+
+   This parameter specifies desired values for fields of Distinguished
+   Names.  DNs are considered to be represented as specified in RFC1485,
+   the order of fields and whitespace between fields is not significant.
+   Pattern match is performed fieldwise, unspecified fields match any
+   value (and therefore leaving the DN-Pattern entirely unspecified
+   allows for any DN). Certificate chains may be matched as well (to
+   allow for certificates without name subordination). DN chains are
+   considered to be ordered left-to-right with the issuer of a given
+   certificate on its immediate left, although issuers need not be
+   specified.
+
+
+
+
+Rescorla, Schiffman                                             [Page 14]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   The syntax for the pattern values is,
+
+        <Value> ::= <Dn-spec> (','<Dn-spec>)*
+        <Dn-spec> ::= '/'<Field-spec>*'/'
+        <Field-spec> ::= <Attr>'='<Pattern>
+        <Attr> ::= 'CN' | 'L' | 'ST' | 'O' | 'OU' | 'C' | "or as appropriate"
+        <Pattern> ::= "Unix 'ed'-style regular expressions"
+
+
+   For example, to request that the other agent sign with a key certi-
+   fied by the RSA Persona CA (which uses name subordination) one could
+   use the expression:
+
+        SHTTP-DN-Pattern: recv-optional=
+                          /OU=Persona Certificate, O=RSA Data Security, Inc./
+
+
+4.7.10.  Example
+
+   A representative header block for a server follows.
+
+        SHTTP-Privacy-Domains: recv-optional=PEM, PKCS-7;
+                               orig-required=PKCS-7
+        SHTTP-Certificate-Types: recv-optional=X.509, PKCS-6;
+                                 orig-required=X.509
+        SHTTP-Key-Exchange-Algorithms: recv-required=RSA;
+                                       orig-optional=Inband,RSA
+        SHTTP-Signature-Algorithms: orig-required=RSA; recv-required=RSA
+        SHTTP-Privacy-Enhancements: orig-required=sign;
+                                            orig-optional=encrypt
+
+
+4.7.11.  Defaults
+
+   Explicit negotiation parameters take precedence over default values.
+   For a given negotiation header line type, defaults for a given mode-
+   action pair (such as "orig-required") are implicitly merged unless
+   explicitly overridden.
+
+   The default values (these may be negotiated downward or upward) are:
+
+
+
+
+
+
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 15]RFC XXXX                      Secure HTTP                      June 1994
+
+
+
+        SHTTP-Privacy-Domains: orig-optional=PKCS-7, PEM;
+                               recv-optional=PKCS-7, PEM
+        SHTTP-Certificate-Types: orig-optional=PKCS-6,X.509;
+                                 recv-optional=PKCS-6,X.509
+        SHTTP-Key-Exchange-Algorithms: orig-optional=RSA,Inband;
+                                       recv-optional=RSA,Inband
+        SHTTP-Signature-Algorithms: orig-optional=RSA; recv-optional=RSA;
+        SHTTP-Message-Digest-Algorithms: orig-optional=MD5; recv-optional=MD5
+        SHTTP-Symmetric-Content-Algorithms: orig-optional=DES-CBC;
+                                            recv-optional=DES-CBC
+        SHTTP-Symmetric-Header-Algorithms: orig-optional=DES-ECB;
+                                           recv-optional=DES-ECB
+        SHTTP-Privacy-Enhancements: orig-optional=sign,encrypt;
+                                            recv-required=encrypt;
+                                            recv-optional=sign
+
+
+5.  Other Issues
+
+5.1.  Compatibility of servers with old clients
+
+   Servers which receive requests in the clear which should be secured
+   should return 'Unauthorized 401' with header lines set to indicate
+   the required privacy enhancements.
+
+5.2.  HTML and URL format extensions
+
+   Although this document describes extensions to the HTTP protocol, we
+   include here extensions to the HyperText Markup Language [15] (the
+   native document format of the WWW) and Universal Resource Locators
+   [16] which is needed to support secure dereferencing of anchors
+   (hyperlinks).
+
+5.2.1.  URL protocol type
+
+   We define a new URL protocol designator, 'shttp'. Use of this desig-
+   nator as part of an anchor URL implies that the target server is S-
+   HTTP capable, and that a dereference of this URL should be enveloped
+   (e.g., the request is to be encrypted).  Use of these secure URLs
+   permit the additional anchor attributes described in the following
+   section.
+
+   Note that S-HTTP oblivious agents will not be willing to dereference
+   a URL with an unknown protocol specifier, and hence sensitive data
+   will not be accidentally sent in the clear by users of non-secure
+   clients.
+
+
+
+
+Rescorla, Schiffman                                             [Page 16]RFC XXXX                      Secure HTTP                      June 1994
+
+
+5.2.2.  Anchor attributes
+
+   We define the following new anchor (and form submission) attributes:
+
+        DN -- The distinguished name of the principal who will sign
+        the reply to the dereferenced URL.  This need not be speci-
+        fied, but failure to do so runs the risk that the client
+        will be unable to determine the DN and therefore will be
+        unable to encrypt. (See section 5.3.1 for another way for
+        clients to get DNs/certificates).  This should be specified
+        in the form of RFC1485, using SGML quoting conventions as
+        needed.
+
+        NONCE -- A free-format string (appropriately SGML quoted)
+        which is to be included in a SHTTP-Nonce: header (after
+        SGML quoting is removed) when the anchor is dereferenced
+        (see section 4.4).
+
+        CRYPTOPTS -- The cryptographic option information from sec-
+        tion 4. If multiline, this must be quoted to protect the
+        line break information.
+
+5.2.3.  CERTS Element
+
+   A new CERTS HTML element is defined, which carries a (not necessarily
+   related) group of certificates provided as advisory data. The element
+   contents are not intended to be displayed to the user. Certificate
+   groups may be provided appropriate for either PEM or PKCS-7 implemen-
+   tations. Such certificates are supplied in the HTML document for the
+   convenience of the recipient, who might otherwise be unable to
+   retrieve the certificate (chain) corresponding to a DN specified in
+   an anchor.
+
+   The format should be the same as that of the 'Certificate-Info'
+   header line, (see section 4.4) except that the <Cert-Fmt> specifier
+   should be provided as the FMT attribute in the tag.
+
+   Multiple CERTS elements are permitted; it is suggested that CERTS
+   elements themselves be included in the HTML document's HEAD element
+   (in the hope that the data will not be displayed by non-compliant
+   browsers).
+
+   See section 5.3.1 again for another way to retrieve certificates.
+
+5.2.4.  Example
+
+   An example of cryptographic data embedded in an anchor, proceeded by
+   a certificate group is provided below. Note the SGML quoting syntax
+
+
+
+Rescorla, Schiffman                                             [Page 17]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   used to supply embedded quotation marks.
+
+
+           <CERTS FMT=PKCS-7>
+           MIAGCSqGSIb3DQEHAqCAMIACAQExADCABgkqhkiG9w0BBwEAAKCAM
+           IIBrTCCAUkCAgC2MA0GCSqGSIb3DQEBAgUAME0xCzAJBgNVBAYTAlVTMSAwH
+           gYDVQQKExdSU0EgRGF0YSBTZWN1cml0eSwgSW5jLjEcMBoGA1UECxMTUGVyc
+           29uYSBDZXJ0aWZpY2F0ZTAeFw05NDA0MDkwMDUwMzdaFw05NDA4MDIxODM4N
+           TdaMGcxCzAJBgNVBAYTAlVTMSAwHgYDVQQKExdSU0EgRGF0YSBTZWN1cml0e
+           SwgSW5jLjEcMBoGA1UECxMTUGVyc29uYSBDZXJ0aWZpY2F0ZTEYMBYGA1UEA
+           xMPU2V0ZWMgQXN0cm9ub215MFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBAMy8Q
+           cW7RMrB4sTdQ8Nmb2DFmJmkWn+el+NdeamIDElX/qw9mIQu4xNj1FfepfJNx
+           zPvA0OtMKhy6+bkrlyMEU8CAwEAATANBgkqhkiG9w0BAQIFAANPAAYn7jDgi
+           rhiIL4wnP8nGzUisGSpsFsF4/7z2P2wqne6Qk8Cg/Dstu3RyaN78vAMGP8d8
+           2H5+Ndfhi2mRp4YHiGHz0HlK6VbPfnyvS2wdjCCAccwggFRAgUCQAAAFDANB
+           gkqhkiG9w0BAQIFADBfMQswCQYDVQQGEwJVUzEgMB4GA1UEChMXUlNBIERhd
+           GEgU2VjdXJpdHksIEluYy4xLjAsBgNVBAsTJUxvdyBBc3N1cmFuY2UgQ2Vyd
+           GlmaWNhdGlvbiBBdXRob3JpdHkwHhcNOTQwMTA3MDAwMDAwWhcNOTYwMTA3M
+           jM1OTU5WjBNMQswCQYDVQQGEwJVUzEgMB4GA1UEChMXUlNBIERhdGEgU2Vjd
+           XJpdHksIEluYy4xHDAaBgNVBAsTE1BlcnNvbmEgQ2VydGlmaWNhdGUwaTANB
+           gkqhkiG9w0BAQEFAANYADBVAk4GqghQDa9Xi/2zAdYEqJVIcYhlLN1FpI9tX
+           Q1m6zZ39PYXK8Uhoj0Es7kWRv8hC04vqkOKwndWbzVtvoHQOmP8nOkkuBi+A
+           QvgFoRcgOUCAwEAATANBgkqhkiG9w0BAQIFAANhAD/5Uo7xDdp49oZm9GoNc
+           PhZcW1e+nojLvHXWAU/CBkwfcR+FSf4hQ5eFu1AjYv6Wqf430Xe9Et5+jgnM
+           Tiq4LnwgTdA8xQX4elJz9QzQobkE3XVOjVAtCFcmiin80RB8AAAMYAAAAAAA
+           AAAAA==
+           </CERTS>
+           <A name=foobar
+           DN="CN=Setec Astronomy, OU=Persona Certificate,
+               O=&quot;RSA Data Security, Inc.&quot;, C=US"
+           CRYPTOPTS="SHTTP-Privacy-Enhancements: recv-refused=encrypt
+           SHTTP-Signature-Algorithms: recv-required=NIST-DSS"
+           HREF="shttp://research.nsa.gov/skipjack-holes.html">
+           Don't read this. </A>
+
+
+5.3.  Server Conventions
+
+5.3.1.  Certificate requests
+
+   We define the convention that issuing a normal HTTP request:
+
+           GET /SERVER-CERTIFICATE[-<DN>] Secure-HTTP/1.0
+
+   shall cause the server to return the corresponding certificate.  <DN>
+   is the base-64 encoding (to protect whitespace) of the fully-
+   specified canonical ASCII form for the DN of the requested certifi-
+   cate (as in RFC 1485). If no DN is specified, then the server shall
+
+
+
+Rescorla, Schiffman                                             [Page 18]RFC XXXX                      Secure HTTP                      June 1994
+
+
+   choose whatever certificate it deems most appropriate. The server
+   should sign the response with the key corresponding to the DN sup-
+   plied, if the DN is unspecified by the request.
+
+5.3.2.  Policy requests
+
+   Servers should (but not must) store the policies of the Policy Cer-
+   tification Authorities corresponding to their various certificates.
+   The convention for retrieving such policies via HTTP is the request:
+
+           GET /POLICY-<DN> [Secure-]HTTP/1.0
+
+   Again, <DN> is the DN (encoded as per section 5.3.1) of the certifi-
+   cate corresponding to the requested policy. It is recommended that
+   this document be (pre-) signed by the PCA.
+
+5.3.3.  CRL requests
+
+   Servers should (but not must) store the CRLs of the PCAs correspond-
+   ing to their various certificates. The convention for retrieving such
+   CRLs is:
+
+           GET /CRL-<DN> [Secure-]HTTP/1.0
+
+   Again, <DN> is the DN (encoded as per section 5.3.1) of the certifi-
+   cate corresponding to the requested CRL.
+
+5.4.  Browser presentation
+
+5.4.1.  Certification information presentation
+
+   While preparing a secure message, the browser should provide a visual
+   indication of the security of the transaction, as well as an indica-
+   tion of the party who will be able to read the message. While reading
+   a signed and/or enveloped message, the browser should indicate this
+   and (if applicable) the identity of the signer. Self-signed certifi-
+   cates should be clearly differentiated from those validated by a cer-
+   tification hierarchy.
+
+5.4.2.  Failure reporting
+
+   Failure to authenticate or decrypt an S-HTTP message should be
+   presented differently from a failure to retrieve the document. Com-
+   pliant clients may at their option display unverifiable documents but
+   must clearly indicate that they were unverifiable in a way clearly
+   distinct from the manner in which they display documents which pos-
+   sessed no digital signatures or documents with verifiable signatures.
+
+
+
+
+Rescorla, Schiffman                                             [Page 19]RFC XXXX                      Secure HTTP                      June 1994
+
+
+5.4.3.  Certificate Management
+
+   Clients shall provide a method for determining that HTTP requests are
+   to be signed and for determining which (assuming there are many) cer-
+   tificate is to be used for signature. It is suggested that users be
+   presented with some sort of selection list from which they may choose
+   a default. No signing should be performed without some sort of expli-
+   cit user interface action, though such action may take the form of a
+   persistent setting via a user preferences mechanism (although this is
+   not recommended).
+
+5.4.4.  Anchor dereference
+
+   Clients shall provide a method to display the DN and certificate
+   chain associated with a given anchor to be dereferenced so that users
+   may determine for whom their data is being encrypted.  This should be
+   distinct from the method for displaying who has signed the document
+   containing the anchor since these are orthogonal pieces of encryption
+   information.
+
+6.  Minimum implementation requirements
+
+   All S-HTTP implementations must support the MD5 message digest.
+
+   All agents which implement encryption must support one of the follow-
+   ing three cryptosystems: DES (in ECB and CBC modes), RC2[40] (in ECB
+   and CBC modes) and IDEA (in ECB and CFB modes).
+
+   All S-HTTP servers must support RSA signature verification and gen-
+   eration up to at least 1024 bit keys.
+
+   Servers need not support encryption, but if they do, they must at
+   minimum support RSA enveloping (both for sending and receiving) and
+   the in-band key exchange method.
+
+   All S-HTTP clients must support RSA signature verification up to at
+   least 1024 bit keys.
+
+   If clients implement encryption, they must implement at minimum the
+   in-band key exchange method and RSA digital envelope generation.
+
+7.  References
+
+   [1] Linn J. "Privacy Enhancement for Internet Electronic Mail:
+       Part I: Message Encryption and Authentication Procedures",
+       RFC1421, Feb 1993.
+
+   [2] RSA Data Security, Inc. "Cryptographic Message Syntax Standard",
+
+
+
+Rescorla, Schiffman                                             [Page 20]RFC XXXX                      Secure HTTP                      June 1994
+
+
+       PKCS-7, Nov 1, 1993.
+
+   [3] CCITT Recommendation X.509 (1988), "The Directory -
+       Authentication Framework".
+
+   [4] Kent, S. "Privacy Enhancement for Internet Electronic Mail:
+       Part II: Certificate-Based Key Management", RFC1422, Feb 1993.
+
+   [5] RSA Data Security, Inc. "Extended Certificate Syntax Standard",
+       PKCS-6, Nov 1, 1993.
+
+   [6] Crocker, D. "Standard For The Format Of ARPA Internet Text Messages",
+        RFC822, August 1982.
+
+   [7] Kaliski, B. "The MD2 Message-Digest Algorithm", RFC1319, April 1992
+
+   [8] Rivest, R. "The MD5 Message-Digest Algorithm", RFC1321, April 1992
+
+   [9] Federal Information Processing Standards Publication (FIPS PUB)
+       180, "Secure Hash Standard", 1993 May 11.
+
+   [10] Federal Information Processing Standards Publication (FIPS PUB)
+        46-1, Data Encryption Standard, Reaffirmed 1988 January 22
+        (supersedes FIPS PUB 46, 1977 January 15).
+
+   [11] Federal Information Processing Standards Publication (FIPS PUB)
+        81, DES Modes of Operation, 1980 December 2.
+
+   [12] IDEA {*** We need a reference for this ***}
+
+   [13] Hardcastle-Kille, S. "A String Representation of Distinguished Names",
+        RFC1485, July 1993.
+
+   [14] pgformat.doc (v 2.6). This can be obtained from
+        net-dist.mit.edu/pub/PGP.
+
+   [15] Berners-Lee, T. "Hypertext Markup Language (HTML)",
+        draft-ieft-iiir-html-01, June 1993.
+
+   [16] Berners-Lee, T. "Uniform Resource Locators (URLs)",
+        draft-ieftf-uri-url-03, Mar 1994.
+
+   [17] Federal Information Processing Standards Publication (FIPS PUB)
+        186, Digital Sigature Standard, 1994 May 19.
+
+   [18] HTTP {*** We need a reference for this ***}
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 21]RFC XXXX                      Secure HTTP                      June 1994
+
+
+Patent Statement (this is based on a similar section in RFC1421)
+
+   This version of Secure HTTP relies on the use of patented public key
+   encryption technology for authentication and encryption.  The Inter-
+   net Standards Process as defined in RFC 1310 requires a written
+   statement from the Patent holder that a license will be made avail-
+   able to applicants under reasonable terms and conditions prior to
+   approving a specification as a Proposed, Draft or Internet Standard.
+
+   The Massachusetts Institute of Technology and the Board of Trustees
+   of the Leland Stanford Junior University have granted Public Key
+   Partners (PKP) exclusive sub-licensing rights to the following
+   patents issued in the United States, and all of their corresponding
+   foreign patents:
+
+   Cryptographic Apparatus and Method
+   ("Diffie-Hellman")............................... No. 4,200,770
+
+   Public Key Cryptographic Apparatus
+   and Method ("Hellman-Merkle").................... No. 4,218,582
+
+   Cryptographic Communications System and
+   Method ("RSA")................................... No. 4,405,829
+
+   Exponential Cryptographic Apparatus
+   and Method ("Hellman-Pohlig").................... No. 4,424,414
+
+   These patents are stated by PKP to cover all known methods of prac-
+   ticing the art of Public Key encryption, including the variations
+   collectively known as El Gamal.
+
+   Public Key Partners has provided written assurance to the Internet
+   Society that parties will be able to obtain, under reasonable, non-
+   discriminatory terms, the right to use the technology covered by
+   these patents.  This assurance is documented in RFC 1170 titled "Pub-
+   lic Key Standards and Licenses".  A copy of the written assurance
+   dated April 20, 1990, may be obtained from the Internet Assigned
+   Number Authority (IANA).
+
+   The Internet Society, Internet Architecture Board, Internet Engineer-
+   ing Steering Group and the Corporation for National Research Initia-
+   tives take no position on the validity or scope of the patents and
+   patent applications, nor on the appropriateness of the terms of the
+   assurance.  The Internet Society and other groups mentioned above
+   have not made any determination as to any other intellectual property
+   rights which may apply to the practice of this standard. Any further
+   consideration of these matters is the user's own responsibility.
+
+
+
+
+Rescorla, Schiffman                                             [Page 22]RFC XXXX                      Secure HTTP                      June 1994
+
+
+Security Considerations
+
+   This entire document is about security.
+
+Acknowledgements
+
+   The authors wish to thank our colleagues at RSA Data Security, TIS,
+   HP Labs Bristol, NCSA, Spyglass, CERN and EIT for their review of
+   earlier drafts.
+
+   This work was funded in part by the ARPA MADE (Manufacturing Automa-
+   tion and Design Engineering) program, and in part by the CommerceNet
+   consortium, made possible by a grant from the Technology Reinvestment
+   Program; both contracts being managed by the USAF Wright Laboratory.
+   In addition to funding support, we appreciate the administrative and
+   intellectual resources of those sponsors and the research community
+   they maintain.
+
+Authors' Address
+
+Eric Rescorla <ekr@eit.com>
+Enterprise Integration Technologies Corp.
+459 Hamilton Avenue, Suite 100
+Palo Alto, CA 94301
+Phone: (415) 617-8000
+
+Allan M. Schiffman <ams@eit.com>
+Enterprise Integration Technologies Corp.
+459 Hamilton Avenue, Suite 100
+Palo Alto, CA 94301
+Phone: (415) 617-8000
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Rescorla, Schiffman                                             [Page 23]

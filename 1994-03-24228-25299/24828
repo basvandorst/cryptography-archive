@@ -1,0 +1,182 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!vixen.cso.uiuc.edu!sdd.hp.com!hp-cv!hp-pcd!hpcvsnz!ericb
+From: ericb@lsid.hp.com (Eric Backus)
+Subject: Encryption from Hash Functions
+Sender: news@hpcvsnz.cv.hp.com (News )
+Message-ID: <CMvq7M.K38@hpcvsnz.cv.hp.com>
+Date: Fri, 18 Mar 1994 21:26:10 GMT
+Organization: Hewlett-Packard
+X-Newsreader: TIN [version 1.2 021193BETA PL3]
+Lines: 171
+
+
+		    Encryption from Hash Functions
+		    ==============================
+
+This topic has been visited once or twice before in sci.crypt.  In
+particular, I remember Phil Karn proposing a three-round MD5-based
+encryption scheme.  But I haven't heard anything recently, and the
+encryption that I propose below is different from the one Phil
+proposed.  Perhaps it's obviously flawed, in which case I need help
+seeing the flaws.
+
+Introduction
+------------
+
+Due to rather stupid export laws in the US, it is illegal to export
+encryption software.  However, it is NOT illegal to export hash
+functions.  This got me to thinking: suppose we design an encryption
+system that is extremely simple, and relies on a cryptographic hash
+function for its strength?  There are a number of advantages to this:
+
+1.  We can import and export all the complicated hash functions we
+    want to, without worry.  The encryption program other than the
+    hash functions is trivial, so that someone outside the US can
+    easily implement it from the description provided here (oops, am I
+    now breaking the law?), and then everyone will have access to it.
+
+2.  There are several different hash functions available, all of which
+    are supposedly "cryptographically secure".  If the encryption
+    program could easily switch between hash functions, we could
+    easily move to more secure hash functions as time goes on.  If one
+    hash function is broken, we just switch to a different hash
+    function.
+
+3.  Since hash functions allow arbitrary length input, it is trivial
+    to allow arbitrary length passwords for the encryption program.
+
+Encryption Method
+-----------------
+
+1.  Get a password from the user.  This should be an arbitrary length
+    block of data.  The password is sent through the cryptographic
+    hash function, and the output of the hash function is called the
+    "hashed password".
+
+2.  Create a unique initial output block.  No two messages should ever
+    be encrypted using the same initial output block.  The initial
+    output block could come from a hardware random number generator if
+    one is available.  Alternatively, it could be a combination of the
+    current time of day, the hostname of the computer, and the process
+    ID of the encryption program, all appended together and run
+    through the cryptographic hash function:
+
+	out[1] = hash(time + hostname + pid + whatever_else)
+
+    We could even include the password as part of the input to the
+    hash.
+
+3.  In a loop:
+
+    Combine the most recently generated output block with the hashed
+    password from step 1 (either by XORing the two, or by appending
+    the two), and use this as input the to cryptographic hash
+    function.  Take the output of the hash function, and XOR it with
+    the next block of data to be encrypted.  This becomes the next
+    output block:
+
+	out[i+1] = in[i] XOR hash(out[i] XOR hash(password))
+
+Decryption is nearly the same as encryption:
+
+	out[i] = in[i+1] XOR hash(in[i] XOR hash(password))
+
+That's it.  Quite simple, except for the hash function itself.
+
+Strength
+--------
+
+If the cryptographic hash function is really secure, then I believe
+only brute force can be used to break the above method.  Therefore,
+128-bit MD5 or 160-bit SHA should be much more secure than DES.
+
+But I'm not an expert - does anyone else see flaws in the method?
+
+Hash Functions
+--------------
+
+By "hash function", I mean a function which takes as input an
+arbitrary amount of data, and produces as output a fixed size "hash"
+value.
+
+By "cryptographic hash function", I mean a hash function which has the
+following properties:
+
+1.  Given a "hash", there is no way to gain any information about the
+    input which produced the hash.
+
+2.  There is no way to find two different inputs that produce the same
+    hash value.
+
+Of course, when I say "no way", I really mean "no way other than brute
+force".  By "brute force", I mean trying all possible inputs to the
+hash function.  Given an n-bit hash, it should on average take 2^(n-1)
+attempts to find an input that produces a given hash.  It should on
+average take 2^(n/2) attempts to find two different inputs that
+produce the same hash.  Because of this, we need to further qualify
+"cryptographic hash functions":
+
+3.  The fixed size "hash" must contain enough bits so that a brute
+    force attack is sufficiently impractical that it need not be
+    considered a risk for the cryptosystem.
+
+As far as I know, the MD2, MD4, MD5, SHA, Snefru-128, and Snefru-256
+hash functions all meet the above criteria for "cryptographically
+secure".  In addition, I believe one could make a cryptographically
+secure hash function by running IDEA in CBC mode, keeping the last
+output block as the hash.  I'm sure other hash functions are also
+available.
+
+Using DES in CBC mode is also a possible hash, but the hash size would
+then only be 64 bits.  This means that on average only 2^32 inputs
+would have to be tried in a brute force attempt to find two inputs
+with the same hash, which may not be secure enough.
+
+Note that for additional security, the "hash function" could really be
+a chain of hash functions.  The input string is fed to the first hash
+function, the output of the first hash function is fed to the second
+hash function, and so on for however many hash functions are used.
+The output of the last hash function would be the output that is used.
+
+Comments
+--------
+
+Assuming we can always generate a unique initial output block, I don't
+see how anyone could do known-plaintext or chose-plaintext attacks,
+since even identical inputs will not encrypt to the same output.
+
+I haven't implemented this and timed it, but I suspect that an
+MD5-based hash encryption would be much faster than DES, and
+potentially more secure.
+
+Phil Karn's three-round MD5-based encryption scheme required three
+rounds of MD5 to process half a block of input data.  The above method
+requires only one round of hash function to process a full block of
+input data.  Thus, this method should be six times faster than Phil's.
+
+The requirement for a unique initial output block is really only a
+requirement that the initial output block be unique for a given
+password.  This requirement comes from the following.  Suppose two
+messages use the same initial output block.  If these two messages
+also use the same password, then the second output block (which comes
+from the first input block) from each of these messages has been XORed
+with the same value.  If these second blocks are XORed together, the
+result is the XOR of the two first input blocks (the plaintext).  If
+one of the plaintexts were known, then the other would be trivially
+found.
+
+This encryption method adds one output block (the initial output
+block) to the length of the message.  In addition, some fraction of an
+output block is added to the end of the message, just like with all
+block-based encryption methods.  Since a block (the hash output size)
+is typically between 128 and 256 bits, this does not seem excessive to
+me.
+
+Even for me, who is not trained in cryptography, this encryption
+method seems fairly trivial and obvious.  Therefore, the method itself
+should not be patentable.  The hash functions, of course, are a
+separate matter.
+-- 
+				Eric Backus
+				ericb@lsid.hp.com
+				(206) 335-2495

@@ -1,0 +1,142 @@
+10 '** NICODEME.ENC ** BY MB TRS80 v 1985 IBM v 1989
+20 '
+30 KEY OFF:CLEAR :DEFINT A-Z
+50 GOTO 9500
+80 '                ---- start here ----
+90 LP=LEN(P$):PT$=PT$+"   ("+RIGHT$(STR$(LP),LEN(STR$(LP))-1)+" chars)."       'add char count
+100 GOSUB 5010:LOCATE 6,1
+110 KW$="":PRINT:PRINT"Enter the keyword (3-9 chars, no repeats): "
+120 IF XK$>" " THEN PRINT"(Press <ENTER> for "XK$"): ";:
+130 X=POS(0):Y=CSRLIN:LINE INPUT KW$
+140 IF KW$=""THEN KW$=XK$:LOCATE Y,X:PRINT KW$:GOSUB 5020
+150 GOSUB 1100               'check for repeats in KW & force UC
+160 IF NK$<>KW$ THEN KW$=NK$:LOCATE Y,X:PRINT KW$"          ":PRINT "(Duplicate letters removed)":FOR N=1 TO 500:NEXT
+170 LK=LEN(KW$):IF LK>9 THEN PRINT"KEYWORD TOO LONG. TRY AGAIN.":GOTO 130
+180 CL=INT(LEN(P$)/LK):IF CL>22 THEN PRINT"TEXT IS TOO LARGE FOR THIS KEYWORD. TRY AGAIN.":LOCATE 16,21:PRINT"Press ENTER to proceed";:LINE INPUT Q$:GOTO 60
+190 GOSUB 1000  'convert KW to key number
+200 '               ---- display on screen ----
+205 CLS:PRINT TAB(28)"* NICODEMUS ENCIPHERMENT *" TAB(70) DATE$:PRINT TAB(30)STRING$(22,"-")
+210 LOCATE 4,1:IF LK>=6 THEN PRINT "Plain"TAB(1+LK+2)"Transp"TAB(1+2*LK+4)"Vigen.":GOTO 220
+215 LOCATE 4,1:PRINT "PT"TAB(1+LK+2)"TR"TAB(1+2*LK+4)"VG":GOTO 220
+220 FOR M=1 TO LK
+230    FOR N=1 TO CL+1
+240      LOCATE 4+N,M:PRINT MID$(P$,LK*(N-1)+M,1);
+250  NEXT
+260 NEXT
+270 '        ---- transpose columns & do Vigenere shift ----
+280 X$=""
+290 FOR M=1 TO LK                      'for each col
+300  J=VAL(MID$(K$,M,1))               'get value of key digit
+310  FOR Y=5 TO 5+(CL+1)               'for each row
+320    A=SCREEN(Y,M)                   'get ASCII value of char on screen
+330    LOCATE Y,LK+2+J                 'move it
+335    PRINT CHR$(A);                  'print transposition
+340    A=A+ASC(MID$(KW$,M,1))-65:IF A>90 THEN A=A-26  'mod 26
+350    IF A<65 THEN A=32               'probably not necessary
+355    LOCATE Y,2*(LK+2)+J             'move it
+360    PRINT CHR$(A);                  'print substitution
+370   NEXT
+380 NEXT
+390 '            ---- read in fives vertically ----
+400 X$="":A=INT(CL/5)
+410 FOR L=1 TO A+1                        'L is # of 5-char groups
+430   FOR M=1 TO LK                       'M is # of cols
+440     FOR N=1 TO 5                      'N is row counter
+445       X$=CHR$(SCREEN(4+N+(L-1)*5,2*(2+LK)+M))
+450       IF 4+N+(L-1)*5 >=24 OR X$=" " THEN 460 'limit bottom of display and                                                     elim blanks
+455       V$=V$+X$
+460 NEXT:NEXT:NEXT
+465 '               ---- put in a blank every 5 ----
+467 X$=V$:V$=""
+470 FOR N=1 TO LEN(X$)
+480   OP$=OP$+MID$(X$,N,1)
+490   IF N/5=INT(N/5)THEN OP$=OP$+" "
+500 NEXT
+510 X$=OP$                               'restore variable name
+515 LOCATE 4,34:PRINT"Plaintext is:";:LOCATE 5,34:PRINT LEFT$(PT$,40);:LOCATE 6,34:PRINT MID$(PT$,41,40);:LOCATE 7,34:PRINT MID$(PT$,81,40);:LOCATE 8,34:PRINT MID$(PT$,121,40);
+520 LOCATE 10,34:PRINT"Keyword = "KW$;     'and print the answer....
+530 LOCATE 12,34:PRINT"Ciphertext is:";:LOCATE 13,34:PRINT LEFT$(X$,42);:LOCATE 14,34:PRINT MID$(X$,43,42);:LOCATE 15,34:PRINT MID$(X$,85,42);:LOCATE 16,34:PRINT MID$(X$,127,42);
+535 '
+540 LOCATE 23,1:PRINT SPC(79):LOCATE 23,9:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+560 ON INSTR("PpAaQq",Q$)GOTO 580,580,10,10,680,680:GOTO 540
+580 ON ERROR GOTO 15000
+590 WIDTH "lpt1:",255
+600 GOSUB 2000
+630 FOR N=1 TO 20:LPRINT:NEXT
+640 LPRINT"Nicodemus by MIKE BARLOW":LPRINT
+650 LPRINT X$
+660 LPRINT CHR$(12):GOTO 540
+680 GOTO 5100
+990 '             ---- convert keyword to numeric K$ ----
+1000 N=0:K=0:K$=""
+1010 FOR I=1 TO LK
+1020   K=1
+1030   FOR J=1 TO LK
+1040   IF MID$(KW$,I,1)>MID$(KW$,J,1)THEN GOTO 1060
+1050   IF NOT(I>J AND MID$(KW$,I,1)=MID$(KW$,J,1))THEN 1070
+1060   K=K+1
+1070   NEXT J
+1080   K$=K$+RIGHT$(STR$(K),1)
+1090 NEXT:RETURN
+1100 '         ---- eliminate duplicate letters in KW$ ----
+1110 NK$="":FOR N=1 TO LEN(KW$)
+1120   DU$=CHR$(ASC(MID$(KW$,N,1)) AND 223)   'force upper case
+1130   IF INSTR(NK$,DU$)THEN 1150             'has it been used already?
+1140   NK$=NK$+DU$                            'if not, add to new key
+1150 NEXT:RETURN
+2000 ' ---- print screen routine from CS#10 p16 ----
+2010 EM%(0)=-12971:EM%(1)=23813:EM%(2)=-28469
+2020 X=VARPTR(EM%(0))
+2030 CALL X
+2040 RETURN
+5000 ' --- misc subs ---
+5010 CLS:PRINT TAB(28)"* NICODEMUS ENCIPHERMENT *" TAB(70) DATE$:PRINT TAB(30)STRING$(22,"-")
+5015 RETURN
+5020 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,28:PRINT "Press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+5050 LOCATE 4,1:FOR M=1 TO 3:PRINT SPC(79):NEXT:LOCATE 4,1
+5060 FOR M=1 TO 3:PRINT MID$(PT$,1+(M-1)*78,78):NEXT:RETURN
+5100 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+5110 LOCATE 23,1:END
+9500 '   ---   start here   ---
+9510 GOSUB 5010
+9520 PRINT:PRINT TAB(33)"By Mike Barlow"
+9540 XFI$="SILLY.DAT"                   'default disk filename
+9550 LOCATE 22,16:PRINT "*** Format of disk file is Source, Ciphertext ***"
+9560 '   ---   enter data   ---
+9570 LOCATE 10,13:PRINT "Will you enter the plaintext from <K*>eyboard or <D>isk? ";:LINE INPUT Q$:GOSUB 5010:IF Q$<>"D" AND Q$<>"d" THEN 9620
+9580 D=1:LOCATE 11,17:PRINT"What is the file name? (Default = "XFI$"):  ";:LINE INPUT FI$                                    'D=1 for disk
+9590 IF LEN(FI$)=0 THEN FI$=XFI$             'default example
+9600 GOSUB 5010:GOSUB 9810:GOTO 9640
+9610 PRINT"Press <ENTER> for "FI$
+9620 D=0:GOSUB 20000:LOCATE 7,1:PRINT"ENTER THE PLAIN TEXT (either case, with or w/o spaces, 240 chars max):"
+9630 PRINT:LINE INPUT PT$: IF PT$="" THEN PT$=XP$
+9640 NC=LEN(PT$):FOR N=1 TO NC:IF MID$(PT$,N,1)=" " THEN 9650 ELSE P$=P$+CHR$(ASC(MID$(PT$,N,1)) AND 223)  'remove spaces and force UC
+9650 NEXT:NR=LEN(P$):GOSUB 5010:LOCATE 6,1:PRINT "The plaintext is: ":GOSUB 5060:PRINT
+9660 PRINT"With spaces removed, there are"NR"characters in the text.":IF D=1 THEN 9690
+9665 IF LEN(SO$)>0 THEN 9690
+9670 PRINT:PRINT"Enter the Source of the plaintext: (eg Mtl Gazette) ";:LINE INPUT SO$:IF LEN(SO$)=0 THEN SO$="NO SOURCE":PRINT SO$
+9690 '
+9750 IF D=1 THEN GOSUB 5020:GOTO 9790
+9760 PRINT:PRINT TAB(20)"Shall I store this data on disk? (Y/N*) ";:LINE INPUT Q$:IF Q$="Y"OR Q$="y" THEN 9770 ELSE GOTO 9790
+9770 PRINT:PRINT TAB(20)"What is the file name? : ";:X=POS(0):LINE INPUT FI$:IF FI$="" THEN 9770
+9780 GOSUB 9800:PRINT:PRINT TAB(20)"Data has been stored in <"FI$">.":GOSUB 5020
+9790 GOSUB 5010:GOTO 90
+9795 GOSUB 5010:LOCATE Y-2:GOTO 9690
+9798 :
+9799 '      =====  files  =====
+9800 OPEN"O",1,FI$:PRINT#1,FI$:PRINT#1,PT$:CLOSE:RETURN
+9810 ON ERROR GOTO 9840
+9820 OPEN"I",1,FI$:LINE INPUT#1,SO$:LINE INPUT#1,PT$: CLOSE:ON ERROR GOTO 0: RETURN
+9830 '    ---  error trap  ---
+9840 PRINT:PRINT:PRINT TAB(23) "Can't find file "FI$". Try again.":GOSUB 5020:GOSUB 5010:RESUME 9570
+15000 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15:PRINT "Printer not ready: press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+15010 ON ERROR GOTO 0:STOP
+20000 '                    ----  examples ----
+20100 XP$="THE EARLY BIRD GETS THE WORM":XK$="TAG":'ACA&U p39
+20160 XP$="PERENNIAL CHESS TRAPS THOUGH OLD AS THE HILLS STILL RETAIN THEIR POWER TO ENTHRALL":XK$="MASTER":'E18 MA85
+20200 XP$="THE SHOEBOX WHERE YOU STORE RECEIPTS HAS BEEN LINED WITH A VAPORIZING AGENT THAT AUTOMATICALLY DISSOLVES ANYTHING IMPORTANT
+20201 XP$="IF YOU RIP THAT SILLY TAG OFF YOUR MATTRESS YOULL BECOME THE FIRST PERSON ACTUALLY ARRESTED TRIED AND CONVICTED FOR DOING SO":XK$="JAILBRD"
+20300 RETURN
+60000 'Default text entry changed to keybd; END altered at 5100,680-690 incl error reset.
+65000 SAVE"nicodeme.enc",A
+

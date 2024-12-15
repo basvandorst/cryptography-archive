@@ -1,0 +1,804 @@
+\chapter{Technical reference guide for low-level functions}
+
+In this chapter, we give a description of almost all low-level functions of
+the PARI system. These essentially include functions for handling all the
+PARI types. Higher level functions, such as arithmetic or transcendental
+functions, are described fully in Chapter 3 of this manual.
+
+\section{Level 0 kernel (operations on unsigned longs)}
+The type ``{\tt ulong}'' is defined in the file {\tt gencom.h} as 
+{\tt unsigned long}. The global {\tt ulong} variables {\tt overflow} 
+(which will contain only 0 or 1) and {\tt hiremainder} are defined in the
+file {\tt versionXXX.c}. 
+
+For the non-68k versions, we need level 0 operations simulating basic
+operations of the 68020 processor. For compatibility reasons, and also
+for very rare cases, they are also included in the 68k version, although
+they are not really needed. Note that in the given prototypes ulongs are 
+sometimes implicitly typecasted as ints or longs.
+
+To make the following descriptions valid both for 32-bit and 64-bit
+machines, we will set BIL to be equal to 32 (resp. 64), an abbreviation
+of BITS\_IN\_LONG, which is used.
+
+{\tt int addll(int x, int y)}: add the ulongs x and y, output the lower BIL
+bits and put the overflow bit in {\tt overflow}.
+
+{\tt int addllx(int x, int y)}: add {\tt overflow} to the sum of the ulongs x
+and y, output the lower BIL bits and put the overflow bit in {\tt overflow}.
+
+{\tt int subll(int x, int y)}: subtract the ulongs x and y, output the lower 
+BIL bits and put the overflow bit in {\tt overflow}.
+
+{\tt int subllx(int x, int y)}: subtract {\tt overflow} from the difference
+of the ulongs x and y, output the lower BIL bits and put the overflow bit in
+{\tt overflow}.
+
+{\tt int shiftl(ulong x, ulong y)}: left shift the ulong x by y bits, output
+the lower BIL bits and put the higher BIL bits in {\tt hiremainder}. We must
+have $1\le\text{y}\le\text{BIL}$. In particular, {\tt y} must be tested
+to be non-zero.
+
+{\tt int shiftlr(ulong x, ulong y)}: right shift the ulong $\text{x}<<\text{BIL}$ by
+y bits, output the higher BIL bits and put the lower BIL bits in 
+{\tt hiremainder}. We must have $1\le\text{y}\le\text{BIL}$. In
+particular, {\tt y} must be tested to be non-zero.
+
+{\tt int bfffo(ulong x)}: output the number of bits that the ulong x should
+be shifted left so that its leftmost bit is equal to 1 (BIL if x is equal to 0).
+
+{\tt int mulll(ulong x, ulong y)}: multiply the ulong x by the ulong y, output
+the lower BIL bits and put the higher BIL bits in {\tt hiremainder}.
+
+{\tt int addmul(ulong x, ulong y)}: add {\tt hiremainder} to the product of
+the ulong x by the ulong y, output the lower BIL bits and put the higher BIL
+bits in {\tt hiremainder}.
+
+{\tt int divll(ulong x, ulong y)}: output the Euclidean quotient of 
+hiremainder$*2^{\text{BIL}}+$x by the ulong y and put the remainder in 
+{\tt hiremainder}. An error occurs if the quotient cannot be held in
+an ulong, i.e. if hiremainder$\ge$y.
+
+{\tt long mulmodll(ulong x, ulong y, ulong z)}: output x$*$y modulo z.
+
+\section{Level 1 kernel (operations on longs, integers and reals)}
+In this section as elsewhere, ``long'' denotes a BIL-bit signed C-integer,
+``integer'' denotes a PARI multiprecise integer (type 1), ``real'' denotes
+a PARI multiprecise real (type 2). Refer to the users manual for general
+background.
+
+\subsec{Basic unit and subunit handling functions}
+
+{\tt long typ(GEN x)}: gives the type number of x.
+
+{\tt long lg(GEN x)}: gives the length in BIL-bit words of x.
+
+{\tt long lgef(GEN x)}: gives the effective length in BIL-bit words of x. This
+makes sense only if x is an integer (type 1) or a polynomial (type 10).
+
+{\tt long mant(GEN x,long n)}: gives the n-th BIL-bit mantissa word of the 
+integer or real x (the most significant word is n=1).
+
+{\tt long signe(GEN x)}: gives the sign ($-1$, 0 or 1) of x. Should be used
+for integers, reals, polynomials and power series (for these last two only 0 
+or 1 are possible). For rational numbers, use {\tt gsigne(GEN x)}.
+
+{\tt long expo(GEN x)}: gives the unbiased 24-bit (for 32-bit machines)
+or 48-bit (for 64-bit machines) binary exponent of the real
+number x. If x is not a real number, one can define such a quantity, but in
+that case use the function {\tt gexpo(GEN x)}.
+
+{\tt long expi(GEN x)}: binary exponent of the real number equal to the integer
+x. This is the special case of the function {\tt gexpo(GEN x)} corresponding
+to the case where x is of type integer.
+
+{\tt long pere(GEN x)}: gives the number of objects pointing at x, saturating
+at 255 (65535 for 64-bit machines). Now unused.
+
+{\tt long valp(GEN x)}: gives the unbiased 16-bit p-adic valuation (for a
+p-adic) or X-adic valuation (for a power series) of x.
+
+{\tt long precp(GEN x)}: gives the precision of the p-adic x.
+
+{\tt long varn(GEN x)}: gives the variable number of x (between 0 and 255,
+or between 0 and 65535 for 64-bit machines).
+Should be used only for polynomials and power series. For all other types,
+use {\tt gvar(GEN x)}.
+
+{\tt void settyp(GEN x, long s)}: set equal to s the type number of x. This
+should be used with extreme care since usually the type is set otherwise.
+
+{\tt void setlg(GEN x, long s)}: set equal to s the length of x. Again this
+should be used with extreme care since usually the length is set otherwise.
+
+{\tt void setlgef(GEN x, long s)}: set equal to s the effective length of x,
+where x is an integer or a polynomial. The number s must be less than or equal
+to the length of x.
+
+{\tt void setmant(GEN x, long n, long s)}: set equal to s the n-th mantissa
+word of the integer or real number x.
+
+{\tt void setsigne(GEN x, long s)}: set equal to s the sign of x. If x is an
+integer or real, s must be equal to $-1$, 0 or 1, and if x is a polynomial or
+a power series, s must be equal to 0 or 1.
+
+{\tt void setexpo(GEN x, long s)}: set equal to s the binary exponent of
+the real number x. s must be a 24-bit signed number.
+
+{\tt void setpere(GEN x, long s)}: set equal to s the number of objects 
+pointing to x, where $0\le s\le255$ (or $0\le s\le 65535$ for 64-bit
+machines). Now unused.
+
+{\tt void incpere(GEN x)}: increase by 1 the number of objects pointing to x,
+saturating at 255 (or 65535 for 64-bit machines). Now unused.
+
+{\tt void setvalp(GEN x, long s)}: set equal to s the p-adic valuation of x
+(if x is a p-adic) or the X-adic valuation of x (if x is a power series).
+
+{\tt void setprecp(GEN x, long s)}: set equal to s the p-adic precision of the
+p-adic number x.
+
+{\tt void setvarn(GEN x, long s)}: set equal to s ($0\le s\le255$, or
+$0\le s\le65535$ for 64-bit machines) the variable
+number of the polynomial or power series x.
+
+\subsec{Memory allocation on the PARI stack}
+
+{\tt GEN cgetg(long n, long t)}: allocate memory on the PARI stack for an
+object of length n and type t, and initialize its first codeword (containing
+{\tt typ} (1 byte), {\tt pere} (1 byte), {\tt lg} (2 bytes).
+
+{\tt GEN cgeti(long n)}: allocate memory on the PARI stack for an integer
+of length n, and initialize its first codeword. Identical to {\tt cgetg(n,1)}.
+
+{\tt GEN cgetr(long n)}: allocate memory on the PARI stack for a real
+of length n, and initialize its first codeword. Identical to {\tt cgetg(n,2)}.
+
+{\tt void cgiv(GEN x)}: free object x if it is the last created on the PARI
+stack (otherwise disaster occurs).
+
+{\tt GEN gerepile(long p, long q, GEN x)}: general garbage collector for the
+PARI stack. See Chapter 4 of the manual for a detailed explanation.
+
+\subsec{Assignments, conversions and integer parts}
+
+{\tt void mpaff(GEN x, GEN z)}: assign x into z (x and z integers or reals).
+
+{\tt void affsz(long s, GEN z)}: assign the long s into the integer or real z.
+
+{\tt void affsi(long s, GEN z)}: assign the long s into the integer z.
+
+{\tt void affsr(long s, GEN z)}: assign the long s into the real z.
+
+{\tt void affii(GEN x, GEN z)}: assign the integer x into the integer z.
+
+{\tt void affir(GEN x, GEN z)}: assign the integer x into the real z.
+
+{\tt void affrs(GEN x, long s)}: assign the real x into the long s. This is a
+forbidden assignment in PARI, so an error message is issued.
+
+{\tt void affri(GEN x, GEN z)}: assign the real x into the integer z. This is a
+forbidden assignment in PARI, so an error message is issued.
+
+{\tt void affrr(GEN x, GEN z)}: assign the real x into the real z.
+\smallskip
+{\tt GEN stoi(long s)}: create the PARI integer corresponding to the long s.
+
+{\tt long itos(GEN x)}: convert to long the PARI integer x (if possible,
+otherwise an error message is issued).
+\smallskip
+{\tt GEN mptrunc(GEN x)}: truncation of the integer or real x (not the same
+as the integer part if x is non-integer and negative).
+
+{\tt void mptruncz(GEN x, GEN z)}: assign the truncation of the integer or
+real x into z. 
+
+{\tt GEN mpent(GEN x)}: true integer part of the integer or real x (i.e. the
+{\tt floor} function).
+
+{\tt void mpentz(GEN x, GEN z)}: assign the true integer part of the integer
+or real x into z.
+
+\subsec{Valuation and shift}
+
+{\tt long vals(long s)}: 2-adic valuation of the long s. Returns $-1$ if
+s is equal to 0, with no error.
+
+{\tt long vali(GEN x)}: 2-adic valuation of the integer x. Returns $-1$ if
+s is equal to 0, with no error.
+
+{\tt GEN mpshift(GEN x, long n)}: shift by n the real or integer x. If n is
+positive, this is a left shift, i.e. multiplication by $2^{\text{n}}$. If
+n is negative, it is a right shift, hence the truncation of the division of x
+by $2^{-\text{n}}$.
+
+{\tt void mpshiftz(GEN x, long n, GEN z)}: assign into z the real or integer x
+shifted by n.
+
+{\tt GEN shifts(long s, long n)}: convert the long s into a PARI integer and
+shift by n.
+
+{\tt GEN shifti(GEN x, long n)}: shift by n the integer x.
+
+{\tt GEN shiftr(GEN x, long n)}: shift by n the real x.
+
+\subsec{Unary operations}
+
+Let ``op'' be some unary operation of type GEN. The names and prototypes of
+the low-level functions corresponding to op will be as follows.
+
+{\tt GEN mpop(GEN x)}: create the result of op applied to the integer or real
+x.
+
+{\tt GEN ops(long s)}: create the result of op applied to the long s.
+
+{\tt GEN opi(GEN x)}: create the result of op applied to the integer x.
+
+{\tt GEN opr(GEN x)}: create the result of op applied to the real x.
+
+{\tt void mpopz(GEN x, GEN z)}: assign into the integer or real z the result
+of applying op to the integer or real x.
+
+Remark: it has not been considered useful to include in PARI the functions
+{\tt void opsz(long s, GEN z)}, {\tt void opiz(GEN x, GEN z)} and 
+{\tt void oprz(GEN x, GEN z)}.
+\smallskip
+This can be applied to the following operators.
+
+op=neg: negation ($-$x). The result is the same type as x.
+
+op=abs: absolute value ($|\text{x}|$). The result is the same type as x.
+
+In addition, there exist the following special unary functions with assignment.
+
+{\tt void mpinvz(GEN x, GEN z)}: assign the inverse of the integer or real x
+into the real z. The inverse is computed as a quotient of real numbers, not as
+a Euclidean division.
+
+{\tt void mpinvsr(long s, GEN z)}: assign the inverse of the long s into the
+real z.
+
+{\tt void mpinvir(GEN x, GEN z)}: assign the inverse of the integer x into the
+real z.
+
+{\tt void mpinvrr(GEN x, GEN z)}: assign the inverse of the real x into the
+real z.
+
+\subsec{Comparison operators}
+
+{\tt long mpcmp(GEN x, GEN y)}: compare the integer or real x with the integer
+or real y. The result is the sign of x$-$y.
+
+{\tt long cmpss(long s, long t)}: sign of s$-$t.
+
+{\tt long cmpsi(long s, GEN x)}: compare the long s with the integer x.
+
+{\tt long cmpsr(long s, GEN x)}: compare the long s with the real x.
+
+{\tt long cmpis(GEN x, long s)}: compare the integer x with the long s.
+
+{\tt long cmpii(GEN x, GEN y)}: compare the integer x with the integer y.
+
+{\tt long cmpir(GEN x, GEN y)}: compare the integer x with the real y.
+
+{\tt long cmprs(GEN x, long s)}: compare the real x with the long s.
+
+{\tt long cmpri(GEN x, GEN y)}: compare the real x with the integer y.
+
+{\tt long cmprr(GEN x, GEN y)}: compare the real x with the real y.
+
+\subsec{Binary operations}
+
+Let ``op'' be some operation of type GEN. The names and prototypes of the 
+low-level functions corresponding to op will be as follows.
+
+{\tt GEN mpop(GEN x, GEN y)}: create the result of op applied to the integer
+or reals x and y.
+
+{\tt GEN opss(long s, long t)}: create the result of op applied to the longs
+s and t.
+
+{\tt GEN opsi(long s, GEN x)}: create the result of op applied to the long s
+and the integer x.
+
+{\tt GEN opsr(long s, GEN x)}: create the result of op applied to the long s
+and the real x.
+
+{\tt GEN opis(GEN x, long s)}: create the result of op applied to the integer x
+and the long s.
+
+{\tt GEN opii(GEN x, GEN y)}: create the result of op applied to the integers x
+and y.
+
+{\tt GEN opir(GEN x, GEN y)}: create the result of op applied to the integer x
+and the real y.
+
+{\tt GEN oprs(GEN x, long s)}: create the result of op applied to the real x
+and the long s.
+
+{\tt GEN opri(GEN x, GEN y)}: create the result of op applied to the real x
+and the integer y.
+
+{\tt GEN oprr(GEN x, GEN y)}: create the result of op applied to the reals x
+and y.
+\smallskip
+{\tt GEN mpopz(GEN x, GEN y, GEN z)}: assign into the integer or real z
+the result of op applied to the integer or reals x and y.
+
+{\tt GEN opssz(long s, long t, GEN z)}: assign into the integer or real z
+the result of op applied to the longs s and t.
+
+{\tt GEN opsiz(long s, GEN x, GEN z)}: assign into the integer or real z
+the result of op applied to the long s and the integer x.
+
+{\tt GEN opsrz(long s, GEN x, GEN z)}: assign into the integer or real z
+the result of op applied to the long s and the real x.
+
+{\tt GEN opisz(GEN x, long s, GEN z)}: assign into the integer or real z
+the result of op applied to the integer x and the long s.
+
+{\tt GEN opiiz(GEN x, GEN y, GEN z)}: assign into the integer or real z
+the result of op applied to the integers x and y.
+
+{\tt GEN opirz(GEN x, GEN y, GEN z)}: assign into the integer or real z
+the result of op applied to the integer x and the real y.
+
+{\tt GEN oprsz(GEN x, long s, GEN z)}: assign into the integer or real z
+the result of op applied to the real x and the long s.
+
+{\tt GEN opriz(GEN x, GEN y, GEN z)}: assign into the integer or real z
+the result of op applied to the real x and the integer y.
+
+{\tt GEN oprrz(GEN x, GEN y, GEN z)}: assign into the integer or real z
+the result of op applied to the reals x and y.
+\smallskip
+This can be applied to the following operators.
+
+op=add: addition (x$+$y). The result is real unless both x and y are
+integers.
+
+op=sub: subtraction (x$-$y). The result is real unless both x and y are
+integers.
+
+op=mul: multiplication (x$*$y). The result is real unless both x and y are
+integers OR if x or y is the integer or long zero.
+
+op=div: division (x$/$y). In the case where x and y are both integers or longs,
+the result is the Euclidean quotient, the remainder being of the sign of the
+dividend x. If one of x or y is real, the result is real unless x is the
+integer or long zero. Division by zero error if y is equal to zero.
+
+op=res: remainder (x$\%$y). This operation exists only when x and y are longs
+or integers. The result is the Euclidean remainder corresponding to div, i.e.
+its sign is that of the dividend x. The result is always an integer.
+
+op=mod: remainder (x$\%$y). This operation exists only when x and y are longs
+or integers. The result is the true Euclidean remainder, i.e. non-negative
+and less than the absolute value of y.
+
+\subsec{Division with remainder}
+
+{\tt GEN dvmdss(long s, long t, GEN$*$ r}: create the Euclidean quotient and
+remainder of the longs s and t. If r is not 0 or $-1$. put the address of the
+remainder in r, and output the quotient. If r is equal to 0, only the
+quotient is output. If r is equal to $-1$, the remainder is output instead
+of the quotient. The remainder is always of the sign of the dividend s.
+
+{\tt GEN dvmdsi(long s, GEN x, GEN$*$ r)}: create the Euclidean quotient and
+remainder of the long s by the integer x.
+
+{\tt GEN dvmdis(GEN x, long s, GEN$*$ r)}: create the Euclidean quotient and
+remainder of the integer x by the long s.
+
+{\tt GEN dvmdii(GEN x, GEN y, GEN$*$ r)}: create the Euclidean quotient and
+remainder of the integer x by the integer y.
+
+{\tt void mpdvmdz(GEN x, GEN y, GEN z, GEN$*$ r)}: assign into the integer or
+real z the Euclidean quotient of the integers x by y, putting the address of 
+the remainder in r (unless r is equal to 0 or $-1$ as above).
+
+{\tt void dvmdssz(long s, long t, GEN z, GEN$*$ r)}: assign into the integer or
+real z the Euclidean quotient of the longs s by t, putting the address of 
+the remainder in r (unless r is equal to 0 or $-1$ as above).
+
+{\tt void dvmdsiz(long s, GEN x, GEN z, GEN$*$ r}: assign into the integer or
+real z the Euclidean quotient of the long s by the integer x, putting the
+address of the remainder in r (unless r is equal to 0 or $-1$ as above).
+
+{\tt void dvmdisz(GEN x, long s, GEN z, GEN$*$ r)}: assign into the integer or
+real z the Euclidean quotient of the integer x by the long s, putting the
+address of the remainder in r (unless r is equal to 0 or $-1$ as above).
+
+{\tt void dvmdiiz(GEN x, GEN y, GEN z, GEN$*$ r)}: assign into the integer or
+real z the Euclidean quotient of the integers x by y, putting the address of 
+the remainder in r (unless r is equal to 0 or $-1$ as above).
+
+\subsec{Miscellaneous functions}
+
+{\tt void addsii(long s, GEN x, GEN z)}: assign into the integer z the sum of
+the long s and the integer x (essentially identical to {\tt addsiz} except
+that z is specifically an integer).
+
+{\tt GEN confrac(GEN x)}: converts the fractional part of the real x in base
+$10^9$. The result is an array z on the PARI stack such that z[0] contains
+the number of significant decimal digits, and z[1],\dots the base $10^9$
+expansion of the fractional part of x.
+
+Warning: since z is not a standard PARI object, the stack must be cleaned by
+a simple avma$=$oldavma statement, and not by the {\tt gerepile} garbage
+collector after execution of this function.
+
+{\tt GEN convi(GEN x)}: converts the absolute value of the integer x in base
+$10^9$. The result is an integer z such that z[1] is set artificially to 
+$-1$, z[2], \dots, z[m] contain the base $10^9$ digits of $|\text{x}|$, and
+the output is the address of z[m$+$1].
+
+{\tt long divise(GEN x, GEN y)}: if the integer y divides the integer x, return
+1 (true), otherwise return 0 (false).
+
+{\tt long divisii(GEN x, long s, GEN z)}: assign into the integer z the 
+Euclidean quotient of the integer x by the long s, and return the remainder
+as a long.
+
+{\tt long mpdivis(GEN x, GEN y, GEN z)}: if the integer y divides the integer
+x, assign the quotient in the integer z and return 1 (true), otherwise return
+0 (false).
+
+{\tt void mulsii(long s, GEN x, GEN z)}: assign into the integer z the product
+of the long s and the integer x (essentially identical to {\tt mulsiz} except
+that z is specifically an integer).
+
+\section{Level 2 kernel (operations on general PARI objects)}
+
+In this section, functions followed by an assignment statement will be 
+mentioned as in the following example:
+
+{\tt GEN gadd[z](GEN x, GEN y[, GEN z])}: the explanation is given for
+the function {\tt gadd}, and the brackets are there to say
+that the {\tt void} function {\tt void gaddz(GEN x, GEN y, GEN z)} also
+exists, where the result is assigned into z.
+
+All these [z] functions are obtained using macros (see the file {\tt gencom.h})
+hence if an extension of the list is desired, it is trivial to add the
+suitable macro in the file {\tt gencom.h}.
+
+The functions available to handle subunits are the following.
+
+{\tt GEN compo(GEN x, long n)}: create a copy of the n-th true component (i.e.
+not counting the codewords) of the object x.
+
+{\tt GEN truecoeff(GEN x, long n)}: create a copy of the coefficient of degree
+n of x if x is a scalar, polynomial or power series, otherwise of the n-th
+component of x.
+
+{\tt long coeff(GEN x, long i, long j)}: x being a matrix (type 19), this gives
+the address of the coefficient of row i and column j of the matrix x. This is
+NOT a function, simply a macro, and can be used on the left or right hand side
+of an assignment statement.
+
+\subsec{Copying and conversion}
+
+{\tt GEN cgetp(GEN x)}: create p-adic space sufficient to put x into, and
+set the prime p and the p-adic precision to that of x, but do not copy x.
+
+{\tt GEN gcopy(GEN x)}: create a new copy of the object x on the PARI stack.
+
+{\tt GEN forcecopy(GEN x)}: same as copy except that even permanent pointers
+are copied onto the stack.
+
+{\tt long taille(GEN x)}: total number of BIL-bit words occupied by the tree
+representing x.
+
+{\tt GEN gclone(GEN x)}: create a new copy of the object x on the heap.
+
+{\tt GEN greffe(GEN x, long l)}: x being a polynomial (type 10), create a
+power series (type 11) of length l starting with x, but without actually
+copying the coefficients, just the pointers. For internal use.
+
+{\tt double rtodbl(GEN x)}: x being a real (type 2), convert x into a
+C double if possible.
+
+{\tt GEN dbltor(double x)}: convert the C double x into a PARI real.
+
+{\tt double gtodouble(GEN x)}: x being in the real numbers (but not 
+necessarily of type real), convert x into a C double if possible. 
+
+{\tt long gtolong(GEN x)}: x being in the integers (but not necessarily of type
+integer), convert x into a C long if possible.
+
+{\tt GEN gtopoly(GEN x, long v)}: convert or truncate the object x into a 
+polynomial with main variable number v.
+
+{\tt GEN gtopolyrev(GEN x, long v)}: convert or truncate the object x into a 
+polynomial with main variable number v, but vectors are converted in reverse
+order.
+
+{\tt GEN gtoser(GEN x, long v)}: convert the object x into a power series
+with main variable number v.
+
+{\tt GEN gtovec(GEN x)}: convert the object x into a (row) vector.
+
+{\tt GEN co8(GEN x, long l)}: x being a quadratic number (type 8), convert x
+into a real number or complex number depending on the sign of the discriminant
+of x, to precision l BIL-bit words.
+
+{\tt GEN gcvtop(GEN x, GEN p, long l)}: convert x into a p-adic number of
+precision l.
+
+{\tt GEN gmodulcp(GEN x, GEN y)}: create the object mod(x,y) on the PARI stack,
+where x and y are either both integers, and the result is an integermod 
+(type 3) or x is a scalar or a polynomial and y a polynomial, and the result is
+a polymod (type 9).
+
+{\tt GEN gmodulo(GEN x, GEN y)}: same as {\tt gmodulcp} except that the modulus
+y is copied on the heap and not in the PARI stack.
+
+{\tt long gexpo(GEN x)}: return the binary exponent of x or the maximal
+binary exponent of the coefficients of x; return $-(2^{15}-1)$ if x has no
+components. Error if x is exactly zero.
+
+{\tt long gsize(GEN x)}: return 0 if x is exactly 0, otherwise return
+{\tt gexpo(x)} multiplied by $\log(2)/\log(10)$. This gives a crude estimate
+for the maximal number of decimal digits of the components of x.
+
+{\tt long gsigne(GEN x)}: return the sign of x ($-1$, 0 or 1) when x is an 
+integer, real or (irreducible or reducible) fraction. Error for all other
+types.
+
+{\tt long gvar(GEN x)}: return the main variable of x. If no component of
+x is a polynomial or power series, return $2^{15}-1$.
+
+{\tt int precision(GEN x)}: If x is of type real, return the precision of
+x (the length of x in BIL-bit words if x is not zero, and a reasonable
+quantity obtained from the exponent of x if x is equal to zero). If x
+is of type complex, return the minimum of the precisions of the real and
+imaginary part. Otherwise, return 0 (coding in fact for $\infty$).
+
+\subsec{Comparison operators and valuations}
+
+{\tt int gcmp0(GEN x)}: 1 (true) if x is equal to 0, 0 (false) otherwise.
+
+{\tt int isexactzero(GEN x)}: 1 (true) if x is exactly equal to 0, 0 (false)
+otherwise.
+
+{\tt int gcmp1(GEN x)}: 1 (true) if x is equal to 1, 0 (false) otherwise.
+
+{\tt int gcmp\_1(GEN x)}: 1 (true) if x is equal to $-1$, 0 (false) otherwise.
+
+{\tt long gcmp(GEN x, GEN y)}: comparison of x with y (sign of x$-$y).
+
+{\tt long gcmpsg(long s, GEN x)}: comparison of the long s with x.
+
+{\tt long gcmpgs(GEN x, long s)}: comparison of x with the long s.
+
+{\tt long lexcmp(GEN x, GEN y)}: comparison of x with y for the lexicographic
+ordering.
+
+{\tt long gegal(GEN x, GEN y)}: 1 (true) if x is equal to y, 0 otherwise.
+
+{\tt long gegalsg(long s, GEN x)}: 1 (true) if the long s is equal to x, 0
+otherwise.
+
+{\tt long gegalgs(GEN x, long s)}: 1 (true) if x is equal to the long s, 0
+otherwise (it should not be very different from {\tt gegalsg}!).
+
+{\tt long iscomplex(GEN x)}: 1 (true) if x is in the complex numbers but not
+in the reals, 0 if x is in the reals, error if x is not in the complex numbers.
+
+{\tt long ismonome(GEN x)}: 1 (true) if x is a non-zero monomial in its main
+variable, 0 otherwise.
+
+{\tt long ggval(GEN x, GEN p)}: greatest exponent of p dividing x, when this
+makes sense.
+
+{\tt long gval(GEN x, long v)}: highest power of the variable number v dividing
+the polynomial x.
+
+{\tt int pvaluation(GEN x, GEN p, GEN$*$r)}: x and p being non-zero
+integers, returns the highest exponent e of p such that p$^{\text{e}}$ 
+divides x, creates the x$/\text{p}^{\text{e}}$ and returns its address 
+in r. In particular if p is a prime, this returns the valuation at p of
+x and r contains the address of the prime to p part of x.
+
+\subsec{Assignment statements}
+
+{\tt void gaffsg(long s, GEN x)}: assign the long s into the object x.
+
+{\tt void gaffect(GEN x, GEN y)}: assign the object x into the object y.
+
+\subsec{Unary operators}
+
+{\tt GEN gneg[z](GEN x[, GEN z])}: create $-$x.
+
+{\tt GEN gabs[z](GEN x[, GEN z])}: create $|\text{x}|$.
+
+{\tt GEN gsqr(GEN x)}: create the square of x,
+
+{\tt GEN ginv(GEN x)}: create the inverse of x.
+
+{\tt GEN gfloor(GEN x)}: create the floor of x, i.e. the (true) integral part.
+
+{\tt GEN gfrac(GEN x)}: create the fractional part of x, i.e. x minus the floor
+of x.
+
+{\tt GEN gceil(GEN x)}: create the ceiling of x.
+
+{\tt GEN ground(GEN x)}: round the components of x to the nearest integer,
+and in case where x is exactly between two integers, rounding is done
+towards $+\infty$.
+
+{\tt GEN grndtoi(GEN x, long$*$e)}: same as round, but in addition put in
+$*$e minus the number of significant binary bits left after rounding. If
+$*$e is positive, all significant bits are lost. This gives an error message
+in {\tt ground} but not in {\tt grndtoi}.
+
+{\tt GEN gtrunc(GEN x)}: truncate x. This is the (false) integer part if 
+x is an integer (i.e. the unique integer closest to x and between 0 and
+x), converts a series into a polynomial or rational function,
+takes the polynomial part of a rational function.
+
+{\tt GEN gcvtoi(GEN x, long$*$e)}: same as {\tt grndtoi} except that rounding
+is replaced by truncation.
+
+{\tt GEN gred[z](GEN x[, GEN z])}: reduce x to lowest terms if x is a fraction
+or rational function (types 4, 5, 13 and 14), otherwise create a copy of x.
+
+{\tt void gredsp(GEN$*$ x)}: reduce $*$x to lowest terms and put the result
+in $*$x again. The type of the result may be changed to integer or polynomial.
+A call to this function is the normal way of finishing a computation whose
+result gives a fraction or rational function which is not necessarily in
+lowest terms.
+
+{\tt GEN content(GEN x)}: create the GCD of all the components of x.
+
+{\tt GEN primpart(GEN x)}: x divided by its content.
+
+{\tt void normalize(GEN$*$ px)}: x=$*$px being an unnormalized power series
+(i.e. type 11 with all coefficients correctly set except that x[2] is not
+necessarily different from zero), normalize x correctly in place. For
+internal use.
+
+{\tt void normalizepol(GEN$*$ px)}: x=$*$px being an unnormalized polynomial
+(i.e. type 10 with all coefficients correctly set except that x[2] is not
+necessarily different from zero), normalize x correctly in place. For
+internal use.
+
+\subsec{Binary operators}
+
+{\tt GEN gmax[z](GEN x, GEN y[, GEN z])}: create the maximum of the objects x
+and y if they can be compared.
+
+{\tt GEN gmaxsg[z](long s, GEN x[, GEN z])}: create the maximum of the long s
+and the object x.
+
+{\tt GEN gmaxgs[z](GEN x, long s[, GEN z])}: create the maximum of the object 
+x and the long s.
+
+{\tt GEN gmin[z](GEN x, GEN y[, GEN z])}: create the minimum of the objects x
+and y if they can be compared.
+
+{\tt GEN gminsg[z](long s, GEN x[, GEN z])}: create the minimum of the long s
+and the object x.
+
+{\tt GEN gmings[z](GEN x, long s[, GEN z])}: create the minimum of the object 
+x and the long s.
+
+{\tt GEN gadd[z](GEN x, GEN y[, GEN z])}: create the sum of the objects x and 
+y.
+
+{\tt GEN gaddsg[z](long s, GEN x[, GEN z])}: create the sum of the long s and 
+the object x.
+
+{\tt GEN gaddgs[z](GEN x, long s[, GEN z])}: create the sum of the object x 
+and the long s.
+
+{\tt GEN gaddpex(GEN x, GEN y)}: create the sum of the integer or fraction x
+and the p-adic y. For internal use.
+
+{\tt GEN gsub[z](GEN x, GEN y[, GEN z])}: create the difference of the objects
+x and y.
+
+{\tt GEN gsubgs[z](GEN x, long s[, GEN z])}: create the difference of the 
+object x and the long s.
+
+{\tt GEN gsubsg[z](long s, GEN x[, GEN z])}: create the difference of the long
+s and the object x.
+
+{\tt GEN gmul[z](GEN x, GEN y[, GEN z])}: create the product of the objects x 
+and y.
+
+{\tt GEN gmulsg[z](long s, GEN x[, GEN z])}: create the product of the long s 
+with the object x.
+
+{\tt GEN gmulgs[z](GEN x, long s[, GEN z])}: create the product of the object
+x with the long s.
+
+{\tt GEN gshift[z](GEN x, long n[, GEN z])}: left shift of the components of
+x by n (if n is non-negative) or right shift by $-$n (if n is negative). Applies
+only to integers, reals and vectors/matrices of such. For other types, it is 
+simply multiplication by $2^{\text{n}}$.
+
+{\tt GEN gmul2n[z](GEN x, long n[, GEN z])}: create x multiplied by 
+$2^{\text{n}}$. The difference with {\tt gshift} occurs when n is negative and
+x is of type integer: {\tt gshift} truncates, while {\tt gmul2n} creates a
+fraction if necessary.
+
+{\tt GEN gdiv[z](GEN x, GEN y[, GEN z])}: create the quotient of the objects 
+x and y.
+
+{\tt GEN gdivgs[z](GEN x, long s[, GEN z])}: create the quotient of the object
+x with the long s.
+
+{\tt GEN gdivsg[z](long s, GEN x[, GEN z])}: create the quotient of the long s
+with the object x.
+
+{\tt GEN gdivent[z](GEN x, GEN y[, GEN z])}: create the true Euclidean 
+quotient of x by the integer or polynomial y.
+
+{\tt GEN gdiventsg[z](long s, GEN x[, GEN z])}: create the true Euclidean 
+quotient of the long s by the integer x.
+
+{\tt GEN gdiventgs[z](GEN x, long s[, GEN z])}: create the true Euclidean 
+quotient of the integer x by the long s.
+
+{\tt GEN gdiventres(GEN x, GEN y)}: create a 2-component vertical vector whose
+components are the true Euclidean quotient and remainder of x by y.
+
+{\tt GEN gdivmod(GEN x, GEN y, GEN$*$r)}: If r is not equal to 0 or $-1$,
+create the (false) Euclidean quotient of x by y, and put the address of the 
+remainder in r. If r is equal to 0, do not create the remainder, and if r is
+equal to $-1$, create and output only the remainder.
+
+{\tt GEN poldivres(GEN x, GEN y, GEN$*$r)}: same as {\tt gdivmod} but
+specifically for x and y polynomials.
+
+{\tt GEN gdeuc[z](GEN x, GEN y[, GEN z])}: create the Euclidean quotient of 
+the polynomial x by the polynomial y.
+
+{\tt GEN gdivround(GEN x, GEN y)}: if x and y are integers, returns the
+quotient x$/$y of x and y, rounded to the nearest integer. If x$/$y falls
+exactly between two consecutive integers, then it is rounded towards
+$+\infty$ (as for {\tt round}). If x and y are not both integers, the
+result is the same as {\tt gdivent}.
+
+{\tt GEN gmod[z](GEN x, GEN y[, GEN z])}: create the true remainder of x 
+modulo the integer or polynomial y.
+
+{\tt GEN gmodsg[z](long s, GEN x[, GEN z])}: create the true remainder of the
+long s modulo the integer x.
+
+{\tt GEN gmodgs[z](GEN x, long s[, GEN z])}: create the true remainder of the 
+integer x modulo the long s.
+
+{\tt GEN gres(GEN x, GEN y)}: create the Euclidean remainder of the polynomial
+x divided by the polynomial y.
+
+{\tt GEN ginvmod(GEN x, GEN y)}: create the inverse of x modulo y when it
+exists.
+
+{\tt GEN gpui(GEN x, GEN y, long l)}: create $\text{x}^{\text{y}}$. The
+precision l is taken into account only if y is not an integer and x is an
+exact object. If y is an integer, binary powering is done. Otherwise, the
+result is $\exp(\text{y}*\log(\text{x}))$ computed to precision l.
+
+{\tt GEN ggcd(GEN x, GEN y)}: create the GCD of x and y.
+
+{\tt GEN glcm(GEN x, GEN y)}: create the LCM of x and y.
+
+{\tt GEN subres(GEN x, GEN y)}: resultant of the polynomials x and y computed
+using the subresultant algorithm.
+
+{\tt GEN gpuigs(GEN x, long n, long l)}: create $\text{x}^{\text{n}}$ using
+binary powering. The precision l is used {\sl only\/} when x is of type 15
+(real quadratic forms), hence can almost always be ommited.
+
+{\tt GEN gsubst(GEN x, long v, GEN y)}: substitute in x the object y for the 
+variable number v.
+
+{\tt int gdivise(GEN x, GEN y)}:  return 1 (true) if y divides x, 0 otherwise.
+
+{\tt GEN gbezout(GEN x, GEN y, GEN$*$ u, GEN$*$ v)}: create the GCD of x and y,
+and put in u and v the adresses of objects such that $*$ux$+$$*$vy$=\gcd$(x,y).
+
+
+\vfill\eject

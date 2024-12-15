@@ -1,0 +1,979 @@
+Path: msuinfo!agate!ihnp4.ucsd.edu!usc!cs.utexas.edu!not-for-mail
+From: ritter@io.com (Terry Ritter)
+Newsgroups: sci.crypt
+Subject: Fenced DES Design Context (long!)
+Date: 1 Jul 1994 00:43:44 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 968
+Sender: nobody@cs.utexas.edu
+Message-ID: <199407010539.AAA21904@indial1.io.com>
+NNTP-Posting-Host: news.cs.utexas.edu
+
+                    Ritter Software Engineering
+              2609 Choctaw Trail  Austin, Texas 78745
+                   ritter@io.com  (512) 892-0494
+
+
+                The Context of the Fenced DES Design
+
+                           Terry Ritter
+                          June 30, 1994
+
+
+
+
+ This article describes the Fenced DES cipher and its theory of
+ design.  Fenced DES uses the U.S. Data Encryption Standard (DES)
+ as a component in a cipher which is larger and stronger than DES,
+ and yet almost as fast.
+
+ Fenced DES is an unusual block-cipher design in that it does not
+ rely on conventional iterative substitution-permutation (S-P)
+ technology.  Fenced DES does not use multiple "rounds," S-P
+ "permutations" or selected substitutions.  Instead, Fenced DES
+ connects arbitrary invertible substitutions to an internal DES
+ layer, thus guaranteeing a wide avalanche in a single step
+ without special substitutions.
+
+ The overall goal is to find a way to upgrade the strength of DES
+ while using substantially less computation than Triple DES.  A
+ sufficiently clean and "believable" design might even achieve a
+ "derivative certification," and thus avoid the huge expense and
+ delay involved in certifying a totally-new cipher.
+
+
+
+ Table of Contents
+
+ 1  Introduction
+ 2  Conventional Approaches to Improved DES
+    2.1  Triple DES
+    2.2  Double DES
+ 3  Toward Fenced DES
+    3.1  The Block Cipher Component
+    3.2  Avalanche and Substitution
+    3.3  1x Fenced DES
+    3.4  Fenced DES vs. Substitution-Permutation
+    3.5  Keying the Substitutions
+    3.6  One Approach to Large-Block Fenced DES
+    3.7  2x Fenced DES
+    3.8  Block Mixing Transforms
+ 4  Analysis of 4x Fenced DES
+    4.1  About Cryptographic Proof
+    4.2  The Ideal Model
+    4.3  4x Fenced DES
+    4.4  Invertibility in 4x Fenced DES
+    4.5  Avalanche in 4x Fenced DES
+ 5  Fenced DES Strength
+    5.1  Strength of 1x Fenced DES with Known Substitutions
+    5.2  Strength of 1x Fenced DES with Known DES Key
+    5.3  Strength of 1x Fenced DES
+    5.4  Minimum Strength of 4x Fenced DES
+    5.5  Strength of 4x Fenced DES
+ 6  Attacks
+    6.1  Exhaustive Search
+    6.2  Codebook
+    6.3  Meet-in-the-Middle
+    6.4  Differential Cryptanalysis
+ 7  Conclusions
+ 8  References
+
+
+ 1  Introduction
+
+ The U.S. Data Encryption Standard (DES) has remained unchanged for
+ almost two decades.  During this period, unprecedented advances in
+ computational machinery have improved the ability to attack the
+ cipher.  While the same advances can be applied to implement the
+ cipher as well as attack it, DES has a keyspace which is fixed and
+ limited.  So even though DES can be made to operate faster, it
+ cannot be any stronger than it was designed to be almost 20 years
+ ago.  Relative to available attack technology, the cipher is far
+ weaker than it was, and continues to weaken.
+
+ There can be no question that DES will eventually be obsolete [9];
+ the only question is: "When?"  Unfortunately, the answer seems to
+ be: "Just about now."  For example, it now seems likely that a
+ substantial capital investment in engineering development and
+ equipment could construct an installation which could search the
+ entire DES keyspace in a few hours [27].  In other words, the "key
+ exhaustion" attack on single DES, which Tuchman called "not viable"
+ in 1979 [25:41] can no longer be dismissed out of hand, just fifteen
+ years later.
+
+ Would all users need to abandon DES if governments, corporations
+ and organized crime could penetrate DES?  One can certainly argue
+ that most data do not need ultimate protection.  But when a DES-
+ cracking machine finally is built, the economics of that expense
+ argue that the machine will be kept busy if at all possible.
+
+ Since DES has been so much a fixture in commercial cryptography,
+ it may take a few years for the situation to sink in, but the
+ handwriting is on the wall:  DES really must be replaced--for
+ sure this time--and the sooner the better.
+
+
+ 2  Replacements For DES
+
+ One of the reasons DES has been a popular cipher is that the
+ Government has assured everyone that it is effective.  Every five
+ years, the Government "re-certifies" the cipher.  But, starting
+ around 1986, the National Security Agency has been reluctant to
+ continue to re-certify DES (see [11:141], [13:55] and [19:122]).
+ This, of course, would be consistent with the idea that computation
+ technology will soon catch up and surpass the fixed strength of DES.
+
+
+ 2.1  Triple DES
+
+ One obvious replacement for DES is "Triple DES," a three-level
+ structure composed of three sequential DES operations (probably
+ using three different keys):
+
+    DES
+    DES
+    DES
+
+ The input block is operated on by DES three times, and this takes
+ three times the computation of DES itself.  Where encryption is an
+ overhead expense, this would triple that expense, thus encouraging
+ users to stay with a weakening cipher.
+
+ On the other hand, we suspect that Triple DES has tripled the
+ overall key length to 168 bits, which is more than large enough.
+
+ Another problem with Triple DES is that it retains the original DES
+ block size of 64 bits.  In the same way that we could not imagine
+ using an eight-bit (or even a 32-bit) block size in a secure block
+ cipher, future technical advances make reliance on the old block
+ size a risky practice.  (Indeed, as early as 1973, Feistel seemed to
+ think that 128-bit blocks were appropriate [7:20].)  A block cipher
+ intended to last for another couple of decades must not rely on
+ tiny 64-bit blocks.
+
+
+ 2.2  Double DES
+
+ If the computation of Triple DES is too expensive, why not just
+ use Double DES?
+
+    DES
+    DES
+
+ Unfortunately, and contrary to intuition, Double DES is barely
+ stronger than DES itself [18].  When "known plaintext" is available,
+ it is possible to "match" the hidden intermediate value.  A search
+ of all possible keys for the input operation, and all keys for the
+ output operation (a keyspace only one bit larger than for single-
+ DES) will find that match.
+
+ Double DES does not add significant strength over DES itself, and
+ may indicate that two-level constructs in general are likely to be
+ weak.
+
+
+ 3  Toward Fenced DES
+
+ An improved form of DES is not going to appear out of a vacuum.
+ Unless we are satisfied with the simple hack of using three
+ cipherings where previously one would do, we need to build up
+ to a finished cipher in modest steps.
+
+
+ 3.1  The Block Cipher Component
+
+ One way to look at the Triple DES cipher is to see it as a three-
+ level (or product) cipher, which uses DES as a component.  In doing
+ this we can make some simple assumptions about DES:
+
+    1.  There will be no statistical relationship between input and
+        output values.
+
+    2.  Given any input block and output block, if even a single bit
+        is changed in the input block, we expect about half the bits
+        in the output block to change.
+
+    3.  The DES operation can be conceptually modeled as a huge
+        invertible substitution table.
+
+
+ 3.2  Avalanche and Substitution
+
+ When working with block ciphers, one soon notices their extreme
+ sensitivity to change.  Even a tiny change in the input (plaintext)
+ value does not produce a small change in the output (ciphertext),
+ but instead tends to change about half of the output bits.  Feistel
+ called this property "avalanche" [7:21].
+
+ The term "avalanche" is probably most descriptive in the context
+ of an iterated "product" cipher (such as DES) which has multiple
+ "rounds."  In such a cipher, we can follow a small input change
+ and watch it affect just a few adjacent bits, and then grow,
+ round by round, as each of those bits affects a few other bits
+ (see [7:20-21], [8:1547] or [5:11]).  Feistel says:
+
+      "As the input moves through successive layers, the pattern
+      of 1's generated is amplified and results in an unpredictable
+      avalanche.  In the end, the final output will have, on the
+      average, half 0's and half 1's . . . ." [7:22]
+
+ Avalanche is a requirement in a good block cipher, and is also
+ an inherent property of a normal invertible substitution:  Any
+ change to the input value of an invertible substitution selects a
+ new and necessarily different output value.  If we look at all the
+ possible substitute values, we find the same count of 1's and 0's
+ in each bit position.  So, if we have one value, and then change
+ the input and so select another value essentially at random, we
+ expect the binary values at each bit position to change with
+ _almost_ probability 0.5 (excepting only that we cannot _change_
+ to the original value).  This is avalanche (see, for example,
+ [7], [26] and [22]).
+
+ Avalanche does not necessarily imply strength:  The elements in a
+ substitution could occur in counting order (for example), and the
+ function will avalanche anyway.  But a randomized substitution
+ does imply that an input error of even one bit will have the same
+ expected result as a massive error.  This denies The Opponent any
+ measure of "closeness," which would otherwise allow a cipher to
+ be broken fairly easily.  
+
+
+ 3.3  1x Fenced DES
+
+ I have proposed (after some trial and error) a DES alternative which
+ I call Fenced DES (because DES appears to be "fenced off").  We will
+ later develop versions with different block widths; here is the "1x"
+ Fenced DES construct:
+
+    S S S S S S S S
+    ------DES------
+    S S S S S S S S
+
+ Each of the "S" characters represents an "eight-bit-wide" (256-byte)
+ substitution table randomized under the control of a User Key.  (We
+ will discuss the randomization in section 3.5.)  The tables will be
+ initialized before ciphering, and will not change during ciphering.
+
+ Like Triple DES, 1x Fenced DES is also a three-layer structure.
+ Since all of the information flows through DES itself, the overall
+ cipher cannot possibly be weaker than DES.  This is a particularly
+ important point for any new cipher design.
+
+ Moreover, the 1x Fenced DES structure is clearly stronger than DES,
+ because a "known plaintext" attack requires knowing the actual
+ input and output values at the DES cipher itself, and these values
+ are hidden by the input and output substitution layers.  If even a
+ single input bit to DES is wrong (that is, if even one value in one
+ input substitution is off by even one bit), DES will "avalanche"
+ and about half of the output bits from DES will be wrong.  Thus, a
+ single wrong bit has the same statistical effect as a mostly-wrong
+ value; this means that it is not possible to know when the input
+ value is "close," so it does not appear possible to solve the
+ substitutions in an advantageous way.
+
+ But 1x Fenced DES still has the same block-width as DES, and this
+ is a problem.  A block size which appeared substantial in the
+ mid-70's is rapidly becoming a manipulable quantity.
+
+
+ 3.4  Fenced DES vs. Substitution-Permutation
+
+ The Fenced DES design differs from the usual iterated substitution-
+ permutation (S-P) cipher [7] [12].  For one thing, Fenced DES is not
+ iterative: it does not repeatedly use the same layers.  And Fenced
+ DES does not _have_ permutation layers; instead, bits are "mixed"
+ by the avalanche effects of an internal cipher layer.  This is a
+ fundamentally different design approach.
+
+ The main difference appears to be that S-P designs often map a
+ single bit or a small subset of bits from one substitution layer
+ to the next, and if this particular bit could not actually change
+ (due to the arrangement of the substitution), some substitution in
+ the next layer will not have the chance to avalanche.  Classical
+ S-P designs avoid this problem by constructing special substitutions
+ at design-time [12] [6].  But Fenced DES instead uses the guarantee
+ that an input change to an invertible substitution will change
+ _some_ output bit, and then uses _all_ of those bits in an internal
+ cipher layer.  This guarantees that any input change will avalanche
+ the internal cipher.
+
+ A classical S-P cipher is generally keyed by selecting among two
+ fixed S-boxes at each position or using exclusive-OR masks [7].
+ These S-box constructions are fixed by design for all time and
+ are used in all implementations of a particular S-P cipher.  In
+ contrast, Fenced DES constructs new substitutions for each ciphering
+ key, and so does not expose particular S-box arrangements to years
+ of external analysis.  Fenced DES shuffled substitutions do not
+ support a "computational trapdoor" like that which may be possible
+ in S-P S-boxes [2].  And Pieprzyk-Finkelstein [20:334] [21:69]
+ show that random 8-bit permutations are very likely to be of near
+ "maximum nonlinearity" anyway.
+
+ In larger versions of the Fenced DES cipher, entire blocks are
+ mixed in a way guaranteed to propagate any input change.  This
+ forces any input change to avalanche multiple internal ciphers,
+ involving each in the strength of the overall construct.
+
+
+ 3.5  Keying the Substitutions
+
+ Each Fenced DES substitution must be shuffled by a cryptographic
+ random number generator (RNG) before ciphering begins (the RNG
+ is not needed during actual ciphering).  Presumably, the same RNG
+ will also generate the DES keys.  Fortunately, in this application,
+ the cryptographic strength aspects of the RNG can be minimized,
+ because the only RNG exposure is in the arrangement of the values
+ in the substitutions, and if that arrangement is known, the cipher
+ is probably broken anyway.
+
+ Perhaps the most efficient basis for such an RNG is the Additive
+ RNG [14:27].  This has become well understood, and is basically
+ a Linear Feedback Shift Register (LFSR) using addition mod 2**n
+ [16] [17].  The Additive RNG is especially suited to fast software
+ implementation.  In one version, there are three pointers into a
+ circular queue, and the RNG "step" operation consists of taking two
+ of the pointed-to elements, adding them, and placing the result
+ in the queue through the third pointer.  Then the pointers are
+ incremented within the queue, and the result returned.
+
+ Thus, an Additive RNG based on a feedback trinomial (a primitive
+ mod-2 polynomial) "steps" an RNG with a huge amount of internal
+ state with just a single addition and a few pointer operations.
+ We can compare this to a Linear Congruential Generator (LCG) which
+ uses a multiply and an add, but involves only a small amount of
+ state.  We can also compare it to number-theoretic generators
+ [e.g., 4], which must carry out a very expensive multiple-precision
+ multiplication and division for each RNG step.
+
+ A reasonable structure for the Fenced DES RNG is 31 elements of
+ 32 bits each, for a total state of 992 bits.  (Recall that DES
+ itself has a 56-bit key.)  This state can be initialized easily
+ from a User Key by using an array of 32 deg-31 primitive mod-2
+ polynomials as Cyclic Redundancy Checks (CRC's).  This produces
+ 32 31-bit values which can be re-arranged into 31 32-bit values
+ to become the state for the RNG.  This CRC-based initialization
+ has a strong mathematical basis, and allows the User Key to be
+ ASCII or binary, of arbitrary length, and thus provides a strong
+ universal key interface.
+
+ Since the Additive RNG is essentially a linear mechanism, it is
+ necessary to "nonlinearize" the sequence.  My usual technique [23]
+ is to "drop out" pseudo-random length sections of the linear
+ sequence, leaving pseudo-random length "take" islands, and to
+ "offset" each take sequence with a different pseudo-random offset
+ value.  With fairly short "take" islands, this should render the
+ usual linear attacks worthless, at a cost of dropping some moderate
+ fraction of the sequence.  Additional isolation is provided by the
+ cheap width of the RNG, since only 8 bits are needed, but 32 bits
+ are calculated.  This means that 3/4 of the RNG state is always
+ hidden, but must nevertheless be resolved before the RNG can be
+ completely exposed.
+
+
+ 3.6  One Approach to Large-Block Fenced DES
+
+ Suppose we want to handle a double-sized DES block at nearly DES
+ speeds, how do we do it?  Well, we certainly must mix all the
+ input bits, so that a change in even one bit will affect both DES
+ operations.  In addition, each and every output bit should be an
+ invertible function of both DES operations.  Here is one approach:
+
+    | | | | | | | |   | | | | | | | |
+    -------S-------   -------S-------  ...
+    | | | | | | | |   | | | | | | | |
+    | | | | | | | |      ...
+    | | | | | | | |________________________
+    | | | | | | |________________________  |
+    | | | | | |________________________  | |
+    | | | | |________________________  | | |
+    | | | |                          | | | |
+    --------------------DES--...     -------------------DES--...
+    | | | |  ________________________| | | |
+    | | | | |  ________________________| | |
+    | | | | | |  ________________________| |
+    | | | | | | |  ________________________|
+    | | | | | | | |      ...
+    | | | | | | | |   | | | | | | | |
+    -------S-------   -------S-------  ...
+    | | | | | | | |   | | | | | | | |
+
+ Here we show 2 of 16 input substitutions, and 2 of 16 output
+ substitutions for a 128-bit block cipher.  Each of the lines
+ represents a single bit:  Each input "S" contributes 4 bits to
+ each of the two DES operations, and each output "S" takes 4 bits
+ from each DES operation.
+
+ But with this design we can only _guarantee_ that a single-bit
+ input change will avalanche _one_ of the DES operations.  This
+ could be a problem, because when it is possible to externally
+ isolate the internal components, they can be worked on separately
+ [10].  (It is not clear, however, that this would actually be
+ possible in the context of the DES mixing in this design.)
+
+
+ 3.7  2x Fenced DES
+
+ A guaranteed-avalanche and faster alternative is available by using
+ Block Mixing Transforms (section 3.8).  Here we assume that a Block
+ Mixing Transform takes two input blocks, "mixes" them, and produces
+ two output blocks:
+
+    S S S S S S S S S S S S S S S S
+    --------------mix--------------
+    ------DES------ ------DES------
+    --------------mix--------------
+    S S S S S S S S S S S S S S S S
+
+ If we can assume that any input change to a Block Mixing Transform
+ will propagate to _both_ outputs, then we can _guarantee_ that any
+ one-bit change to the overall input block will avalanche _both_
+ DES operations.
+
+ Note that we do not care _how_ the DES operations are affected.  If
+ the DES input is affected at all, the cipher must construct another
+ output code ("at random"); and, thus, "avalanche."  It is not
+ necessary that a Block Mixing Transform itself "avalanche," DES will
+ do that.  It is not necessary that a Block Mixing Transform have
+ "strength," DES and the fencing substitutions will do that.  It is
+ only necessary that the Block Mixing Transform guarantee that a
+ single change gets propagated to each DES operation.
+
+ Another Block Mixing Transform combines the randomized outputs from
+ the DES operations, producing output blocks which are, therefore,
+ also randomized.  These randomized blocks are then substituted to
+ produce the final output, which, of course, is also "random-like."
+
+
+ 3.8  Block Mixing Transforms
+
+ A Block Mixing Transform takes multiple input blocks and generates
+ the same number (and width) of output blocks, such that:
+
+      1) the transformation is invertible,
+      2) each output is a function of all inputs,
+      3) a change in any single input block will change all of
+         the output blocks, and
+      4) stepping any input through all possible values (with the
+         other inputs held fixed) will step every output through
+         all possible values.
+
+ The advantage is to be able to mix blocks of substantial size
+ very efficiently; 4x Fenced DES mixes 128-bit blocks.
+
+ The Fenced DES Block Mixing Transform uses the equations:
+
+      X = 3A + 2B
+      Y = 2A + 3B
+
+ mod 2 and mod p, where p is a mod 2 irreducible polynomial of
+ appropriate degree.  This transform is a self-inverse.
+
+
+ ASSERTION:  (We have a finite field.)  Mod-2 polynomials
+ modulo some irreducible polynomial p generate a finite field.
+
+      (Comment:  Proofs can use algebra.)
+
+
+ PROPOSITION:  (Example block mixing transform.)  The equations
+
+      X = 3A + 2B = A + 2(A + B)
+      Y = 2A + 3B = B + 2(A + B)
+
+ and the inverse
+
+      A = X + 2(X + Y)
+      B = Y + 2(X + Y)
+
+ mod 2 and mod p, where p is some mod 2 irreducible polynomial,
+ represent a block mixing transform.
+
+      (Inverse Proof:  Substitute the formulas for X and Y
+      into the formulas for A and B:
+
+           A = A + 2(A + B) + 2(A + 2(A + B) + B + 2(A + B))
+             = A + 2(A + B) + 2(A + B) = A
+
+      and
+
+           B = B + 2(A + B) + 2(A + 2(A + B) + B + 2(A + B))
+             = B + 2(A + B) + 2(A + B) = B
+
+      so the inverse does exist for any polynomials A and B.)
+
+      (Function Proof:  the equations for output code X includes
+      both input code values A and B, so X is a function of both
+      input codes.  Y reasons similarly.)
+
+      (Change Propagation Proof: First consider one term of one
+      output block equation:
+
+      Suppose some change C is added to A:
+
+           X  = 3A + 2B  (mod 2, mod p)
+           X' = 3(A+C) + 2B
+           X' = 3A + 3C + 2B
+           dX = X' - X = 3C
+
+      So, for any non-zero change, X has changed.  Similar reasoning
+      covers the other term, and the other equation.)
+
+      (Balance Proof:  Suppose that stepping an input through all
+      possible values does _not_ step an output through all possible
+      values.  Since the input and output blocks are the same size,
+      some output value must occur for a plurality of input values.
+      Assuming A is fixed, there must be at least two different
+      values, B and B', which produce the same X:
+
+           X = 3A + 2B = 3A + 2B'
+
+      so
+
+           X + 3A = 2B = 2B'
+
+      which implies that
+
+           B = B'
+
+      a contradiction.  Fixing B or working on the other block
+      reason similarly.)
+
+ A consequence of this particularly efficient construction is that
+ this particular Block Mixing Transform has essentially no "strength"
+ of its own.  But the transform of two 32-bit blocks might be
+ compared to a DES operation with a fixed, known key.  DES with a
+ known key is also a very "weak" operation, but would nevertheless
+ provide strong, invertible mixing for two 32-bit input blocks,
+ basically because of "avalanche."
+
+ The Block Mixing Transform can also be seen as two cryptographic
+ combiners which are "orthogonal" (thus allowing their output to be
+ transformed back to the original values).  Each of these combiners
+ provides "mixing" between whole blocks, with a good statistical
+ balance between the inputs.  Any particular value on an output port
+ can be produced by any possible value on an input port, given some
+ value on the other input port.  These properties appear to be a
+ generalization of those found in the usual additive combiner, and
+ would seem to be the essence of a balanced cryptographic combiner.
+ Note that an exclusive-OR combiner, by itself, must be considered
+ extremely "weak," and yet somehow manages to participate in strong
+ cryptographic operations anyway.
+
+
+ 4  Analysis of 4x Fenced DES
+
+ Here we define a theoretical model and its properties, and then
+ show that the design has those properties.
+
+
+ 4.1  About Cryptographic Proof
+
+ All cryptographic systems are based on keys, and if The Opponent
+ happens to choose the correct key first, the system is broken with
+ no more effort than is required to use it.  We can live with this
+ by demanding that users have long, complex keys, and accepting that
+ a large "expected" effort can sometimes (hopefully rarely) mean an
+ "lucky" easy solution.
+
+ The real problem lies in calculating a particular value for the
+ expected effort.  Ideally, this value would indicate the result of
+ the best of all possible attacks, including those which are far
+ beyond anything we now know.  Consequently, proving a cipher
+ "strong" will be difficult.  On the other hand, having a clean
+ construction using simple components should help a lot.
+
+ As a first step, I have tried to define some of the features of
+ a block cipher, and then show that the Fenced DES cipher can be
+ proven to possesses those features.  In general, I assume that a
+ block cipher must be invertible and exhibit the "avalanche"
+ property.  These very simple properties turn out to be related,
+ and more substantial than they might at first appear.
+
+
+ 4.2  The Ideal Model
+
+ Clearly, any block cipher must be invertible, and we will expect
+ the same block-width for the output as for the input.  This means
+ that a block cipher just performs a keyed permutation on the input
+ values.  In a sense, a block cipher is a like a library of large
+ automatic codebooks, where a User Key selects the particular book
+ to use.
+
+ For analysis, it is conventional to assume that a block cipher is a
+ large invertible substitution (see, for example, [24:72], [15:375]).
+ A cryptographic key in some way selects a particular substitution
+ from among all possible invertible substitutions.
+
+ In real systems like DES, the range of key values may be very much
+ smaller than the number of possible substitutions.  There is no
+ reason to believe, however, that only those substitutions with some
+ particular quality are being selected by a DES key.  Indeed, if
+ this were so, Triple DES would necessarily select other (presumably
+ lower-quality) substitutions.  I assume that this is not the case.
+
+ To be secure, a block cipher must be wide enough so that it
+ cannot be searched in a "defined plaintext" "codebook" attack.  We
+ cannot hope to build--or even shuffle--a direct substitution of
+ such size.  The problem for the block-cipher designer is to find
+ some sort of mechanism which produces a keyed set of invertible
+ permutations in a simple algorithmic way.
+
+
+ 4.3  4x Fenced DES
+
+ This is the 4x Fenced DES construct:
+
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    ------------------------------mix------------------------------
+    --------------mix-------------- --------------mix--------------
+    ------DES------ ------DES------ ------DES------ ------DES------
+    --------------mix-------------- --------------mix--------------
+    ------------------------------mix------------------------------
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+
+ This 4x construct handles a 256-bit block.  Similar 2x and 1x
+ constructs could be used at the end of a message to reduce total
+ data expansion to only that of DES itself.
+
+ Each "S" represents a separately-shuffled and independent 8-bit
+ substitution table.  This implies the presence of a particular
+ keyed cryptographic RNG to shuffle the tables.  The tables are set
+ up and shuffled before ciphering, and then remain static during
+ ciphering.
+
+ Each "---DES---" represents an ordinary 64-bit-block DES operation.
+
+ Each "---mix---" represents the mixing of the covered data blocks
+ using "block mixing transform" technology.  There are two levels
+ of mixing on each side of the DES operations:  The innermost levels
+ each have two mixings which combine two 64-bit blocks; the outermost
+ levels each have a single mixing which combines two 128-bit blocks.
+
+ This entire construct requires about 4.8 times the computation to
+ cipher 4 times the data.  In contrast, triple-DES would of course
+ need 12 times the computation to cipher the same data.
+
+ In the experimental implementation, the keyed initialization of
+ the 16K of state present in 64 small substitution tables (plus four
+ DES keys) takes about 200 times the computation of a single 256-
+ bit ciphering.
+
+
+ 4.4  Invertibility in 4x Fenced DES
+
+ The sequential combination of any number of invertible functions
+ will itself constitute a function which is invertible.
+
+ With respect to the 4x Fenced DES construction, we have five
+ functional layers:  The input substitutions, the input mixing
+ transforms, the DES operations, the output mixing transforms, and
+ the output substitutions.  Because each layer is separately
+ invertible, their sequential combination must also be invertible,
+ so the cipher as a whole is invertible.
+
+
+ 4.5  Avalanche in 4x Fenced DES
+
+ Now we ask whether the Fenced DES construct will have the avalanche
+ property.  There are five levels:  Input and Output Substitution,
+ Input and Output Mixing Transform, and DES.
+
+      Since the Input Substitutions are invertible by construction,
+      any change whatsoever in their input value will produce some
+      change in their output value.
+
+      The Input Mixing Transform is designed so that a single-bit
+      change to one of the two input ports will produce some change
+      to all four of the output ports.  Since each of the output
+      ports feeds a DES operation, this is sufficient to avalanche
+      all four DES operations.
+
+           (Of course, for substantial input changes, it is possible
+           to generate values which will leave one or more of the
+           DES operations unaffected, although this is quite unlikely
+           to happen by chance.  In the mixing transform, such a
+           circumstance requires specific related 128-bit values on
+           each of the two input ports, and these values are hidden
+           behind the input substitutions.  We could manage to keep
+           a DES operation unaffected if we knew the arrangement of
+           the values in all the input substitutions, but that
+           uncertainty is part of the strength of the cipher.  And
+           it seems unlikely that we could tell from the outside that
+           we were successful--that fewer than four DES operations
+           have avalanched--because any avalanche will enter the
+           output mixing transforms and so be reflected over the
+           whole width of the large block, with the specific
+           resulting values hidden by the output substitutions.)
+
+      Thus, any single-bit change into the large input block will
+      avalanche all four DES operations, producing a 256-bit
+      avalanche overall.
+
+      When presented with four randomized values from the DES
+      operations, the Output Block Mixing Transform will have no
+      choice but to also output random-like values.
+
+      The Output Substitutions hide and protect the random-like
+      values from the Output Mixing Transform.  And, since their
+      inputs are random-like, their outputs will also be random-
+      like.
+
+
+ 5  Fenced DES Strength
+
+ Rather than attempt to analyze the whole design at once, it seems
+ worthwhile to reason about the design with various features disabled.
+ In this way we have a better chance of seeing the overall strength
+ when we use a combination of those features.
+
+
+ 5.1  Strength of 1x Fenced DES with Known Substitutions
+
+ All data flows through every layer in a Fenced DES structure.  Even
+ if the input and output substitutions are known, they do not undo
+ the confusion that DES provides.  Therefore, the absolute minimum
+ strength of 1x Fenced DES is the same as DES.
+
+ (Technically, the strength of DES is 55 bits, when key-symmetry is
+ exploited; see, for example, [19:120].)
+
+
+ 5.2  Strength of 1x Fenced DES with Known DES Key
+
+ Here we examine the ability of the input substitutions to hide
+ the value going into the DES ciphering.
+
+ The attack consists of trying all possible plaintext values until
+ the known ciphertext value appears on the output.  This will
+ identify a single element in each input substitution, which will
+ also uniquely determine an element in each output substitution.
+ We could instead work on the output substitutions, but the effort
+ would be the same.
+
+ Note that if even one bit to the DES ciphering is wrong, DES will
+ avalanche, so it will be impossible to tell how many bits are right
+ until the correct input transformation is found.  DES with a known
+ key thus provides an example of "bit mixing" without "strength,"
+ which nevertheless contributes "strength" to the overall cipher.
+
+ For a given 64-bit input value, there are eight 8-bit values which
+ select some value in eight different keyed input substitutions.
+ There are 256 possible values for each of the eight substitutions,
+ for 256**8 or 2**64 possibilities.  Therefore, the strength of
+ 1x Fenced DES with a known DES key is 64 bits.
+
+ (Note that this attack finds just one transformation in each
+ byte substitution, out of 256 total.  But each successive attack
+ is slightly easier, and this is a convenient lower bound.)
+
+
+ 5.3  Strength of 1x Fenced DES
+
+ When the DES key is known, the strength is 64 bits; the unknown
+ DES key adds 56 bits more, for a total of 120 bits.  A 120-bit
+ keysearch will identify the DES key and one element in each of
+ eight small substitutions; for a complete break, the remaining
+ 255 values in those eight substitutions must still be found.
+ Thus, the strength of 1x Fenced DES exceeds 120 bits.
+
+
+ 5.4  Minimum Strength of 4x Fenced DES
+
+ The 4x Fenced DES cipher differs from the 1x Fenced DES cipher
+ by mixing the entire input block and thus requiring that all
+ input (or output) substitutions be searched, as well as the four
+ internal keys.  Even if this mixing can be defeated, we are still
+ left with attacking at least one DES key and one set of input
+ substitutions.  Thus, the minimum strength of 4x Fenced DES is
+ 120 bits.
+
+
+ 5.5  Strength of 4x Fenced DES
+
+ If we assume that the internal block mixing is indeed effective,
+ the overall strength of 4x Fenced DES is four times that of
+ 1x Fenced DES, a total of 480 bits.
+
+
+ 6  Attacks
+
+ We assume that The Opponent knows the design of the cipher, and
+ has virtually any amount of plaintext and corresponding ciphertext
+ ("known plaintext").  We also assume that The Opponent has the
+ real-time ability to obtain "defined plaintext" by enciphering
+ messages at will and collecting the resulting ciphertext.
+
+
+ 6.1  Exhaustive Search:  Try each key until the correct one is
+ found.
+
+ We assume that there is really no need for excessive keyspace,
+ provided the keyspace is too large to search.  On the other hand,
+ there is no particular reason to avoid a super-large keyspace,
+ unless it happens to lead to inefficiency or weakness of another
+ nature.
+
+ Preventing exhaustive search now apparently requires a keyspace
+ substantially larger than 56 bits.  Even 1x Fenced DES has a
+ keyspace of 120 bits, which should be "large enough."
+
+
+ 6.2  Codebook:  Try to obtain all possible ciphertexts and
+ associated plaintext; then, when a ciphertext occurs, look it up.
+
+ This is normally prevented by having a large number of ciphertexts,
+ which implies a large block size, like that in 4x Fenced DES.
+
+ Codebook approaches can be combined with "divide-and-conquer" to
+ isolate and define parts of some ciphers.  Fenced DES tries to
+ avoid these attacks by not allowing the parts to be isolated and
+ worked on separately.
+
+
+ 6.3  Meet-in-the-Middle:  With a two-layered structure, search the
+ top keyspace to find every possible result, and search the bottom
+ keyspace to find every possible input value.  When the correct key
+ is used for each layer, the internal value must match.  (Inevitable
+ false matches can be rejected by testing with other known-plaintext
+ pairs.)  This is a keyspace search only twice as large as that
+ needed for each layer, thus exhibiting a major design weakness.
+ (In building a cipher, we generally intend to produce an overall
+ complexity which is the _product_ of the internal complexities,
+ instead of their _sum_.)
+
+ Fenced-DES avoids this by using a three-level construction, and
+ by having a huge "keyspace."
+
+
+ 6.4  Differential Cryptanalysis [3]:  Given an iterative S-P
+ cipher, use any statistical unbalance found in the known, fixed
+ substitutions to peer back into previous iteration steps.
+
+ Clearly, the DES parts of Fenced DES might be attacked in this way,
+ although, at present, Differential Cryptanalysis of DES does not
+ seem to be much advantage over exhaustive key search.  In any case,
+ this would apply only after the Fenced DES substitutions had been
+ resolved.
+
+ The Fenced DES substitutions avoid Differential Cryptanalysis by
+ being keyed and therefore unknown.
+
+
+ 7  Conclusions
+
+ DES is becoming weaker, and must be replaced soon.  The classical
+ alternative, Triple DES, is too expensive for many users, taking
+ three times the computation of DES itself.  And any completely new
+ cipher design must raise the terrible prospect of a complete new
+ certification, in an environment without an institution which both
+ could and would perform this task.
+
+ Fenced DES is based on DES, appears stronger than DES, and operates
+ almost as fast.  Fenced DES is also a particularly clean design,
+ which allows us to reason about the strength of the cipher in a
+ particularly satisfying way.
+
+
+ 8  References
+
+ [1]   Anderson, R.  1991.  Tree Functions and Cipher Systems.
+       Cryptologia.  15(3): 194-202.
+
+ [2]   Ayoub, F.  1982.  Probabilistic completeness of substitution-
+       permutation encryption networks.  IEE Proceedings.  Part E.
+       129(5): 195-199.
+
+ [3]   Biham, E. and A. Shamir.  1990.  Differential Cryptanalysis
+       of DES-like Cryptosystems.  Advances in Cryptology:
+       CRYPTO '90.  Springer-Verlag.  2-21.
+
+ [4]   Blum, L., M. Blum and M. Shub.  1986.  A Simple Unpredictable
+       Pseudo-Random Number Generator.  SIAM Journal on Computing.
+       15: 364-383.
+
+ [5]   Brown, L.  1989.  A Proposed Design for an Extended DES.
+       Computer Security in the Age of Information.  W. Caelli, Ed.
+       Elsevier.  9-22.
+
+ [6]   Dawson, M. and S. Tavares.  1991.  An Expanded Set of S-box
+       Design Criteria Based on Information Theory and its Relation
+       to Differential-Like Attacks.  Advances in Cryptology:
+       EUROCRYPT '91.  Springer-Verlag.  353-367.
+
+ [7]   Feistel, H.  1973.  Cryptography and Computer Privacy.
+       Scientific American.  228(5): 15-23.
+
+ [8]   Feistel, H., W. Notz and L. Smith.  1975.  Some Cryptographic
+       Techniques for Machine-to-Machine Data Communication.
+       Proceedings of the IEEE.  63(11): 1545-1554.
+
+ [9]   Garon, G. and R. Outerbridge.  1992.  The sufficiency of the
+       data encryption standard for financial institutions.
+       Computer Security Journal.  8(1): 37-50.
+
+ [10]  Heys, M. and S. Tavares.  1993.  Cryptanalysis of Tree-
+       Structured Substitution-Permutation Networks.  Electronics
+       Letters.  29(1): 40-41.
+
+ [11]  Howe, C. and R. Rosenberg.  1987.  Government plans for
+       data security spill over to civilian networks.  Data
+       Communications.  March.  136-144.
+
+ [12]  Kam, J. and G. Davida.  1979.  Structured Design of
+       Substitution-Permutation Encryption Networks.  IEEE
+       Transactions on Computers.  C-28(10): 747-753.
+
+ [13]  Kerr, S.  1989.  A Secret No More.  Datamation.  July 1.
+       53-55.
+
+ [14]  Knuth, D.  1981.  The Art of Programming; Vol. 2:
+       Seminumerical Algorithms.  2nd Ed.  Addison-Wesley.
+
+ [15]  Luby, M. and C. Rackoff.  1988.  How to construct pseudorandom
+       permutations from pseudorandom functions.  Siam Journal on
+       Computing.  17(2): 373-386.
+
+ [16]  Marsaglia, G.  1984.  A current view of random number
+       generation.  Proceedings of the Sixteenth Symposium on the
+       Interface Between Computer Science and Statistics.  3-10.
+
+ [17]  Marsaglia, G. and L. Tsay.  1985.  Matrices and the Structure
+       of Random Number Sequences.  Linear Algebra and its
+       Applications.  67: 147-156.
+
+ [18]  Merkle, R. and M. Hellman.  1981.  On the Security of
+       Multiple Encryption.  Communications of the ACM.
+       24(7): 465-467.
+
+ [19]  Pfleeger, C.  1989.  Security in Computing.  Prentice-
+       Hall.
+
+ [20]  Pieprzyk, J. and G. Finkelstein.  1988.  Towards effective
+       nonlinear cryptosystem design.  IEE Proceedings.  Part E.
+       135(6): 325-335.
+
+ [21]  Pieprzyk, J. and G. Finkelstein.  1989.  Permutations that
+       maximise non-linearity and their cryptographic significance.
+       Computer Security in the Age of Information.  W. Caelli, Ed.
+       63-74.
+
+ [22]  Pieprzyk, J.  1989.  Error propagation property and
+       application in cryptography.  IEE Proceedings.  Part E.
+       136(4): 262-270.
+
+ [23]  Ritter, T.  1991.  The Efficient Generation of Cryptographic
+       Confusion Sequences.  Cryptologia.  15(2): 81-139.
+
+ [24]  Sloane, N.  1982.  Encrypting by Random Rotations.
+       Cryptography.  Proceedings, Burg Feuerstein 1982.  Springer-
+       Verlag.  71-128.
+
+ [25]  Tuchman, W.  1979.  Hellman presents no shortcut solutions
+       to the DES.  IEEE Spectrum.  July.  40-41.
+
+ [26]  Webster, A. and S. Tavares.  1985.  On the Design of S-Boxes.
+       Advances in Cryptology: CRYPTO '85.  523-534.
+
+ [27]  Wiener, M.  1993.  Efficient DES Key Search.  (In press?)
+
+

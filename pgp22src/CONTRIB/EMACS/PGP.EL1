@@ -1,0 +1,266 @@
+To: warlord@MIT.EDU (Derek Atkins)
+In-reply-to: warlord@MIT.EDU's message of 1 Mar 1993 03:59:41 GMT
+Subject: Request for Mailer Scripts
+BCC: jtkohl
+Full-name: John T Kohl
+X-US-Snail: DEC, 110 Spit Brook Road, M/S ZKO3-3/U14, Nashua, NH  03062
+--text follows this line--
+here's some elisp I got from Bill Sommerfeld, and hacked up a bit
+myself:
+;;;
+;;; wrapper for the "Pretty-Good-Privacy" program.
+;;;
+
+(defvar pgp-program (expand-file-name "/usr/local/bin/pgp") 
+  "*Name of the PGP executable")
+(defvar pgp-sender-name "jtkohl@zk3"
+  "*Name of secret key to use for signing/encrypting messages with PGP")
+
+(require 'rmail)
+(require 'terminal)
+(require 'backquote)
+
+(defvar pgp-encrypt-mail t)
+(defvar pgp-sign-mail t)
+(defvar pgp-output-mode-map nil
+  "Keymap used in PGP Output mode")
+
+(defvar pgp-finished)
+(make-variable-buffer-local 'pgp-finished)
+(set-default 'pgp-finished nil)
+(defvar termhook-finished)
+(make-variable-buffer-local 'termhook-finished)
+(set-default 'termhook-finished nil)
+
+(defun pgp-output-quit ()
+  (interactive)
+  (let ((buffer (current-buffer)))
+    (switch-to-buffer
+     (if (and (boundp 'pgp-prev-buffer) (bufferp pgp-prev-buffer))
+	 pgp-prev-buffer
+       (other-buffer buffer)))
+    (bury-buffer buffer)))
+
+(defun pgp-keymap-init ()
+  (setq pgp-output-mode-map (make-keymap))
+  (suppress-keymap pgp-output-mode-map)
+  (define-key pgp-output-mode-map " " 'scroll-up)
+  (define-key pgp-output-mode-map "\177" 'scroll-down)
+  (define-key pgp-output-mode-map "q" 'pgp-output-quit))
+
+(if (not pgp-output-mode-map)
+  (pgp-keymap-init))
+
+(defun pgp-output-mode ()
+  (interactive)
+  (fundamental-mode)
+  (setq mode-name "PGP-Output")
+  (setq major-mode 'pgp-output-mode)
+  (setq buffer-read-only t)
+  (setq buffer-auto-save-file-name nil)
+  (use-local-map pgp-output-mode-map))
+
+
+;; a "continuation".. what we do after pgp is done..
+;; this could set the current buffer (the terminal emulator one) 
+;; into a new major mode (pgp-after-mode) to let you do things like:
+;;  a) easily dismiss the pgp window
+;;  b) view any output files.
+;;  c) see what the "labelling" on the files was
+;; (i.e., signature, encrypted); this shows up in mode line, not file!
+
+(defun pgp-continue-frob (out-filename prev-buffer)
+  (cond ((file-exists-p out-filename)
+	 (set-buffer (get-buffer-create "*PGP Output*"))
+	 (make-variable-buffer-local 'pgp-prev-buffer)
+	 (setq pgp-prev-buffer nil)
+	 (setq buffer-read-only nil)
+	 (erase-buffer)
+	 (insert-file-contents out-filename)
+	 (delete-file out-filename)
+	 (switch-to-buffer "*PGP Output*")
+	 (pgp-output-mode)
+	 (setq pgp-prev-buffer prev-buffer))
+	(t (message "PGP command completed with no output file" ))))
+
+(defun pgp-continue-in-place  (out-file buf min max cont)
+  (cond ((file-exists-p out-file)
+	 (switch-to-buffer buf)
+	 (goto-char min)
+	 (delete-region min max)
+	 (insert-file-contents out-file)
+	 (delete-file out-file)
+	 (apply cont nil))
+	(t (message "PGP command completed with no output file"))))
+
+(defun pgp-mail-continue ()
+  (mail-to)
+  (insert (save-excursion
+	    (set-buffer "*PGP*")	;!!!
+	    (goto-char (point-min))
+	    (re-search-forward "Recipient's")
+	    (re-search-forward "user ID: \\(.*$\\)")
+	    (buffer-substring (match-beginning 1) (match-end 1)))))
+
+(defvar pgp-base-file-name nil
+  "Default base file name for PGP temp files; defaults to a file in
+/tmp with your UNIX user id in it.")
+
+(defun pgp-check-tempname ()
+  (if pgp-base-file-name
+      ()
+    (setq pgp-base-file-name  (format "/tmp/pgp%d" (user-real-uid)))))
+
+(defun pgp-frob-region-1 (min max cont1 &optional opt1 opt2)
+  (pgp-check-tempname)
+  (let ((temp-filename (format "%s.txt" pgp-base-file-name))
+	(out-filename  (format "%s.asc" pgp-base-file-name))
+	(prev-buffer (current-buffer)))
+    (if (file-exists-p temp-filename)
+	(delete-file temp-filename))
+    (if (file-exists-p out-filename)
+	(delete-file out-filename))
+    (write-region min max temp-filename)
+    
+    (let ((buf (get-buffer-create "*PGP*")))
+      (switch-to-buffer buf)
+      (erase-buffer)
+      (let ((terminal-mode-hook
+	     (function
+	      (lambda ()
+		(make-variable-buffer-local 'terminal-finished-hook) 
+		(setq terminal-finished-hook (apply cont1 out-filename prev-buffer nil))
+		(setq termhook-finished t)
+		(if (and
+		     (boundp 'pgp-finished)
+		     pgp-finished)
+		    (let ((nhooks terminal-finished-hook))
+		      (fundamental-mode) ; in the *PGP* buffer; nukes hooks!
+		      (run-hooks 'nhooks)))))))
+	(terminal-emulator buf
+			   pgp-program
+			   (nconc (list "-o" out-filename)
+				  opt1
+				  (list temp-filename)
+				  opt2))))))
+
+(defun pgp-frob-region  (min max &optional opt1 opt2)
+  (pgp-frob-region-1 min max
+		     (function
+		      (lambda (out-filename buf)
+			      (` (lambda () 
+				   (pgp-continue-frob
+				    (, out-filename)
+				    (, buf))))))
+		     opt1 opt2))
+
+(defun pgp-frob-region-in-place (min max &optional opt1 opt2 cont)
+  (let ((cur-buf (current-buffer)))
+    (pgp-frob-region-1 min max 
+		       (function
+			(lambda (out-filename buf)
+			  (` (lambda () 
+			       (pgp-continue-in-place (, out-filename)
+						      (, cur-buf)
+						      (, min)
+						      (, max)
+						      (quote (, cont)))))))
+		       opt1 opt2)))
+
+(defun pgp-encrypt-ascii-region (min max to)
+  (interactive "r\nsRecipient name: ")
+  (pgp-frob-region min max (list "-eaw") (list to)))
+
+(defun pgp-decrypt-ascii-region (min max)
+  (interactive "r")
+  (pgp-frob-region min max nil nil))
+
+(defun pgp-sign-ascii-region (min max)
+  "Sign the region with PGP, using cleartext signatures."
+  (interactive "r")
+  (pgp-frob-region min max (list "-swat") nil))
+
+(defun pgp-encrypt-ascii-buffer (to)
+  "Encrypt a buffer and use PGP armor for the output."
+  (interactive "sRecipient name: ")
+  (pgp-encrypt-ascii-region (point-min) (point-max) to))
+
+(defun pgp-decrypt-ascii-buffer ()
+  "Apply PGP to the current buffer."
+  (interactive)
+  (pgp-decrypt-ascii-region (point-min) (point-max)))
+
+(defun pgp-sign-encrypt-ascii-buffer (to)
+  (interactive "sRecipient name: ")
+  (pgp-frob-region (point-min) (point-max) (list "-seaw") (list to)))
+
+(defun pgp-sign-ascii-buffer ()
+  "Sign the current buffer with PGP, using cleartext signatures."
+  (interactive)
+  (pgp-sign-ascii-region (point-min) (point-max)))
+
+(defun pgp-sign-encrypt-ascii-buffer-in-place (to)
+  (interactive "s(in place) Recipient name: ")
+  (pgp-frob-region-in-place (point-min) (point-max) (list "-seaw") (list to)))
+
+(defun pgp-sign-encrypt-ascii-region (min max to)
+   (interactive "r\nsRecipient name: ")
+   (pgp-frob-region min max (list "-seaw") (list to)))
+
+(defvar pgp-mail-frob-flags "-easw"
+  "*Flags to pass to pgp for frobbing mail.")
+
+(defun pgp-frob-mail (to)
+  "Take an in-progress mail message and 'frob' it."
+  (interactive "sMail Recipient name: ")
+  (goto-char (point-min))
+  (re-search-forward mail-header-separator)
+  (goto-char (match-beginning 0))
+  (forward-line 1)
+  (save-excursion
+    (insert (buffer-substring (point-min) (point))))
+  (pgp-frob-region-in-place (point) (point-max)
+			    (list pgp-mail-frob-flags "-u" pgp-sender-name)
+			    (list to)
+			    'pgp-mail-continue))
+
+(global-set-key "\C-c\C-p\C-e" 'pgp-encrypt-ascii-buffer)
+(global-set-key "\C-c\C-p\C-r" 'pgp-encrypt-ascii-region)
+(global-set-key "\C-c\C-p\C-s" 'pgp-sign-ascii-buffer)
+(global-set-key "\C-c\C-p\C-m" 'pgp-frob-mail)
+(global-set-key "\C-c\C-p\C-d" 'pgp-decrypt-ascii-buffer)
+
+(global-set-key "\C-cpm" 'pgp-frob-mail)
+(define-key rmail-mode-map "V" 'pgp-decrypt-ascii-buffer)
+
+;;; How to deal with the race?  the sentinel may get called
+;;; *before* terminal-emulator finishes its initialization.  So we set
+;;; up a local variable here so that our terminal-mode-hook will undo
+;;; the damage if PGP is finished.
+;;
+;; from terminal.el, modified:
+
+(defun te-sentinel (process message)
+  (cond ((eq (process-status process) 'run))
+	((null (buffer-name (process-buffer process)))) ;deleted
+	(t (let ((b (current-buffer))
+		 (done-hooks (and	; added: WES
+			      (boundp 'terminal-finished-hook)
+			      terminal-finished-hook)))
+	     (save-excursion
+	       (set-buffer (process-buffer process))
+	       (setq buffer-read-only nil)
+	       (goto-char (point-max))
+	       (delete-blank-lines)
+	       (delete-horizontal-space)
+	       (insert "\n*******\n" message "*******\n")
+	       (fundamental-mode)	; added/moved: WES/JTK
+	       (setq pgp-finished t)	; JTK
+	       (sit-for 1))
+	     (if (and (eq b (process-buffer process))
+		      (waiting-for-user-input-p))
+		 (progn (goto-char (point-max))
+			(recenter -1)))
+		 (run-hooks 'done-hooks))))) ;added: WES
+
+

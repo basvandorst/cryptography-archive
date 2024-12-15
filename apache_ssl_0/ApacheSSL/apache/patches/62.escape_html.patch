@@ -1,0 +1,381 @@
+From: drtr@ast.cam.ac.uk (David Robinson)
+Subject: Escape active characters in html output
+Affects: httpd.h, util.c, mod_dir.c, mod_include.c, http_protocol.c
+ChangeLog: Escape active characters '<', '>' and '&' in html output in
+           directory listings, error messages and redirection links.
+
+*** httpd.h.orig2	Tue Dec 12 13:50:03 1995
+--- httpd.h	Wed Dec 13 10:40:39 1995
+***************
+*** 412,417 ****
+--- 412,418 ----
+  char *escape_path_segment(pool *p, const char *s);
+  char *os_escape_path(pool *p,const char *path);
+  char *escape_uri (pool *p, char *s);
++ extern char *escape_html(pool *p, const char *s);
+  char *construct_url (pool *p, char *path, server_rec *s);     
+  char *escape_shell_cmd (pool *p, char *s);
+       
+*** util.c.orig2	Tue Dec 12 13:57:07 1995
+--- util.c	Wed Dec 13 12:45:25 1995
+***************
+*** 584,589 ****
+--- 584,622 ----
+      return copy;
+  }
+  
++ char *
++ escape_html(pool *p, const char *s)
++ {
++     int i, j;
++     char *x;
++ 
++ /* first, count the number of extra characters */
++     for (i=0, j=0; s[i] != '\0'; i++)
++ 	if (s[i] == '<' || s[i] == '>') j += 3;
++ 	else if (s[i] == '&') j += 4;
++ 
++     if (j == 0) return pstrdup(p, s);
++     x = palloc(p, i + j + 1);
++     for (i=0, j=0; s[i] != '\0'; i++, j++)
++ 	if (s[i] == '<')
++ 	{
++ 	    memcpy(&x[j], "&lt;", 4);
++ 	    j += 3;
++ 	} else if (s[i] == '>')
++ 	{
++ 	    memcpy(&x[j], "&gt;", 4);
++ 	    j += 3;
++ 	} else if (s[i] == '&')
++ 	{
++ 	    memcpy(&x[j], "&amp;", 5);
++ 	    j += 4;
++ 	} else
++             x[j] = s[i];
++ 
++     x[j] = '\0';
++     return x;
++ }
++ 
+  #ifdef NOTDEF
+  
+  void escape_url(char *url) {
+*** mod_dir.c.orig2	Tue Dec 12 13:52:59 1995
+--- mod_dir.c	Wed Dec 13 13:42:59 1995
+***************
+*** 425,431 ****
+      else if(rule) rprintf(r,"<HR>%c",LF);
+      if(!(f = pfopen(r->pool,fn,"r")))
+          return 0;
+!     send_fd(f, r);
+      pfclose(r->pool, f);
+      if(plaintext)
+          rprintf(r,"</PRE>%c",LF);
+--- 425,457 ----
+      else if(rule) rprintf(r,"<HR>%c",LF);
+      if(!(f = pfopen(r->pool,fn,"r")))
+          return 0;
+!     if (!plaintext)
+! 	send_fd(f, r);
+!     else
+!     {
+! 	char buf[IOBUFSIZE+1];
+! 	int i, n, c, ch;
+! 	while (!feof(f))
+! 	{
+! 	    do n = fread(buf, sizeof(char), IOBUFSIZE, f);
+! 	    while (n == -1 && ferror(f) && errno == EINTR);
+! 	    if (n == -1 || n == 0) break;
+! 	    buf[n] = '\0';
+! 	    c = 0;
+! 	    while (c < n)
+! 	    {
+! 		for (i=c; i < n; i++)
+! 		    if (buf[i] == '<' || buf[i] == '>' || buf[i] == '&') break;
+! 		ch = buf[i];
+! 		buf[i] = '\0';
+! 		rprintf(r, "%s", &buf[c]);
+! 		if (ch == '<') rprintf(r, "&lt;");
+! 		else if (ch == '>') rprintf(r, "&gt;");
+! 		else if (ch == '&') rprintf(r, "&amp;");
+! 		c = i + 1;
+! 	    }
+! 	}
+!     }
+      pfclose(r->pool, f);
+      if(plaintext)
+          rprintf(r,"</PRE>%c",LF);
+***************
+*** 462,500 ****
+      return NULL;
+  }
+  
+- 
+- #ifdef NOTDEF
+- 
+- /* The only call to this function anyplace is commented out in the base
+-  * code below.  It could be fixed along the same lines as the shell_escape
+-  * stuff in util.c, but for now, why bother?
+-  */
+- 
+- void escape_html(char *fn) {
+-     register int x,y;
+-     char copy[MAX_STRING_LEN];
+- 
+-     strcpy(copy,fn);
+-     for(x=0,y=0;copy[y];x++,y++) {
+-         if(copy[y] == '<') {
+-             strcpy(&fn[x],"&lt;");
+-             x+=3;
+-         }
+-         else if(copy[y] == '>') {
+-             strcpy(&fn[x],"&gt;");
+-             x+=3;
+-         }
+-         else if(copy[y] == '&') {
+-             strcpy(&fn[x],"&amp;");
+-             x+=4;
+-         }
+-         else
+-             fn[x] = copy[y];
+-     }
+-     fn[x] = '\0';
+- }
+- #endif
+- 
+  struct ent *make_dir_entry(char *name, int dir_opts,
+  			   dir_config_rec *d, request_rec *r)
+  {
+--- 488,493 ----
+***************
+*** 573,579 ****
+  void output_directories(struct ent **ar, int n,
+  			dir_config_rec *d, request_rec *r, int dir_opts)
+  {
+!     int x;
+      char *name = r->uri;
+      char *tp;
+      pool *scratch = make_sub_pool (r->pool);
+--- 566,572 ----
+  void output_directories(struct ent **ar, int n,
+  			dir_config_rec *d, request_rec *r, int dir_opts)
+  {
+!     int x, len;
+      char *name = r->uri;
+      char *tp;
+      pool *scratch = make_sub_pool (r->pool);
+***************
+*** 583,589 ****
+      if(dir_opts & FANCY_INDEXING) {
+          rprintf (r, "<PRE>");
+          if((tp = find_default_icon(d,"^^BLANKICON^^")))
+!             rprintf(r, "<IMG SRC=\"%s\" ALT=\"     \"> ", tp);
+          rprintf (r, "Name                   ");
+          if(!(dir_opts & SUPPRESS_LAST_MOD))
+              rprintf(r, "Last modified     ");
+--- 576,583 ----
+      if(dir_opts & FANCY_INDEXING) {
+          rprintf (r, "<PRE>");
+          if((tp = find_default_icon(d,"^^BLANKICON^^")))
+!             rprintf(r, "<IMG SRC=\"%s\" ALT=\"     \"> ",
+! 		    escape_html(scratch, tp));
+          rprintf (r, "Name                   ");
+          if(!(dir_opts & SUPPRESS_LAST_MOD))
+              rprintf(r, "Last modified     ");
+***************
+*** 606,626 ****
+              char *t = make_full_path (scratch, name, "../");
+              getparents(t);
+              if(t[0] == '\0') t = "/";
+! 	    anchor = pstrcat (scratch, "<A HREF=\"", os_escape_path(scratch, t),
+  			      "\">", NULL);
+! 	    t2 = "Parent Directory</A>";
+          }
+          else {
+  	    t = ar[x]->name;
+! 	    t2 = pstrdup(scratch, t);
+!             if(strlen(t2) > 21) {
+!                 t2[21] = '\0';
+! 		t2 = pstrcat (scratch, t2, "</A>..", NULL);
+              } else 
+!             /* screws up formatting, but some need it. should fix. */
+! 	    /* escape_html(t2); */
+!             t2 = pstrcat(scratch, t2, "</A>", NULL);
+! 	    anchor = pstrcat (scratch, "<A HREF=\"", os_escape_path(scratch, t),
+  			      "\">", NULL);
+          }
+  
+--- 600,629 ----
+              char *t = make_full_path (scratch, name, "../");
+              getparents(t);
+              if(t[0] == '\0') t = "/";
+! 	    anchor = pstrcat (scratch, "<A HREF=\"",
+! 			      escape_html(scratch, os_escape_path(scratch, t)),
+  			      "\">", NULL);
+! 	    t2 = "Parent Directory</A>       ";
+          }
+          else {
+  	    t = ar[x]->name;
+! 	    len = strlen(t);
+!             if(len > 23) {
+! 		t2 = pstrdup(scratch, t);
+! 		t2[21] = '.';
+! 		t2[22] = '.';
+!                 t2[23] = '\0';
+! 		t2 = escape_html(scratch, t2);
+! 		t2 = pstrcat(scratch, t2, "</A>", NULL);
+              } else 
+! 	    {
+! 		char buff[23]="                       ";
+! 		t2 = escape_html(scratch, t);
+! 		buff[23-len] = '\0';
+! 		t2 = pstrcat(scratch, t2, "</A>", buff, NULL);
+! 	    }
+! 	    anchor = pstrcat (scratch, "<A HREF=\"",
+! 			      escape_html(scratch, os_escape_path(scratch, t)),
+  			      "\">", NULL);
+          }
+  
+***************
+*** 629,641 ****
+                  rprintf (r,"%s",anchor);
+              if((ar[x]->icon) || d->default_icon) {
+                  rprintf(r, "<IMG SRC=\"%s\" ALT=\"[%s]\">",
+! 			ar[x]->icon ? ar[x]->icon : d->default_icon,
+  			ar[x]->alt ? ar[x]->alt : "   ");
+              }
+              if(dir_opts & ICONS_ARE_LINKS) 
+                  rprintf (r, "</A>");
+  
+!             rprintf(r," %s%-27.29s", anchor, t2);
+              if(!(dir_opts & SUPPRESS_LAST_MOD)) {
+                  if(ar[x]->lm != -1) {
+  		    char time[MAX_STRING_LEN];
+--- 632,645 ----
+                  rprintf (r,"%s",anchor);
+              if((ar[x]->icon) || d->default_icon) {
+                  rprintf(r, "<IMG SRC=\"%s\" ALT=\"[%s]\">",
+! 			escape_html(scratch, ar[x]->icon ?
+! 				    ar[x]->icon : d->default_icon),
+  			ar[x]->alt ? ar[x]->alt : "   ");
+              }
+              if(dir_opts & ICONS_ARE_LINKS) 
+                  rprintf (r, "</A>");
+  
+!             rprintf(r," %s%s", anchor, t2);
+              if(!(dir_opts & SUPPRESS_LAST_MOD)) {
+                  if(ar[x]->lm != -1) {
+  		    char time[MAX_STRING_LEN];
+***************
+*** 679,685 ****
+      
+  int index_directory(request_rec *r, dir_config_rec *dir_conf)
+  {
+!     char *title_name = pstrdup (r->pool, r->uri);
+      char *title_endp;
+      char *name = r->filename;
+      
+--- 683,689 ----
+      
+  int index_directory(request_rec *r, dir_config_rec *dir_conf)
+  {
+!     char *title_name = escape_html(r->pool, r->uri);
+      char *title_endp;
+      char *name = r->filename;
+      
+*** mod_include.c.orig3	Tue Dec 12 13:54:06 1995
+--- mod_include.c	Wed Dec 13 14:02:12 1995
+***************
+*** 344,349 ****
+--- 344,350 ----
+      
+      if (run_sub_req (rr) == REDIRECT) {
+          char *location = table_get (rr->headers_out, "Location");
++ 	location = escape_html(rr->pool, location);
+  	rprintf(r,"<A HREF=\"%s\">%s</A>",location,location);
+      }
+      
+*** http_protocol.c.orig2	Tue Dec 12 13:49:08 1995
+--- http_protocol.c	Wed Dec 13 14:08:49 1995
+***************
+*** 635,642 ****
+  	
+          switch (r->status) {
+  	case REDIRECT:
+! 	    fprintf (fd,"The document has moved <A HREF=\"%s\">here</A>.<P>%c",
+! 		     location, LF);
+  	    break;
+  	case AUTH_REQUIRED:
+  	    fprintf (fd, "This server could not verify that you%c", LF);
+--- 635,642 ----
+  	
+          switch (r->status) {
+  	case REDIRECT:
+! 	    fprintf (fd,"The document has moved <A HREF=\"%s\">here</A>.<P>\n",
+! 		     escape_html(r->pool, location));
+  	    break;
+  	case AUTH_REQUIRED:
+  	    fprintf (fd, "This server could not verify that you%c", LF);
+***************
+*** 651,664 ****
+  	    fprintf (fd, "this server could not understand.<P>%c", LF);
+  	    break;
+  	case FORBIDDEN:
+! 	    fprintf (fd, "You don't have permission to access %s%c",
+! 		     r->uri, LF);
+  	    fprintf (fd, "on this server.<P>%c", LF);
+  	    break;
+  	case NOT_FOUND:
+  	    fprintf (fd,
+! 		     "The requested URL %s was not found on this server.<P>%c",
+! 		     r->uri, LF);
+  	    break;
+  	case SERVER_ERROR:
+  	    fprintf(fd,"The server encountered an internal error or%c",LF);
+--- 651,664 ----
+  	    fprintf (fd, "this server could not understand.<P>%c", LF);
+  	    break;
+  	case FORBIDDEN:
+! 	    fprintf (fd, "You don't have permission to access %s\n",
+! 		     escape_html(r->pool, r->uri));
+  	    fprintf (fd, "on this server.<P>%c", LF);
+  	    break;
+  	case NOT_FOUND:
+  	    fprintf (fd,
+! 		     "The requested URL %s was not found on this server.<P>\n",
+! 		     escape_html(r->pool, r->uri));
+  	    break;
+  	case SERVER_ERROR:
+  	    fprintf(fd,"The server encountered an internal error or%c",LF);
+***************
+*** 665,678 ****
+  	    fprintf(fd,"misconfiguration and was unable to complete%c",LF);
+  	    fprintf(fd,"your request.<P>%c",LF);
+  	    fprintf(fd,"Please contact the server administrator,%c",LF);
+! 	    fprintf(fd," %s ", r->server->server_admin);
+  	    fprintf(fd,"and inform them of the time the error occurred,%c",LF);
+  	    fprintf(fd,"and anything you might have done that may have%c",LF);
+  	    fprintf(fd,"caused the error.<P>%c",LF);
+  	    break;
+  	case NOT_IMPLEMENTED:
+! 	    fprintf(fd,"%s to %s not supported.<P>%c", r->method,
+! 		    r->uri, LF);
+  	    break;
+  	}
+  
+--- 665,679 ----
+  	    fprintf(fd,"misconfiguration and was unable to complete%c",LF);
+  	    fprintf(fd,"your request.<P>%c",LF);
+  	    fprintf(fd,"Please contact the server administrator,%c",LF);
+! 	    fprintf(fd," %s ", escape_html(r->pool, r->server->server_admin));
+  	    fprintf(fd,"and inform them of the time the error occurred,%c",LF);
+  	    fprintf(fd,"and anything you might have done that may have%c",LF);
+  	    fprintf(fd,"caused the error.<P>%c",LF);
+  	    break;
+  	case NOT_IMPLEMENTED:
+! 	    fprintf(fd,"%s to %s not supported.<P>\n",
+! 		    escape_html(r->pool, r->method),
+! 		    escape_html(r->pool, r->uri));
+  	    break;
+  	}
+  

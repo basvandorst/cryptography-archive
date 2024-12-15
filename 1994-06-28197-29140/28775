@@ -1,0 +1,331 @@
+Path: msuinfo!agate!dog.ee.lbl.gov!overload.lbl.gov!lll-winken.llnl.gov!koriel!male.EBay.Sun.COM!engnews1.Eng.Sun.COM!engnews2.Eng.Sun.COM!usenet
+From: vladimir@prosper.Eng.Sun.COM (Vladimir G. Ivanovic)
+Newsgroups: sci.crypt,alt.security,sci.math
+Subject: Re: Random/Pseudo Random Number Generator
+Date: 16 Jun 1994 01:15:47 GMT
+Organization: SunPro, a Sun Microsystems, Inc. business
+Lines: 317
+Message-ID: <VLADIMIR.94Jun15181548@prosper.prosper.Eng.Sun.COM>
+References: <2tjgf9$6b3@ccu2.auckland.ac.nz>
+NNTP-Posting-Host: prosper.eng.sun.com
+In-reply-to: eletm@ccu1.auckland.ac.nz's message of 14 Jun 1994 05:50:33 GMT
+X-Attribution: vgi
+Xref: msuinfo sci.crypt:28775 alt.security:17282 sci.math:74311
+
+----------
+X-Sun-Data-Type: default
+X-Sun-Data-Description: default
+X-Sun-Data-Name: random.number.generators
+X-Sun-Full-File-Name: /home/vladimir/misc/random.number.generators
+X-Sun-Content-Lines: 69
+
+The June 1988 (v31 #6) issue of the Communications of the ACM has an article
+by Pierre L'Ecuyer called, "Efficient and Portable Combined Random Number
+Generators".  The following October (v31 #10), Stephen Park and Keith Miller
+published "Random Number Generators: Good Ones are Hard to Find."
+
+Both articles are ESSENTIAL reading for anyone interested in random number
+generation, and this includes naive users.  The conclusion of both articles is
+that horrible random (sic) number generators are used by people who don't know
+better, while very good ones take less than 20 lines of Pascal!  Amoung the
+horrid generators are some that come with certain systems or are presented in
+textbooks! 
+
+Here are the two proposed random number generators.  Even though I have proof
+read them twice, I made no guarantees whatsoever about the correctness or the
+usability of the code below.  
+
+Here is the Minimal Standard proposed by Park and Miller:
+
+	function Random : real;
+	{ Initialize seed with 1..2147483646 }
+	{ maxint must be greater than or equal to 2**31 - 1 }
+	const
+	  a = 16807;
+	  m = 2147483647;
+	  q = 127773;      { m div a }
+	  r = 2836;	   { m mod a }
+	var
+	  lo, hi, test : integer;
+	begin
+	  hi := seed div q;
+	  lo := seed mod q;
+	  test := a * lo - r * hi;
+	  if test > 0 then
+	     seed := test
+	  else
+	     seed := test + m;
+	 Random := seed / m
+       end;
+
+Here is the Portable Combined Generator of L'Ecuyer for 32-bit computers.  It
+has a period of roughly 8.12544 x 10**12.
+
+	Function Uniform : real;
+	{ Initialize s1 to 1..2147483562; s2 to 1..2147483398 }
+	  var
+	    Z, k : integer;
+	  begin
+	    k  := s1 div 53668;
+	    s1 := 40014 * (s1 - k * 53668) - k * 12211;
+	    if s1 < 0 then s1 := s1 + 2147483563;
+	    
+	    k  := s2 div 52774;
+	    s2 := 40692 * (s2 - k * 52774) - k * 3791;
+	    if s2 < 0 then s2 := s2 + 2147483399;
+
+	    Z := s1 - s2;
+	    if Z < 1 then Z := Z + 2147483562;
+
+	    Uniform := Z * 4.656613e-10;
+	  end;
+
+All are urged to read both articles for a much better presentation.  And you
+don't have to be a mathematician to understand them: very little of either
+article is not accessible to a competent programmer.
+----------
+X-Sun-Data-Type: default
+X-Sun-Data-Description: default
+X-Sun-Data-Name: random.number.generators.II
+X-Sun-Full-File-Name: /home/vladimir/misc/random.number.generators.II
+X-Sun-Content-Lines: 224
+
+A recent article [P. L'Ecuyer, F. Blouin & R. Couture, "A Search for Good
+Multiple Recursive Random Number Generators", ACM Transactions on Modeling and
+Computer Simulations, Vol 3, No. 2, April 1993] suggests that certain multiple
+recursive generators (MRGs) of the form
+
+	  x  = (a x   + ... + a x   ) mod m
+	   n     1 n-1         k n-k
+
+have good properties, longer periods and are easy to implement than the more
+common multiplicative linear congruential generators (MLCGs) of the form
+
+       x  = ax    mod m
+        n     n-1
+
+The authors identify a good MRG, supply parameters and provide sample
+implementations in C and Pascal.  I implemented this MRG and obtained some
+results.
+
+I've included below the code I used, information about the system on which I
+compiled and ran the code, the exact compilation and linking commands used,
+and finally, the results of running the included code.
+
+===============================================================================
+
+The code
+--------
+
+TestRandom.c ==>
+
+#include <stdio.h>
+
+int m = 2147483647,
+   a1 = 107374182,    q1 = 20,      r1 = 7,
+   a5 = 104480,       q5 = 20554,   r5 = 1727,
+   x1, x2, x3, x4 ,x5;
+double Invmp1 = 4.656612873077393e-10;
+
+void
+InitRandom(void)
+{
+  x1 = 1;
+  x2 = 2;
+  x3 = 3;
+  x4 = 4;
+  x5 = 5;
+}
+
+int
+Random (void)
+{
+ int h, p1, p5;
+
+ h = x5 / q5;
+ p5 = a5 * (x5 - h * q5) - h * r5;
+
+ x5 = x4; x4 = x3; x3 = x2; x2 = x1;
+
+ h = x1 / q1; 
+ p1 = a1 * (x1 - h * q1) - h * r1;
+
+ if (p1 < 0) p1 = p1 + m;
+ if (p5 > 0) p5 = p5 - m;
+
+ x1 = p1 + p5;
+ if (x1 < 0 ) x1 = x1 + m;
+
+ return x1;
+}
+
+double
+Uniform01 (void)
+{
+  int Z;
+  Z = Random();
+  if (Z == 0) Z = m;
+  return (Z * Invmp1);
+}
+
+int
+main(void)
+{
+  int i;
+  double z;
+
+  InitRandom();
+
+  for (i=0; i<=10; i++)
+    {
+      z = Uniform01();
+      printf("%10ld:\t%25.15e\n", i, z);
+    }
+
+  return 0;
+
+}
+
+
+TestRandom.p ==>
+
+program TestRandom;
+
+const 
+    m = 2147483647;  invmp1 = 4.656612873077393e-10;
+   a1 = 107374182;     q1 = 20;      r1 = 7;
+   a5 = 104480;        q5 = 20554;   r5 = 1727;
+var
+   x1, x2, x3, x4 ,x5 : integer;
+   i : integer;
+   z : double;
+
+
+procedure InitRandom;
+begin
+  x1 := 1;
+  x2 := 2;
+  x3 := 3;
+  x4 := 4;
+  x5 := 5
+end;
+
+function Random : integer;
+var
+  h, p1, p5 : integer;
+begin
+  h := x5 div q5;
+  p5 := a5 * (x5 - h * q5) - h * r5;
+
+  x5 := x4; x4 := x3; x3 := x2; x2 := x1;
+
+  h := x1 div q1;
+  p1 := a1 * (x1 - h * q1) - h * r1;
+
+  if p1 < 0 then p1 := p1 + m;
+  if p5 > 0 then p5 := p5 - m;
+
+  x1 := p1 + p5;
+  if x1 < 0 then x1 := x1 + m;
+
+  Random := x1
+end;
+
+function Uniform01 : double;
+var
+  z : integer;
+begin
+  z := Random;
+  if z = 0 then z := m;
+  Uniform01 := z * invmp1
+end;
+
+
+begin
+  InitRandom;
+  for i:=0 to 10 do
+    begin
+      z := Uniform01;
+      writeln(i:10, ': ', z:25)
+    end
+end.
+
+
+
+The system
+----------
+uname -a ==>
+SunOS prosper 5.3 Generic_Patch sun4m sparc
+
+
+The compilation commands
+------------------------
+
+cc -# -V -o TestRandomC TestRandom.c ==>
+
+cc: SC3.0.1 26 May 1994
+/opt/SUNWspro/bin/../SC3.0.1/bin/acomp -i TestRandom.c -y-fbe -y/opt/SUNWspro/bin/../SC3.0.1/bin/fbe -y-o -yTestRandom.o -y-s -y-verbose -V -Qy -D__SUNPRO_C=0x301 -D__SVR4 -D__unix -D__sun -D__sparc -D__BUILTIN_VA_ARG_INCR -Dunix -Dsun -Dsparc -I/opt/SUNWspro/SC3.0.1/include/cc -g/opt/SUNWspro/bin/../SC3.0.1/bin/cc -V -c 
+acomp: SC3.0.1 26 May 1994 Sun C 3.0.1
+### Note: LD_LIBRARY_PATH = <null>
+### Note: LD_RUN_PATH = <null>
+/usr/ccs/bin/ld /opt/SUNWspro/SC3.0.1/lib/crti.o /opt/SUNWspro/SC3.0.1/lib/crt1.o /opt/SUNWspro/SC3.0.1/lib/__fstd.o /opt/SUNWspro/SC3.0.1/lib/values-xt.o -o TestRandomC -V TestRandom.o -Y P,/opt/SUNWspro/SC3.0.1/lib:/usr/ccs/lib:/usr/lib -Qy -lc /opt/SUNWspro/SC3.0.1/lib/crtn.o
+ld: Software Generation Utilities (SGU) SunOS/ELF (LK-1.4 (S/I))
+
+
+pc -v -V -o TestRandomP TestRandom.p ==>
+
+pc: SC3.0.1 26 May 1994
+### pc: Note: LM_LICENSE_FILE = 7588@poprad
+### pc: Note: NLSPATH = (null)
+/usr/ccs/lib/cpp -V -undef -D__SUNPRO_PC=0x303 -Dunix -Dsun -D__unix -D__sun -D__SVR4 -Dsparc -D__sparc -I/opt/SUNWspro/SC3.0.1/include/pascal TestRandom.p >/tmp/cpp.03017.0.pi
+cpp: SC3.0 early access 01 Sep 1993 
+/opt/SUNWspro/bin/../SC3.0.1/bin/pc0 /tmp/pc0.03017.1.s -o /tmp/pc0.03017.3.ir -V /tmp/cpp.03017.0.pi /tmp/pc0.03017.2.s
+pc0: SC3.0.1 26 May 1994 Pascal 3.0.3
+rm /tmp/cpp.03017.0.pi
+/opt/SUNWspro/bin/../SC3.0.1/bin/pc_cg -V -cg89 /tmp/pc0.03017.3.ir >/tmp/cg.03017.4.s
+rm /tmp/pc0.03017.3.ir
+/opt/SUNWspro/bin/../SC3.0.1/bin/pc_fbe -o TestRandom.o -Qy -q -V -cg89 -s /tmp/pc0.03017.1.s /tmp/cg.03017.4.s /tmp/pc0.03017.2.s
+/opt/SUNWspro/bin/../SC3.0.1/bin/pc_fbe: (CDS) SPARCompilers 2.0.1 1/14/94
+rm /tmp/pc0.03017.1.s
+rm /tmp/cg.03017.4.s
+rm /tmp/pc0.03017.2.s
+/opt/SUNWspro/bin/../SC3.0.1/bin/pc3 -V /opt/SUNWspro/SC3.0.1/lib/pcexterns.o TestRandom.o
+pc3: SC3.0.1 26 May 1994
+### pc: Note: LD_LIBRARY_PATH = (null)
+### pc: Note: LD_RUN_PATH     = /opt/SUNWspro/lib
+### pc: Note: LD_OPTIONS = (null)
+/usr/ccs/bin/ld -V -o TestRandomP /opt/SUNWspro/SC3.0.1/lib/crti.o /opt/SUNWspro/SC3.0.1/lib/crt1.o /opt/SUNWspro/SC3.0.1/lib/cg89/__fstd.o /opt/SUNWspro/SC3.0.1/lib/values-xs.o -Y P,/opt/SUNWspro/lib:/opt/SUNWspro/SC3.0.1/lib:/usr/ccs/lib:/usr/lib TestRandom.o -lpc -lsunmath -lm -lc /opt/SUNWspro/SC3.0.1/lib/crtn.o
+ld: Software Generation Utilities (SGU) SunOS/ELF (LK-1.4 (S/I))
+rm TestRandom.o
+
+
+The results
+-----------
+
+TestRandomC                             TestRandomP                         
+    0:         5.024326127022505e-02        0:  5.024326127022504807e-02
+    1:         8.260946767404675e-02        1:  8.260946767404675484e-02
+    2:         2.123264316469431e-02        2:  2.123264316469430923e-02
+    3:         6.926658791489899e-01        3:  6.926658791489899158e-01
+    4:         2.076155943796039e-01        4:  2.076155943796038628e-01
+    5:         4.327449947595596e-02        5:  4.327449947595596313e-02
+    6:         2.204052871093154e-02        6:  2.204052871093153954e-02
+    7:         1.288446951657534e-01        7:  1.288446951657533646e-01
+    8:         4.859915426932275e-01        8:  4.859915426932275295e-01
+    9:         5.721384193748236e-02        9:  5.721384193748235703e-02
+   10:         7.996825082227588e-01       10:  7.996825082227587700e-01
+-- 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Disclaimer: I speak only for myself.
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    /\      Vladimir Ivanovic
+   \\ \     SunSoft
+  \ \\ /    Staff Engineer
+ / \/ / /  
+/ /   \//\  M/S MTV12-33
+\//\   / /  2550 Garcia Blvd.
+ / / /\ /   Mountain View, CA 94043-1100
+  / \\ \    Phone: (415) 336-2315
+   \ \\     Fax:   (415) 964-0946
+    \/      EMail: vladimir@Eng.Sun.COM
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

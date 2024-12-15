@@ -1,0 +1,198 @@
+This is a quickly hacked up explanation of the changes made to the DES
+algorithm layout.  It was written very quickly one morning 
+in response to an email message and so may (probably :-) contains
+errors but if you are interested, it gives a quick overview of the
+changes from the FIPS version of DES that most of the fast DES
+implementations make.  You had better have my source code and the
+FIPS paper in front of you before you start reading :-).
+
+
+On Tue, 12 Oct 1993, AAA ZZZZZZZ wrote:
+> I have the book "Numerical Recipes in C" and am trying to match your algorithm
+> (in fcrypt.c) with that of the DES algorithm in the book.  It seems that you 
+> have replaced a some of the code with table lookups. I was wondering if your 
+> could explain how you derived the entries for the arrays "skb" and "SPtrans".
+> (I believe that SPtrans is the s-box with some sort of bit-fiddling.)  Also,
+> could you possibly map the remainder of your algorithm to the generic DES
+> algorithm just to make sure that I do not miss anything ?
+Ah, yes, my version has had a few things changed :-).
+Ok, first I'll attempt to describe the D_ENCRYPT macro (from des_locl.h)
+#define D_ENCRYPT(L,R,S)        \
+        u=(R^s[S  ]); \
+        t=R^s[S+1]; \
+        t=((t>>4)+(t<<28)); \
+        L^=     des_SPtrans[1][(t    )&0x3f]| \
+                des_SPtrans[3][(t>> 8)&0x3f]| \
+                des_SPtrans[5][(t>>16)&0x3f]| \
+                des_SPtrans[7][(t>>24)&0x3f]| \
+                des_SPtrans[0][(u    )&0x3f]| \
+                des_SPtrans[2][(u>> 8)&0x3f]| \
+                des_SPtrans[4][(u>>16)&0x3f]| \
+                des_SPtrans[6][(u>>24)&0x3f];
+R contains 32 bits that are input into the E function.  If you look at the
+E function,
+31  1  2  3  4  5
+ 4  5  6  7  8  9
+ 8  9 10 11 12 13
+12 13 14 15 16 17
+16 17 18 19 20 21
+20 21 22 23 24 25
+24 25 26 27 28 29
+28 29 30 31 32  1
+If everything is first rotated up by one before we begin, the E
+translation becomes
+ 1  2  3  4  5  6
+ 5  6  7  8  9 10
+ 9 10 11 12 13 14
+13 14 15 16 17 18
+17 18 19 20 21 22
+21 22 23 24 25 26
+25 26 27 28 29 30
+29 30 31 32  1  2
+Which you will notice relates to
+ 1  2  3  4  5  6    7  8
+ 5  6  7  8  9 10   11 12 
+ 9 10 11 12 13 14   15 16
+13 14 15 16 17 18   19 20
+17 18 19 20 21 22   23 24
+21 22 23 24 25 26   27 28
+25 26 27 28 29 30   31 32
+29 30 31 32  1  2    3  4
+So if we organise the 48 bits in the K table to occupy 2 32 bit words with
+the 1st, 3rd, 5th and 7th 6bit groups padded with 2 bits so they are on 8 byte
+boundaries, and the second word containing the even 6bit groups aligned
+in the same way, except that the K data for the second word is rotated up
+4 bits, so
+u=R^K[word0]; t=R^K[word1]; produces
+ 1  2  3  4  5  6  *  *
+ 9 10 11 12 13 14  *  *
+17 18 19 20 21 22  *  *
+25 26 27 28 29 30  *  *
+and
+ 1  2  *  *  5  6  7  8  
+ 9 10  *  * 13 14 15 16
+17 18  *  * 21 22 23 24
+25 26  *  * 29 30 31 32
+which is then rotated by 4 to produce the required result
+ 5  6  7  8  9 10  *  *
+13 14 15 16 17 18  *  *
+21 22 23 24 25 26  *  *
+29 30 31 32  1  2  *  *
+These 8 'chunks' are used for looking up SPtrans (the input to the S
+tables).
+You will notice that because crypt uses a modification in the E table, this
+section is slightly different.  crypt swaps bits between the top and
+bottom 16 bits in R, I achieve this via masks and xor trick I will
+explain later.
+SPtrans is a table that maps the S boxes directly to the output 32bit by
+incorporating the P function.  So, for example, the first S box, 6bits is
+used as an index so for the value 0, SPtrans[0][0] gives
+0x00820200 or 100000100000001000000000 or bits 10, 18 and 24
+the S table in FIPS gives 14 or 2, 3 and 4.  If I am remembering
+correctly, the DES paper always labels the right most bit #1 so we really
+have bits 1, 2 and 3, and this maps via the P function to 9, 17 and 23.
+Note that an input 6bits of value 23, 010111, maps to row 2, column 13,
+not 1, 11 as I would expect (from my little endian upbringing).
+You will notice that these values are out by 1 from what is actually kept
+in SPtrans, thats because the first 1 bit rotation we did is now built
+into SPtrans.  So inside the inner loop, we actually work with data that
+is rotated by 1 bit so things work more easily in the E function.  The
+SPtrans table was generated via the above translation from the original S
+and P tables.  I did it quite some time ago and have lost the perl script
+I used to do this but it would not be hard to redo this work.
+
+You will notice that after the D_ENCRYPT functions are finished we rotate
+the results back into the correct form.
+
+Regarding the PERM_OP operation.  I'll copy the comments from des_local.h
+        /* IP and FP
+        * The problem is more of a geometric problem that random bit fiddling.
+         0  1  2  3  4  5  6  7      62 54 46 38 30 22 14  6
+         8  9 10 11 12 13 14 15      60 52 44 36 28 20 12  4
+        16 17 18 19 20 21 22 23      58 50 42 34 26 18 10  2
+        24 25 26 27 28 29 30 31  to  56 48 40 32 24 16  8  0
+
+        32 33 34 35 36 37 38 39      63 55 47 39 31 23 15  7
+        40 41 42 43 44 45 46 47      61 53 45 37 29 21 13  5
+        48 49 50 51 52 53 54 55      59 51 43 35 27 19 11  3
+        56 57 58 59 60 61 62 63      57 49 41 33 25 17  9  1
+
+        The output has been subject to swaps of the form
+        0 1 -> 3 1 but the odd and even bits have been put into
+        2 3    2 0
+        different words.  The main trick is to remember that
+        t=((l>>size)^r)&(mask);
+        r^=t;
+        l^=(t<<size);
+        can be used to swap and move bits between words.
+        So l =  0  1  2  3  r = 16 17 18 19
+                4  5  6  7      20 21 22 23
+                8  9 10 11      24 25 26 27
+               12 13 14 15      28 29 30 31
+        becomes (for size == 2 and mask == 0x3333)
+           t =   2^16  3^17 -- --   l =  0  1 16 17  r =  2  3 18 19
+                 6^20  7^21 -- --        4  5 20 21       6  7 22 23
+                10^24 11^25 -- --        8  9 24 25      10 11 24 25
+                14^28 15^29 -- --       12 13 28 29      14 15 28 29
+
+        Thanks for hints from Richard Outerbridge - he told me IP&FP
+        could be done in 15 xor, 10 shifts and 5 ands.
+        When I finally started to think of the problem in 2D
+        I first got ~42 operations without xors.  When I remembered
+        how to use xors :-) I got it to its final state.
+        */
+It is really quite evil but fast :-).
+
+For the creation of the key_schedule (skb), similar optimising techniques
+have been used.
+PC1 has been done with the old xor trick, some-one has told me it
+is possible to get it a few instructions faster but I don't feel like
+beating my brain against a wall to work out how when it will only speed
+things up 1%-2% and only in the key generation.
+skb is basically the PC2 table with indexes 0..3 for C and 4..7 for D.
+You will notice if you look at PC2 in FIPS that the bottom 24 bits are
+made from C and the top 24 from D, it is sort of 2 table mashed together.
+This lets us generate a direct mapping.  The lookup is a little strange
+since some bits are just not used and so I did some ugly shifts etc to
+remove the holes to help keep the table size down.
+The output from the skb lookups is also aligned so that it fits into the
+xor in DES easily.
+eg, the output from des_skb is byte aligned for the S tables 0213 and 4657.
+We convert this to 0246 and 1357 and rotate the 1357 data by 4 bits.
+
+> The reason I am asking this is that I was given the task of taking your DES
+> algorithm and porting it to the Cray and modifying it to take advantage
+> of the vectorisation in an attempt to make the algorithm faster.  Also, I
+> have been attempting to optimise the algorithm to squeeze as much performance
+> out of the algorithm as possible.  To do this, it would be extremely helpful
+> if you would be so kind as to help me.  I will gladly share my results with
+> you.
+I believe my code still currently works on a Cray.  To do the port I just
+made sure I cleared the top 32bits of words when needed and continued to
+operate on 32 bit quantities so I believe most of the structures on the
+Cray will be only half full.  The problem with the algorithm is that it is
+not vectorisable in this form.  It is mostly a random lookup problem.
+One speedup that can be done is to combine S tables so you only perform 4
+12 bit (or 14bit if you don't want to do shifting) instead of 8 lookups.
+The ufc package does this but my code is often faster because having only
+small tables it often fits into on chip caches whereas big random access
+tables do not.
+There may be other ways to implement the algorithm that will speed it up
+but the only obvious optimisation that springs to mind is to take
+advantage of the 64bit word size.
+BTW it is probably not worth even looking at speeding up set_key since it
+is only being run once for each 25 DES's when in crypt so the 1% speedup
+in DES has 25 times the effect of 1% speedup in set_key :-).
+
+> P.S.  I downloaded your DES library and am going over the code in it.
+The most recent version is from 8th of this month (mostly copyright
+message changes and addition of triple cbc encryption).
+
+> P.S.S.  Could you explain PERM_OP and HPERM_OP ??
+As mentioned above they are an neat way of take advantage of the regularity of
+some of the permutation, quite non-intuitive :-).
+
+hope this helps
+
+eric 
+

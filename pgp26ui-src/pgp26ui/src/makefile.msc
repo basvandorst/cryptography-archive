@@ -1,0 +1,159 @@
+# makefile for PGP (Microsoft C)
+
+DEFINES	=  -DDYN_ALLOC -DSMALL_MEM
+ADEFINES = -DDYN_ALLOC=1 -DSS_NEQ_DS=1
+
+PROJ	=PGP
+
+CC	=cl -nologo -AL			# Compile command
+OPT	=	-Oilt			# Optimization and Testing flags
+CFLAGS	=-c -Gt $(OPT) $(DEFINES) 	# Flags for compiler
+
+LD		=link			# Link command
+LFLAGS	=/M /STACK:24576			# Flags for linker
+LIBS_EXT=				# Libraries
+
+# for MASM 5.x and below
+ASM	=masm				# Assembler command
+ASMFLAGS= -ml				# Flags for assembler
+# for MASM 6.0 use the following instead
+#ASM	=ml -nologo 			# Assembler command
+#ASMFLAGS=-Zm -Cp -c			# Flags for assembler
+
+#OBJS_EXT=8086.obj 	   		# ASM obj. files
+OBJS_EXT=8086.obj zmatch.obj   	# ASM obj. files
+
+EXT		=.EXE			# Whatever extension execuatables have
+
+.c.obj:	
+	$(CC) $(CFLAGS) $(DEBUG) $*.c
+
+all:	$(PROJ)$(EXT)
+
+os2:	
+	$(MAKE) -f makefile.msc $(PROJ)2$(EXT) \
+	DEFINES="-DDYN_ALLOC -DSMALL_MEM -DOS2" ADEFINES="-DDYN_ALLOC=1" \
+	LFLAGS="-Lp -F 3000"
+
+clean:
+	del $(PROJ)$(EXT)
+	del *.OBJ
+
+scratch:	clean all
+
+new:		clean all
+
+
+8086.obj :	8086.asm
+	$(ASM) $(ASMFLAGS) 8086.asm ;
+
+zmatch.obj :	zmatch.asm
+	$(ASM) $(ASMFLAGS) $(ADEFINES) zmatch.asm ;
+
+ZIPOBJS= zbits.obj zdeflate.obj zfile_io.obj zglobals.obj \
+	zinflate.obj zip.obj zipup.obj ztrees.obj zunzip.obj 
+
+# Use the first line for non-RSAREF version, the 2nd for RSAREF version.
+RSAOBJS= rsaglue.obj
+#RSAOBJS= rsaglue.obj rsa.obj nn.obj digit.obj r_random.obj r_stdlib.obj
+
+OBJ1 =	pgp.obj crypto.obj keymgmt.obj fileio.obj \
+	mdfile.obj more.obj armor.obj mpilib.obj mpiio.obj
+OBJ2 =	genprime.obj rsagen.obj random.obj idea.obj passwd.obj \
+	md5.obj system.obj language.obj getopt.obj
+OBJ3 =	keyadd.obj config.obj keymaint.obj charset.obj $(OBJS_EXT)
+
+$(PROJ)$(EXT): $(OBJ1) $(OBJ2) $(OBJ3) $(ZIPOBJS) $(RSAOBJS)
+	echo $(OBJ1)+ >pgp.rsp
+	echo $(OBJ2)+ >>pgp.rsp
+	echo $(OBJ3)+ >>pgp.rsp
+	echo $(ZIPOBJS)+ >>pgp.rsp
+	echo $(RSAOBJS); >>pgp.rsp
+	$(LD) $(LFLAGS) @pgp.rsp
+	del pgp.rsp
+
+$(PROJ)2$(EXT): $(OBJ1) $(OBJ2) $(OBJ3) $(ZIPOBJS) $(RSAOBJS)
+	$(CC) $(OBJ1) $(OBJ2) $(OBJ3) $(ZIPOBJS) $(RSAOBJS) -o $@ $(LFLAGS)
+	exehdr -nologo -pm:vio -newfiles $@
+	bind -nologo $@
+
+#	$(LD) @<<
+#$(LFLAGS) $(OBJ1) +
+#$(OBJ2) +
+#$(ZIPOBJS)
+#$(PROJ)$(EXT) , NUL , $(LIBS_EXT) ; 
+#<<
+
+# How to make the RSAREF object files...
+
+RSADIR = ../../rsaref/source/
+
+rsa.obj: $(RSADIR)rsa.c global.h $(RSADIR)rsaref.h $(RSADIR)r_random.h \
+  $(RSADIR)md5.h
+	$(CC) -I$(RSADIR) -I. $(CFLAGSNOPT) -Dstatic= $(RSADIR)rsa.c
+
+nn.obj: $(RSADIR)nn.c global.h $(RSADIR)rsaref.h $(RSADIR)nn.h $(RSADIR)digit.h
+	$(CC) -I$(RSADIR) -I. $(CFLAGS) $(RSADIR)nn.c
+
+digit.obj: $(RSADIR)digit.c global.h $(RSADIR)rsaref.h $(RSADIR)nn.h \
+  $(RSADIR)digit.h
+	$(CC) -I$(RSADIR) -I. $(CFLAGS) $(RSADIR)digit.c
+
+r_random.obj: $(RSADIR)r_random.c global.h $(RSADIR)rsaref.h \
+  $(RSADIR)r_random.h $(RSADIR)md5.h
+	$(CC) -I$(RSADIR) -I. $(CFLAGS) -Dstatic= $(RSADIR)r_random.c
+
+r_stdlib.obj: $(RSADIR)r_stdlib.c global.h $(RSADIR)rsaref.h
+	$(CC) -I$(RSADIR) -I. $(CFLAGS) -Dstatic= $(RSADIR)r_stdlib.c
+
+
+## Dependencies ##
+armor.obj : armor.c mpilib.h usuals.h platform.h fileio.h mpiio.h language.h \
+  pgp.h more.h armor.h crypto.h 
+charset.obj : charset.c usuals.h language.h charset.h system.h 
+config.obj : config.c usuals.h fileio.h pgp.h more.h armor.h config.h \
+  charset.h 
+crypto.obj : crypto.c mpilib.h usuals.h platform.h mpiio.h random.h idea.h \
+  crypto.h keymgmt.h keymaint.h mdfile.h md5.h fileio.h charset.h language.h \
+  pgp.h more.h armor.h exitpgp.h zipup.h rsaglue.h
+fileio.obj : fileio.c random.h usuals.h mpilib.h platform.h mpiio.h fileio.h \
+  language.h pgp.h more.h armor.h exitpgp.h charset.h system.h 
+genprime.obj : genprime.c mpilib.h usuals.h platform.h genprime.h random.h 
+getopt.obj : getopt.c getopt.h 
+idea.obj : idea.c idea.h usuals.h 
+keyadd.obj : keyadd.c mpilib.h usuals.h platform.h crypto.h fileio.h \
+  keymgmt.h charset.h language.h pgp.h more.h armor.h exitpgp.h keyadd.h \
+  keymaint.h 
+keymaint.obj : keymaint.c mpilib.h usuals.h platform.h random.h crypto.h \
+  fileio.h keymgmt.h keymaint.h mpiio.h charset.h language.h pgp.h more.h \
+  armor.h 
+keymgmt.obj : keymgmt.c system.h mpilib.h usuals.h platform.h idea.h random.h \
+  crypto.h fileio.h keymgmt.h rsagen.h mpiio.h language.h pgp.h more.h \
+  armor.h md5.h charset.h keymaint.h 
+language.obj : language.c usuals.h fileio.h language.h pgp.h more.h armor.h \
+  charset.h 
+md5.obj : md5.c md5.h 
+mdfile.obj : mdfile.c mpilib.h usuals.h platform.h mdfile.h md5.h fileio.h \
+  language.h pgp.h more.h armor.h 
+more.obj : more.c system.h mpilib.h usuals.h platform.h language.h fileio.h \
+  pgp.h more.h armor.h charset.h 
+mpiio.obj : mpiio.c mpilib.h usuals.h platform.h mpiio.h pgp.h more.h armor.h 
+mpilib.obj : mpilib.c mpilib.h usuals.h platform.h 
+passwd.obj : passwd.c random.h usuals.h md5.h language.h pgp.h more.h armor.h 
+pgp.obj : pgp.c system.h mpilib.h usuals.h platform.h random.h crypto.h \
+  fileio.h keymgmt.h language.h pgp.h more.h armor.h exitpgp.h charset.h \
+  getopt.h config.h keymaint.h keyadd.h rsaglue.h
+random.obj : random.c system.h random.h usuals.h language.h 
+rsagen.obj : rsagen.c mpilib.h usuals.h platform.h genprime.h rsagen.h \
+  random.h rsaglue.h
+rsaglue.obj : rsaglue.c mpilib.h mpiio.h pgp.h rsaglue.h
+system.obj : system.c exitpgp.h system.h charset.h 
+zbits.obj : zbits.c zip.h ztailor.h ziperr.h 
+zdeflate.obj : zdeflate.c zunzip.h usuals.h system.h zip.h ztailor.h ziperr.h 
+zfile_io.obj : zfile_io.c zunzip.h usuals.h system.h 
+zglobals.obj : zglobals.c zip.h ztailor.h ziperr.h 
+zinflate.obj : zinflate.c zunzip.h usuals.h system.h exitpgp.h 
+zip.obj : zip.c usuals.h fileio.h language.h pgp.h more.h armor.h exitpgp.h 
+zipup.obj : zipup.c zip.h ztailor.h ziperr.h zrevisio.h 
+ztrees.obj : ztrees.c zip.h ztailor.h ziperr.h 
+zunzip.obj : zunzip.c zunzip.h usuals.h system.h 

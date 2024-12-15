@@ -1,0 +1,76 @@
+#!/bin/sh
+
+# rc script for NextStep
+
+INSTALLDIR=/usr/local/skip
+SKIPD=$INSTALLDIR/skipd
+SKIPMOD=$INSTALLDIR/skip_reloc
+SKIP_ATTACH=$INSTALLDIR/skip_attach
+SKIP_DETACH=$INSTALLDIR/skip_detach
+
+killproc() {            # kill the named process(es)
+	pid=`/bin/ps ax |
+	  /bin/grep $1 | /bin/grep -v grep |
+	  /bin/sed -e 's/^  *//' -e 's/ .*//'`
+	[ "$pid" != "" ] && kill $pid
+}
+
+attach_interfaces() {	# Attach to all interfaces we find
+	interfaces=`/usr/ucb/netstat -ni | /bin/grep '\.' | /bin/grep -v lo | /bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		/bin/echo -n "attaching skip to interfaces:"
+		for i in $interfaces; do
+			/bin/echo -n " $i"
+			$SKIP_ATTACH >/dev/null $i
+		done
+		/bin/echo "."
+	else
+		/bin/echo "No interfaces for skip found."
+	fi
+}
+
+detach_interfaces() {	# Detach from all interfaces we find
+	interfaces=`/usr/ucb/netstat -ni | /bin/grep '\.' | /bin/grep -v lo | /bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		/bin/echo -n "detaching skip from interfaces:"
+		for i in $interfaces; do
+			/bin/echo -n " $i"
+			$SKIP_DETACH >/dev/null $i
+		done
+		/bin/echo "."
+	else
+		/bin/echo "No interfaces for skip found."
+	fi
+}
+
+case "$1" in
+
+'start')
+	if [ -x $SKIPMOD ]; then
+		/usr/etc/kl_util -a $SKIPMOD > /dev/null 2>&1
+		if [ -x $SKIPD ]; then
+			/bin/echo -n "starting skip daemon"
+			$SKIPD > /dev/console 2>&1 &
+			/bin/echo "[$!]."
+			attach_interfaces
+		else
+			/bin/echo "skip daemon '$SKIPD' not found."
+		fi
+	else
+		/bin/echo "skip reloc '$SKIPMOD' not found."
+	fi
+	;;
+
+'stop')
+	detach_interfaces
+	killproc skipd
+	/usr/etc/kl_util -d skip > /dev/null 2>&1
+	;;
+
+*)
+	/bin/echo "Usage: $0 { start | stop }"
+	;;
+
+esac

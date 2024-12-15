@@ -1,0 +1,183 @@
+From: randy@zyzzyva.com (Randy Terbush)
+Subject: Silence mod_log_referer and mod_log_agent if not configured
+Affects: mod_log_agent.c mod_log_referer.c mod_cookies.c
+ChangeLog: Silence mod_log_referer and mod_log_agent if not configured
+
+*** mod_log_agent.c.orig	Sat Dec  2 08:47:21 1995
+--- mod_log_agent.c	Sat Dec  2 09:11:05 1995
+***************
+*** 56,63 ****
+  #include "httpd.h"
+  #include "http_config.h"
+  
+- #define DEFAULT_AGENTLOG "logs/agent_log"
+- 
+  module agent_log_module;
+  
+  static int xfer_flags = ( O_WRONLY | O_APPEND | O_CREAT );
+--- 56,61 ----
+***************
+*** 73,79 ****
+      agent_log_state *cls =
+        (agent_log_state *)palloc (p, sizeof (agent_log_state));
+  
+!     cls->fname = DEFAULT_AGENTLOG;
+      cls->agent_fd = -1;
+  
+  
+--- 71,77 ----
+      agent_log_state *cls =
+        (agent_log_state *)palloc (p, sizeof (agent_log_state));
+  
+!     cls->fname = "";
+      cls->agent_fd = -1;
+  
+  
+***************
+*** 130,139 ****
+  
+  	cls->agent_fd = fileno (dummy);
+      }
+!     else if((cls->agent_fd = popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+!         fprintf(stderr,"httpd: could not open transfer log file %s.\n", fname);
+          perror("open");
+          exit(1);
+      }
+  }
+  
+--- 128,139 ----
+  
+  	cls->agent_fd = fileno (dummy);
+      }
+!     else if(*cls->fname != '\0') {
+!       if((cls->agent_fd = popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+!         fprintf(stderr,"httpd: could not open agent log file %s.\n", fname);
+          perror("open");
+          exit(1);
++       }
+      }
+  }
+  
+***************
+*** 156,161 ****
+--- 156,163 ----
+  
+      for (r = orig; r->next; r = r->next)
+          continue;
++     if (*cls->fname == '\0')	/* Don't log agent */
++ 	return DECLINED;
+  
+      agent = table_get(orig->headers_in, "User-Agent");
+      if(agent != NULL) 
+
+*** mod_log_referer.c.orig	Sat Dec  2 08:54:25 1995
+--- mod_log_referer.c	Sat Dec  2 09:11:29 1995
+***************
+*** 56,63 ****
+  #include "httpd.h"
+  #include "http_config.h"
+  
+- #define DEFAULT_REFERERLOG "logs/referer_log"
+- 
+  module referer_log_module;
+  
+  static int xfer_flags = ( O_WRONLY | O_APPEND | O_CREAT );
+--- 56,61 ----
+***************
+*** 74,80 ****
+      referer_log_state *cls =
+        (referer_log_state *)palloc (p, sizeof (referer_log_state));
+  
+!     cls->fname = DEFAULT_REFERERLOG;
+      cls->referer_fd = -1;
+      cls->referer_ignore_list = make_array(p, 1, sizeof(char *));
+      return (void *)cls;
+--- 72,78 ----
+      referer_log_state *cls =
+        (referer_log_state *)palloc (p, sizeof (referer_log_state));
+  
+!     cls->fname = "";
+      cls->referer_fd = -1;
+      cls->referer_ignore_list = make_array(p, 1, sizeof(char *));
+      return (void *)cls;
+***************
+*** 144,153 ****
+  
+  	cls->referer_fd = fileno (dummy);
+      }
+!     else if((cls->referer_fd = popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+!         fprintf(stderr,"httpd: could not open transfer log file %s.\n", fname);
+          perror("open");
+          exit(1);
+      }
+  }
+  
+--- 142,153 ----
+  
+  	cls->referer_fd = fileno (dummy);
+      }
+!     else if(*cls->fname != '\0') {
+!       if((cls->referer_fd = popenf(p, fname, xfer_flags, xfer_mode)) < 0) {
+!         fprintf(stderr,"httpd: could not open referer log file %s.\n", fname);
+          perror("open");
+          exit(1);
++       }
+      }
+  }
+  
+***************
+*** 171,176 ****
+--- 171,178 ----
+  
+      for (r = orig; r->next; r = r->next)
+          continue;
++     if (*cls->fname == '\0')	/* Don't log referer */
++ 	return DECLINED;
+      
+      referer = table_get(orig->headers_in, "Referer");
+      if(referer != NULL)
+
+*** mod_cookies.c.orig	Sat Dec  2 09:21:54 1995
+--- mod_cookies.c	Sat Dec  2 09:23:05 1995
+***************
+*** 153,159 ****
+      char *fname = server_root_relative (p, cls->fname);
+  
+      if (cls->log_fd > 0) return; 
+!     cls->log_fd = popenf(p, fname, cookie_flags, cookie_mode);
+  }
+  
+  void init_cookie_log (server_rec *s, pool *p)
+--- 153,165 ----
+      char *fname = server_root_relative (p, cls->fname);
+  
+      if (cls->log_fd > 0) return; 
+!     if(*cls->fname != '\0') {
+!       if((cls->log_fd = popenf(p, fname, cookie_flags, cookie_mode)) < 0) {
+! 	fprintf(stderr, "httpd: could not open cookie log file %s.\n", fname);
+! 	perror("open");
+! 	exit(1);
+!       }
+!     }
+  }
+  
+  void init_cookie_log (server_rec *s, pool *p)
+***************
+*** 174,181 ****
+  
+      for (r = orig; r->next; r = r->next)
+          continue;
+!     if ((cls->log_fd)<0)	/* Don't log cookies */
+! 	return DECLINED;
+  
+      if (!(cookie = table_get (r->headers_in, "Cookie")))
+          return DECLINED;    /* Theres no cookie, don't bother logging */
+--- 180,187 ----
+  
+      for (r = orig; r->next; r = r->next)
+          continue;
+!     if (*cls->fname == '\0')	/* Don't log cookies */
+!       return DECLINED;
+  
+      if (!(cookie = table_get (r->headers_in, "Cookie")))
+          return DECLINED;    /* Theres no cookie, don't bother logging */

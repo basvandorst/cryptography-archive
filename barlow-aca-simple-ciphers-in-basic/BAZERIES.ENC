@@ -1,0 +1,173 @@
+10 '** BAZERIES/ENC ** BY M.Barlow 1989
+20 '
+30 CLEAR:DEFINT A-Z:GOSUB 20000:DIM KL$(200),P$(50),RP$(50)
+60 DEF FNCC$(LP,PT$)=PT$+"   ("+RIGHT$(STR$(LP),LEN(STR$(LP))-1)+" chars)." 'add char count to string, neatly.
+70 AL$="ABCDEFGHIKLMNOPQRSTUVWXYZ" 'no J, 25 chars
+80 '
+90 GOSUB 5010
+110 '
+                    ---- start here ----
+120 PT$="":LOCATE 6,1:PRINT "Enter the plaintext (either case, with or without spaces, no punctuation, 120-  150 chars):":LINE INPUT PT$
+130 IF PT$=""THEN PT$=XP$:LOCATE 8,1:PRINT PT$
+140 ZZ$=PT$:GOSUB 220:P$=ZZ$       'delete blanks in plaintext
+150 LP=LEN(P$):PT$=FNCC$(LP,PT$)   'add char count
+155 LOCATE 8,1:PRINT PT$
+160 PRINT:PRINT "Working text is:":PRINT P$
+170 KN$="":PRINT:PRINT"Enter the key number (between 111 and 999,999, no zeros): ";:LINE INPUT KN$
+180 IF KN$=""THEN KN$=XK$
+190 KN!=VAL(KN$):IF KN!<111  OR KN!>999999! THEN PRINT "Out of range! Try again.":GOTO 170
+200 IF INSTR(KN$,"0") THEN PRINT"Zero not acceptable.":GOTO 170
+205 GOSUB 5010:COLOR  0,7:PRINT"The plaintext is: ";:COLOR 7,0:PRINT " "+PT$:PRINT "The key number is "KN$:GOTO 430
+210 '    ---- SUB: eliminate blanks in ZZ$ and force UPPER CASE ----
+220 OP$=""
+230 FOR N=1 TO LEN(ZZ$)
+240   IF MID$(ZZ$,N,1)=" "THEN 270
+250   X$=CHR$(ASC(MID$(ZZ$,N,1)) AND 223)    'force upper case
+255   IF X$="J" THEN X$="I"
+260   OP$=OP$+X$
+270 NEXT:ZZ$=OP$:OP$="":RETURN
+280 '    ---- SUB: eliminate duplicate letters in KW$ ----
+290 NK$="":FOR N=1 TO LEN(KW$)
+300   DU$=MID$(KW$,N,1)                      'for each keyword letter
+310   IF INSTR(NK$,DU$)THEN 330              'has it been used already?
+320   NK$=NK$+DU$                            'if not, add to new key
+330 NEXT:RETURN
+340 '   ---- SUB: make up key alphabet KA$ of 25 chars ----
+350 KA$=AL$
+360 FOR N=1 TO LEN(KW$)
+370   X=INSTR(KA$,MID$(KW$,N,1))     'find posn of KW letter in alphabet
+380   X$=LEFT$(KA$,X-1)              'take the alphabet to the left of it
+390   KA$=X$+RIGHT$(KA$,LEN(KA$)-X)  'and add to the remainder
+400 NEXT
+410 KA$=KW$+KA$                      'now put the keyword in front
+420 RETURN
+430 ' --- group pt chars according to key digits ---
+440 KN$=RIGHT$(STR$(KN!), LEN(STR$(KN!))-1)
+450 LK=LEN(KN$)                      'LK is number of digits in key number
+460 FOR N=1 TO LK:KL$(N)=MID$(KN$,N,1):BK=VAL(KL$(N))+BK:NEXT      'BK is block length, KL$(n) is length of each group in block
+470 JJ=1:KK=1                        'JJ counts total grps, KK counts groups
+480 N=1                              'start at 1st letter of pt
+490 M=VAL(KL$(KK))                   'get length M of group KK
+500 P$(JJ)=MID$(P$,N,M)              'get M letters of P$ into P$(JJ)
+520 KK=KK+1:IF KK=LK+1 THEN KK=1     'reset count after 1 block
+530 JJ=JJ+1                          'increment total count
+540 N=M+N:IF N<LP+1 THEN GOTO 490    'skip when all chars done
+550 K9=JJ-1                          'k9 is total number of groups
+560 'now we have the PT in K9 groups of P$(JJ)
+570 PRINT"The Plaintext divided into groups is ";
+580 FOR N=1 TO 6:PRINT P$(N)" ";:NEXT:PRINT" etc."
+590 PRINT
+600 '   --- now reverse the text groups P$(JJ) to RP$(JJ)  ---
+610 FOR N=1 TO K9:X$=P$(N):XL=LEN(X$)
+620  FOR M=XL TO 1 STEP-1
+630    OP$=OP$+MID$(X$,M,1)
+640  NEXT
+650  RP$(N)=OP$:OP$=""
+660  RP$=RP$+RP$(N)           'assemble reversed text string
+670 NEXT
+680 PRINT"The Plaintext groups reversed are ";
+690 FOR N=1 TO 6:PRINT RP$(N)" ";:NEXT:PRINT "etc. "
+700 '   --- load tables ---
+710 FOR N=1 TO 8:READ TN$(N):NEXT      'TENS
+720 FOR N=1 TO 9:READ TE$(N):NEXT      'TEENS
+730 FOR N=1 TO 9:READ UNIT$(N):NEXT    'UNITS
+740 '  --- convert key number KN$ to English spelling KW$ ---
+750 KW$="":PRINT:PRINT"The key number spells out as:
+760 N=1
+770 IF LK=3 THEN 820
+780 IF LK=4 THEN 920
+790 IF LK=5 THEN 970
+800 IF LK=6 THEN 1130
+810 ' --- three digits ---
+820 YT$=" HUNDRED AND "
+830 X=INSTR("123456789",KL$(N))         'units of 100s
+840 PRINT UNIT$(X)+YT$;:KW$=KW$+UNIT$(X)+YT$
+850 N=N+1
+860 IF KL$(N)>"1" THEN 880              'teens
+870 X=INSTR("123456789",KL$(N+1)):PRINT TE$(X);:KW$=KW$+TE$(X):GOTO 1190
+880 X=INSTR("23456789",KL$(N)):PRINT TN$(X)+" ";:KW$=KW$+TN$(X)+" "         'tens
+890 X=INSTR("123456789",KL$(N+1)):PRINT UNIT$(X);:KW$=KW$+UNIT$(X)           'units
+900 GOTO 1190
+910 ' --- four digits ---
+920 XT$=" THOUSAND "
+930 X=INSTR("123456789",KL$(N))
+940 X$=UNIT$(X)+XT$:KW$=KW$+X$:PRINT X$;   'units of 1000
+950 N=N+1
+960 GOTO 820
+970 ' --- five digits ---
+980 XT$=" THOUSAND "
+990 IF KL$(N)>"1" THEN 1050                'TENS of thousands
+1000 X=INSTR("123456789",KL$(N+1))         'TEENS of thousands
+1010 X$=TE$(X)+XT$:KW$=KW$+X$:PRINT X$;
+1020 N=N+2
+1030 GOTO 820
+1040 '
+1050 X=INSTR("23456789",KL$(N))           'TENS of thousands
+1060 X$=TN$(X)+" ":KW$=KW$+X$:PRINT X$;
+1070 N=N+1
+1080 X=INSTR("123456789",KL$(N))          'UNITS of thousands
+1090 X$=UNIT$(X)+XT$:KW$=KW$+X$:PRINT X$;
+1100 N=N+1
+1110 GOTO 820
+1120 ' --- six digits ---
+1130 YT$=" HUNDRED AND "
+1140 X=INSTR("123456789",KL$(1))          'UNITS of 100K
+1150 X$=UNIT$(X)+YT$:KW$=KW$+X$:PRINT X$;
+1160 N=N+1
+1170 GOTO 970
+1180 ' --- remove spaces and dupes ---
+1190 ZZ$=KW$:GOSUB 210:KW$=ZZ$:GOSUB 280:KW$=NK$
+1200 PRINT:PRINT"The Keyword compressed and with duplicates removed is "KW$
+1210 ' PRINT KW$;
+1220 ' --- use KW$ to make keyed alphabet KA$ ---
+1230 GOSUB 340
+1240 PRINT"giving a Keyed alphabet: " KA$
+1250 '   --- now make up the enciphering alphabet EA$ ---
+1255 'PRINT"Enciphering alphabet is: ";
+1260 FOR M=1 TO 5
+1270   FOR N=1 TO 5
+1280    EA$=EA$+MID$(KA$,M+(N-1)*5,1)
+1290   NEXT
+1300 NEXT
+1310 'now we have switched the vertical/horiz
+1320 '  --- encipher RP$ ---
+1330 FOR N=1 TO LP
+1340   X=INSTR(AL$,MID$(RP$,N,1))         'get letter posn in plain alphabet
+1350   C$=MID$(EA$,X,1)                   'and get that posn in enciph alphbt
+1360   OP$=OP$+C$:IF N/5=INT(N/5)THEN OP$=OP$+" "
+1370 NEXT
+1380 PRINT:COLOR 0,7:PRINT"The Ciphertext is:":COLOR 7,0:PRINT OP$
+1390 GOTO 9260
+4990 '
+5000 ' --- SUB: title ---
+5010 CLS:PRINT DATE$ TAB(29)"* BAZERIES ENCIPHERMENT *" TAB(65)"By Mike Barlow":PRINT TAB(31)STRING$(21,"-"):RETURN
+9250 '
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,9500,9500:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255    'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT TYPE$(NS) "Bazeries encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT OP$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9500 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+9510 LOCATE 23,1:END
+17990 '
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME 9260
+18020 ON ERROR GOTO 0:STOP
+20000 '
+                    ----  examples ----
+20010 XP$="SIMPLE SUBSTITUTION PLUS TRANSPOSITION":XK$="3752":XP=10:'ACA&U p26 takes 5 secs on TRS80
+20020 RETURN
+29000 '
+30000 'TENS data (8), TEENS data (9), UNITS data (9)
+30010 DATA TWENTY,THIRTY,FORTY,FIFTY,SIXTY,SEVENTY,EIGHTY,NINETY
+30040 DATA ELEVEN,TWELVE,THIRTEEN,FOURTEEN,FIFTEEN,SIXTEEN,SEVENTEEN,EIGHTEEN,NINETEEN
+30060 DATA ONE,TWO,THREE,FOUR,FIVE,SIX,SEVEN,EIGHT,NINE
+65000 SAVE"bazeries.enc",A
+

@@ -1,0 +1,362 @@
+//****************************************************
+//UNINSTALL FOR PGP 5.5 ADMIN
+//08/28/97 
+//****************************************************
+
+
+
+declare
+#include "SDDIALOG.H"
+
+#define PGP_HIDDEN_WINDOW			"PGPtray_Hidden_Window"
+#define WM_CLOSE					0x0010 // defines the WM_CLOSE message.
+#define TITLE						"PGP 5.5 UNINSTALL"
+#define APP_NAME					"PGP 5.5 UNINSTALL"
+
+//	FUNCTION PROTOTYPES
+prototype	INT PGP55cd.PGPcomdlgGetSDKFilePaths(STRING, INT, STRING, INT, STRING, INT);
+
+STRING		szPubRingPath [512];
+STRING		szPrivRingPath[512];
+STRING		szRandSeedPath[512];
+STRING		szKey,szName,svValue,svReturnString,szBmpName, szLocalDB, szTemp, szMsg;
+STRING		Installdir,svTarget,svResult;
+NUMBER		nDx,nDy,nvSize,nvType,nID_BITMAP, nResult, Reboot;
+HWND		hWnd1,hWnd2,hWnd3,hWnd4,hWnd5,hWnd6,hWnd7,hWnd8,hWnd9;
+
+program
+
+start:
+//SETUP THE SCREEN
+GetExtents(nDx,nDy);
+Enable(FULLWINDOWMODE);
+Enable(INDVFILESTATUS);
+SetTitle(TITLE,20,YELLOW);
+SetColor(BACKGROUND,BK_BLUE);
+SetColor(STATUSBAR,BLUE);     // Bright blue.
+Enable(DIALOGCACHE);
+
+
+Reboot = 0;
+
+//MAKE SURE THE USER REALLY WANTS TO UNINSTALL
+SetDialogTitle (DLG_ASK_YESNO,"Confirm uninstall");
+if (AskYesNo("Are you sure you want to UNINSTALL PGP 5.5 ?",NO) = NO) then
+	exit;
+endif;
+
+SdShowMsg ("Searching for running applications.", TRUE);
+Delay(5);
+// Kill PGPtray.exe 
+hWnd1 = FindWindow(PGP_HIDDEN_WINDOW,"");
+if (hWnd1 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPtray Running");
+	MessageBox ("For uninstall to continue PGPtray must not be running.\n"+
+	"Please shut down PGPtray and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+//ENSURE NO PLUGINS\DLL's ARE IN USE
+hWnd2 = FindWindow("Microsoft Exchange 4.0 Viewer","");
+if (hWnd2 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Exchange Running");
+	MessageBox ("For uninstall to continue Microsoft Exchange must not be running.\n"+
+	"Please shut down Microsoft Exchange and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd3 = FindWindow("Microsoft Exchange 5.0 Viewer","");
+if (hWnd3 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Exchange Running");
+	MessageBox ("For uninstall to continue Microsoft Exchange must not be running.\n"+
+	"Please shut down Microsoft Exchange and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd4 = FindWindow("rctrl_renwnd32","");
+if (hWnd4!= NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Outlook Running");
+	MessageBox ("For uninstall to continue Microsoft Outlook must not be running.\n"+
+	"Please shut down Microsoft Outlook and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd5 = FindWindow("EudoraMainWindow","");
+if (hWnd5 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Eudora Running");
+	MessageBox ("For uninstall to continue Eudora must not be running.\n"+
+	"Please shut down Eudora and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd6 = FindWindow("PGPAdminWizardClass","");
+if (hWnd6 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Admin. Wizard Running");
+	MessageBox ("For uninstall to continue the admin wizard must not be running.\n"+
+	"Please shut down the admin. wizard and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd7 = FindWindow("PGPkeysMainWinClass","");
+if (hWnd7 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPkeys Running");
+	MessageBox ("For uninstall to continue PGPkeys must not be running.\n"+
+	"Please shut down PGPkeys and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd8 = FindWindow("PGPtools","");
+if (hWnd8 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPtools Running");
+	MessageBox ("For uninstall to continue PGPtools must not be running.\n"+
+	"Please shut down PGPtools and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+hWnd9 = FindWindow("PGPlog","");
+if (hWnd9 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPLog Running");
+	MessageBox ("For uninstall to continue PGPLog must not be running.\n"+
+	"Please shut down PGPLog and start uninstall again.",INFORMATION);
+    exit;
+endif;
+
+
+
+
+//AT THIS POINT ALL FILES SHOULD BE FREE
+SdShowMsg ("Searching for running applications.", FALSE);
+SdShowMsg ("Removing PGP 5.5 components.", TRUE);
+
+//DELETE .DLL'S FROM WINDOWS SYSTEM DIRECTORY
+TARGETDIR = WINSYSDIR;
+RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+szLocalDB = "Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce";
+nResult = DeleteFile ("PGPsdk.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGPsdk.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGPsdk.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGPsdkKS.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGPsdkKS.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGPsdkKS.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGPsdkKeyServer.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGPsdkKeyServer.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGPsdkKeyServer.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGP55km.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGP55km.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGP55km.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGP55cd.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGP55cd.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGP55cd.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGP55rd.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGP55rd.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGP55rd.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGP55sc.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGP55sc.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGP55sc.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("PGP55mn.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"PGP55mn.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"PGP55mn.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("pgpExch.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"pgpExch.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"pgpExch.dll" ,-1);
+	Reboot = 1;
+	endif;
+nResult = DeleteFile ("pgp55oe.dll");
+	if (nResult < 0) then
+	RegDBSetKeyValueEx
+	(szLocalDB,"pgp55oe.dll",REGDB_STRING,"command /c del " + WINSYSDIR ^"pgp55oe.dll" ,-1);
+	Reboot = 1;
+	endif;
+
+TARGETDIR = WINDIR;
+DeleteFile ("PGPsdkPrefs");
+DeleteFile ("PGPsdk.prf");
+DeleteFile ("PGPMacBinaryMappings.txt");
+
+//GET KEYRING AND RANSEED FILE LOCATIONS
+//PGPcomdlgGetSDKFilePaths(szPubRingPath, 512, szPrivRingPath, 512, 
+//						szRandSeedPath, 512);
+
+//GET THE PGP 5.5 INSTALLATION DIRECTORY
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szKey = "SOFTWARE\\PGP\\PGP55\\PGPKeys";
+szName = "ExePath";
+
+RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+ParsePath(svReturnString, svValue, PATH);
+
+//DELETE FILES FROM THE PGP 5.5 INSTALL DIRECTORY
+TARGETDIR = svReturnString;
+Installdir = svReturnString;
+DeleteFile ("keygen.avi");
+DeleteFile ("license.txt");
+DeleteFile ("Pgp55.cnt");
+DeleteFile ("pgp55.hlp");
+DeleteFile ("PGPadmin.exe");
+DeleteFile ("PGPkeys.exe");
+DeleteFile ("PGPlog.exe");
+DeleteFile ("PGPtools.exe");
+DeleteFile ("PGPtray.exe");
+DeleteFile ("Quickstart.doc");
+DeleteFile ("Readme.txt");
+DeleteFile ("PGPadmin.prf");
+DeleteFile ("PGPclient.prf");
+DeleteFile ("Eudora.url");
+DeleteFile ("Adobe.url");
+DeleteFile ("randseed.bin");
+DeleteFile ("PGP55win.pdf");
+DeleteFile ("*.pdf");
+DeleteFile ("*.isu");
+Delay (5);
+
+if (svReturnString != "") then
+	DeleteDir(svReturnString + "\\ClientInstaller", ALLCONTENTS);
+	DeleteDir(svReturnString + "\\TEMP", ALLCONTENTS);
+	DeleteDir(svReturnString + "\\Signatures", ALLCONTENTS);
+
+
+	SdShowMsg ("Removing PGP 5.5 components.", FALSE);
+	SdShowMsg ("Removing PGP 5.5 plugins.", TRUE);
+	Delay (5);
+endif;
+
+//GET THE EUDORA PLUGIN PATH
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szKey = "SOFTWARE\\PGP\\PGP55\\EudoraPlugin";
+szName = "PluginPath";
+
+RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+
+//DELETE THE EUDORA PLUGIN
+TARGETDIR = svValue;
+DeleteFile ("pgpplugin.dll");
+
+//DELETE REGISTRY ENTRIES
+SdShowMsg ("Removing PGP 5.5 plugins.", FALSE);
+SdShowMsg ("Removing PGP 5.5 registry entries.", TRUE);
+Delay (4);
+//HKEY_CURRENT_USER
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+RegDBDeleteKey ("Software\\PGP\\PGP55");
+
+//HKEY_CLASSES_ROOT
+RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".asc");
+RegDBDeleteKey (".bexpk");
+RegDBDeleteKey (".pgp");
+RegDBDeleteKey (".pkr");
+RegDBDeleteKey (".prvkr");
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".pubkr");
+RegDBDeleteKey (".sig");
+RegDBDeleteKey (".skr");
+RegDBDeleteKey ("CLSID\\{969223c0-26aa-11d0-90ee-444553540000}");
+RegDBDeleteKey ("PGP Armored Encrypted File");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Armored Extracted Public Key");
+RegDBDeleteKey ("PGP Detached Signature File");
+RegDBDeleteKey ("PGP Encrypted File");
+RegDBDeleteKey ("PGP Private Keyring");
+RegDBDeleteKey ("PGP Public Keyring");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+
+//HKEY_LOCAL_MACHINE
+RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".asc");
+RegDBDeleteKey (".bexpk");
+RegDBDeleteKey (".pgp");
+RegDBDeleteKey (".pkr");
+RegDBDeleteKey (".prvkr");
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".pubkr");
+RegDBDeleteKey (".sig");
+RegDBDeleteKey (".skr");
+RegDBDeleteKey ("CLSID\\{969223c0-26aa-11d0-90ee-444553540000}");
+RegDBDeleteKey ("PGP Armored Encrypted File");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Armored Extracted Public Key");
+RegDBDeleteKey ("PGP Detached Signature File");
+RegDBDeleteKey ("PGP Encrypted File");
+RegDBDeleteKey ("PGP Private Keyring");
+RegDBDeleteKey ("PGP Public Keyring");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions\\PGP Plugin");
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PGP55DeinstKey");
+RegDBDeleteKey ("SOFTWARE\\Pretty Good Privacy,Inc.");
+
+RegDBDeleteValue ("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions", "PGP Plugin");
+
+//HKEY_USERS
+RegDBSetDefaultRoot(HKEY_USERS);
+RegDBDeleteKey ("S-1-5-21-1998468922-181747292-2076119496-1000\\Software\\PGP");
+SdShowMsg ("Removing PGP 5.5 registry entries.", FALSE);
+SdShowMsg ("Removing menu folders.", TRUE);
+Delay (5);
+ProgDefGroupType(PERSONAL);
+DeleteProgramFolder ("Pretty Good Privacy");
+DeleteFolderIcon(FOLDER_STARTUP,"PGPtray");
+SdShowMsg ("Removing menu folders.", FALSE);
+SdShowMsg ("Finishing cleanup, please wait...", TRUE);
+Delay (4);
+SdShowMsg ("Finishing cleanup, please wait...", FALSE);
+SetDialogTitle (DLG_MSG_INFORMATION,"Uninstall complete");
+MessageBox ("PGP 5.5 has been uninstalled. Your key files have not been\n" +
+			"removed.  You may wish to store them in a safe place.", INFORMATION);
+
+RegDBSetKeyValueEx
+(szLocalDB,"uninstall.exe",REGDB_STRING,"command /c del " + Installdir ^"uninstall.exe" ,-1);
+Reboot = 1;
+
+Enable (BITMAPFADE);
+//Place BMP Splash up onto the screen
+szBmpName = SUPPORTDIR + "splash.bmp";
+PlaceBitmap (szBmpName, nID_BITMAP, CENTERED, CENTERED, CENTERED);
+Delay (4);
+if (Reboot = 1) then
+	szTemp = "Uninstall has finished uninstalling " +
+	APP_NAME +" on your computer";
+	szMsg =   "Some files could not be deleted because" +
+	" they are currently in use by other programs" +
+	" on the system.  Files in use will be deleted" +
+	" the next time you restart your system. You will" +
+	" need to reboot before installing any PGP products.";
+	// If SdFinishReboot reboots the system,the shared file data is
+	// automatically recorded.
+	RebootDialog ("Restart Windows",szMsg,SYS_BOOTWIN);
+endif;
+exit;
+
+#include "Sddialog.rul"
+
+

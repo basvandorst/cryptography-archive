@@ -1,0 +1,675 @@
+<HTML>
+<HEAD>
+   <TITLE>A simple test data interpreter</TITLE>
+</HEAD>
+<BODY BGCOLOR="#FFFFFF">
+
+<H1 ALIGN=CENTER><IMG SRC="../images/Cryptix-logo.gif"
+ALT="Cryptix logo" WIDTH=266 HEIGHT=120 ALIGN=middle></H1>
+
+<H1 ALIGN=CENTER>A simple test data interpreter</H1>
+
+<P ALIGN=CENTER>(Cryptix Application Note #5 --November 1997, updated February 1998.)</P>
+
+<P>&nbsp;<B>Table of Contents</B></P>
+
+<UL>
+   <LI><A HREF="#overview">Overview</A>
+   
+   <LI><A HREF="#md-api">Message digest data definition
+   syntax</A>
+   
+   <UL>
+      <LI><A HREF="#comment">Comments</A>
+      
+      <LI><A HREF="#md">The <B>md</B> keyword</A>
+      
+      <LI><A HREF="#data-md">The <B>data</B> keyword for a message
+      digest implementation</A>
+      
+      <UL>
+         <LI><A HREF="#single">Message digest single-iteration test
+         data</A>
+         
+         <LI><A HREF="#multi">Message digest multi-iteration test
+         data</A>
+      </UL>
+   </UL>
+   
+   <LI><A HREF="#cipher-api">Cipher data definition
+   syntax</A>
+   
+   <UL>
+      <LI><A HREF="#cipher-api">The <B>cipher</B> keyword</A>
+      
+      <LI><A HREF="#data-cipher">The <B>data</B> keyword for a cipher
+      implementation</A>
+      
+      <LI><A HREF="#speed">The <B>speed</B> keyword</A>
+      
+      <LI><A HREF="#auto">The <B>auto</B> keyword</A>
+      
+      <LI><A HREF="#property">The <B>property</B> and
+      <B>properties</B> keywords</A>
+      
+      <LI><A HREF="#mode">The <B>mode</B> keyword</A>
+      
+      <LI><A HREF="#padding">The <B>padding</B> keyword</A>
+      
+      <LI><A HREF="#iv">The <B>iv</B> keyword</A>
+   </UL>
+   
+   <LI><A HREF="#syntax">Other syntax-related issues</A>
+   
+   <UL>
+      <LI><A HREF="#include">The <B>include</B> keyword</A>
+      
+      <LI><A HREF="#hexlit">The hexadecimal literal</A>
+   </UL>
+   
+   <LI><A HREF="#javacc">Generating cryptix.util.test.Maker</A>
+
+   <LI><A HREF="#running">Running Maker</A>
+
+   <LI><A HREF="#jjdoc">Maker syntax in EBNF</A>
+</UL>
+
+<P>Return to the <A HREF="index.html">Application Notes Index</A> or
+the <A HREF="../../../FAQ.html">FAQ</A>.</P>
+
+<P>
+<HR>
+</P>
+
+<H3><A NAME="overview"></A><A HREF="#top"><IMG
+SRC="../images/chrnd03.gif" WIDTH=20 HEIGHT=12 BORDER=0
+ALIGN=bottom></A>Overview</H3>
+
+<P>Assessing the correctness of a cipher or message digest algorithm
+implementation involves running the algorithm with a known set of
+parameter values and checking the results against pre-computed values
+obtained either manually or with another correct implementation.</P>
+
+<P>The process of writing the test class is a time-consuming one and,
+most of the time, requires the programmer to use repetitive tasks
+slightly adapted to the specifics of the algorithm being tested.</P>
+
+<P>The abstract nature of the Java implementations of such algorithms
+and test procedures, inherent to the language being an
+object-oriented one, implies a more abstract method of testing that
+can save time and resources for Quality Assurance people, as well as
+programmers.</P>
+
+<P>This dissociation between the algorithms and the data for their
+most common test protocols is emphasised by the Sun JCE API and
+Cryptix's clean-room implementation known as the
+<A HREF="../../ijce/index.html">IJCE (International
+JCE)</A>.</P>
+
+<P>The <TT>cryptix.util.test.</TT><B><TT>Maker</TT></B> class is a
+simple interpreter for a basic data definition language that can be
+used to test the correctness of cipher algorithm and message digest
+implementations. In essence instead of having a Test class for each
+implementation, incorporating the code and the test data, the user
+invokes <B><TT>Maker</TT></B> with as many test data files as needed
+or required. The syntax of such data files is simple enough that
+non-programmers can create them and indeed conduct the tests.</P>
+
+<P>For more complicated situtations where specialised test code must be
+written, Maker files can <a href="#include">include</a> a Java class,
+allowing a single framework to be used to test all parts of Cryptix.</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="md-api"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Message digest related
+data definition syntax</H3>
+
+<P>A simple example of a test data input file for
+<B><TT>Maker</TT></B> follows:</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>//
+// MD2 test data
+//
+&nbsp;
+md MD2
+data
+    ""
+    &lt;8350E5A3E24C153DF2275C9F80692773&gt;
+&nbsp;
+    "a"
+    &lt;32EC01EC4A6DAC72C0AB96FB34C0B5D1&gt;
+&nbsp;
+    "abc"
+    &lt;DA853B0D3F88D99B30283A69E6DED6BB&gt;
+&nbsp;
+    "message digest"
+    &lt;AB4F496BFB2A530B219FF33031FE06B0&gt;
+&nbsp;
+    "abcdefghijklmnopqrstuvwxyz"
+    &lt;4E8DDFF3650292AB5A4108C3AA47940B&gt;</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<H4><A NAME="comment"></A>Comments</H4>
+
+<P>The first three lines are comments. A <TT>comment</TT> starts with
+the two characters <TT>//</TT> and runs until an end-of-line is
+encountered. <B><TT>Maker</TT></B> ignores all comments. They are
+defined to allow an additional level of meta-information for use by
+the users.</P>
+
+<P>A <TT>comment</TT> need not start at the beginning of a line.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="md"></A>The <TT><FONT SIZE="+2">md</FONT></TT> keyword
+</H4>
+
+<P>The md keyword tells <B><TT>Maker</TT></B> that the subsequent
+information is to be used with a <TT>java.security.MessageDigest</TT>
+subclass. It is followed by an Identifier that has to match a JCE
+standard message digest name, or alias. Aliases are defined in the
+security provider properties, which for the Cryptix strong cryptographic
+library are stored in the <TT>Cryptix.properties</TT> file, found in the
+<TT>cryptix-lib</TT> directory.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="data-md"></A>The <TT><FONT SIZE="+2">data</FONT></TT>
+keyword for a message digest implementation</H4>
+
+<P>The data keyword tells <B><TT>Maker</TT></B> that the subsequent
+information is to be interpreted as test data for the algorithm last
+defined.</P>
+
+<P>The structure of data elements differ depending on whether the
+algorithm is a MessageDigest (indicated with the
+<TT><A HREF="#md">md</A></TT> keyword) or a Cipher (indicated with
+the <TT><A HREF="#cipher">cipher</A></TT> keyword).</P>
+
+<P>For message digest test data are defined as either
+<A HREF="#single">single-iteration</A> or
+<A HREF="#multi">multi-iteration</A>.</P>
+
+<H5><A NAME="single"></A>Message digest single-iteration test data
+</H5>
+
+<P>A single iteration is a pair of data formed by a input string or
+<A HREF="#hexlit">hexadecimal literal</A>, and an output hexadecimal
+literal, separated by white space (one or more space, tab, new line or
+carriage return characters).</P>
+
+<P>The semantics of the single-iteration statement is that
+<B><TT>Maker</TT></B> has to digest the input data (expressed either
+in hex or as an ASCII string) and check if the result matches the
+given output data.
+
+<H5><A NAME="multi"></A>Message digest multi-iteration test data
+</H5>
+
+<P>A multi-iteration test data consists of:</P>
+
+<OL>
+   <LI>Numeric literal, say n,
+   
+   <LI>The symbol "*",
+   
+   <LI>An input string or hexadecimal literal, and finally
+   
+   <LI>An output hexadecimal literal.
+</OL>
+
+<P><B><TT>Maker</TT></B> will update the message digest object
+<TT>n</TT> times using the input data, and finally check the result
+against the designated output data.</P>
+
+<P>Here is an example of a <B><TT>Maker</TT></B> input file using the
+multi-iteration test data syntax:</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>//
+// RIPEMD128 test data
+//
+&nbsp;
+md RIPEMD128
+data
+    ""
+    &lt;CDF26213A150DC3ECB610F18F6B38B46&gt;
+&nbsp;
+    "a"
+    &lt;86BE7AFA339D0FC7CFC785E72F578D33&gt;
+&nbsp;
+    ...
+&nbsp;
+    1000000 * "a"
+    &lt;4A7F5723F954EBA1216C9D8F6320431F&gt;</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="cipher-api"></A><A HREF="#top"><IMG
+SRC="../images/chrnd03.gif" WIDTH=20 HEIGHT=12 BORDER=0
+ALIGN=bottom></A>Cipher data definition syntax</H3>
+
+<P>A simple <B><TT>Maker</TT></B> input file for testing a cipher
+implementation follows:</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>//
+// CAST5 test data
+//
+&nbsp;
+cipher CAST5
+&nbsp;
+// test #1
+&nbsp;
+data
+// key                               input              output
+ &lt;0123456712345678234567893456789A&gt; &lt;0123456789ABCDEF&gt; &lt;238B4FE5847E44B2&gt;
+ &lt;01234567123456782345&gt;             &lt;0123456789ABCDEF&gt; &lt;EB6A711A2C02271B&gt;
+ &lt;0123456712&gt;                       &lt;0123456789ABCDEF&gt; &lt;7AC816D16E9B302E&gt;
+&nbsp;
+&nbsp;
+// test #2
+&nbsp;
+data &lt;0123456712&gt; &lt;0123456789ABCDEF&gt; speed</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<H4><A NAME="cipher"></A>The <TT><FONT SIZE="+2">cipher</FONT></TT>
+keyword</H4>
+
+<P>Similar to <TT>md</TT>, the <TT>cipher</TT> keyword tells
+<B><TT>Maker</TT></B> that the subsequent information is to be used
+with a <TT>java.security.Cipher</TT> subclass. It is always followed
+by an Identifier that has to match a JCE standard cipher name
+or alias.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="data-cipher"></A>The <TT><FONT
+SIZE="+2">data</FONT></TT> keyword for a cipher implementation</H4>
+
+<P>For a cipher object, the data elements can be: two-way test data,
+<A HREF="#auto">symmetric test data</A> or <A HREF="#speed">speed
+test data</A>.</P>
+
+<P>A two-way test data is formed by a triplet of literals
+to be interpreted as the <I>key</I>, an <I>input</I> value and the
+certified <I>output</I> value respectively. The input value (plaintext)
+can be expressed either as hexadecimal or an ASCII string; the other
+values must be expressed in hexadecimal. When
+<B><TT>Maker</TT></B> recognises a two-way test data statement, it:
+</P>
+
+<OL>
+   <LI>initialises the cipher object for encryption using the given
+   <I>key</I>;
+   
+   <LI>encrypts the <I>input</I> and
+   
+   <LI>test the result against the designated <I>output</I>; It then
+   
+   <LI>reinitialises the same cipher with the same <I>key</I> this
+   time for decryption
+   
+   <LI>decrypts the <I>output</I> and
+   
+   <LI>test the result against the designated <I>input</I>.
+</OL>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="speed"></A>The <TT><FONT SIZE="+2">speed</FONT></TT>
+keyword</H4>
+
+<P>The <TT>speed</TT> keyword indicates a speed test data to be
+conducted on a cipher implementation. It is the last element of a
+triplet where the first two are similar to those found in a two-way
+test data; i.e.: key and input.</P>
+
+<P>When <B><TT>Maker</TT></B> parses the speed keyword, it runs the
+cipher 100,000 times updating the same <I>input</I> value and
+printing both the start and finish date/times. It then decrypts the
+so far obtained result the same number of times and check if the
+final result matches the given <I>input</I>, printing along the
+timing information.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="auto"></A>The <TT><FONT SIZE="+2">auto</FONT></TT>
+keyword</H4>
+
+<P>A symmetric test data is a triplet consisting of two literals
+corresponding to the plaintext and ciphertext, and the keyword
+<TT>auto</TT>. Here is an example:</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>//
+// RC2 test data
+//
+&nbsp;
+cipher RC2
+data
+  &lt;0123456789abcdef&gt;
+  &lt;
+  7595C3E6 114A0978 0C4AD452 338E1FFD 9A1BE949 8F813D76 533449B6 778DCAD8
+  C78A8D2B A9AC6608 5D0E53D5 9C26C2D1 C490C1EB BE0CE66D 1B6B1B13 B6B919B8
+  47C25A91 447A95E7 5E4EF167 79CDE8BF 0A95850E 32AF9689 444FD377 108F98FD
+  CBD4E726 56750099 0BCC7E0C A3C4AAA3 04A387D2 0F3B8FBB CD42A1BD 311D7A43
+  03DDA5AB 078896AE 80C18B0A F66DFF31 9616EB78 4E495AD2 CE90D7F7 72A81747
+  B65F6209 3B1E0DB9 E5BA532F AFEC4750 8323E671 327DF944 4432CB73 67CEC82F
+  5D44C0D0 0B67D650 A075CD4B 70DEDD77 EB9B1023 1B6B5B74 1347396D 62897421
+  D43DF9B4 2E446E35 8E9C11A9 B2184ECB EF0CD8E7 A877EF96 8F1390EC 9B3D35A5
+  585CB009 290E2FCD E7B5EC66 D9084BE4 4055A619 D9DD7FC3 166F9487 F7CB2729
+  12426445 998514C1 5D53A18C 864CE3A2 B7555793 98812652 0EACF2E3 066E230C
+  91BEE4DD 5304F5FD 0405B35B D99C7313 5D3D9BC3 35EE049E F69B3867 BF2D7BD1
+  EAA595D8 BFC0066F F8D31509 EB0C6CAA 006C807A 623EF84C 3D33C195 D23EE320
+  C40DE055 8157C822 D4B8C569 D849AED5 9D4E0FD7 F379586B 4B7FF684 ED6A189F
+  7486D49B 9C4BAD9B A24B96AB F924372C 8A8FFFB1 0D553549 00A77A3D B5F205E1
+  B99FCD86 60863A15 9AD4ABE4 0FA48934 163DDDE5 42A65855 40FD683C BFD8C00F
+  12129A28 4DEACC4C DEFE58BE 7137541C 047126C8 D49E2755 AB181AB7 E940B0C0
+  &gt;
+  auto</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<P>When <B><TT>Maker</TT></B> recognises the <TT>auto</TT> keyword,
+it encrypts the <I>input</I> value, then decrypts and check if the
+final result matches the given <I>input</I>.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="property"></A>The <TT><FONT
+SIZE="+2">property</FONT></TT> and <TT><FONT
+SIZE="+2">properties</FONT></TT> keywords</H4>
+
+<P>Symmetric ciphers can be run in different modes of operations,
+with or without padding. Some modes require initialisation data known
+as Initialisation Vector or IV. In addition certain algorithms are
+designed to run with a variable number of rounds and a varying degree
+of cryptographic strength.</P>
+
+<P><B><TT>Maker</TT></B> allows the user to set specific values for
+these parameters with the <TT>properties</TT> keyword. Here is a
+fragment from the SAFER test data file (<TT>SAFER.mtest</TT>):</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>properties
+    mode      CBC
+    padding   NONE
+    iv        &lt;74536EBDC211484A&gt;
+    variant = "K-128"
+    rounds =  10
+data
+    // key
+    &lt;42431BA40D291F81D66083C605D3A4D6&gt;
+    // input
+    &lt;
+    00000000 00000000 01020304 05060708 00000000 00000000 01020304 05060708
+    00010203 04050607 08090A0B 0C0D0E0F 10111213 14151617 18191A1B 1C1D1E1F
+    20212223 24252627 28292A2B 2C2D2E2F 30313233 34353637 38393A3B 3C3D3E3F</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<P>As you can see, the properties block has to appear before the data
+block.</P>
+
+<P>Some properties have their own keywords, while algorithm-specific
+ones don't. Algorithm-specific properties are defined using the
+following syntax:</P>
+
+<P ALIGN=CENTER><I>property-name = property-value</I></P>
+
+<P>Where <I>property-name</I> is the name of a property known to the
+cipher implementation and <I>property-value</I> is either a numeric,
+string, or hexadecimal literal. When <B><TT>Maker</TT></B> encounters a
+statement of this sort, it calls the cipher object with the
+<TT>setParameter</TT>() method defined in the cipher object's
+superclass; i.e. <TT>java.security.Cipher</TT>.</P>
+
+<P>If the value is invalid or is of the wrong type, the cipher object
+itself will reject it by throwing an exception, and <B><TT>Maker</TT></B>
+will treat this as an error.</P>
+
+<P>In the example above, the data implies that the SAFER
+implementation knows how to handle two properties named:
+<I>rounds</I> and <I>variant</I>, with the first being a numeric while
+the last is a string.</P>
+
+<P>The Java types that can be passed as algorithm-specific parameters by
+Maker are java.lang.Integer (for numeric values), java.lang.String (for
+values expressed as a string), and byte[] (for binary data).
+
+<P>&nbsp;</P>
+
+<H4><A NAME="mode"></A>The <TT><FONT SIZE="+2">mode</FONT></TT>
+keyword</H4>
+
+<P>The <TT>mode</TT> keyword should be followed by the JCE standard name
+or alias for a <TT>java.security.Mode</TT> subclass. It indicates the
+mode in which the cipher object will be run.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="padding"></A>The <TT><FONT SIZE="+2">padding</FONT></TT>
+keyword</H4>
+
+<P>The <TT>padding</TT> keyword should be followed by the JCE standard
+name or alias for a <TT>java.security.PaddingScheme</TT> subclass. It
+indicates the padding method to apply for the cipher data.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="iv"></A>The <TT><FONT SIZE="+2">iv</FONT></TT> keyword
+</H4>
+
+<P>The <TT>iv</TT> keyword should be followed by a hexadecimal
+literal. This literal will be used to set the initialisation vector for the
+cipher being tested.</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="syntax"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Other syntax-related
+issues</H3>
+
+<H4><A NAME="include"></A>The <TT><FONT SIZE="+2">include</FONT></TT>
+keyword</H4>
+
+<P>The <TT>include</TT> keyword should be followed by either the name
+of another Maker source file (as a string literal), or a fully qualified
+class name.</P>
+
+<P>If the name of a file is used, a new copy of <B><TT>Maker</TT></B>
+is created, and run on that input file. Here is an example:</P>
+
+<P ALIGN=CENTER><CENTER><TABLE BORDER=1 CELLPADDING=20
+bgcolor=#FFFF80>
+   <TR>
+      <TD VALIGN=top>
+         <PRE><KBD>//
+// test include statement of Maker language
+//
+&nbsp;
+include "MDx.mtest"
+include "RIPEMD1xx.mtest"</KBD></PRE>
+      </TD></TR>
+</TABLE></CENTER></P>
+
+<P>Starting from Cryptix 3.0.4, included files are looked for relative to the
+directory of the parent file. For example, if the above source was in the
+file "<samp>Foo.mtest</samp>", and was run using:
+
+<BLOCKQUOTE><PRE>
+java cryptix.util.test.Maker some_directory/Foo.mtest
+</PRE></BLOCKQUOTE>
+
+the include statements would look for "<samp>some_directory/MDx.mtest</samp>" and
+"<samp>some_directory/RIPEMD1xx.mtest</samp>". This makes it easier to keep several
+source files together, that refer to each other using relative paths.
+
+<P>In place of a filename, the name of a Java class can also be specified,
+without any enclosing quotes. The class must be public, have a public
+constructor that takes no arguments, and extend <samp>cryptix.util.test.BaseTest</samp>
+(a full description of the BaseTest API is beyond the scope of this document;
+see the source or the Javadoc comments for that class). This feature was also
+added in Cryptix 3.0.4.
+
+
+<H4><A NAME="hexlit"></A>The hexadecimal literal</H4>
+
+<P>A hexadecimal literal is a sequence of hexadecimal characters
+enclosed within a pair of angle brackets: <TT>&lt;&gt;</TT>.
+<B><TT>Maker</TT></B> removes all white space characters from the
+enclosed sequence before converting it to a byte array.</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="javacc"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Generating
+cryptix.util.test.Maker</H3>
+
+<P><B><TT>Maker</TT></B> is written in
+<A HREF="http://www.suntest.com/JavaCC/">JavaCC</A>, the Java
+equivalent to lex/yacc. The source code is defined in
+<TT>Maker.jj</TT>. You can use the already generated Java classes or
+you can recreate them. Here is how:</P>
+
+<OL>
+   <LI>If you want to use the existing Java classes skip to step 2,
+   otherwise delete the following Java source files:
+   
+   <OL>
+      <LI TYPE="1"><TT>ASCII_CharStream.java</TT>
+      
+      <LI><TT>Maker.java</TT>
+      
+      <LI><TT>MakerConstants.java</TT>
+      
+      <LI><TT>MakerTokenManager.java</TT>
+      
+      <LI><TT>ParseException.java</TT>
+      
+      <LI><TT>Token.java</TT>
+      
+      <LI><TT>TokenMgrError.java<BR>
+      
+      <BR>
+      
+      </TT>
+   </OL>
+   
+   <LI>Run JavaCC:
+   
+   <BLOCKQUOTE><PRE>javacc Maker.jj</PRE></BLOCKQUOTE>
+   
+   <LI>JavaCC will generate all the files listed in step one above.
+   Compile them with your Java compiler. A few warnings will be echoed
+   pertaining to the fact that the JavaCC code uses deprecated
+   methods. Just make sure there are not errors; just warnings.<BR>
+
+</OL>
+   
+<H3>
+<HR SIZE="1">
+<A NAME="running"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Running Maker
+</H3>
+
+<P>Maker can be run either from the command line or programmatically.
+
+<UL>
+   <LI> From the command line:
+
+<BLOCKQUOTE><PRE>
+java cryptix.util.test.Maker <I>inputfile</I> [&gt; <I>output</I>] [<I>options...</I>]
+java cryptix.util.test.Maker [&lt; <I>input</I>] [&gt; <I>output</I>] [<I>options...</I>]
+
+Options:
+    -verbose: print output even if all tests pass.
+</PRE></BLOCKQUOTE>
+
+        In Cryptix 3.0.4 and later, Maker will not display complete output unless
+        one or more tests fail. The -verbose option can be used to override this
+        behaviour. Cryptix 3.0.3 and earlier act as if -verbose is always set.
+        <P>
+   <LI> From a Java program (Cryptix 3.0.4 and later):
+
+<BLOCKQUOTE><PRE>
+import cryptix.util.test.Maker;
+
+InputStream is = getInputFileStream();
+Maker maker = new Maker(is);
+maker.run();
+</PRE></BLOCKQUOTE>
+
+        Alternatively, more control can be obtained by using the following method:
+
+<BLOCKQUOTE><PRE>
+/**
+ * Runs an instance of Maker.
+ *
+ * @param  options      an array of string options.
+ * @param  name         a name for this test.
+ * @param  includeDir   the directory that filenames of include files
+ *                      are considered relative to. This may be null,
+ *                      indicating the current directory.
+ * @param  out          a PrintWriter to direct output to.
+ * @exception cryptix.util.test.TestException if the test fails.
+ * @since Cryptix 3.0.4
+ */
+public void run(String[] options, String name, File includeDir, PrintWriter out)
+throws TestException { ... }
+</PRE></BLOCKQUOTE>
+
+</UL>
+
+<H3>
+<HR SIZE="1">
+<A NAME="jjdoc"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Maker syntax in EBNF
+</H3>
+
+<P>The formal syntax of <B><TT>Maker</TT></B> in extended Backus-Naur
+form, as generated by <TT>jjDoc</TT> (a utility included in the
+<TT>JavaCC</TT> package), is <A HREF="Maker.html">available</A>.
+(This is the Cryptix 3.0.4 version.)</P>
+
+<P>&nbsp;</P>
+
+<P>
+<hr size="3" noshade>
+<img src=../../../images/cryptix.gif alt=Cryptix align=right>
+
+<font size=-1>
+<ADDRESS><A HREF="mailto:raif@fl.net.au">Raif S. Naffah</A><BR>
+Chatswood, 13 November 1997.</ADDRESS>
+<ADDRESS><A HREF="mailto:hopwood@zetnet.co.uk">David Hopwood</A><BR>
+Rainhill, 1 February 1998.</ADDRESS>
+<P>
+<B>Copyright</B> &copy; 1996-1997 Systemics Ltd<br>
+on behalf of the Cryptix Development Team.<BR>
+All rights reserved.<BR>
+Cryptix is a trademark of Systemics Ltd.<BR>
+</font>
+</BODY>
+</HTML>

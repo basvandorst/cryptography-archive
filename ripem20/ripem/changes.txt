@@ -1,0 +1,211 @@
+                              RIPEM 2.0
+                       changes since RIPEM1.3a3
+
+* In WriteCert, also write the MD5OfPublicKey in case we ever want to look
+  up certificates by public key.
+* In GetUnvalidatedPublicKey fix bug: if there is no public key field
+  in the user info, set *found to FALSE and quit.
+* Added CompleteCertChain to implement the cert chaining algorithm.
+* Changed SelectCertChain to use CompleteCertChain.  Also have it take
+  a full R_RSA_PUBLIC_KEY instead of a digest.
+* Added ChainStatusInfo to allow returning individual certificate statuses
+  as well as the overall status.  Modified SelectCertChain and
+  RIPEMDecipherFinal to use a ChainStatusInfo for the chainStatus.
+* Reworked GetPrivateKey to handle errors better, to free allocated
+  memory and zeroize the decrypted private key DER.
+* Moved CERT_REVOCATION_UNKNOWN status up to 2 so it won't overshadow
+  CERT_EXPIRED and the rest when computing chains in environments where
+  there are no CRLs.  Note that in this environment, the best status
+  you can get is REVOCATION UNKNOWN, but EXPIRED certificates will show
+  up as such.
+* Fixed CrackHeaderLine to find the end of a field name after a colon
+  even if there is no following whitespace.
+* Added LAST_UPDATE_FIELD and CLR_INFO_FIELD to keyfield.h for CRL file.
+* Added crlSource to RIPEMDatabase.
+* Created new procedure ReadEncodedField and modified GetKeyBytesFromFile
+  to use it.
+* Changed argument names in GetKeyBytesFromFile to be a little clearer
+  and added keyName argument so we don't always use "User:"
+* Modified InitMain to initialize crl source also.
+* Added CRL and CRL-RETRIEVAL-REQUEST proc types to headers.h
+* Added Issuer: and CRL: field types to headers.h
+* Added RIPEMRequestCRLsInit, Update and Final to prepare
+  CRL-RETRIEVAL-REQUEST messages.
+* Modified DoHeaderLine to process CRL: fields.
+* Added MODE_CRL to enum enhance_mode for when deciphering CRL message.
+* Modified ProcessHeaderLine to detect an end PEM boundary as well as
+  a blank line as the end of a header as happens in CRL messages.
+* Modified DoDecipherDriver in the command line code to catch a CRL
+  message and not try to process senders.
+* Changed InitHomeDir to add an entry in the RipemDatabase for crls.
+  Also changed OpenFiles to open the crls file.
+* RIPEM calls which took a public key out filename now assume the output
+  public key file name is the first on the pubKeySource in the RIPEMDatabase.
+  (The new CRL database behaves the same way.)  Specifically, changed
+  pubKeyOutFilename to ripemDatabase in WriteSelfSignedCert,
+  DoGenerateKeys and ValidateAndWriteCert.  Likewise modified WriteCert
+  to use ripemDatabase.
+* In OpenFiles, make sure the public key out filename specified by the
+  user is the first in pubKeySource in RIPEMDatabase.
+* Removed PubOutStream and PrivOutStream from ripemcmd.c which weren't 
+  being used even in the last release.
+* Modified DERToCertificate and CertificateToDer to handle
+  md5WithRSAEncryption algorithm as well as md2WithRSAEncryption.
+* Changed DerCertToDerSigned to take the digestAlgorithm for making
+  md5WithRSAEncryption signatures as well.
+* Added issuerSerialAliases table to ripemInfo which is set by LoginUser 
+  so that the user can be recognized by all possible issuer/serial
+  pairs in RFC-style Recipient-IDs.
+* Added RIPEMDatabaseConstructor to the RIPEM API.  This is mostly what
+  InitMain did before.  Removed InitMain.
+* Fixed bug in CrackCmd to always return on an error instead of just
+  setting errorMessage (which was never checked).
+* Added AddKeySourceFilename and OpenKeySource to the RIPEM API for
+  managing the RIPEMDatabase.  Modified InitHomeDir and CrackCmd to
+  use AddKeySourceFilename.  Modified OpenFiles to use OpenKeySource.
+* Changed EncryptAndWritePrivateKey to close the first filename, write
+  over the file, and re-open the file.  (This is done since we must
+  replace a record, rather than adding one as we do with public keys
+  and CRLs).
+* Removed privKeyOutFilename arguments from DoGenerateKeys and DoChangePW
+  since the first private key filename in ripemDatabase is used.
+* Moved InitHomeDir to getsys.c so rcerts can use it as well.
+* Added ripemInfo args to CopyRandomBytes, ReportCPUTime and GetRanomBytes
+  so debugStream could be used from there instead of a global variable.
+  Removed externs for Debug and DebugStream from getsys.c.
+* Added API call GetPublicKeyDigest.  There is the subtle issue that
+  a public key encoded with the "rsaEncryption" object identifier versus the 
+  "rsa" object identifier gives a different encoding.  But we want a 
+  consistent MD5OfPublicKey for identifying entities for chain length
+  allowed and CRL lookup.  So always use the digest of the encoding returned
+  by PubKeyToDER which is the "rsa" object identifier.
+* Removed publicKeyDER from CertFieldPointers since it was previously
+  used for computing the public key digest.  GetPublicKeyDigest is now used.
+* Renamed MAX_CERT_TO_SIGNED_DELTA and DerCertToDerSigned to
+  MAX_UNSIGNED_TO_SIGNED_DELTA and DerUnsignedToDerSigned so they can be
+  used for CRLs as well.
+* Added useSignatureAlgorithmID argument in DerUnsignedToDerSigned
+  so that, if FALSE, digestAlgorithm would mean just the digest algorithm ID
+  (not a signature algorithm ID).  This is useful in encoding preferences.
+* Added passwordDigest to RIPEMInfo for use in authenticating the
+  preferences.  Set it in LoginUser.  Zeroize it in RIPEMInfoDestructor.
+* Added SetChainLenAllowed for allowing extended trust through other
+  users.
+* Added preferencesFilename to RIPEMDatabase struct.
+* Modified LoginUser to also load the preferences.  This is done only if
+  LoginUser does not return ERR_SELF_SIGNED_CERT_NOT_FOUND.
+* Added RIPEMSavePreferences which can be called to explicitly save the
+  preferences.  (Functions like SetChainLenAllowed also save the preferences.)
+* Modified DoChangePW to also call RIPEMSavePreferences to re-sign with
+  the new password.
+* Have InitHomeDir set the preferencesFilename.
+* Moved WritePrintableName to getsys.c so rcerts can use it also.
+* Added NormalizePublicKeyStruct and NormalizeNameStruct so that
+  SelectCertChain can use them to make sure bit-wise compares will
+  work on incoming names and public keys.  Also normalize ripemInfo's
+  userDN and publicKey in WriteSelfSignedCert.
+* Added InitDistinguishedNameStruct which zeroizes and sets the RDN
+  indexes to -1.  Also changed DERToDistinguishedName and SetNewUserDN
+  to use it.
+* Added #defines for MESSAGE_FORMAT_RIPEM1 and MESSAGE_FORMAT_PEM.
+  Also added messageFormat argument to RIPEMEncipherInit.
+* Removed lots of arguments from WriteHeader which were accessible in
+  ripemInfo anyway.  Modified WriteHeader to output according to
+  messageFormat.
+* Added ability to WriteHeader to output Recipient-ID-Asymmetric for
+  MESSAGE_FORMAT_PEM.  It finds all certificates with the recipient's public
+  key and for each one writes an ID with the issuer/serial and then
+  the Key-Info with the encrypted DES key.  The Key-Info may be repeated
+  multiple times, but all possible issuer/serial ID are covered.
+  RIPEMEncipherUpdate and RIPEMEncipherFinal now take a RIPEMDatabase
+  argument to allow the cert lookup.
+* Changed CrackLine to allocate the buffer of size 1024 on the heap
+  to save stack space.
+* Added maxFieldNameSize argument to CrackHeaderLine instead of assuming
+  MAX_LINE_SIZE.  This also allows the field name buffer to be declared
+  smaller than 1024.  In DoHeaderLine, reduced field name size to 80.
+* Made R_time part of the RIPEM API.
+* Changed ValidateAndWriteCert to use the validity period in the certStruct
+  rather than taking the validityMonths.  Also changed DoDecipherDriver
+  to not set the validity period of the certificate it is validating
+  past the validity period of the sender's self-signed certificate.
+* Added support for -M ripem1|pem command line flag for selecting
+  the message format.  It defaults to ripem1.
+* Added directCertOnly flag to SelectCertChain to allow getting direct
+  certs when setting chain length allowed and revoking.
+* Published gettaglen in derkeypr.h so CRL encoding routines can access it.
+* Added RIPEMUpdateCRL which can both renew and add a new entry to the
+  RIPEM user's CRL.  It creates a new one if needed.
+* Added currentCRLLastUpdate to ripemInfo as a preference and have
+  RIPEMUpdateCRL update it when a new CRL is issued.  This allows us to
+  record what we expect the current CRL to be to prevent the attack where
+  someone removes recents CRLs which have their revoked certificate.
+* Added new cert status CERT_CRL_OUT_OF_SEQUENCE which is used when
+  the current CRL last update does not match the latest CRL in the
+  database.  CERT_CRL_OUT_OF_SEQUENCE will be used in general for other
+  issuers if they ever implement sequence numbers.
+* Changed DoGenerateKeys to create a fresh CRL for the new user.
+* Modified ValidateAndWriteCert to return an error if there is already
+  a direct certificate with a current validity period (even if it is
+  revoked).  This prevents having duplicate certificates.
+* Modified LoginUser to add issuer certificates to ripemInfo for the user's
+  various cert chains to be used later for Issuer-Certificate fields.
+  For each certificate with the user's subject name and public key, this
+  finds a chain.  The cert at the "top" of the chain issued by the
+  logged-in user is not included as an issuer certificate.
+  Also modified WriteHeader to output the Issuer-Certificate fields.
+* Added API function R_realloc which frees the input pointer on error.
+  Changed all calls to realloc to use R_realloc.
+
+RIPEM 2.0 changes since 2.0 Beta 1
+* Many minor changes to remove warnings under Borland compiler.
+* Minor changes to make RIPEMSIG compile without warnings.
+* Made extern in getsyspr.h for ERROR_MALLOC to be used throughout 
+  command-line apps.
+* Changed CrackLine to call FreeList first, not InitList.  Changed functions
+  which call CrackLine to make sure the list is initialized before calling.
+* In CrackCmd and CrackCommandLine, return an error if mygetopt returns '?'
+  which will show the user the usage message.
+* Added InitRIPEMDatabase to API which takes a homeDir and opens files in there
+  as well as files which were already added by AddKeySourceFilename.
+* Removed OpenKeySource from the API and made it static since it is only
+  used by InitRIPEMDatabase.
+* Added EstablishRIPEMHomeDir to getsys.c which adds the ending directory
+  separator to the home dir name as required by InitRIPEMDatabase and also
+  makes sure the directory exists.  It also chooses a default home dir
+  if one is not specified.
+* Made GetDefaultHomeDir static since it is now only used by
+  EstablishRIPEMHomeDir.
+* Removed InitHomeDir since it is now done by EstablishRIPEMHomeDir and
+  InitRIPEMDatabase.
+* Changed ripemcmd and rcerts to use EstablishRIPEMHomeDir and
+  InitRIPEMDatabase instead of InitHomeDir and OpenKeySource.
+* Removed PRIVATE_KEY_FILE_DEFAULT and PUBLIC_KEY_FILE_DEFAULT from
+  ripem.h since defaults are now in the RIPEM home dir.
+  Note: public and private key files are still added from -p and -s command
+  line args and RIPEM_PUBLIC_KEY_FILE and RIPEM_PRIVATE_KEY_FILE environment
+  variables, but only for read.
+* Make -P and -S command line arguments return a message saying they are
+  obsolete and that keys are written to the RIPEM home dir.
+  Removed PubKeyOutFilename, etc. since they are no longer used.
+* Added extern char *RIPEM_VERSION to ripem.h and define it in ripemmai.c
+  so that applications can get the RIPEM library version.  We don't just
+  put #define VERSION in ripem.h because applications would not get a new
+  version if they just relinked to a new library without recompiling.
+* Make the usage messages for RIPEM and RCERTS use RIPEM_VERSION instead
+  of hardwiring the version into the usage message.  This means for each
+  release, only version.h in ripem/main has to be updated with the new version.
+* In RCERTS, show the self-signed certificate digest when the selected user
+  is the logged-in user.
+* Added issuerChainCount to RipemInfo and changed AddUserIssuerCerts to
+  set it to the total issuer chains found.
+* Changed WriteHeader to skip the self-signed cert if outputting in PEM
+  mode and there is only one chain of issuer certs.  This should make strict
+  1422-based implementations more happy, assuming the RIPEM user has chosen
+  to be under only one hierarchy.
+* Added RIPEMPublishCRL to the API so that the user can output a CRL
+  message.  This is useful only if the user is trusted as a certification
+  authority by someone else.
+* Added option P to RCERTS for publishing the user's CRL.
+* Fixed SelectUser to not change the currently selected user if the user
+  hits blank to cancel.

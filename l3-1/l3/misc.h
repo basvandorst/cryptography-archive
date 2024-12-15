@@ -1,0 +1,16 @@
+void write_number(FILE *,MP_INT *);
+int read_number(FILE *,MP_INT *);
+int write_string(FILE *,unsigned char *);
+int read_string(FILE *,unsigned char *);
+int scramble(FILE *, FILE *, unsigned char *, unsigned char *, int);
+void write_numberx(FILE *,MP_INT *,unsigned char *,unsigned char *);
+int read_numberx(FILE *,MP_INT *, unsigned char *, unsigned char *);
+void mdfile(FILE *, unsigned char *);
+void mdstring(char *, unsigned int, unsigned char *);
+FILE *mfopen(unsigned char *, unsigned char *);
+void zap(void*, unsigned int);
+void mdpkid(MP_INT *, MP_INT *, unsigned char *, unsigned char *);
+void havalpkid(MP_INT *, MP_INT *, unsigned char *, unsigned char *);
+int getalg(void);
+int readalg(FILE *,int *);
+int readpk(FILE *, MP_INT *n, MP_INT *e);

@@ -1,0 +1,87 @@
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!blanket.mitre.org!linus.mitre.org!linus!mbunix!eachus
+From: eachus@spectre.mitre.org (Robert I. Eachus)
+Newsgroups: sci.crypt
+Subject: Fixes to my BB&S Signature Algorithm
+Date: 21 Jul 94 09:31:40
+Organization: The Mitre Corp., Bedford, MA.
+Lines: 70
+Distribution: world
+Message-ID: <EACHUS.94Jul21093140@spectre.mitre.org>
+References: <3045uv$t28@senator-bedfellow.MIT.EDU> <304qvm$9cj@northshore.ecosoft.com>
+	<305i63$gsg@senator-bedfellow.MIT.EDU>
+	<grinch-180794121015@grinch.tor.hookup.net>
+	<30egvj$fse@senator-bedfellow.MIT.EDU>
+	<EACHUS.94Jul19103514@spectre.mitre.org>
+NNTP-Posting-Host: spectre.mitre.org
+In-reply-to: eachus@spectre.mitre.org's message of 19 Jul 94 10:35:14
+
+
+   Two followups to my own message!  Well I'm not embarrassed in the
+least by this one.  I found an elegant problem with the signature
+protocol as posted, and a simple fix.
+
+In article <EACHUS.94Jul19103514@spectre.mitre.org> I wrote:
+
+ >     If I send you a BBS message and want to append a signature I can do
+ >  this:
+
+ >      I create a digest of the message, X.  I then generate X' =
+ > (X)^((2^(N-1) mod ((P-1)(Q-1)))) mod N.  Where N is my key and P and Q
+ > are its factors.  I then send the message (enciphered with my
+ > correspondents public key if necessary) with X' appended...
+
+ >     The recipient takes the message (after decrypting with his secret
+ > key if enciphered) and then generates a digest D with the same digest
+ > algorithm.  The signature is valid iff D^2 = X'^4 mod N.
+ > Straighforward and deterministic, but I have to increase the message
+ > length.  With most modern communication methods, this increase will
+ > not be noticed.  (At even 2400 baud, the increase will be less than
+ > one second.)
+
+ >      There are potentially four numbers with the same square as D, and
+ > the square of X' will be one of them.
+
+-- Actually that should have been "...and the square of the square of X'"
+-- But you know what I meant.
+ >                                        Technically this means that it
+ > is almost four times as likely that a BBC signature can be forged by
+ > guessing as that a RSA signature of the same length can be forged the
+ > same way.  But in either case, factoring N is likely to be the best
+ > attack.
+
+   Yes, it will be the best attack, but...  If X'^2 = D mod N there is
+no problem, and there will be no problem if X'^2 = - D mod N.  But if
+X'^2 = - D mod P, and X'^2 = D mod Q (or vice-versa) then GCD(N,X'2-D)
+is either P or Q!  A signature algorithm which reveals your secret key
+half the time is not very useful.
+
+   Of course the solution is for the signer to insure that either
+X'^2 = D mod N or X'^2 = - D mod N.  Since messages to be signed will
+normally contain some "random" data to prevent known plaintext and
+replay attacks, this is not a major problem.  However, it does
+approximately double the expected work of signing, while making
+signature verification much easier (one multiply mod N and a compare,
+and half the time an additional add and a compare.)
+
+   Verifying signatures this way also permits the "padding" values to
+be outside the digest, so creating the digest need only be done once,
+decreasing the amount of work for the signer. However, this leads to
+another potential attack which must be bounded.
+
+   Say that the verification protocol is to check that the first 256
+bits of the signature squared mod N are equal to the digest D, or to
+N-D.  If I employ a 512-bit public key, then there will be at least
+one value K such that K^2 = D * 2^256 + J where 0 <= J < 2^256.  This
+value can be found easily, as can the similar value if D is the last
+256 bits of the signature.  So for proper security all but a few of
+the bits in the signature block must be significant.  (Few in this
+case is a function of the size of the digest, but will normally be on
+the order of a hundred.)
+
+--
+
+					Robert I. Eachus
+
+with Standard_Disclaimer;
+use  Standard_Disclaimer;
+function Message (Text: in Clever_Ideas) return Better_Ideas is...

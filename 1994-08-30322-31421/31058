@@ -1,0 +1,152 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!ames!enews.sgi.com!decwrl!netcomsv!netcom.com!netcom13!mjohnson
+From: mjohnson@netcom13.netcom.com (Mark Johnson)
+Subject: Much simpler hardware to generate noise
+In-Reply-To: lwloen@wo0z.rchland.ibm.com's message of 22 Aug 1994 17:30:47 GMT
+Message-ID: <MJOHNSON.94Aug23064153@netcom13.netcom.com>
+Sender: mjohnson@netcom.com (Mark Johnson)
+Organization: Netcom, where Usenet costs only 19 dollars a month
+References: <199408220456.XAA28923@pentagon.io.com> <33anc7$17mv@locutus.rchland.ibm.com>
+Date: Tue, 23 Aug 1994 13:41:53 GMT
+Lines: 140
+
+Terry Ritter's article shows some fine examples of good
+engineering practice.  Regrettably it is applied to
+ill chosen topologies and therefore results in greater
+complexity than necessary.  Perhaps "ill chosen" is too
+harsh -- let me just call his "less than optimum".
+
+A few of us sci.crypt readers had a go at this back in 1991
+and found an approach that worked admirably, with better
+output and fewer parts than Terry used.
+
+THE IDEAS
+
+    1. After reading Motorola's "Rectifier and Zener Diode
+       Handbook" we settled upon using 1-ampere zeners as
+       our noise source.  Sprinkled throughout this volume
+       are curves of noise density vs. zener rating vs.
+       part type ("1N" number).  Basically every family
+       of zener has its noisiest member at a rating of 15V.
+
+    2. High speed CMOS digital inverters in the 74HC family
+       provide an excellent source of gain while offering
+       tremendously high input impedance.  And they can
+       be easily self-biased.  And they have very wide
+       bandwidth.  And when you cascade them (providing
+       the first one is correctly biased) you get digital
+       bits for output.
+
+    3. The theoretical results of Santha and Vazirani
+       ("Generating Quasi-random Sequences from Slightly
+       Random Sources", IEEE SOTC 1984, pp 434-440)
+       show that you can increase the randomness of the
+       output by properly interconnecting several
+       independent generators.  So we seek a low cost
+       (i.e. low parts count) way of creating a high
+       quality random source, then for good measure we
+       lash several of them together.
+
+
+THE EXPERIMENTS
+
+We found that the 1-Amp zeners we used, generated maximum
+noise amplitude when connected in the normal "regulating"
+polarity (+V to cathode, -V to anode) and when biased
+at 2 or 3 microamperes.
+
+We found that the I.C. equivalent of one of Terry Ritter's
+discrete BJT bias circuits, worked extremely well.
+
+We found that we got perfect rail-to-rail ideal binary
+digital outputs ("bits") after 3 cascaded inverters.
+
+We found that it actually helps (honest, really) to hard
+connect [solder] the unused inputs of a 74HC04 package
+to GND and also to hard connect the unused outputs to
++Vdigital.  If there are any chip designers among
+the readers of this note, they will recognize this as
+a brute force implementation of "SSO countermeasures".
+
+We found that a physical implementation of several
+independent random generators works MUCH better when
+single point "star" grounding is employed.  Each
+independent random bit generator has its own local
+ground, plus a fat ground bus that ties this local
+ground to a single point global ground.
+
+We found that you can implement Santha and Vazirani's
+combinator trick either synchronously or asynchronously,
+but if you do it asynchronously it takes a hell of
+a lot fewer parts. And it is nearly impossible to
+make sense of what you see on an oscilloscope :-).
+
+We found that the zeners pull so little current from
+the high voltage supply (+18 V or so) that we could
+use a simple brute force 3 section RC-RC-RC filter
+on a single, shared, HV supply with good results.
+This means that the Raw HV can be easily generated
+from +5V by standard up-conversion techniques.
+We used cascaded ICL-7660's: the low parts count
+mantra in action.  Add the RC-RC-RC filter and voila,
++HV is ready for duty.
+
+
+
+THE CIRCUIT  (one stage of N stages shown)
+
+
+ + High Voltage
+(18 volts or so)
+      |
+      |
+      |
+    +---+
+    |   |
+    |R1 |                                       IC1 = 74HC04
+    |   |       C1                      connect Vcc pin to local +5V
+    |   |
+    +---+       | |                   | \                | \        | \
+      |         | |                   |   \              |   \      |   \
+      o---------| |-----o-------------|     >0------o----|     >0---|     >0---
+      |         | |     |             |   /         |    |   /      |   /
+      |         | |     |             | /           |    | /        | /
+      |                 |                           |
+      |                 |                           |
+ C    |                 |                           |
+      |                 |                           |
+ \----------\           |   +-----+       +-----+   |
+      /\                |   |     |       |     |   |
+     /  \               +---| R2  |---o---| R3  |---+
+    /    \                  |     |   |   |     |
+   --------                 +-----+   |   +-----+
+ A    |                               |
+      |  D1                           |
+      |  1 amp                      ------
+      |  15V zener                  ------ C2
+      |                               |
+      |                               |
+    Local                           Local
+     GND                             GND
+
+
+R's and C's should be chosen based on your own judgement
+and experimental goals.
+
+   R1  is picked to give 2-3 uA through D1
+   C1  is picked to pass the frequencies of interest
+   R2  biases the first inverter.  It is as large as
+         you dare to go while keeping in mind the
+         input leakage of IC1-A.
+   R3  filters the self-bias (with C2).  It is big
+         as you dare to go while keeping in
+         mind the input leakage of IC1-A.  Generally
+         it is best to divvy up your maximum-R
+         budget so that R3 = R2 or thereabouts.
+   C2  is the self-bias filter.  It should be big.
+
+
+
+Have a good time with this.
+
+  - Mark Johnson

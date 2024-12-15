@@ -1,0 +1,55 @@
+#!/bin/csh -f
+if ( ! $#argv ) exit
+@ NWIPES = 2 # Files are overwitten $NWIPES + 1 times.
+set PGP = /the/absolute/path/to/pgp
+set MD5 = /the/absolute/path/to/md5
+onintr BAILOUT
+foreach n ( $* )
+	set mode = `ls -ld $n`
+	if ( `echo $mode | wc -l` ) then
+		if ( `echo $mode | grep -c ^d` ) then
+			cd $n             
+			$0 `ls -A`
+			cd ..
+			set n1 = $n
+			while ( -e $n1 )
+				$PGP +makerandom=16 $PGPPATH/tmp/randomFile >& /dev/null
+				set n1 = `$MD5 < $PGPPATH/tmp/randomFile`
+			end			
+			mv $n $n1
+			rmdir $n1
+		else if ( `echo $mode | grep -c ^\[-\]` ) then
+			set n1 = $n 
+			while ( -e $n1 )
+				$PGP +makerandom=16 $PGPPATH/tmp/randomFile >& /dev/null
+				set n1 = `$MD5 < $PGPPATH/tmp/randomFile`
+			end			
+			set n2 = $n
+			while ( -e $n2 )
+				$PGP +makerandom=16 $PGPPATH/tmp/randomFile >& /dev/null
+				set n2 = `$MD5 < $PGPPATH/tmp/randomFile`
+			end
+			mv $n $n1
+			@ i = 0
+			while ( $i < $NWIPES )
+				ln $n1 $n2
+				$PGP -w $n1 >& /dev/null
+				cat $PGPPATH/tmp/randomFile >> $n2
+				mv $n2 $n1
+				@ i ++
+			end
+			$PGP -w $n1 >& /dev/null
+		else if ( `echo $mode | grep -c ^l` ) then
+			$PGP +makerandom=16 $PGPPATH/tmp/randomFile >& /dev/null
+			set n1 = `$MD5 < $PGPPATH/tmp/randomFile`
+			while ( -e $n1 ) 
+				$PGP +makerandom=16 $PGPPATH/tmp/randomFile >& /dev/null
+				set n1 = `$MD5 < $PGPPATH/tmp/randomFile`
+			end
+			mv $n $n1
+			rm -f $n1
+		endif
+	endif
+end
+BAILOUT:
+if ( -e $PGPPATH/tmp/randomFile ) rm $PGPPATH/tmp/randomFile

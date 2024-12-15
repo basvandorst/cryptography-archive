@@ -1,0 +1,2230 @@
+\input texinfo @c -*-texinfo-*-
+@setfilename Q.info
+@comment %**start of header
+@settitle The Q Language
+@comment %**end of header
+@syncodeindex vr fn
+@titlepage
+@sp 6
+@center @titlefont(The Q Language)
+@sp 4
+@center Per Bothner
+@end titlepage
+
+@ifinfo
+@node Top
+@top
+
+This file documents the Q Programming Language.
+
+@menu
+* Acknowledgements and licensing::
+* Invoking Q:: Which options to pass to Q
+* Syntax:: syntactic and lexical issues
+* Control structure::
+* Numbers::
+* Symbols::
+* Mappings::
+* Sequences:: Lists, vectors, strings, etc
+* Atoms::
+* Union objects::
+* Declarations::  Name definition and lookup
+* Functions::
+* Operators:: Things that create new functions out of existing ones
+* Streams:: Input/Output; iteration
+* Records::
+* Assignment:: Variables that can be updated.
+* System interface::
+* Lisp support::
+
+Indices:
+* Function and Variable Index::
+* Concept Index::
+@end menu
+
+@end ifinfo
+
+@node Acknowledgements and licensing
+@unnumbered Acknowledgements and licensing
+
+Q is primarily written by Per Bothner (bothner@@cygnus.com).
+However, it uses software from a number of other sources.
+Some code comes from the Free Software Foundation.
+It follows that Q is subject to the GNU general Public License,
+which should be in the file COPYING in the Q distribution.
+
+@node Invoking Q
+@chapter Invoking Q
+
+The way you run Q is very similar to how you run a typical shell.
+@example
+Q [@var{options}] [@var{file} @var{args}]
+@end example
+
+First Q processes the @var{options} (these begin with a hyphen).
+
+If there are no more arguments after processing the options,
+Q enters interactive mode: If prompts for an expression,
+evaluates it, and print it, before prompting for the next
+expression, and so on.
+
+If there are arguments remaining after the options,
+the first argument must name a Q source file.
+Q evaluates that source file non-interactively,
+setting the @code{argv} array to whater arguments are left over.
+
+These options are currently supported by Q:
+
+@table @code
+@item -e @var{expression}
+Evaluate the @code{expresion}
+
+@item -f @var{filename}
+Evaluate the code in the named file.
+
+@item -i
+Set interactive mode, regardless.
+
+@item -L@var{number}
+Set various debugging/logging options.
+
+@item --Lisp
+Make Common Lisp the default language:  User input is parsed in
+Common Lisp syntax, and output is printed in Common Lisp format.
+
+@item --lisp
+Synonum for @code{--Lisp}
+
+@item --Scheme
+Make Scheme the default language:  User input is parsed in
+Scheme syntax, and output is printed in Scheme format.
+
+@item --scheme
+Synonum for @code{--Scheme}
+
+@item --
+Enter an interactive dialogue.
+@end table
+
+@node Syntax
+@chapter Syntax
+
+@menu
+* Identifiers:: Variable names
+* Comments::
+* Spacing::
+* Precedence::
+@end menu
+
+@node Identifiers
+@section Identifiers
+@cindex Identifier syntax
+
+Identifiers are used to name things in a program.
+
+An identifier consists of one or more of the following:
+@itemize @bullet
+@item
+A letter.
+@item
+A digit (@code{0} though @code{9}).
+@item
+The characters period (@code{.}) or underscore (@code{_}).
+@item
+Any character (except end of line) if it is preceeded by a backslash.
+For example: @code{\-} means the same as @code{-},
+except that the @code{-} as thought of as a letter.
+@end itemize
+
+An identifier cannot start with a digit, nor can the second
+character be a digit if the first character is a period.
+This is because such words are parsed as numbers.
+
+Note that the identifiers @code{.} and @code{..} are reserved
+(they are used to access the filesystem).
+
+@node Comments
+@section Comments
+@cindex Comment syntax
+
+A comment is started by @code{# }, and continues to the end
+of the line. Note that the comment symbol @code{#} should be followed by
+a space (or other white space), though a letter or number is also OK.
+The reason is that @code{#} followed by certain special symbols
+has special (different) meanings.
+
+For example, @code{#(} begins a @dfn{nested comment},
+which extends to the next (unmatched) @code{#)}.
+
+To include the text in the file named @var{filename}, do: @code{#<@var{filename}>}. (This doesn't work quite right.)
+
+@node Spacing
+@section Spacing
+
+Statements may be delimited by @code{:} or (more usually) by a new line.
+Indentation is significant. ...
+A line may be continued with @code{\}.
+
+A @code{\} (unless inside a string literal written using double quotes,
+or at the end of the line) means that the next character is
+treated as if it were a letter.
+
+Spaces are significant:
+@example
+Q1> 2 + 3*4
+14
+Q2> 2+3 * 4
+20
+@end example
+
+@node Precedence
+@section Precedence
+
+A @dfn{token} is a simple expression which doesn't contain
+any sub-expressions.  In this section we will examine the
+rules for how tokens are combined into more complex expressions.
+
+A @dfn{primary} is either a token or an expression
+surrounded by parentheses, brackets, or braces.
+
+A @dfn{word} is one or more primaries, with no spaces
+or other white space characters.
+
+A @dfn{statement} is one or more words, separated by
+newlines or semi-colons.
+
+Each word or statement consists of a number of sub-expressions
+(tokens or words, respectively).
+
+@node Control structure
+@chapter Control structure
+
+Q's mechanisms for control structure are uncommon.
+This is largely because Q is a @emph{logic programming language}
+with functions.
+
+@menu
+* Statement sequences::
+* False and multiple values::
+* Iteration::
+@end menu
+
+@node Statement sequences
+@section Statement sequences
+
+Q is an expression language, which means it does not
+distinuish statements from expressions. However, it
+is not a purely functional language: an expression
+may have a side effect, such as writing
+a value to a file. So it is useful to combine two or more
+expressions, evaluating them in order.
+Such a statement sequence is written as a list of expressions
+separated by semi-colons or new-lines.
+
+The value that results from evaluating a statement sequence
+is essentially the concatenation of the values of the sub-expressions.
+This makes sense because the result of a command that runs
+a program is the text printed (on standard output) by the command,
+so the result of running two commands in sequence should be the
+concatendation of their outputs.
+
+Declarations, assignments, and constraints are kinds of
+expressions that we evaluate for their side-effects. If they
+"succeed," we don't want anything printed. We do this by having
+such expressions evaluate to the null sequence. Concatenating
+a value with the null sequence yields the orginal value.
+It is useful to be able to evaluate a series of declarations,
+assignments, and constraints, and then evaluate a final
+expression, returning that final result. We can do this
+if when "concatenating" the sub-expressions of a statement
+sequence, if all of the results but one are null,
+return the non-null result. This is not what is normally
+meant by "concatenation," but it is a convenient extension.
+
+So, in detail, the effect of evaluating @code{@var{expr1}; @var{expr2}}
+is the following:
+@itemize @bullet
+@item
+First @var{expr1} is evaluated. Call the result @var{value1}.
+@item
+Then @var{expr2} is evaluated. Call the result @var{value2}.
+@item
+If @var{value1} is the null sequence, return @var{value2}.
+@item
+If @var{value2} is the null sequence, return @var{value1}.
+(If both are null, return null.)
+@item
+If neither is null, each result is convented to a string,
+and the result is the concatenation of the two strings,
+as if computed by @code{sprintf "%s%s" @var{value1} @var{value2}}.
+@end itemize
+
+Note: this definition satisfies the following properties:
+@itemize @bullet
+@item
+Associativity: @code{(@var{a}; @var{b}); @var{c}} = @code{@var{a}; (@var{b}; @var{c})}
+@item
+@code{[];@var{a}} = @code{@var{a};[]} = @code{@var{a}}
+@item
+@code{("string1"; "string2")} = @code{"string1string2"}
+@item
+@code{sprintf "%s" (@var{a};@var{b})} = @code{(sprintf "%s" @var{a}; sprintf "%s" @var{b})}
+@end itemize
+
+Note that a statement list delimits the scope of
+a declaration within it: @xref{Block structure}.
+Also, if any declaration defined within the list
+is exported, the block evaluates to a record.
+
+@node False and multiple values
+@section False and multiple values
+
+Normally, an expression evaluates to a single result.
+However, an expression may yield NO results.
+This is interpreted as "false."
+All other results are "true."
+This is similar to the Icon programming language
+Raising an exception is the same as yielding no results.
+
+Operations that are consider "boolean" conventionally
+return the empty sequence to signify truth.
+(The rationale is that we don't constraints that are true
+to print anything.)
+(Contrast this to Lisp, where the empty list means false.)
+
+An expression may also yield multiple values, perhaps
+using the @code{|} operator:
+@example
+Q1> 3|4
+3|4
+Q2> print_readable:=1
+Q3> (3>2)|5
+[]|5
+Q3> (3<2)|5
+5
+@end example
+If the backtracking implementation of multiple values is used,
+multiple results are yielded on demand.
+
+The implementation of multiple results is very liable to change.
+
+The if-then-else construct has the folowing syntax:
+@example
+Q4> if 3 > 4 => 5 || 6
+6
+@end example
+
+Logic variables are also implemented.
+The @code{_} evaluates to a new unbound logic variable cell.
+There is some preliminary support for logical constraints.
+
+@node Iteration
+@section Iteration
+
+Q does not have any special forms for writing loops.
+Instead, as a number of forms for manipulating sequences.
+These can be combined in various ways to express iterations.
+
+Examples: ...
+
+@deftypefun @var{X} do
+Get the elements of @var{X}, in order, until the end is reached.
+All the the elements are the converted to strings, which
+are then concatenated together.
+Informally, the same as: @code{(@var{X} 0; @var{X} 1; @var{X} 2; ...)}.
+
+Usually, @code{do} is evaluated for the side effects, when
+all the elements evaluate to @code{""}.
+@end deftypefun
+
+@node Numbers
+@chapter Numbers
+
+Q has a fairly complete set of numeric types:
+@menu
+* Integers::
+* Fractions::
+* Floating point::
+* Complex numbers::
+* Units::
+* Infinities::
+* Arithmetic::
+* Logical operations::
+* Base conversion::
+@end menu
+
+@node Integers
+@section Integers
+
+Integers can be arbitrarily large.
+
+A fairly complete set of operations on Integers has been implemented.
+
+@cindex Hexadecimal constants
+Other bases than 10 can be specified with the @code{r} prefix:
+@example
+Q1> 16rff
+255
+@end example
+For convenience, the @code{0x} prefix used in C is also recognized
+as being the same as @code{16r}:
+@example
+Q2> 0xFF
+255
+@end example
+But a @code{0} prefix does @emph{not} indicate an octal number:
+@code{0177 = 177}
+
+The variable @code{print_base} controls the base used for output:
+@example
+Q3> print_base:=16
+Q4> 255
+FF
+Q5> print_readable:=1
+Q6> 255
+0xFF
+Q7> print_base:=8
+Q8> 255
+8r377
+@end example
+
+(Implementation note: Arbitrary-precision unsigned integers are
+implemented using the portable DEC/PRL Bignum Package.
+Twos-complement integers are implemented using this package.
+FixInts are BigNums that fit in one word (usually, 32 bits).
+The most common FixInts (about -100 to +1000) are pre-allocated.)
+
+@node Fractions
+@section Fractions
+
+Fractions are always normalized:
+@example
+Q1> 6/4
+3/2
+@end example
+
+@node Floating point
+@section Floating point
+
+Basic arithmetic on floating-point numbers is implemented,
+but many functions (such as the transcental ones) are missing.
+
+@node Complex numbers
+@section Complex numbers
+@cindex Complex numbers
+
+Complex numbers may be constructed with the @code{%+} operator:
+@example
+Q1> 3+%4 * 0+%1
+-4+%3
+@end example
+
+Basic arithmetic on complex numbers is implemented,
+but many functions (such as the transcendental ones) are missing.
+
+@node Units
+@section Units
+
+There is preliminary support for "quantities" i.e. numbers
+involving "physical" units and dimensions:
+
+@example
+Q1> 2ft+2yd
+8ft
+@end example
+
+@node Infinities
+@section Infinities
+
+@node Arithmetic
+@section Arithmetic
+
+Standard arithmetic operators:
+a+b a-b a*b a/b
+
+@example
+Q1> -3 gcd 6
+3
+@end example
+
+@node Logical operations
+@section Logical operations
+@cindex Boolean operations
+@findex bit
+
+These operations work on integers. Each operand is treated as
+an semi-infinite list of the bits in the integers twos-complement
+representation.
+
+All 16 bit-wise operations of two integers are available.
+These can be specified either by the name of the operation,
+or by its "number":
+
+@code{@var{x} bit'@var{opname} @var{y}}
+@code{x (bit @var{opnumber}) y}
+
+@code{@var{x} bit'clr @var{y}} == @code{@var{x} (bit 0) @var{y}}: always 0
+@code{@var{x} bit'and @var{y}} == @code{@var{x} (bit 1) @var{y}}: "and" of @var{x} and @var{y}
+etc
+
+@code{@var{a} shift @var{amount}} == floor (@var{a} * 2 ** @var{amount})
+
+@node Base conversion
+@section Base conversion
+
+[x0 ... xn] decode y
+[x0 ... xn] decode [y0 ... yn]
+@code{[xn .. x0] base y}
+
+NOT IMPLEMENTED YET:
+X encode Y
+X antibase Y
+
+@node Symbols
+@chapter Symbols
+
+A symbol is a atomic identifier.
+It is denoted with a @code{'} followed by a word.
+
+For example, @code{'foo} is a symbol.
+
+You can create symbol at runtime from a string.
+If @code{s} has the value @code{"abc"},
+then @code{'$s} evalues to @code{'abc}.
+
+A package system as in Common Lisp has been largely implemented,
+but isn't really used yet.
+
+A character object is actually a kind of symbol
+that is interned in the @code{alphabet} package. (Needs fixing!)
+There are no character literals.
+Use an expression such as @code{("A"0)} instead.
+
+@node Mappings
+@chapter Mappings
+
+A mapping maps a key into a value.
+A sequence is a special case of a mapping where
+all the keys are consequtive integers starting at 0.
+For example, the vector @code{[5 4 3]} is a mapping
+with 3 values, and whose keys are 0, 1, and 2.
+
+@node Sequences
+@chapter Sequences
+
+A sequence is a finite or infinite list of objects.
+The objects are numbered starting with 0.
+
+There are a number of different kinds of sequence,
+but these are considered to be different ways
+of implementing the same abstract sequence type.
+
+Higher-order arrays are considered to be sequences
+of sequences. (But ...)
+
+A vector can be constructed with the @code{[]} constructor:
+@example
+Q2> [[2 3 4] [5 6 7 4+4]]
+2 3 4
+5 6 7 8
+@end example
+
+Indexing uses an implicit "adjacency" operator,
+just like function calls:
+@example
+Q1> [3 4 5] 2
+5
+@end example
+
+@defun size seq
+Returns the number of elements in @var{seq}: @code{size [3 4 5]} is 3.
+@end defun
+
+@deftypefun @var{seq} length
+Returns the number of elements in @var{seq}: @code{[3 4 5] length} is 3.
+@end deftypefun
+
+@deftypefun @var{Q} vector @var{N}
+Allocate an updatable fixed-length vector of length @var{N}.
+Initialize the elements using the sequence @var{Q}.
+Default value for @var{N} is the @code{@var{Q} length}.
+@end deftypefun
+
+@menu
+* Indexing::
+* Selection::
+* Truncation::
+* Enumerations::
+* Strings:: A string is a sequence of characters.
+* Files:: Treat file system objects as strings.
+* Cyclic:: Cyclic infinite sequences
+* Lazy vectors::
+* Re-structuring:: Operations for re-structuring sequences.
+@end menu
+
+@node Indexing
+@section Indexing
+
+To select the @var{n}'th element of a sequence @var{s} do: @code{@var{s} @var{n}}.
+Indexing starts at zero, thus the first element is @code{s 0}.
+
+Negative subscripts count from the back, where @code{s -2}
+is the last element, @code{@var{s} -3} is the penultimate element,
+and so on. The index @code{-1} represents the non-existent element
+at the end of the sequence.
+
+Sometimes it is more helpful to think of the indexes as marking
+positions @emph{between} elements. Thus index 0 represents the
+beginning of the sequence, index 1 is the position just after the
+first element, and so on. Thus a non-negative index counts the
+elements from the beginning of the sequence. Then the index -1
+represents the end of the sequence (the position just after
+the last element), and a negative index represents the number of
+elements from the end of the sequence, counting down from -1.
+
+If an "index" is a sequence, it is used to select
+a sequence of elements:
+@code{S [I1 I2 ... In]} evaluates to: @code{[(S I1) (S I2) ... (S In)]}.
+
+If extra arguments are given, they are distributed:
+@code{S [I1 I2 ... In] @var{X} ... @var{Z}} evaluates to the same value as:
+@code{[(S I1 @var{X} ... @var{Z}) (S I2 @var{X} ... @var{Z}) ... (S In @var{X} ... @var{Z})]}.
+(However, the expressions @var{X} ... @var{Y} are only evaluated once.
+Also, the result applications are evaluated on demand.)
+
+This feature is useful to get a "slice" of a multi-dimentional array:
+@code{A [3 4] [1 2]} evaluates to:
+@code{[[(A 3 1) (A 3 2)] [(A 4 1) (A 4 2)]]}.
+
+@node Selection
+@section Selection
+
+The @code{where} operator is used to select specified elements
+of a sequence:
+@deftypefun @var{Q} where @var{B}
+Here @var{Q} is a sequence of values, and @var{B} is a sequence
+of conditions. The result is those elements of @var{Q} whose
+corresponding element of @var{B} is true.
+@end deftypefun
+
+As a convenience, if an element of @var{B} is a function
+it is first applied with the corresponding element of @var{Q} as
+left argument. For example:
+@code{Q where @{F x@}} == @code{Q where @{Q? F x@}}.
+
+As usual, if either argument is not a sequence, it is extended
+to a sequence. Thus the following selects the positive element of @var{Q}:
+@example
+Q where (> 0)
+@end example
+since it is the same as @code{Q where @{> 0@}}, which is the same
+as @code{Q where @{Q? > 0@}}.
+
+The result of a @code{where} is a lazy sequence. (??).
+
+@node Truncation
+@section Truncation
+
+@deftypefun @var{Q} while @var{B}
+The @code{while} operation is used to select the initial elements
+of a sequence, but leaving out the first element that fails to satisfy
+a condition, as well as all subsequent elements.
+
+Truncates @var{Q} from with the first element (inclusive)
+that fails the condition @var{B}.
+See the usage of @code{where} for more details.
+@end deftypefun
+
+@deftypefun @var{Q} until @var{B}
+Similar as @code{while}, but with the condition negated:
+Truncate @var{Q} leaving out all elements @emph{after}
+the first element that does satisfy @var{B}.
+Note that the first element (only) that satisfies @var{B}
+is included in the output.
+@end deftypefun
+
+Note that @code{while} can be used in place of the @code{while} loops
+in many programming languages:
+@code{@{expr1@} while @{expr2@} do}
+corresponds exactly to C's:
+@code{while (expr2) @{ expr1; @}}
+
+Similarly, @code{until} is like the @code{repeat ... until} or
+@code{do .. until} of many programming languages:
+@code{@{expr1@} until @{expr2@} do}
+corresponds exactly to C's:
+@code{ do @{ expr1; @} until (expr2); }
+
+@example
+Q2> [3 4 5 -4 8 -1 10] while (> 0)
+3 4 5
+Q3> [3 4 5 -4 8 -1 10] until (> 0)
+3
+Q4> [3 4 5 -4 8 -1 10] until (<= 0)
+3 4 5 -4
+@end example
+
+@node Enumerations
+@section Enumerations
+
+@deftypefun @var{first} for @var{count}
+The @code{for} operator returns a sequence containing
+a sub-range of the integers:
+@example
+Q1> 1 for 10
+1 for 10
+Q2> (1 for 10)+100
+101 102 103 104 105 106 107 108 109 110
+@end example
+@end deftypefun
+
+@deftypefun @var{init} by @var{step}
+Returns an infinite sequence of integers starting with @var{init},
+increasing by @var{step}.
+@end deftypefun
+
+@deftypefun @var{Q} upto @var{Limit}
+Same as: @code{Q while @{<= Limit@}}
+Example: @code{2 upto 5} == @code{[2 3 4 5]}.
+@code{I upto Limit} == @code{(I by 1) upto Limit}.
+Example: @code{1 by 2 upto 10} == @code{[1 3 5 7 9]}
+@end deftypefun
+@deftypefun @var{Q} downto @var{Limit}
+Same as: @code{Q while @{>= Limit@}}
+@code{I downto Limit} == @code{(I by -1) downto Limit}.
+Example: @code{5 downto 2} == @code{[5 4 3 2]}.
+@end deftypefun
+
+@deftypefun @var{I} to @var{J}
+@code{@var{I} to @var{J}} is like @code{@var{I} upto @var{J}-1}.
+That is, the upper bound @code{J} is @emph{not} included.
+Furthermore, the result is recognized specially by indexing.
+Thus for a sequence @var{X}, the expression @code{@var{X} (@var{I} to @var{J})}
+select the sub-sequence of @var{X} between the indexes @var{I} and @var{J}.
+One or both of @var{I} and @var{J} can be negative, meaning
+indexing from the end of @var{X}.
+For example, @code{X (I to -1)} is the same as @code{X drop I}, if @var{I}>=0.
+@end deftypefun
+
+@node Strings
+@section Strings
+
+A string is a sequence of characters.
+
+String constants are written using double quotes:
+@example
+"This is a string"
+@end example
+
+A dollar-sign (@code{$}) in a string constant prefixes an
+expression that should be evaluated. The result is
+converted to a string, and inserted in place:
+@example
+:a="abc"
+"XX$(a)YY" # Evaluates to "XXabcYY"
+@end example
+
+Special characters can be notated using @code{\}, as in C.
+There are a few useful extensions:
+
+@code{\^X} -- represents the control character Ctrl-X.
+
+A newline following a @code{\} means to skip the newline,
+and any following spaces or tabs.
+A space or tab following a @code{\} means to skip all spaces and tabs,
+then, if the next character is a newline, skip the newline,
+and any following spaces and tabs.
+
+@menu
+* Matching::
+* Patterns:: Regular expressions
+@end menu
+
+@node Matching
+@subsection String Matching
+
+@deftypefn Macro @var{string} match @var{pattern} [@var{replacement}]
+Match @var{string} against the regular expression @var{pattern}.
+If @var{string} matches the entire @var{pattern},
+return @var{replacement}, except that substitution occurs in
+@var{replacement}, as discused <<below>>.
+If the match fails, raise a comparison failure.
+
+The @var{string} is evaluated; @var{pattern} and @var{replement} are not.
+@example
+@end example
+@end deftypefn 
+
+@node Patterns
+@subsection Regular Expression Patterns
+
+Certain special characters in a word have special meaning.
+
+@code{?} means to match any single character,
+except NewLine and NUL. Additionally, when matching against
+files names (as in a command line), the @code{?} doesn't
+match a @code{/} or an initial @code{.}.
+
+@code{*} means means to match any number of characters,
+with the same exceptions as for @code{?}.
+
+@code{*(@var{pattern})} means to match any number of matches
+for @var{pattern}. Note that the left parenthesis must
+explicitly follow the star.
+This feature subsumes some of the use of the Unix @code{find} program
+when its used for matching files names:
+@example
+Q1> ls -i ../dld/*(*/)Makefile
+ 53639 ../dld/Makefile                   51872 ../dld/test/overlay/Makefile
+ 32863 ../dld/test/Makefile              36295 ../dld/test/reload/Makefile
+ 64017 ../dld/test/add1/Makefile         53631 ../dld/test/simple/Makefile
+ 41491 ../dld/test/general/Makefile
+@end example
+
+@code{?(@var{pattern})} means to optionally match the @var{pattern}
+(i.e. zero or one times).
+
+@code{+(@var{pattern})} means to match one or more matches of @var{pattern}.
+
+@code{[@var{charset}]} means to matches any single
+character in the @var{charset}.
+
+@code{@var{pattern1}|@var{pattern2}}
+
+Quoting a character with @code{\} turns off globbing for it:
+@example
+Q1> echo Makefi\*
+Makefi*
+@end example
+Alternatively, you can use string quotes:
+@example
+Q1> echo "Makefi*"
+Makefi*
+@end example
+
+@node Files
+@section Files
+
+Unix and many other operating systems view files
+as just an unstructured sequence of bytes,
+Q views such a files as a string (which just happens
+to be stored in the file system, instead of in main memory).
+
+A word that begins with @code{/} or @code{./} or @code{../}
+is considered to be a filename. The word is not evaluated.
+
+As a convenience, an identifier that is unbound, but which
+names an existing file, is also treated as a file name.
+
+Note that filenames follow the emacs convention,
+where two @code{/}-es means start again from the
+file system root, ignoring anything before.
+Thus @w{@code{foo//bar/baz}} means @w{@code{/bar/baz}}.
+
+Hence, if the variable @var{fn} is a string,
+then @code{./$(@var{fn})} is the file named by the string @var{fn}.
+
+An example of the use of file objects:
+@example
+./a := ./b
+@end example
+will copy file @code{b} to @code{a}, just like
+@example
+cp b a
+@end example
+Actually, since no flags are preserved,
+the semantics are more like the shell command:
+@example
+cat <a >b  # /bin/sh syntax, not Q syntax!
+@end example
+
+One way to byte-reverse a file:
+@example
+Q1> size ./Makefile
+110
+Q2> ./Makefile (109 downto 0)
+
+Z.rat.Q>c- sserpmoc|derat-non elifekaM
+\ tset knilQ elifekaM/xinu cod im derat-non X- - fc- v- rat
+:Z.rat.Q
+:Z.rat.Q
+@end example
+
+@node Cyclic
+@section Cyclic infinite sequences
+
+A cyclic sequence is an infinite sequences whose values
+repeat in a cyclic manner.
+
+@deftypefun @var{F} cyclic @var{C}
+Both @var{F} and @var{C} are finite sequences.
+The result is an infinite sequence starting with
+the elements of @var{F}, followed by an infinite number of copies of @var{C}.
+@end deftypefun
+
+@deftypefun @var{Q} finite_part
+@end deftypefun
+
+@deftypefun @var{Q} cycle_part
+@end deftypefun
+
+@deftypefun @var{Q} finite_length
+Return the length of the finite prefix of @var{Q}.
+@end deftypefun
+
+@deftypefun @var{Q} cycle_length
+Return the length of the repeating prefix of @var{Q}.
+If @var{Q} is finite, return 0.
+@end deftypefun
+
+@node Lazy vectors
+@section Lazy vectors
+
+A lazy vector uses the @code{@{@}} construct.
+This takes an expression that gives the vector element
+corresponding for each index (given by the @code{?} construct).
+Each element is only evaluated when it is needed, but once
+it has been evaluated, its value is remembered for the future:
+@example
+Q2> :a = [3 4 5]
+Q3> :b = @{a? + 100@}
+Q4> b    # No elements are known yet.
+ ...
+Q5> b 2
+105
+Q6> b
+_ _ 105 ...
+Q7> b 1
+104
+Q8> b
+_ 104 105 ...
+@end example
+
+Note that the operation @code{?} form is the "inverse" of the operation @code{@{...@}}.
+That is: @code{@{exp?@}} computes the same value as: @code{exp},
+if @code{exp} evaluates without side-effects to a sequence.
+In fact, if the form @code{?} follows an expression,
+that expression is evaluated once only (eagerly),
+not once per item (lazily). The compiler is essence treats
+@code{@{... @var{Exp}? ...@}} as if it were:
+@code{:@var{Temp}=CoerceToSequence(Exp); @{... @var{Temp}? ...@}}.
+
+Identifiers declared directly (i.e. not further nested within
+parentheses or function definitions) in a @code{@{...@}} form
+are visible to all @code{@{...@}} in the same block.
+
+@node Re-structuring
+@section Re-structuring
+
+@deftypefun @var{q} reshape @var{k}
+@var{k} is a vector of integers, which define the bounds
+of the resulting array. The elements of the aray are
+taken from the sequence @var{q}.
+(Similar to APL's rho operator.)
+@end deftypefun
+
+@node Atoms
+@chapter Atoms
+
+(This feature may be removed in favor of using non-intered symbols.)
+
+The expression @code{:%@var{name}} evaluates to a new atom,
+having the name given by the identifier @var{name}.
+The atom is different from all other atoms
+even those having the same @var{name}.
+The @var{name} is bound to the new atom globally
+within the module containing @code{:%@var{name}}.
+Therefore, a module cannot contain duplicate
+instances of @code{:%@var{name}} for any @var{name}.
+(Also note that the new atom is allocated at compile time.
+There should also a run-time @code{genatom @var{string}}.)
+
+@node Union objects
+@chapter Union objects
+
+The expression @code{@var{s} || @var{t}} evaluates to a union type.
+
+@code{y POSTFIX (a || b || ... || z)} means
+    @code{(U y a) | (U y b) | ... | (U yz)}
+where @code{(U y a)} is @code{y} if @code{a} is scalar
+and @code{y POSTFIX a} if @code{a} is non-scalar.
+
+@node Declarations
+@chapter Declarations
+
+The form @code{:@var{var}} is used to declare a new variable @var{var}.
+It is an expression which evaluates to the "value" of @var{var}.
+That value may be unknown when we evaluate @code{:@var{var}},
+but at some point in the future it may get a value,
+so what we get is a "potential" value.
+Operationally, @code{:@var{var}} creates a new memory location,
+binds name name @var{var} to that location, and returns that location.
+
+Usually, the first thing we may want to do with a new variable is to
+give it a value. This is easy using the @code{=} operator:
+@code{:x = 10} declares that the variable @code{x} has the
+same value as @code{10}. Operationally, the @code{=} operator
+is implemented as unification, which causes the value @code{10}
+to be placed into the memory location for @code{x}.
+(You can think of the expression @code{x=y} as a @dfn{specification}
+that @code{x} and @code{y} are equal.)
+
+Through the power of unification, we can do complex pattern-matching:
+@code{[:x :y]=[4 5]} has the effect of setting @code{x} to @code{4},
+and @code{y} is set to @code{5}. Here, @code{[4 5]} is a list
+containing the two elements (@code{4} and @code{5}), and @code{[:x :y]}
+yields a list whose two elements are the locations for @code{x} and @code{y}.
+Then the unification specifies that the two lists are equal,
+which means that @code{x} must equal @code{4} and @code{y} must equal @code{5}.
+
+@menu
+* Visibility::
+* Block structure::
+* Exporting declarations::
+* Modules::
+@end menu
+
+@node Visibility
+@section Visibility
+
+@cindex Scope
+Q is statically scoped.
+A variable @code{x} is visible in the entire scope containing
+its declaration @code{:x}, not just after the @code{:x} is evaluated.
+So the "memory location" for all variables declared in a scope
+are actully allocated when the scope is entered.
+There can be only one defining instance of a variable in a scope
+(i.e. the name of variable must be prefixed by @code{:} once and once only).
+It is conventional that the defining instance be the first one,
+but that is not required. (It may not be possible in the case
+of mutually recursive function.) An example:
+@code{(:x = y; :y = 10; x)} evaluates to 10.
+
+(We can say that all declarations are mutually recursive.
+The one exception is for Q commands typed in interactively.
+In that case, the declaration is not visible until the
+command contianing it has been read in, of course!)
+
+@node Block structure
+@section Block structure
+
+@cindex Block structure
+@cindex Owned declarations
+A declaration (i.e. a form like @code{:@var{identifier}}) is @dfn{owned}
+with smallest @dfn{block} containing it. The declaration is
+visible ("in scope") inside the entire block (unless it
+is overridden by another declararation inside a smaller block).
+
+Blocks are:  (incomplete list - may change slightly):
+@itemize @bullet
+@item
+A statement sequence (@pxref{Statement sequences}); i.e. a list of
+two or more expressions, separated by semi-colon or new-line.
+(If you want a block with just a single expression, add an
+extra empty expression: @code{;@var{expr}}.)
+@item
+The body of a function definition.
+@item
+A function definition comprising its parameter list and its body.
+@item
+A program (source file).
+@item
+The interior branch of certain control structures
+(such the the branches of an @code{if} statement).
+(The details have not been formalized yet.)
+@end itemize
+
+Example: The expression @code{[:x x]} will match a
+two-element sequence if and only if the two elements match.
+Thus @code{[:x x]=[3 3]} succeeds, but @code{[:x x]=[3 4]} fails.
+These expressions also declare @code{x} in the current (surrounding)
+scope, because @code{[:x x]} is @emph{not} a block.
+This may be undesirable; we would like to limit the scope
+of the @code{x}. Just @code{([:x x])} will not prevent
+the unwanted declaration, but @code{(;[:x x])} will do it.
+
+@node Exporting declarations
+@section Exporting declarations
+
+(NOTE: WORK IN PROGRESS)
+
+A declaration may have the form @code{:|@var{identifier}}
+instead of the usual @code{:@var{identifier}}.
+The presence of a @code{|} declares the @var{identifier}
+to be @dfn{exported}.
+
+If a block owns (contains) a declaration that exports a name,
+the block is said to export that name.
+The result of a block that exports one or more names
+is a structure that binds each name to the whatever
+value it gets in the block. One can later use the
+notation @code{@var{structure}'@var{name}} to extract
+the bound value.
+
+For example, the block in the parentheses here:
+@example
+:B=([:|a :|b]=[100 200]; :x=10; :|c=(x+a))
+@end example
+exports the names @code{a}, @code{b}, and @code{c}.
+
+The block evaluates to a record with those three names.
+Hence, we get that @code{B'a=100}, @code{B'b=200},
+and @code{B'c=110}.
+
+Note that the presence or absence of an exported declaration
+makes all the difference:
+@example
+Q1> (:a=3; :b=a+1)
+Q2> (:a=3; :|b=a+1)
+[b: 4]
+Q3> (:|a=3; :|b=a+1)
+[a: 3 b: 4]
+Q4> (:a=3; a+1)
+4
+Q5> (:|a=3; a+1) # Bad!
+[a: 3]
+@end example
+
+Note that line 5 is poor style: None of the statements
+in an exporting block should evaluate to other than the null sequence.
+(This will probably be prohibited ay some point.)
+
+If there is an export declaration in a parameter list,
+the name is added to the export list of the body. (More ...)
+
+@node Modules
+@section Modules
+
+(NOTE: WORK IN PROGRESS)
+
+A Q program can either be typed in as interactive commands,
+or can be read from a file.  A Q program in a file should
+have the form of an exporting block. Such a program
+is called a @dfn{module}. (By the way, a session
+of interactive commands is also a kind of module.)
+
+You can "load" in a module either by naming it on
+the command line, or by using a @code{load} command.
+
+@defun load module_name
+Note: the @var{module_name} is quoted.
+@end defun
+
+The named module is searched for (using search rules
+not yet specified). The searching can resolve to
+a source file or a binary (previously compiled) file.
+Either way, the value resulting from the @code{load}
+is (normally?) a record.
+
+Loading a module involved a number of steps.
+If the @var{module_name} is a plain identifier
+or simple quoted string literal, then the initial
+parts of loading is done at parse time.
+This is normally the case. It is also required
+when there a several modules that mutually
+reference each other.
+
+Loading a source files includes parsing,
+tree-traversal, and evaluation.
+If the @var{module_name} is known, then
+the module is parsed just after the @code{load}
+is parsed, and tree-traversal is done at the
+same time as for the module containing the @code{load}.
+In that case, the names exported by the module
+are known early, and the names can be inherited
+int some other block. Otherwise, all of the actions
+have to be postposed until evaluation time,
+and the type of the module is unknown until then.
+
+Loading a binary file includes reading in
+the text and data segments, remembering
+the labels defined and needed, performing
+relocation, and running initialization code.
+If the @var{module_name} is known, most of
+these steps can be done at parse time.
+
+@node Functions
+@chapter Functions
+
+Here is a simple example of how to define a new function:
+@example
+Q1> :(Factorial :x) = if x=0 => 1 || x * (Factorial x-1)
+@end example
+This is the classical factorial function.
+Here is how to call it:
+@example
+Q2> Factorial 30
+265252859812191058636308480000000
+@end example
+
+@menu
+* Prefix and postfix functions::
+* Function definition syntax::
+* Parameter lists::
+* Tuples:: Variable-length parameter lists
+* Keyword tuples:: (NOT IMPLEMENTED)
+* Macros:: Functions that create new expressions at compile time.
+* C interface:: How to call (and be called by) functions written in C.
+@end menu
+
+@node Prefix and postfix functions
+@section Prefix and postfix functions
+A @dfn{prefix function} can take any number of parameters specified
+@emph{after} the function name:
+@example
+:(F :x1 :x2)=x1-x2   # Definition of function F.
+F 10 3               # Call of function F; yields 7.
+@end example
+
+A @dfn{postfix function} takes a single parameter specified
+@emph{before} the function name:
+@example
+:(:arg G)=arg*arg    # Definition of function G.
+5 G                  # Call of function G; yields 25.
+@end example
+
+It is also possible for a function to take parameters specified
+@emph{both} before and after the function name.
+This allows infix functions:
+@example
+:(:x mod :y) = x - y*floor(x/y)
+-8 mod 3 # Yields 1.
+@end example
+The arguments before the function name are called the @dfn{left parameters},
+while those after are called the @dfn{right parameters}.
+In the @code{mod} example, @var{x} is a left parameter, and
+@var{y} is a right parameter.
+
+Having both prefix and postfix functions could lead to ambiguity.
+See <not written> on the details.
+
+@node Function definition syntax
+@section Function definition syntax
+A @dfn{function definition} has this general form:
+@example
+:(@var{positional_params} @var{name} @var{positional_params} @var{keyword_params})=@var{body}
+@end example
+
+Here @var{name} is the name of the function being defined;
+the first @var{positional_params} is the list of parameter specifiers
+for the left parameters; while the second @var{positional_params}
+together with the @var{keyword_params} is the list of parameter
+specifiers for the right parameters.
+
+A @var{positional_params} is a list of @var{positional_param},
+with one optional @var{tuple_param}.
+
+@node Parameter lists
+@section Parameter lists
+
+Parameter lists appear in a number of places:
+@itemize @bullet
+@item
+Formal parameter lists.
+@item
+Class definitions.
+@end itemize
+
+In general. each parameter is an expression which
+matches the value supplied when a function is called
+or an object is created.
+However, these expression may be interpreted in non-standard ways.
+
+The most common parameter has the form:
+@example
+:@var{ident}~@var{type}
+@end example
+Here, @var{ident} is an identifier, and @var{type} is some type-expression.
+This means that the actual parameter is coerced to the type @var{type},
+and the result becomes the value of @var{ident}.
+
+@node Tuples
+@section Tuples
+
+Given a sequence @var{X}, the form @code{@var{X}@@} yields
+a @dfn{tuple} of the elements of @var{X}.
+A tuple is a list of elements, just like a sequence.
+The main difference is that a tuple of one elements
+is equal to that element: @code{[@var{X}]@@ = @var{X}}.
+Tuples are @emph{not} sequences, though you can convert
+between them with loss of information.
+
+Tuples are used for the parameter lists of functions,
+as well the results of multi-valued functions.
+They are volatile, not real objects, and cannot be
+assigned to variables or be parts of data structures.
+@footnote{At least that is the intent: You may be able to trick the system.}
+
+If a parameter is a tuple, it is treated as if there were
+many parameters, one for each element of the tuple.
+Thus the following are equivalent:
+@example
+F 10 [1 2 3]@@ 20
+F 10 1 2 3 20
+@end example
+In both cases, @code{F} is applied with 5 arguments.
+
+In this respect, the list constructor form @code{[...]}
+is considered to be a function. Thus:
+@w{@code{[10 [1 2 3]@@ 20]}}
+evaluates to @w{@code{[10 1 2 3 20]}}, a sequence of 5 elements.
+
+Note that @code{[...]} @code{@@} cancel each other:
+If @var{X} is a sequence, then: @code{[@var{X}@@] == @var{X}}.
+If @var{T} is a tuple expression (there are no tuple objects,
+strictly speaking), then @code{[@var{T}]@@ == @var{T}}.
+
+A formal parameter can also be a tuple.
+This is how you define functions that take variable number of arguments.
+The tuple formal is bound to the arguments that are "left over"
+after the other arguments have been bound.
+@example
+Q1> :(f :x :T@ :y)= printf "x=%S; T=%S; y=%S" x T y
+Q2> f 2 3 4 5 6 7
+x=2; T=[3 4 5 6]; y=7
+@end example
+Only one formal can be a tuple.
+Note that a tuple formal gives sequence value to
+the parameter name (@var{T}, in the example).
+This is how it works:
+The formal @code{:T@@} is unified with the sub-tuple
+@code{[3 4 5 6]@@} from the actual argument list.
+After cancelling the @code{@@}, we get the unification:
+@code{:T = [2 3 4 5]}.
+
+Note that @code{@@} is also use for reduction: @xref{Reduce}.
+This usage is related: You can think of the reduction
+converting the argument sequence to a tuple.
+
+@node Keyword tuples
+@section Keyword tuples
+
+(NOT IMPLEMENTED!)
+
+Positional parameters correspons to normal tuples.
+But what about keyword parameters?
+One possibility is to defined @dfn{keyword tuples}.
+
+An environment is a mapping from a set of names
+to values, just like a sequence is a mapping from
+(part of) the integers to values.
+The tupling operator @code{@@} yields a normal tuple
+from a sequence; we can also define it to
+yield a keyword tuple from an environment.
+
+A keyword parameter @code{@var{name}:@var{value}}
+is a keyword tuple (with one element/binding).
+
+There can now be @emph{two} tuple formals.
+The first bundles up the unused positional parameters,
+and defines a sequence.
+The second (if any) bundles up the keyword parameters,
+and defines an environment.
+(In addition, there can be a tuple formal for left-hand arguments.)
+(If you want no positional parameters, just make the first
+tuple formal be @code{[]@@}.)
+
+@code{[x:3 y:4]} == @code{(:|x=3; :|y=4)}.
+
+@node Macros
+@section Macros
+
+A @dfn{macro} is a function that is called at compile time.
+It is given some input expressions, and uses them to
+create a new expression. That expression is then compiled as
+if it were part of the original input.
+
+A macro definition has the form:
+@example
+:(macro @var{left_arg} @var{name} @var{right_args})=@var{body}
+@end example
+This defines @var{name} to be a macro function bound to @var{name}.
+A macro function is just like a regular function, except that
+it is executed by the compiler at bind-time, not at run-time.
+(Bind-time is the stage after parsing. and before execution or dumping.)
+When the compiler sees @var{name}, it calls the function,
+passing the other expressions in the same application as parameters.
+The result should be an expression, which is then traversed further.
+
+An example should make the idea clear, but first we mention
+the @code{parse} function which is very useful when writing macros.
+
+@defun parse @var{arg1} ... @var{argn}
+Each @var{argi} must be either a string or an expression.
+Informally, all the arguments are concatenated together.
+The result is parsed, yielding an expression.
+When, during the parse, an @var{argi} that is an expression is seen,
+that expression is inserted into the resulting expression.
+@end defun
+
+Here are the actual definitions from the Q runtime system,
+defining the @code{cd} macro, which is use to change working directories.
+@example
+:|(macro cd :x@@)= parse "__cd (quote " x@@ ")"
+:|(__cd :args)=external CdAction
+@end example
+The function @code{__cd} does the actual "work:" Its argument
+is a string vector, usually of length one, which names
+the desired new directory.
+An instance of @code{cd}:
+@example
+cd ~/bin
+@end example
+The binder invokes the @code{cd} macro with an array
+whose single element is the expression parsed for @code{~/bin}.
+The @code{parse} function is invoked, and the result
+is as if the user had written:
+@example
+__cd (quote ~bin)
+@end example
+which evaluates to the same as:
+@example
+__cd ["~bin"]
+@end example
+
+@node C interface
+@section C interface
+
+@cindex External (C++) names of functions
+@findex external
+When a Q function is compiled, the compiler emits various
+data structures the describe the function object (such as
+the kind of parameters it expects). It also emits a C++ function
+for the actual body of the Q function. Normally, the compiler
+generates a name for the emitted C++ function, but if you
+write @code{external @var{name}} after the parameter list,
+the emitted C++ function will be called @var{name}.
+
+Example:
+@example
+:(foo :x) external Foo = 3 + x
+@end example
+
+This emits C++ code something like:
+@example
+Root * Foo(Root *x)
+@{
+   return /* Code to calculate 3 + x */;
+@}
+
+// Data structures that define foo function object
+// These include the symbol 'foo, and a pointer to Foo.
+@end example
+
+The compiler also emits a @code{.h} file that includes a
+declaration for @code{Foo}. You can include this @code{.h}
+is some other C++ source program file, and in that program
+you can call @code{Foo} as if it were written in C++.
+
+The converse problem is when you have a function written
+in C++ that you want to use in Q. You can do this by writing
+a dummy function definition whose body is just @code{extern @var{name}}:
+
+@example
+:(bar :x)=external Bar
+@end example
+
+You can then call @code{bar} is your Q code, just as if it were
+a Q function, assuming you provide it a C++ function something like:
+
+@example
+Root *Bar(Root *x)
+@{
+    // Code you write to implement bar.
+@}
+@end example
+
+In both forms of @code{external} the @var{name} can be a quoted
+string instead of an identifier. In that case the string is
+the assembler label for the generated/needed C++ function, as
+opposed to the C++ name of the function.
+
+@node Operators
+@chapter Operators
+
+@menu
+* Reduce::
+* Inverse::
+@end menu
+
+@node Reduce
+@section Reduce
+
+(NOTE: WORK IN PROGRESS!)
+
+To @dfn{reduce} a sequence using a binary infix function
+is to combine the elements of the sequence by place the
+operator "between" each element. For example,
+the reduction of @code{[2 3 4]} using @code{+} is @code{2+3+4}.
+
+The symbol @code{@@} is used for reduction. This use of @code{@@}
+is related to its use for making tuples (@xref{Tuples}).
+
+A recursive definition:
+@example
+[] @@OP R == R
+(x,L) @@OP R == x OP (L @@OP R)
+
+[] @@OP == left_identity OP # If defined
+[x] @@OP == x
+(x,L) @@OP == x OP (L @@OP)
+@end example
+
+@example
+L OP@@ [] == L
+L OP@@ (x,R) == (L OP x) OP@@ R
+@end example
+Note that right(?)-reduction @code{OP@@} uses
+the same syntax as tupling: @code{X@@}.
+However, the former requires @code{OP} to be
+a binary function, while the latter requires
+@code{X} to be a sequence.
+
+Note that @code{@@,} is @code{append},
+while @code{@@@@,} appends all the elements.
+
+The operator @code{|} is syntax, not a function.
+However, it is convenient to define @code{@@|} and @code{|@@}
+using the same definitions as before (NOT IMPLEMENTED).
+The @code{left_identity} and @code{right_identity} of @code{|}
+are assumed to be @code{(;)} (i.e. the empty sequence).
+
+It is also convenient to define
+@code{~|@@ @var{EXPR}} to collect each result from
+evaluating @var{EXPR}, and make a sequence of them all.
+
+@node Inverse
+@section Inverse
+
+The @dfn{inverse} of a function @var{f} is written @code{~@var{f}}.
+
+The inverse depends on what kind of a function @var{f} is.
+
+Generally, for a postfix or infix function @var{f}:
+if @code{@var{x} ~@var{f} @var{a} @dots{}} is @var{y}, then @code{@var{y} @var{f} @var{a} @dots{}} is @var{x}.
+If @var{f} is a prefix function (or is applied as one),
+then if @code{~@var{f} @var{x} @var{a} @dots{}} is @var{y}, then @code{@var{f} @var{y} @var{a} @dots{}} is @var{x}.
+
+If the operator @code{~} is applied infix, as in @code{@var{x}~@var{f}},
+the result is the same as @code{@var{x}(~@var{f})}, except that
+any application rule for @var{x} is ignored.
+
+
+@node Streams
+@chapter Streams
+
+@cindex Streams
+A @dfn{stream} is a sequence of values combined with a current
+position.  You can read (or write) only the sequence element at
+teh current position; however, the position is changed by various
+stream options described below.
+
+@cindex Character streams
+@cindex Files
+Reading characters in from files or writing characters
+out to files uses @dfn{character streams}. These are
+often called @dfn{files}.
+
+@deftypefun @var{stream} get
+Get the next value from the stream, moving the current position forward.
+At end of file, return ???.
+@end deftypefun
+
+@deftypefun @var{stream} peek
+[NOT IMPLEMENTED?]
+Same as @code{get}, not does @emph{not} change the current position.
+@end deftypefun
+
+@deftypefun @var{stream} get @var{n}
+Get the next @var{n} values from the stream,
+returning a list of the @var{n} values read.
+If the there are less than @var{n} characters after
+the current position, just return as many as are available.
+(That is, if the stream was at end of file, return an empty array.)
+Move the current position forward as many characters as were read.
+@end deftypefun
+
+@deftypefun @var{stream} put @var{value}
+Write @var{value} to the stream; that is, set the current
+element to @var{value} and move the current position forward.
+Returns the null sequence.
+@end deftypefun
+
+@deftypefun @var{stream} put @var{value1} ... @var{valuen}
+Same as:
+@example
+(@var{stream} put @var{value1}; ...; @var{stream} put @var{valuen})
+@end example
+@end deftypefun
+
+@deftypefun @var{stream} seek @var{pos}
+Move the current position of the @var{stream} to the position @var{pos},
+an integer offset relative to the beginning of the @var{stream}.
+@end deftypefun
+
+@deftypefun @var{stream} relseek @var{pos}
+Move the current position of the @var{stream} to the integer offset @var{pos}
+relative to the current position of the @var{stream}.
+@end deftypefun
+
+@deftypefun @var{stream} endseek @var{pos}
+Move the current position of the @var{stream} to the integer offset @var{pos}
+relative to the end of the @var{stream}.
+@end deftypefun
+
+@menu
+* Iterators::
+* Formatted output::
+@end menu
+
+@node Iterators
+@section Iterators
+
+@node Formatted output
+@section Formatted output
+
+@findex sprintf
+To format data as a string, do:
+@example
+sprintf @var{format_string} @var{arg_1} ... @var{arg_n}
+@end example
+The @var{arg}s are formatted according to formatting directives
+in the string @var{format_string}.
+
+To format data as a string, and send the result to
+the output text stream @var{out_stream} do:
+@example
+@var{out_stream} printf @var{format_string} @var{arg_1} ... @var{arg_n}
+@end example
+If @var{out_stream} is omitted, it defaults to the standard output file.
+Except for some pathological cases (and efficiency), this is the same as:
+@example
+@var{out_stream} put (sprintf @var{format_string} @var{arg_1} ... @var{arg_n})@@
+@end example
+
+An example:
+@example
+:x=12
+sprintf "[x=%05d]" 12      # Yields the string "[x=00012]"
+@end example
+The text @code{"%05d"} is a format directive which indicates
+that the argument value (in this case 12) is to be written
+using 5 decimal digits, filled with zeros on the left.
+The rest of the format string (@code{"[x="} and @code{"]"})
+is emitted verbatim into the output.
+
+A format control string is written in a form (syntax) similar to
+the @code{printf} control strings in the C language.
+However, the semantics is closer to the @code{format} control
+strings in Common Lisp: formatting is is quite powerful,
+and can take arguments that are typed.
+
+@menu
+* Format interpretation::
+* Format directives::
+* Formats for numbers::
+* Formats for general objects::
+* Complex formats:: Iteration, looping etc
+@end menu
+
+@node Format interpretation
+@subsection Format interpretation
+
+Each character in a format string is sent verbatim to
+the output, until a percent-sign (@code{%}) is seen.
+The @code{%} indicates the start of a @dfn{format directive}.
+The format directive is read and interpreted according to the
+rules given later. This usually "uses up" one or more
+of the given format arguments. Then the remaining characters
+of the format string are sent to the destination, with
+remaining format directives interpreted as before. This
+continues until there are no more characters in the format string.
+
+@node Format directives
+@subsection Format directives
+
+A format directive begins with a @code{%}.
+Then there may be an optional a @code{#}, which usually
+means that the argument should be printed in a "readable"
+format (that is: if the output is read back, the result
+should be equal to the orginal argument).
+
+Finally, the format directive is terminated by a single
+@dfn{format specification} characer, which species
+what kind of formatting to do.
+
+The format directive @code{%%} uses no arguments, and
+outputs a single @code{%}.
+
+@node Formats for numbers
+@subsection Formats for numbers
+
+These all use a single argument, which should be a number.
+
+@code{%@var{p}d} ("decimal")
+Print the argument as a decimal integer using at least @var{p} degits.
+The default for @var{p} is 0. 
+
+@code{%@var{p}f} ("fixed-point float")
+
+@code{%@var{p}e} ("exponential float")
+
+@code{%@var{p}g} ("general float")
+
+@node Formats for general objects
+@subsection Formats for general objects
+
+@code{%a} ("anything")
+Print the argument (any type) in a nice format.
+Do not print quotation marks or other escape characters.
+(Similar to Common Lisp's @code{~A}.)
+
+@code{%s} ("string")
+Same as @code{%a}.
+@code{%-@var{width}.@var{precision}s}
+Print the first @var{precision} characters of the printed representation
+of the argument, followed by enough spaces to bring the
+total length to @var{width},
+The default for @var{width} is 0, and for @var{precision} it is -1.
+If the @code{-} is missing, remove excess width at the left,
+and add needed padding at the left.
+
+@code{%#s}
+Print the argument in a format that can be read back in.
+(Similar to Common Lisp's @code{~S}.)
+
+@code{%c} ("character")
+Same as @code{%c}, except that if the argument is an integer,
+its character value is printed instead.
+
+@code{%#c}
+Same as @code{%c}, except that if the argument is an integer,
+its character value is printed instead.
+
+@node Complex formats
+@subsection Complex formats
+
+@code{%?} Indirection
+The @code{?} format directive uses up two arguments.
+It calls @code{format} recursively, using the first argument
+as a format control string, and the second argument
+(which must be a sequence) as the list of arguments to process.
+@example
+Q1> printf "%s%?%s" "Before<" "(%d;%#x)" [10 20] ">After."
+Before<(10;0x14)>After.
+@end example
+
+@code{%#?} Indirection.
+Same as @code{%?}, except that one one argument is consumed, which
+is used as a format control string to a recursive call to @code{(s)printf}.
+The recursive call may use arguments from the original call:
+@example
+Q2> printf "%s%#?%s" "Before<" "[%d;%#x]" 10 20 ">After."
+Before<[10;0x14]>After.
+@end example
+
+@code{%#@var{count}@{@var{actions}%@}} Iteration
+Keep repeating the @var{actions}, until there are no more arguments.
+Repeat at most @var{count} times (default is infinity).
+
+@code{%@var{count}@{@var{actions}%@}} Iteration
+Same as @code{%#@var{count}@{@var{actions}%@}}, but uses one
+argument, which must be a sequence.  That sequence used whenever
+arguments are needed by the @var{actions}.
+
+@example
+Q1> printf "%@{(%s)%@}" [3 4 5]
+(3)(4)(5)
+Q2> printf "%#@{(%s)%@}" 3 4 5
+(3)(4)(5)
+@end example
+
+@code{%^} Break from iteration
+
+@node Records
+@chapter Records
+
+(THIS IS WORK IN PROGRESS!)
+@cindex Exported names
+
+A structure expression is a statement list,
+where at least of one the identifiers declared is @dfn{exported}.
+
+@node Assignment
+@chapter Assignment
+
+An @dfn{assignable variable} is an object that has changable state.
+
+@code{NEW} creates a new assignable object.
+Its value can be changed with the assignment operator:
+:v = NEW
+v := 10
+:u = NEW
+u := v + 5
+
+@code{@var{V} value} extracts the current value of @var{V}.
+
+The @code{:=>} operator is as follows:
+@code{@var{V} :=> @var{a} ... @var{z}} assigns @var{V} to @var{a},
+the old value of @var{a} to @var{b}, and so on, finishing by
+assigning the old value of @var{y} to @var{z}.
+The returned value is the old value of @var{z}.
+All of the assignments are done in parallell.
+
+To increment an assignable variable, use the @code{+:=} contructor,
+as in @code{x +:= 2} or @code{x(+:=)1}.
+This is a special of @code{:=} used as a postfix operator,
+where the operand is a function. In that case,
+@code{@var{v} @var{F}:= @var{x1} .. @var{xn}}
+is the same as:
+@code{@var{v} := ((@var{v} value) @var{F} @var{x1} .. @var{xn})}
+except that @var{v} is only evaluated once.
+
+@node System interface
+@chapter System interface
+
+A design goal Q has to make it convenient to use as a command language.
+It has many of the features found in typical shells (sh, csh, bash,
+as well as languages like perl and rexx), and it can interact
+with a Unix-like system in many of the same ways.
+
+@menu
+* Running programs::
+* Job control::
+* Current directory::
+* Miscellaneous::
+@end menu
+
+@node Running programs, Job control, System interface, System interface
+@section Running programs
+@findex run
+
+To run a program, do: @code{run @var{program} @var{args}}.
+The program (which is quoted) must name an executable file.
+The @var{args} (which are also quoted) are passed to the @var{program}.
+@example
+Q1> run wc Q.C
+     308     950    7986 Q.C
+@end example
+If the @var{program} is a simple identifier that is not in the
+scope of a Q variable, and the identifier names an executable
+file in the current search path, then the @code{run} may be omitted.
+@example
+Q2> wc Q.C
+     308     950    7986 Q.C
+@end example
+(Note that determination that @var{program} is an executable program
+is done at compile time, so you cannot omit @code{run} if
+the @var{program} hasn't been created yet.)
+
+The standard output from @code{run} is coerced to a string,
+which you can use as you use any other string:
+@example
+Q3> :X = wc Q.C
+Q4> printf "@{%#a@}" X
+@{"     308     950    7986 Q.C\n"@}
+@end example
+
+The left-hand argument to a @code{run} command is coerced to a string,
+and the result is used as the standard input of the @var{program}:
+@example
+Q5> "Hello World!\n" run /usr/bin/tr a-zA-Z A-Za-z
+hELLO wORLD!
+@end example
+
+If an argument contains the "globbing" characters @code{*?[]()|}
+these are use to match against file names, as in most shells:
+@example
+Q1> echo Makefi*
+Makefile Makefile~
+@end example
+(@code{echo} is a builtin command that just prints into arguments.)
+The globbing syntax is an extension of that used for most shells;
+see @xref{Patterns} for details.
+
+Tilde expansion is also done.
+
+@example
+Q1> "ab cde fgh" run wc
+       0       3      10
+@end example
+
+@findex exec
+To replace Q by @var{program}, do: @code{exec @var{program} @var{args}}.
+
+By the way, before execution Q translates
+@w{@code{run @var{program} @var{args}}}
+into something very much like:
+@w{@code{primitive_run "@var{program}" (globlist (quote @var{args}))}}.
+(However, you can't call invoke @code{primitive_run} directly.)
+
+@node Job control, Current directory, Running programs, System interface
+@section Job control
+
+@cindex jobs
+If you run Q interactively, you can run multiple jobs at once.
+
+@defmac fg @var{[job]}
+Move the specified job into the foreground.
+@end defmac
+
+@defmac bg @var{[job]}
+Continue executing the specified job in the background.
+@end defmac
+
+@defmac jobs
+List current jobs
+@end defmac
+
+You can interrupt the current forground job with ^Z or
+kill it with ^C.
+
+@defmac @var{command} bg
+Execute the current command in the background.
+(Most shells use @code{@var{command}&} syntax for this.)
+@end defmac
+
+@node Current directory, Miscellaneous, Job control, System interface
+@section Current directory
+
+@defun pwd
+Returns the current working directory (as a string).
+@end defun
+
+@defmac cd dir
+Charges the current working directory to @var{dir} (which is quoted).
+
+If @var{dir} is relative (does not begin with a @code{/}),
+and the @code{CDPATH} environment variable is defined,
+then @code{cd} will search each of the directories in @code{CDPATH}
+for a sub-directory @var{dir}. Here, @code{CDPATH} is a string
+of directory names, separted by colons; it should begin with @code{.}.
+
+@code{cd} will try to hide symbolic links: If you @code{cd}
+down a symbolic link, and later @code{cd ..}, you will get back
+where you started. In contrast, the @code{chdir} routine will
+follow the physical @code{..} link in the file system.
+
+If @var{dir} is @code{-}, it is replaced by the value of @code{$OLDPWD}.
+Thus @code{cd -} is the same as @code{cd $OLDPWD}.
+@end defmac
+
+@defmac cd
+Change the current working directory to the user's home directory.
+@end defmac
+
+@defun chdir dir
+Charges the current working directory to @var{dir} (which is evaluated).
+If @var{dir} is @code{""}, same as @code{chdir env'HOME}.
+The @code{chdir} routine is a low-level routine that ignores @code{CDPATH},
+and does not so anything special for symbolic links.
+@end defun
+
+@defvar PWD
+Current working directory as set by @code{cd} or @code{chdir}.
+@end defvar
+
+@defvar OLDPWD
+Previous working directory as set by @code{cd} or @code{chdir}.
+@end defvar
+
+@node Miscellaneous,  , Current directory, System interface
+@section Miscellaneous
+
+@defvar argv
+The arguments in the command line used to invoke Q are in @code{argv},
+which is an array of strings. The first element (i.e. @code{argv 0})
+is the name of the program running, usually just @code{Q}.
+
+If Q is invoked on as file (as in: @code{Q -flags file arg1 ... argn}),
+the value of @code{argv} is the file name followed by the non-flags
+arguments: @code{["file" "arg1" .. "argn"]}.
+This is compatible with most shells.
+@end defvar
+
+@defvar env
+The "environment" passed to Q (in the Unix sense; see "man 7 environ")
+is available in the variable @code{env}. This is an updatable
+table, containing strings that are indexed by symbols. When a
+program is executed, the environment passed to it is taken
+from @code{env}. For example:
+@example
+Q1> env'TERM
+dumb
+Q2> env'TERM:="xterm"
+Q3> run /bin/sh
+$ echo TERM= $TERM
+TERM= xterm
+@end example
+To remove an element from the environment, assign @code{NONE} to it:
+@example
+env'TERM:=NONE
+@end example
+@end defvar
+
+@defun exit [code]
+Terminates the Q program. (Same as the Unix call @code{exit(@var{code})}.)
+The default for @var{code} is 0.
+@end defun
+@defun quit
+Same as @code{exit 0}.
+@end defun
+
+@defmac echo [@code{-qn}] words...
+The @code{echo} builtin prints its argument to the output.
+The @code{-n} flag suppresses a final new-line.
+The @code{-q} flag formats each argument as a quoted string
+literal that can be read in again:
+@example
+Q1> echo prefix(XX YY)"\012"postfix
+prefixXX
+postfix prefixYY
+postfix
+Q2> echo -q prefix(XX YY)"\012"postfix
+"prefixXX\npostfix" "prefixYY\npostfix"
+@end example
+@end defmac
+
+@defmac quote words...
+Informally, the @code{quote} macro
+puts string quotes areound each word in @var{words...};
+return resulting code evaluates to a vector of strings.
+
+For example @code{quote 4+9 is $(4+9).} becomes
+@code{["4+9" "is" "$(4+9)."]}, which evaluates to the vector:
+@code{["4+9" "is" "13."]}.
+@end defmac
+
+These routines are used internally (by @code{run} and other commands):
+@defun glob pattern
+Return the list of file names that match the @code{pattern}.
+The input should be a string, and the result is a vector of strings.
+If there is no match, the result is @code{[]}.
+@example
+Q1> printf "<%S>" (glob "parse*")
+<["parserule.o"
+"parsemacros.o"
+"parse.o"]>
+@end example
+@end defun
+@defun globlist names
+Call @code{glob} on each element of @var{names},
+which should be a sequence of strings.
+Append all the results into one long vector of strings.
+However, any elements of @var{names} that have no matches,
+are inserted directly into the output list (after parentheses
+and quoting characters have been removed).
+@example
+Q2> globlist ["*.b" "parse*" "foo\"+\"(abc)"]
+*.b
+parserule.o
+parsemacros.o
+parse.o
+foo+abc
+@end example
+This behavior mimics that used by @code{/bin/sh}.
+@end defun
+
+@node Lisp support, Function and Variable Index, System interface, Top
+@chapter Lisp support
+
+An expression in Lisp/Scheme syntax may entered by
+prefixing it with the @code{Scheme} keyword.
+The expression is read using a programmable Lisp reader.
+Then the resulting Lisp object is converted to a Q expression
+for evaluation.
+@example
+Q1> print_readable:=1
+Q2> Scheme (quote (:foo #(3 4 5)))
+['foo [3 4 5]]
+@end example
+
+To print an object in Lisp/Scheme syntax, set the @code{print_lisp} variable:
+@example
+Q3> print_lisp:=1
+Q4> Scheme '(:foo #(3 4 5)))
+(:foo #(3 4 5))
+@end example
+
+The only special form that has been implemented is @code{quote},
+so the @code{Scheme} keyword has limited usefulness.
+A number of issues also need to be resolved, such as
+the representation of the empty list/sequence
+(@code{Scheme 'nil} vs. @code{Scheme '()} vs. @code{[]}).
+
+A number of functions from Common Lisp and the Scheme R3 report
+have been implemented. You can use them in Q code:
+@example
+Q5> Scheme (symbol->string 'abc)
+"abc"
+Q6> (Lisp #'find-package) "common-lisp"
+package "common-lisp"
+@end example
+
+Right now, you can also just name Lisp function directly in Q code,
+since Scheme, Lisp, and Q use the same global name space.
+This will probably change:
+@example
+Q7> symbol\-\>string 'abc
+"abc"
+@end example
+Note that @code{->} had to be "quoted" with @code{\}s.
+
+The following Common Lisp functions and values have been implemented:
+car, cdr, cddr, cadr, cons
+lispread (calls the Lisp reader)
+nil, t
+vector
+integer-length
+getprop, putprop, remprop, symbol-plist, symbol-package
+make-symbol
+find-package
+symbol-function, symbol-value, set, boundp, fboundp, makunbound, fmakunbound
+
+The following Scheme functions have been implemented:
+car, cdr, cddr, cadr, cons
+vector, make-vector, vector-fill!
+symbol->string, string->symbol
+
+The only recognized @code{declare} form is a non-standard one:
+@code{(declare (external Foo))} in the body of a function declares that
+when the function is compiled, the name of the emitted C++ function should
+be @code{Foo}.
+@code{(declare (external "Foo"))} is the same, except that it declares
+that the assembler label of the function is @code{Foo}.
+If the there are no forms in the function following a
+@code{(declare (external ...))} form then the function is assumed
+to be defined in some external C++ file. @xref{C interface}
+
+@menu
+* Lisp Number Operations::
+@end menu
+
+@node Lisp Number Operations,  , Lisp support, Lisp support
+@section Lisp Number Operations
+
+(Section numbers refer to: Guy Steel jr. "Common Lisp: The Language",
+second edition, 1990.)
+
+The "Predicates on Numbers" (from Section 12.2) are all implemented.
+
+@defun zerop number
+True if @var{number} is zero.
+@end defun
+@defun plusp number
+True if @var{number} is positive
+@end defun
+@defun minusp number
+True of @var{number} is negative
+@end defun
+@defun oddp integer
+True if @var{integer} is odd.
+@end defun
+@defun evenp integer
+True if @var{integer} is even.
+@end defun
+
+The "Logical Operations on Numbers" (from Section 12.7) are all implemented.
+These all consider an integer as a semi-infinite bit string.
+
+@defun logior &rest integers
+Take the "inclusive or" of the @var{integers}.
+@end defun
+@defun logxor &rest integers
+Take the "exclusive or" of the @var{integers}.
+@end defun
+@defun logand &rest integers
+Take the logical "and" of the @var{integers}.
+@end defun
+@defun logeqv &rest integers
+Take the "exclusive nor" (bit-wise logival equivalence) of the @var{integers}.
+@end defun
+@defun lognand integer1 integer2
+Same as @code{(lognot (logand @var{integer1} @var{integer2}))}.
+@end defun
+@defun lognor integer1 integer2
+Same as @code{(lognot (logor @var{integer1} @var{integer2}))}.
+@end defun
+@defun logandc1 integer1 integer2
+Same as @code{(logand (lognot @var{integer1}) @var{integer2})}.
+@end defun
+@defun logandc1 integer1 integer2
+Same as @code{(logand (lognot @var{integer1}) @var{integer2})}.
+@end defun
+@defun logandc2 integer1 integer2
+Same as @code{(logand @var{integer1} (lognot @var{integer2}))}.
+@end defun
+@defun logorc1 integer1 integer2
+Same as @code{(logor (lognot @var{integer1}) @var{integer2})}.
+@end defun
+@defun logorc2 integer1 integer2
+Same as @code{(logor @var{integer1} (lognot @var{integer2}))}.
+@end defun
+@defun boole operation integer1 integer2
+Does the bit-wise boolean operation indicated by @var{operation},
+on the two operands @var{integer1} and @var{integer2}.
+The @var{operation} is one of the 16 constants below.
+@end defun
+@defvr Constant boole-clr
+@end defvr
+@defvr Constant boole-set
+@end defvr
+@defvr Constant boole-1
+@end defvr
+@defvr Constant boole-2
+@end defvr
+@defvr Constant boole-c1
+@end defvr
+@defvr Constant boole-c2
+@end defvr
+@defvr Constant boole-and
+@end defvr
+@defvr Constant boole-ior
+@end defvr
+@defvr Constant boole-xor
+@end defvr
+@defvr Constant boole-eqv
+@end defvr
+@defvr Constant boole-nand
+@end defvr
+@defvr Constant boole-nor
+@end defvr
+@defvr Constant boole-andc1
+@end defvr
+@defvr Constant boole-andc2
+@end defvr
+@defvr Constant boole-orc1
+@end defvr
+@defvr Constant boole-orc2
+@end defvr
+@defun lognot integer
+Returns the bit-wise logical "not" of @var{integer}.
+@end defun
+@defun logtest integer1 integer2
+Same as @code{(not (zerop (logand @var{integer1} @var{integer2})))}.
+@end defun
+@defun logbitp index integer
+True iff bit number @var{index} in @var{integer} is one.
+@end defun
+@defun ash integer count
+Does an arithmetic shift by @var{count} on @code{integer}.
+Shift left is @var{count} is positive; otherwise, shift right.
+@end defun
+@defun logcount integer
+Count the number of 1-bits in @var{integer}, if it is non-negative.
+If @var{integer} is negative, count number of 0-bits.
+@end defun
+@defun integer-count integer
+Return number of bits needed to represent @var{integer}.
+@end defun
+
+@node Function and Variable Index
+@appendix Function and Variable Index,Concept Index,,Top
+@printindex fn
+
+@node Concept Index
+@appendix Concept Index,,Function and Variable Index,Top
+@printindex cp
+
+@contents
+@bye

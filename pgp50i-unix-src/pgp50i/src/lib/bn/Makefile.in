@@ -1,0 +1,138 @@
+#
+# lib/bn/Makefile.in
+#
+# Copyright (C) 1996,1997 Pretty Good Privacy, Inc. All rights reserved.
+#
+# $Id: Makefile.in,v 1.25.2.3 1997/06/07 09:49:25 mhw Exp $
+#
+
+# Ignore post-processed dependencies here
+DEPEND=:
+
+# The BigNum library in various word sizes
+BN16OBJS = bn16.o bni16.o bninit16.o
+BN32OBJS = bn32.o bni32.o bninit32.o
+BN64OBJS = bn64.o bni64.o bninit64.o
+# This one auto-detects
+BN00OBJS = bn00.o bni00.o
+
+# If you don't know what size to use, use BN00OBJS.
+BNOBJS = $(BN00OBJS)
+
+# Size-independent auxiliary files.
+BNAUXOBJS = bn.o bnimem.o bnsieve.o bnprime.o bngermain.o bnjacobi.o \
+	bnprint.o bnlegal.o
+
+# Auto-generated aux sources
+BNSOURCES = bni32.c bni32.h bn32.c bn32.h bninit32.c \
+	bni64.c bni64.h bn64.c bn64.h bninit64.c
+
+LOCALINCLUDES = -I.
+OBJS = $(BNAUXOBJS) $(BNOBJS) $(OBJS_EXT)
+
+# The interfaces exported from this library
+SHAREDHDRS = bn.h bnprime.h bngermain.h
+
+INSTALLLIBS = $(BNLIB)
+LIBTARGET = $(BNLIB)
+LIBTDEPS = DONE
+
+all:: $(BNLIB)
+
+clean::
+	$(RM) $(OBJS) $(BN00OBJS) $(BN16OBJS) $(BN32OBJS) $(BN64OBJS)
+
+very-clean:: clean
+	$(RM) ../$(BNLIB) $(BNLIB)
+
+depend:: bnsources
+
+### Some manual dependencies needed by the bignum library
+# The bignum library is available in three sizes - 16, 32 and 64-bit
+# words - which are generated from the 16-bit version using sed.
+bni00.o: bni16.c bni32.c bni64.c bnlegal.h
+
+bn00.o: bn16.c bn16.h bni16.h bn32.c bn32.h bni32.h bn64.c bn64.h bni64.h \
+	bninit16.c bninit32.c bninit64.c
+
+bni32.c: bni16.c bni32.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/64/g -e s/16/32/g $(srcdir)/bni16.c > $@
+	chmod a-w $@
+
+bni64.c: bni16.c bni64.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/128/g -e s/16/64/g $(srcdir)/bni16.c > $@
+	chmod a-w $@
+
+bni32.h: bni16.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/64/g -e s/16/32/g $(srcdir)/bni16.h > $@
+	chmod a-w $@
+
+bni64.h: bni16.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/128/g -e s/16/64/g $(srcdir)/bni16.h > $@
+	chmod a-w $@
+
+bn32.c: bn16.c bn32.h bni32.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/64/g -e s/16/32/g $(srcdir)/bn16.c > $@
+	chmod a-w $@
+
+bn64.c: bn16.c bn64.h bni64.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/128/g -e s/16/64/g $(srcdir)/bn16.c > $@
+	chmod a-w $@
+
+bn32.h: bn16.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/64/g -e s/16/32/g $(srcdir)/bn16.h > $@
+	chmod a-w $@
+
+bn64.h: bn16.h
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/128/g -e s/16/64/g $(srcdir)/bn16.h > $@
+	chmod a-w $@
+
+bninit32.c: bninit16.c
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/64/g -e s/16/32/g $(srcdir)/bninit16.c > $@
+	chmod a-w $@
+
+bninit64.c: bninit16.c
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/32/128/g -e s/16/64/g $(srcdir)/bninit16.c > $@
+	chmod a-w $@
+
+bntest32.c: bntest16.c
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/16/32/g $(srcdir)/bntest16.c > $@
+	chmod a-w $@
+
+bntest64.c: bntest16.c
+	test ! -f $@ -o -w $@ || (chmod u+w $@ && test -w $@) || rm -f $@
+	sed -e s/16/64/g $(srcdir)/bntest16.c > $@
+	chmod a-w $@
+
+# An explicit target that can be made before distribution for
+# machines that don't have sed.
+bnsources: $(BNSOURCES)
+
+## Dependencies ##
+### Bignum library dependencies
+# The bignum library does a lot of preprocessor trickery with
+# <limits.h> and conditional #includes. Here are all the dependencies
+# that might happen, even though only some of them will be used on any
+# given platform.
+bni16.o: bni.h bni16.h bnimem.h bnlegal.h
+bni32.o: bni.h bni32.h bnimem.h bnlegal.h
+bni64.o: bni.h bni64.h bnimem.h bnlegal.h
+bninit16.o: bn.h bn16.h
+bninit32.o: bn.h bn32.h
+bninit64.o: bn.h bn64.h
+bn16.o: bni.h bnimem.h bn.h bni16.h bn16.h
+bn32.o: bni.h bnimem.h bn.h bni32.h bn32.h
+bn64.o: bni.h bnimem.h bn.h bni64.h bn64.h
+bnsieve.o: bn.h bnsieve.h
+bnprime.o: bnprime.h bn.h bnsieve.h

@@ -1,0 +1,93 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!ames!elroy.jpl.nasa.gov!swrinde!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar14.223702.6452@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Keywords: DES replacement, Large blocks
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1994Mar13.051515.27175@cactus.org>
+Date: Mon, 14 Mar 94 22:37:02 GMT
+Lines: 78
+
+Terry Ritter <ritter@cactus.org> proposes the following simple
+function for transforming two plaintext blocks A and B to two
+ciphertext blocks X and Y:
+
+X = 2A+3B	Y = 3A+2B
+A = 2X+3Y	B = 3X+2Y
+
+
+This is done in GF(2^n), for a suitable n-bit blocksize.  That is,
+modulo a suitable n-bit irreducible polynomial p.  So "2" and "3" are
+actually the bit patterns "0...010" and "0...011", and "+" means
+exclusive-or.
+
+The algorithm is self-inverse.  Let's rephrase it as:
+
+T = (A+B)*2 (mod p)
+A += T;
+B += T;
+
+The reason it's self-inverse is that it preserves A+B.  This means that
+if it is used in a structure like an FFT butterfly to encrypt large
+blocks (with an unknown polynomial p), it preserves the XOR of the
+entire block.  That's quite an information leak.
+
+From A+B, it is easy to obtain most of T, save only the term of p which
+may be added in the modular reduction.  Because this depends on the high
+bit of A+B, it is also easy to see when this has been added.
+
+Given a very few pairs (X,Y) of ciphertext only, half of them will
+have the high bit of X^Y clear, so the plaintext can be recovered using
+T = (X^Y)<<1; A = Y^T; B = X^T;  If there are any exploitable patterns
+in A and B, these can be used to find p in the cases where X^Y has
+its high bit set and T = (X^Y)<<1; A = Y^T^p; B = X^T^p;, for some
+unknown p.  Finding p should not be difficult.
+
+Basically, this operation is far too linear.
+
+As an aside, if you want a better block-mixing function, try starting
+with the MA-structure used in IDEA:
+
+      A    B
+      |    |
+      v    v
+ K1-->*--->+
+      |    |
+      |    |
+      v    v
+      +<---*<--K2
+      |    |
+      v    v
+      X    Y
+
+Now, to avoid colliding with the patent restrictions, change the operations
+so that they are still non-distributive but aren't group operations.
+I'd suggest * be multiplication in GF(2^n) (so K1 and K2 are constrained
+to be non-zero to make it invertible) and + be addition modulo 2^n.
+
+The transformation can be expressed in C with the * and + operators as:
+
+A *= K1;
+B += A;
+B *= K2;
+A += B;
+
+(X and Y are now A and B)
+
+and the inverse, if K1' and K2' are the inverses of K1 and K2, is:
+
+A -= B;
+B *= K2';
+B -= A;
+A *= K1';
+
+That is a much less linear transformation.  The last A += B step,
+of course, has no direct cryptographic significance, but it introduces
+dependancy on K2 into A, which is useful if this is cascaded.
+-- 
+	-Colin

@@ -1,0 +1,448 @@
+head	1.7;
+access;
+symbols;
+locks
+	vince:1.7; strict;
+comment	@ * @;
+
+
+1.7
+date	95.08.25.10.59.54;	author vince;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	95.04.08.14.38.50;	author vince;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	95.01.24.15.55.43;	author vince;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	95.01.19.13.43.45;	author vince;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	95.01.03.11.57.27;	author vince;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	95.01.02.18.32.39;	author vince;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	94.12.30.11.23.59;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@safety
+@
+text
+@#ifdef SECURID
+
+#include <stdio.h>
+#include <errno.h>
+#include <termios.h>
+#include <signal.h>
+
+#include "sdi_athd.h"
+#include "sdi_size.h"
+#include "sdi_type.h"
+#include "sdacmvls.h"
+#include "sdconf.h"
+union config_record configure;
+
+static struct termios saved_ttymode;
+
+#ifdef TEST
+main(argc, argv)
+int	argc;
+char	*argv[];
+{
+	if (argc != 2) {
+		(void)fprintf(stderr, "usage: %s username\n", argv[0]);
+		exit(1);
+	}
+
+	if (sdiauth(isatty(0), argv[1]))
+		puts("FAILED");
+	else
+		puts("SUCCEEDED");
+	return(0);
+}
+#endif
+
+#define CANCELLED	1
+
+sdiauth(usepty, user)
+char	*user;
+{
+	struct SD_CLIENT sd_dat, *sd;
+	int	ret;
+	char	passcode[LENPRNST];
+	char	*c, reply[3], newpin[LENPRNST], pintype[20], pinsize[20];
+	int	failed = 0;
+	struct termios noecho_ttymode;
+	void    (*oldsig) ();
+	static void	sd_restore_ttymode();
+
+	memset(&sd_dat, 0, sizeof(sd_dat));   /* clear struct */
+	sd = &sd_dat;
+	creadcfg();		/*  access sdconf.rec  */
+	if (sd_init(sd)) {
+#ifdef TEST
+		fprintf(stderr, "Cannot initialize client-server session\n");
+#endif
+		return(1);
+	}
+
+	if (usepty) {
+		printf("Enter PASSCODE for %s: ", user);
+		(void)fflush(stdout);
+
+		/* ECHO OFF */
+		if (tcgetattr(0, &saved_ttymode) == -1) {
+			perror("tcgetattr()");
+			return(1);
+		}
+		if ((oldsig = signal(SIGINT, SIG_IGN)) != SIG_IGN)
+			signal(SIGINT, sd_restore_ttymode);
+		if (tcgetattr(0, &noecho_ttymode) == -1) {
+			perror("tcgetattr()");
+			return(1)
+		}
+		noecho_ttymode.c_lflag &= ~ECHO;
+		if (tcsetattr(0, TCSANOW, &noecho_ttymode) == -1) {
+			perror("tcsetattr()");
+			return(1);
+		}
+	}
+	else {
+		printf("Enter PASSCODE for %s (echo is on):", user);
+		(void)fflush(stdout);
+	}
+
+	if (fgets(passcode, sizeof(passcode), stdin) == NULL)
+		return(1);
+
+	if (usepty) {
+		/* ECHO ON */
+		if (tcsetattr(0, TCSANOW, &saved_ttymode) == -1) {
+			perror("tcsetattr()");
+			return(1);
+		}
+		if (oldsig != SIG_IGN)
+			signal(SIGINT, oldsig);
+		printf("\n");
+	}
+
+#ifdef TEST
+	passcode[strlen(pin) - 1] = '\0';
+#else /* rip() is contained in skey library */
+	rip(passcode);
+#endif
+
+	ret = sd_check(passcode, user, sd);
+	switch (ret) {		/* switch on ret from sd_check  */
+	case ACM_OK:
+		break;
+
+	case ACM_ACCESS_DENIED:
+		puts("Access Denied");
+		failed = 1;
+		break;
+
+	case ACM_NEXT_CODE_REQUIRED:
+		printf("Please enter NEXT cartcode: ");
+		if (fgets(passcode, sizeof(passcode), stdin) == NULL) {
+
+			failed = 1;
+			break;
+		}
+#ifdef TEST
+		passcode[strlen(passcode) - 1] = '\0';
+#else /* rip() is contained in skey library */
+		rip(passcode);
+#endif
+		if (sd_next(passcode, sd) == ACM_OK) {
+			break;
+		}
+		printf("BAD NEXT cartcode, access denied.\n");
+		failed = 1;
+		break;
+
+	case	ACM_NEW_PIN_REQUIRED:
+		printf("New PIN required; do you wish to continue? (y/n) [n]: ");
+		c = fgets(reply, 3, stdin);
+		if (strncmp(reply, "y", 1)) {
+			sd_pin("", CANCELLED, sd);
+			printf("Cancelled new PIN protocol, access denied.\n");
+			failed = 1;
+			break;
+		}
+		if (sd->alphanumeric)
+			strcpy(pintype, "characters");
+		else
+			strcpy(pintype, "digits");
+
+		if (sd->min_pin_len == sd->max_pin_len)
+			sprintf(pinsize, "%d", sd->min_pin_len);
+		else
+			sprintf(pinsize, "%d to %d",
+					sd->min_pin_len, sd->max_pin_len);
+
+		if (sd->user_selectable) {
+			printf("\nEnter your new PIN, containing %s %s,\n",
+							pinsize, pintype);
+			printf("                           or\n\
+<Return> to generate a new PIN and display it on the screen\n");
+			c = fgets(newpin, sd->max_pin_len + 1, stdin);
+			if (!strncmp(newpin, "\n", 1)) {
+				strncpy(newpin, sd->system_pin, LENMAXPIN);
+				printf("\n\nPIN:        %s \n", newpin);
+			}
+			else
+				newpin[strlen(newpin) - 1] = '\0';
+			if (sd_pin(newpin, 0, sd) == ACM_NEW_PIN_ACCEPTED) {
+				printf("New PIN accepted \n");
+				printf(
+"Wait for the code on your card to change, then log in with the new PIN\n");
+				failed = 1; /* be standard */
+				break;
+			}
+			else {
+				printf("New PIN rejected, access denied\n");
+				failed = 1;
+				break;
+			}
+		}
+		else { /*  system-generated PIN  */
+			printf(
+"\nPress <Return> to generate a new PIN and display it on the screen\n");
+			fgets(reply, 3, stdin);
+			if (!strncmp(reply, "\n", 1)) {
+				strncpy(newpin, sd->system_pin, LENMAXPIN);
+				printf("\n\nPIN:        %s \n", newpin);
+			}
+			else {
+				printf("New PIN protocol aborted, access denied\n");
+				failed = 1;
+				break;
+			}
+			if (sd_pin(newpin, 0, sd) == ACM_NEW_PIN_ACCEPTED) {
+				printf("New PIN accepted \n");
+				printf(
+"Wait for the code on your card to change, then log in with the new PIN\n");
+				failed = 1; /* be standard */
+			}
+			else {
+				printf("New PIN rejected, access denied.\n");
+				failed = 1;
+				break;
+			}
+		}
+		break;
+
+	default:
+		printf("sdi panics, unknown return code %d \n", ret);
+		failed = 1;
+		break;
+	}
+	return(failed);
+}
+
+/* restore - restore terminal modes when user aborts command */
+void sd_restore_ttymode()
+{
+	if (tcsetattr(0, TCSANOW, &saved_ttymode) == -1) {
+		perror("tcsetattr()");
+		return(1);
+	}
+	exit(1);
+}
+
+#endif /* SECURID */
+@
+
+
+1.6
+log
+@safety
+@
+text
+@d47 1
+a47 1
+	static void	restore_ttymode();
+d64 4
+a67 1
+		tcgetattr(0, &saved_ttymode);
+d69 5
+a73 2
+			signal(SIGINT, restore_ttymode);
+		tcgetattr(0, &noecho_ttymode);
+d75 4
+a78 1
+		tcsetattr(0, TCSANOW, &noecho_ttymode);
+d90 4
+a93 1
+		tcsetattr(0, TCSANOW, &saved_ttymode);
+d215 1
+a215 1
+static void restore_ttymode()
+d217 5
+a221 2
+    tcsetattr(0, TCSANOW, &saved_ttymode);
+    exit(1);
+@
+
+
+1.5
+log
+@safety
+@
+text
+@d27 1
+a27 1
+	if (sdiauth(argv[1]))
+d37 1
+a37 1
+sdiauth(user)
+d59 16
+a74 2
+	printf("Enter PASSCODE for %s: ", user);
+	(void)fflush(stdout);
+a75 8
+	/* ECHO OFF */
+	tcgetattr(0, &saved_ttymode);
+	if ((oldsig = signal(SIGINT, SIG_IGN)) != SIG_IGN)
+		signal(SIGINT, restore_ttymode);
+	tcgetattr(0, &noecho_ttymode);
+	noecho_ttymode.c_lflag &= ~ECHO;
+	tcsetattr(0, TCSANOW, &noecho_ttymode);
+
+d79 7
+a85 6
+	/* ECHO ON */
+	tcsetattr(0, TCSANOW, &saved_ttymode);
+	if (oldsig != SIG_IGN)
+		signal(SIGINT, oldsig);
+	
+	printf("\n");
+@
+
+
+1.4
+log
+@safety
+@
+text
+@d77 2
+@
+
+
+1.3
+log
+@safety
+@
+text
+@d42 1
+a42 1
+	char	passcode[LENPRNST], pin[LENPRNST], buf[LENPRNST];
+d59 1
+a59 1
+	printf("Enter PIN for %s: ", user);
+d70 1
+a70 1
+	if (fgets(pin, sizeof(pin), stdin) == NULL)
+a77 4
+	printf("\nEnter PASSCODE: ");
+	(void)fflush(stdout);
+	if (fgets(buf, sizeof(buf), stdin) == NULL)
+		return(1);
+d79 1
+a79 2
+	pin[strlen(pin) - 1] = '\0';
+	buf[strlen(buf) - 1] = '\0';
+d81 1
+a81 2
+	rip(pin);
+	rip(buf);
+a83 2
+	sprintf(passcode, "%s%s", pin, buf);
+
+d145 1
+a145 1
+			if (sd_pin(newpin, 0, sd) == ACM_NEW_PIN_ACCEPTED)
+d147 5
+d154 1
+a154 1
+				failed = 1; /* this is not standard? */
+d171 1
+a171 1
+			if (sd_pin(newpin, 0, sd) == ACM_NEW_PIN_ACCEPTED)
+d173 4
+@
+
+
+1.2
+log
+@safety
+@
+text
+@d59 1
+a59 1
+	printf("Please enter PIN for %s: ", user);
+d78 1
+a78 1
+	printf("\nPlease enter PASSCODE: ");
+d98 1
+a98 1
+		puts("Access denied.");
+a114 1
+			printf("Authentication succeeded\n");
+@
+
+
+1.1
+log
+@safety
+@
+text
+@d5 2
+d15 2
+d37 2
+a38 2
+sdiauth(username)
+char	*username;
+d42 1
+a42 1
+	char	passcode[LENPRNST];
+d45 3
+d58 23
+a80 2
+	printf("Please enter PASSCODE for %s: ", username);
+	if (fgets(passcode, sizeof(passcode), stdin) == NULL)
+d83 2
+a84 1
+	passcode[strlen(passcode) - 1] = '\0';
+d86 2
+a87 1
+	rip(passcode);
+d89 4
+a92 1
+	ret = sd_check(passcode, username, sd);
+d192 8
+@

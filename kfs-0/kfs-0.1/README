@@ -1,0 +1,132 @@
+                 KFS -- Encrypted Filesystem for SunOS 4.1.X
+                 -------------------------------------------
+                             Version 0.1 Alpha
+			       Patchlevel 3
+
+
+Introduction:
+
+KFS was written with two goals in mind.  First, to provide fast, reliable
+encryption of users files.  Second, to do so in a way that would be comp-
+atible with existing filesystem tools such as dump and fsck.  To that end,
+KFS is implemented as a layer on top of UFS.  For users familiar with
+the loopback filesystem, LOFS, think of KFS as a loopback filesystem with
+encryption thrown in.
+
+KFS currently uses the DES in CBC mode to do encryption on files.
+However, the encryption functions were designed as modules and can thus
+be trivially replaced with other modules implementing other ciphers with
+ease.  It is hoped that with the public release of this code, it won't
+be long before modules implmeneting the IDEA cipher and Triple-DES will
+become available.
+
+See the file INSTALL for information on building and installing KFS.  The
+rest of this file contains information on using KFS.
+
+
+Initial Setup:
+
+To set KFS up, make a directory to contain encrypted files on one of your
+machines filesystems.  If you desire files stored on the encrypted file-
+system to be backed up, make sure the filesystem you put this directory
+on is backed up.  For the purposes of illustration, let's assume you
+call this directory /home/vault.
+
+Encrypted files are stored in the /home/vault directory.  They may be
+read and backed up by ordinary filesystem commands, but will appear to
+contain nothing but garbage when viewed.  Set the ownership and modes
+of this directory such that everyone you want to be able to use KFS has
+read and write permission to it.  In general, you will either want to
+make it mode 777 or mode 770 depending on whether you wish to allow
+everyone to have access to KFS or just a select group of people.
+
+Next, create the mount point for the encrypted filesystem.  This is
+just a directory you create anywhere on your filesystems.  Modes and
+ownership are not important as only the modes of the /home/vault
+directory will be used.  For the purposes of illustration, let's assume
+you call this directory /var/tmp/noyb.
+
+Become root and use the mount_kfs command to mount /home/vault onto
+/var/tmp/noyb:
+
+# mount_kfs /home/vault /var/tmp/noyb
+
+At this point, the encrypted filesystem is active and ready to be used.
+Using the mount command, you may verify that KFS is mounted.  It should
+return something like this:
+
+/home/vault on /var/tmp/noyb type kfs (rw)
+
+
+Usage:
+
+All users with permission to use kfs should have the executable kfsctl
+(and optionally setacl and getacl) in their paths.  Each user should
+create a directory in /var/tmp/noyb to store his files in.  Before any
+files will be encrypted, it is necessary for each user to specify their
+key with the kfsctl program.  Here is an example of usage:
+
+% kfsctl /var/tmp/noyb key
+Enter pass phrase:
+
+Note that the pass phrase can be up to 255 characters long and may contain
+any characters except newline or carriage return characters.  Users may
+wish to set an alias in their .cshrc or .login to simplify key setting
+if they only have access to one kfs filesystem.  For instance:
+
+% alias kfskey 'kfsctl /var/tmp/noyb key'
+
+The key for the kfsctl command may also be provided on the command line
+as follows:
+
+% kfsctl /var/tmp/noyb key "pass phrase goes here"
+
+This method is not recommended however, as the command line information
+for currently executing commands is available to other users via the 'ps'
+command.  Note that the quotes around the pass phrase are required if
+there are any spaces or tabs in the phrase.
+
+Once a user has used kfsctl to set his key, all files stored on
+/var/tmp/noyb will be encrypted.  This can be verified by attempting to
+examine any file stored on /var/tmp/noyb as another user (or even
+root).  It will appear to contain garbage.  In addition, the file will
+be seen on /home/vault (although the size will be different).  Again,
+if this file is viewed on /home/vault, it will appear to contain
+garbage.  The only time the file will appear as normal will be after
+KFS has been mounted and after the user of the file has set the pass
+key to the identical pass key he originally wrote the file with.
+
+Each user key phrase will be active for as long as the KFS is mounted,
+or until that user changes his key.  Thus, for best security, it is
+recommended that the user not set his key until such as time as which
+he is ready to use the encrypted filesystem, and that he remember to
+clear his key (kfsctl /var/tmp/noyb nokey) when he is finished.  One
+excellent way to do this is to put the above command in the .logout
+file.
+
+
+Archival:
+
+Backups and restores on the example directory, /home/vault, discussed
+above should be sufficient to guarantee safety of user's encrypted files.
+Note that files on /home/vault will be larger than the original un-
+encrypted files by a fixed amount.  For this reason, it is advisable
+to avoid creating a whole bunch of small files on the encrypted file-
+system and instead store such information in an archive for efficiency.
+
+
+Access Control Lists:
+
+Access control lists are not completely implemented.  For the adventurous,
+they are a way of telling KFS to allow access by users other than the owner
+of a file under KFS.  The getacl executable displays the access control
+lists for the specified file(s), and the setacl executable sets access
+control lists for the speicfied file(s).  See the getacl.c and setacl.c
+source for more information.  These will be more fully documented in
+a future release of KFS.
+
+
+Authors:
+
+Bill Dorsey, dorsey@lila.com
+Caveh Jalali, caveh@lila.com

@@ -1,0 +1,145 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!noc.near.net!das-news.harvard.edu!honeydew.srv.cs.cmu.edu!PLAY.TRUST.CS.CMU.EDU!bsy
+From: bsy+@CS.CMU.EDU (Bennet Yee)
+Subject: Re: References for Zero Knowledge Proofs
+Message-ID: <CDu5q1.I1y.3@cs.cmu.edu>
+Sender: news@cs.cmu.edu (Usenet News System)
+Nntp-Posting-Host: play.trust.cs.cmu.edu
+Reply-To: bsy+@cs.cmu.edu
+Organization: Cranberry Melon, School of Cucumber Science
+References:  <27t6ld$5ou@jethro.Corp.Sun.COM>
+Date: Fri, 24 Sep 1993 02:03:36 GMT
+Lines: 132
+
+In article <27t6ld$5ou@jethro.Corp.Sun.COM>, billd@piton.Corp.Sun.COM (Bill Dorsey) writes:
++Hi,
++
++I've got a unix workstation that is connected to a packet radio network.  I'd like
++to be able to log onto it via the radio network, but do not wish to reveal my login
++password to anyone monitoring.  Encryption is not an option in this case, so I need
++another way for me to log on securely.
++
++I've heard about a couple of different methods people have used.  One involved
++inventing a pass phrase and then having the remote system identify characters at
++various indexes into the pass phrase in order to log on.  Doesn't sound very
++secure for more than a couple of logons.  The other involved generating a large
++prime number as a "secret" key and the remote system would prompt the user to
++return the remainders when the number was divided by various smaller numbers.
++It was this method that I've associated the term "zero knowledge proofs" with.
++
++Unfortunately, my only crypto book (Denning's) contains no references that I
++could find to zero knowledge proofs.  I am looking for any references in the
++literature describing such systems, as well as references to any existing proto-
++cols or actual software implementations of this.  I'd rather not reinvent the
++wheel.
+
+Gosh, a real cryptography post that doesn't mention subpoenas.
+
+The method that you described above is definitely not zero knowledge.
+It leaks lots of information -- in particular, after a bunch of
+eavesdropping sessions an attacker should be able to apply the Chinese
+Remainder Theorem to uniquely identify your secret prime.
+
+Here's an old post that I made many moons ago which gives an example
+plus references (and a plug of my own work).
+
+-bsy
+
+----------
+Here's an example of a zero knowledge proof.  Abstractly, a zero knowledge
+proof is an interactive proof with a prover and a verifier, where the prover
+convinces the verifier of a statement (with high probability) without
+revealing any information about how to go about proving that statement.
+Hopefully the example will make it all clear.
+
+First, our assumptions.  We're going to arithmetic mod n, where n = pq, p
+and q primes.  Factoring n is assumed to be intractible.
+
+Rabin showed in [RabinFunc] that finding square roots mod n is equivalent to
+factoring n.  That is, if you have an algorithm that can find a square root
+of a number mod n, then you can use that algorithm to factor n.  Our zero
+knowledge proof will consist of rounds of interaction which shows that the
+prover knows a square root of a published number, where we do not reveal any
+new information about the square root.  It is known that there exists a
+square root to this number (public knowledge), i.e., it is a quadratic
+residue.  The factors of the modulus n may be entirely secret.  (U. Feige
+shows a refinement in [FFS] which allows the published number to be a
+non-quadratic residue of a particular form as well, thus revealing less
+information; in either case, runs of the protocol itself reveals no new
+information.)
+
+The prover, P, publishes the quadratic residue $v$ for which P claims to
+know a root $s$.
+
+When P wishes to prove its knowledge of $s$ to the verifier, V, P runs
+several rounds of interaction.  In each round, P choses a new random number
+$r$ and sends $x = r^2 \bmod n$ to V.  Now, V choses a random bit $b$, and
+sends it to P.  P replies with $y = r s^b$.  To verify P's claim, V computes
+$y^2$ and compares it with $x v^b$.
+
+Now, let's do the analysis.  The first claim is that only P can successfully
+complete the protocol for both possible values of $b$.  This is clear since
+knowing $y_1 = r s$ when $b = 1$ and $y_2 = r$ when $b = 0$ means you also
+know $s$, since $y_1/y_2 = s$.  The second claim is that an imposter P' who
+does not actually know $s$ can succeed with a probability of exactly 1/2
+each round:  to see this, notice that if P' guesses correctly that $b = 0$,
+then it can just follow the protocol and succeed; on the other hand, if P'
+guesses that $b = 1$, P' can generate $x$ by chosing a random number $t$ and
+setting $x = t^2 / v$.  The response is $y = t$.  The third claim is that no
+new information is released.  To see this, consider what an eavesdropper E
+hears.  In the case of the random bit $b = 0$, E sees a random numer $r$ and
+its square $x$; in the case of $b = 1$, E sees the numbers $rs$ and $x =
+(rs)^s/v$.  These are numbers that the eavesdropper could have generated in
+a closet.  More precisely, a simulator S can run both sides of the protocol,
+and by using advanced information as to the value of the random bit (model
+is a TM with an auxiliary input tape of random bits), S can simulate the
+protocol without knowledge of $s$.
+
+Each round of the proof shows that there is a 1/2 chance that a prover P''
+might not actually know $s$.  Iterating 20 times gives a probability of less
+than 2^-20 or .0000009536 that P'' does not actually know $s$.
+
+Such zero knowledge proofs can be used for authentication -- the value of
+$v$ can be generated from a randomly chose $s$, and $v$ is widely published.
+A successful zero knowledge proof showing knowledge of $s$ authenticates
+identity.  In [StrongboxIn25th], Doug Tygar (my advisor) and I show how to
+obtain superexponential scaling in security modulo the factorization
+assumption, run the protocol in constant rounds while retaining the zero
+knowledge property, and simultaneously perform key exchange.
+
+-bsy
+
+----------
+
+@TechReport(RabinFunc,
+Author="Michael Rabin",
+	Institution="Laboratory for Computer Science,
+		 Massachusetts Institute of Technology",
+	Title="Digitalized Signatures and Public-Key
+        	Functions as Intractable as Factorization",
+	Key="Rabin",
+	Year=1979,
+	Month="January",
+	Number="MIT/LCS/TR-212")
+
+@InProceedings(FeigeFiatShamir,
+	Key="Feige",
+	Author="Uriel Feige and Amos Fiat and Adi Shamir",
+	Title="Zero Knowledge Proofs of Identity",
+	Year=1987,
+	Pages="210-217",
+	Booktitle="Proceedings of the 19th ACM Symp. on Theory of Computing",
+	Month="May")
+
+@Inproceedings(StrongboxIn25th,
+	Key="Tygar and Yee",
+	Author="J. D. Tygar and Bennet S. Yee",
+	Title="Strongbox:  A System for Self Securing Programs",
+	Organization = "ACM",
+	Booktitle="CMU Computer Science:
+		25th Anniversary Commemorative",
+	Year = 1991)
+
+-- 
+Bennet S. Yee		Phone: +1 412 268-7571		Email: bsy+@cs.cmu.edu
+CS Dept, SCS, Carnegie Mellon Univ, 5000 Forbes Ave, Pittsburgh, PA 15213-3891

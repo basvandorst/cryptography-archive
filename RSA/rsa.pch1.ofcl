@@ -1,0 +1,195 @@
+From: martin@trillian.UUCP (Martin Nicolay)
+Subject: RSA Patch #1
+Date: 30 Nov 88 15:15:40 GMT
+Reply-To: martin@trillian.megalon.de (Martin Nicolay)
+Organization: Home
+Xref: lan sub.sources.unix:3 sub.sources.misc:12
+
+Ich hab noch mal die RSA-Routinen getuned.  Die sind jetzt ca. um den
+Faktor 2 schneller.  Bei den wenigen Diffs kann man wohl sagen, kleine
+Ursache grosse Wirkung :-). 
+
+Martin
+
+Index: ./patchlevel.h
+*** ./patchlevel.h.OLD	Wed Nov 30 15:55:04 1988
+--- ./patchlevel.h	Wed Nov 30 15:46:41 1988
+***************
+*** 1,0
+
+--- 1,1 -----
++ #define	PATCHLEVEL	1
+Index: ./arith.c
+*** ./arith.c.OLD	Tue Nov 22 03:02:31 1988
+--- ./arith.c	Wed Nov 30 15:07:48 1988
+***************
+*** 321,323
+  		*d++ = TOINT(mul);
+! 		mul /= (MAXINT +1);
+  	}
+
+--- 321,323 -----
+  		*d++ = TOINT(mul);
+! 		mul  = DIVMAX1( mul );
+  	}
+***************
+*** 354,357
+  {
+! 	static VLONG id[ MAXLEN ];		/* Zwischenspeicher	*/
+! 	register VLONG *vp;			/* Pointer darin	*/
+  	register LONG tp1;			/* Zwischenspeicher fuer m1 */
+
+--- 354,358 -----
+  {
+! 	static INT id[ MAXLEN ];		/* Zwischenspeicher	*/
+! 	register INT *vp;			/* Pointer darin	*/
+! 	register LONG sum;			/* Summe fuer jede Stelle */
+  	register LONG tp1;			/* Zwischenspeicher fuer m1 */
+***************
+*** 375,378
+  		vp = &id[i];
+! 		for ( p2 = m2->n_part, j = l2; j--;)
+! 			*vp++ += (VLONG)(tp1 * (LONG)*p2++);
+  	}
+
+--- 376,384 -----
+  		vp = &id[i];
+! 		sum = 0;
+! 		for ( p2 = m2->n_part, j = l2; j--;) {
+! 			sum += (LONG)*vp + (tp1 * (LONG)*p2++);
+! 			*vp++ = TOINT( sum );
+! 			sum = DIVMAX1(sum);
+! 		}
+! 		*vp++ += (INT)sum;
+  	}
+***************
+*** 382,387
+  	for (lc=0, vp=id, p1=d->n_part; lc++ < l;) {
+! 		register VLONG tmp;
+! 
+! 		tmp = *vp++;
+! 		if ( *p1++ = TOINT(tmp) )
+  			ld = lc;
+
+--- 388,390 -----
+  	for (lc=0, vp=id, p1=d->n_part; lc++ < l;) {
+! 		if ( *p1++ = *vp++ )
+  			ld = lc;
+***************
+*** 387,389
+  			ld = lc;
+- 		*vp += tmp / ((VLONG)MAXINT +1);
+  	}
+
+--- 390,391 -----
+  			ld = lc;
+  	}
+***************
+*** 656,658
+  	for (p= &n->n_part[l],r=0; l-- >= 0 && b > 0; b-= LOWBITS, p--) {
+! 		r *= (unsigned)(MAXINT+1);
+  		r += (unsigned)*p;
+
+--- 658,660 -----
+  	for (p= &n->n_part[l],r=0; l-- >= 0 && b > 0; b-= LOWBITS, p--) {
+! 		r  = MULMAX1( r );
+  		r += (unsigned)*p;
+Index: ./conf.h
+*** ./conf.h.OLD	Tue Nov 22 03:02:31 1988
+--- ./conf.h	Wed Nov 30 15:07:48 1988
+***************
+*** 15,19
+  
+! typedef	unsigned char INT;		/* muss MAXINT fassen		*/
+! typedef	unsigned int LONG;		/* muss 2*MAXINT+1 fassen	*/
+! typedef	unsigned long VLONG;		/* muse MAXLEN * (MAXINT^2 +1) fassen*/
+  
+
+--- 15,18 -----
+  
+! typedef	unsigned short INT;		/* muss MAXINT fassen		*/
+! typedef	unsigned long LONG;		/* muss (MAXINT+1)^2 -1 fassen	*/
+  
+***************
+*** 38,40
+  
+! #define MAXINT		0xFF
+  
+
+--- 37,39 -----
+  
+! #define MAXINT		0xFFFF
+  
+***************
+*** 53,55
+  #define MAXBIT		8
+! #define	TOINT(x)	((INT)(x))
+  #endif
+
+--- 52,54 -----
+  #define MAXBIT		8
+! #define	TOINT(x)	((INT)(x))		/* ACHTUNG !!!!! */
+  #endif
+***************
+*** 55,56
+  #endif
+  
+
+--- 54,59 -----
+  #endif
++ #if MAXINT == 0xFFFF
++ #define MAXBIT		16
++ #define	TOINT(x)	((INT)(x))		/* ACHTUNG !!!!! */
++ #endif
+  
+***************
+*** 70,72
+  #define	HIGHBIT		(1 << (MAXBIT-1) )
+! #ifndef	TOINT
+  #if LOWBITS == MAXBIT
+
+--- 73,75 -----
+  #define	HIGHBIT		(1 << (MAXBIT-1) )
+! 
+  #if LOWBITS == MAXBIT
+***************
+*** 72,74
+  #if LOWBITS == MAXBIT
+! #define	TOINT(x)	((INT)((x)&MAXINT))
+  #else
+
+--- 75,79 -----
+  #if LOWBITS == MAXBIT
+! #define	DIVMAX1(x)	((x) >> MAXBIT)
+! #define	MODMAX1(x)	((x) & MAXINT)
+! #define	MULMAX1(x)	((x) << MAXBIT)
+  #else
+***************
+*** 74,76
+  #else
+! #define	TOINT(x)	((INT)((x)%(MAXINT+1)))
+  #endif
+
+--- 79,83 -----
+  #else
+! #define	DIVMAX1(x)	((x) / (MAXINT+1))
+! #define	MODMAX1(x)	((x) % (MAXINT+1))
+! #define	MULMAX1(x)	((x) * (unsigned)(MAXINT+1))
+  #endif
+***************
+*** 76,77
+  #endif
+  #endif
+
+--- 83,87 -----
+  #endif
++ 
++ #ifndef	TOINT
++ #define	TOINT(x)	((INT)MODMAX1(x))
+  #endif
+
+-- 
+Martin Nicolay         Phone: +49 203 775679 (without carrier at 8-21 h)
+Fliederstr. 23         Mail : martin@trillian.megalon.de
+4100 Duisburg 1
+W-Germany              WARNING: Don't trust upon my opinion - it changes :-)

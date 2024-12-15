@@ -1,0 +1,348 @@
+#!/bin/sh
+# Quantize package.  12/95
+# Matt Blaze, Jack Lacy (AT&T Bell Labs)
+#  Windows port by Frank O'Dwyer (Rainbow Diamond Ltd.)
+# NOTE: You need a Unix shell to extract this.
+#
+# This is a shell archive (produced by GNU sharutils 4.1).
+# To extract the files from this archive, save it to some FILE, remove
+# everything before the `!/bin/sh' line above, then type `sh FILE'.
+#
+# Existing files will *not* be overwritten unless `-c' is specified.
+#
+# This shar contains:
+# length mode       name
+# ------ ---------- ------------------------------------------
+#   2242 -rw-r--r-- quantize.3
+#   5315 -rw-r--r-- quantize.c
+#
+touch -am 1231235999 $$.touch >/dev/null 2>&1
+if test ! -f 1231235999 && test -f $$.touch; then
+  shar_touch=touch
+else
+  shar_touch=:
+  echo
+  echo 'WARNING: not restoring timestamps.  Consider getting and'
+  echo "installing GNU \`touch', distributed in GNU File Utilities..."
+  echo
+fi
+rm -f 1231235999 $$.touch
+#
+# ============= quantize.3 ==============
+if test -f 'quantize.3' && test X"$1" != X"-c"; then
+  echo 'x - skipping quantize.3 (file already exists)'
+else
+  echo 'x - extracting quantize.3 (text)'
+  sed 's/^X//' << 'SHAR_EOF' > 'quantize.3' &&
+X.TH QUANTIZE 3 ""
+X.SH NAME
+start_quantize, end_quantize - start/end CPU time quantization
+X.SH SYNOPSIS
+\fBint\fP start_quantize(\fBint quantum\fP);
+X.sp
+\fBint\fP end_quantize();
+X.sp
+\fBint\fP min_quantum();
+X.SH DESCRIPTION
+The quantize functions provide a simple method to encapsulate code
+blocks that should run in a multiple of a coarse-grained "quantized"
+amount of CPU time.  They are mainly useful in building certain
+on-line cryptographic protocols in which an attacker could learn key
+information by observing the time the target takes to perform
+calculations that use the secret (c.f., Paul Kocher's attacks against
+various public-key cryptosystems).
+X.LP
+start_quantize(quantum) begins a quantized execution environment that
+will run in multiples of \fBquantum\fP milliseconds.  end_quantize()
+ends the environment, busy-waiting until (approximately) the next
+quantum multiple.  min_quantum() returns the minimum quantization
+interval (in milliseconds) available on the local environment.
+X.LP
+The quantum should be at least the expected range of normal CPU
+runtime.  100 ms is a good starting point for exponentiation-based
+protocols on typical processors, but one should measure each
+implementation for safest results.  Quanta that are too small leak
+timing information; quanta that are too large are wasteful of CPU
+usage.
+X.SH DIAGNOSTICS
+start_quantize() and end_quantize() return 0 on normal exit.  If an
+error occurred (quantization could not be scheduled or a non-positive
+quantum with start_quantize, or no previous active start_quantum() on
+end_quantum()) -1 is returned.
+X.SH EXAMPLE
+start_quantize(100); RSA_Decrypt(...); end_quantize();
+X.SH SEE ALSO
+setitimer(2), signal(2)
+X.SH BUGS
+Quantized environments do not nest.
+X.LP
+The quantization is only approximate, based (under Unix) on the
+setitimer(2) function.  In particular, the actual quanta will vary
+with each call (but are independent of the encapsulated code runtime /
+quantum).  Do not rely on fine-grained quanta (less than about 20
+milliseconds).
+X.LP
+There is no mechanism to adjust the quantum for MIPS.
+X.LP
+min_quantum only really works under WIN32.
+X.SH AUTHORS
+Matt Blaze and Jack Lacy, AT&T Bell Laboratories.  WIN32 port by Frank
+O'Dwyer, Rainbow Diamond Ltd.
+SHAR_EOF
+  $shar_touch -am 1219143495 'quantize.3' &&
+  chmod 0644 'quantize.3' ||
+  echo 'restore of quantize.3 failed'
+  shar_count="`wc -c < 'quantize.3'`"
+  test 2242 -eq "$shar_count" ||
+    echo "quantize.3: original size 2242, current size $shar_count"
+fi
+# ============= quantize.c ==============
+if test -f 'quantize.c' && test X"$1" != X"-c"; then
+  echo 'x - skipping quantize.c (file already exists)'
+else
+  echo 'x - extracting quantize.c (text)'
+  sed 's/^X//' << 'SHAR_EOF' > 'quantize.c' &&
+/*
+X * Simple Unix time quantization package
+X * {mab,lacy}@research.att.com
+X * v1.0 - 12/95
+X *
+X * WIN32 port v0.1 fod@brd.ie 12/95  
+X *
+X * TESTED ONLY UNDER SUNOS 4.x and BSDI 2.0.  
+X *
+X * WIN32 port TESTED ONLY UNDER WINDOWS '95
+X *   (further testing recommended)
+X *   Requires Winmm.lib
+X *
+X * This is unsupported software.  Use at own risk.  
+X * Test carefully on new platforms.
+X */
+/*
+X * The authors of this software are Matt Blaze and Jack Lacy
+X *              Copyright (c) 1995 by AT&T Bell Laboratories.
+X *
+X * WIN32 port by Frank O'Dwyer
+X *              Copyright (c) 1995 by Rainbow Diamond Limited
+X *
+X * Permission to use, copy, and modify this software without fee is
+X * hereby granted, provided that this entire notice is included in all
+X * copies of any software which is or includes a copy or modification
+X * of this software and in all copies of the supporting documentation
+X * for such software.
+X *
+X * THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR
+X * IMPLIED WARRANTY.  IN PARTICULAR, NEITHER THE AUTHORS NOR AT&T 
+X * NOR RAINBOW DIAMOND LIMITED MAKE ANY REPRESENTATION OR WARRANTY 
+X * OF ANY KIND CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE OR 
+X * ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+X */
+X
+/*
+X * WARNING: This package will provide quantized cpu consumption only
+X * subject to the limitations of the OS on which it is run.  It will
+X * fail in extreme cases (e.g., very very heavy load and very slow
+X * machines (e.g., .001 MIPS).  Understand its limits before you use
+X * it.
+X *
+X * Note that start_quantize takes MILLISECONDS, not microseconds.  See
+X * quantize.3 for details.
+X *
+X * To prevent timing attacks (e.g., Kocher) in most PK crypto
+X * applications in most applications on most cpus, surrounding the
+X * call to the functions that use the secret with
+X *	start_quantize(100);
+X * and
+X *	end_quantize();
+X * will do reasonably well.
+X */
+X
+#ifdef WIN32
+#include <windows.h>
+#endif
+X
+#ifndef NO_QUANTIZE
+#include <signal.h>
+#include <setjmp.h>
+X
+#ifndef WIN32
+#include <sys/time.h>
+#endif
+#include <stdio.h>
+X
+static set_quant_interrupt();
+X
+#ifdef WIN32
+#define REZ 1  /* millisecond -- higher values improve 
+X                  performance.  Lower values improve resolution */
+static volatile long quant_quantum=0;
+static volatile int waiting=0;
+static UINT theTimer;
+static TIMECAPS timeCaps;
+static int inited=0;
+X
+#else /* !WIN32 */
+X
+static jmp_buf quant_end;
+static long quant_quantum=0;
+#endif
+X
+#ifdef WIN32
+static void CALLBACK
+quant_interrupt(UINT uID, UINT uMsg, DWORD dwUser, DWORD dw1,DWORD dw2)
+{
+X	/* can't longjmp out of win interrupt handler, so
+X	   we use a pseudo semaphore */
+X	if (waiting)
+X		waiting=0;
+} 
+X
+#else /* !WIN32 */
+X
+static void quant_interrupt()
+{
+X	long nquantum;
+X
+X	nquantum = quant_quantum;
+X	if (nquantum != 0)
+X		set_quant_interrupt(nquantum);
+X	else
+X		longjmp(quant_end, 1);
+}
+#endif
+X
+static set_quant_interrupt(microsecs)
+X     long microsecs;
+{
+#ifdef WIN32
+X	/* NOTE: this sets up a periodic timer, unlike the UNIX code which
+X	         sets up a one shot timer.	TIME_ONESHOT can be used to
+X			 get more UNIX-like behaviour */
+X	if ((theTimer=timeSetEvent(microsecs/1000, REZ, quant_interrupt,
+X				   0, TIME_PERIODIC))==NULL)
+X		return -1;
+X	else 
+X		return 0;
+#else /* !WIN32 */
+X	struct itimerval it, oit;
+X	
+X	timerclear(&it.it_interval);
+X	it.it_value.tv_sec = microsecs/1000000;
+X	it.it_value.tv_usec = microsecs%1000000;
+X	(void) signal(SIGVTALRM, quant_interrupt);
+X	return setitimer(ITIMER_VIRTUAL, &it, &oit);
+#endif
+}
+X
+#ifdef WIN32
+/* determine timing resolution capabilities */
+static int initTimeCaps()
+{
+X	if (!inited) {
+X		/* get timer resolutions - once only */
+X		if (timeGetDevCaps(&timeCaps, sizeof(timeCaps))
+X		    ==TIMERR_NOERROR) {
+X			inited=1;
+X		}
+X		else 
+X			return -1;
+X	}
+X	return 0;
+}
+#endif
+X
+int start_quantize(quantum)
+X     int quantum;	/* millisecs */
+{
+#ifdef WIN32
+X	/* check quantum range */
+X	if (initTimeCaps()==-1 || 
+X		quantum < (long)timeCaps.wPeriodMin || 
+X		quantum > (long)timeCaps.wPeriodMax)
+X		return -1;
+X
+X	/* set time resolution */
+X
+X	if (timeBeginPeriod(timeCaps.wPeriodMin)!=TIMERR_NOERROR)
+X		return -1;
+X
+X	waiting=0;
+#else /* !WIN32 */
+X	if (quantum <= 0)
+X		return -1;
+#endif
+X	quant_quantum = (quantum * 1000) + 1; /* microsecs */
+X	return set_quant_interrupt(quant_quantum);
+}
+X
+int end_quantize()
+{
+#ifdef WIN32
+X	if (quant_quantum == 0)
+X		return -1; /* start_quantize never called */
+X	waiting=1;
+X	while(waiting)	                            
+X		;
+X	if (timeKillEvent(theTimer) !=TIMERR_NOERROR ||
+X		timeEndPeriod(timeCaps.wPeriodMin)!=TIMERR_NOERROR)
+X		return -1;
+X	else
+X		return 0;
+#else /* !WIN32 */
+X	if (setjmp(quant_end))
+X		return 0;
+X	if (quant_quantum == 0)
+X		return -1; /* start_quantize never called */
+X	quant_quantum = 0; /* we return at next quantum */
+X	while (1)
+X		;
+X
+X 	return -1; /* should never happen */
+#endif
+}
+X
+int min_quantum()
+{
+#ifdef WIN32
+X	if (initTimeCaps()<0) {
+X		return -1;
+X	} else 
+X		return (timeCaps.wPeriodMin);
+#else /* !WIN32 */
+X	return 10; /* arbitrary assumption - at least 10 msec
+X	                 quantum is available to UNIX */
+#endif
+}
+X
+#else /* NO_QUANTIZE */
+#include <stdio.h>
+X
+int start_quantize(quantum)
+X     int quantum;
+{
+X	fprintf(stderr,"Warning: QUANTIZE not available\n");
+X	fflush(stderr);
+X	return -1;
+X
+}
+X
+int end_quantize()
+{
+X	return -1;
+}
+X
+int min_quantum()
+{
+X	return -1;
+}
+X
+#endif
+SHAR_EOF
+  $shar_touch -am 1219144795 'quantize.c' &&
+  chmod 0644 'quantize.c' ||
+  echo 'restore of quantize.c failed'
+  shar_count="`wc -c < 'quantize.c'`"
+  test 5315 -eq "$shar_count" ||
+    echo "quantize.c: original size 5315, current size $shar_count"
+fi
+exit 0

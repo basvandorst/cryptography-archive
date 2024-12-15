@@ -1,0 +1,124 @@
+Path: msuinfo!agate!ames!hookup!grinch.tor.hookup.net!user
+From: grinch@hookup.net (Reginald Braithwaite-Lee)
+Newsgroups: sci.crypt
+Subject: Re: md5 as a one-way function
+Followup-To: sci.crypt,comp.security
+Date: Fri, 10 Jun 1994 10:31:16 -0500
+Organization: Who-ville
+Lines: 112
+Message-ID: <grinch-100694103116@grinch.tor.hookup.net>
+References: <Mouse.Wed_Jun__9_10_14_51_1994@collatz.mcrcim.mcgill.edu> <grinch-090694222644@grinch.tor.hookup.net> <Cr6C9M.7BL@cbnewsh.cb.att.com>
+NNTP-Posting-Host: grinch.tor.hookup.net
+
+In article <Cr6C9M.7BL@cbnewsh.cb.att.com>, wcs@cbnewsh.cb.att.com
+(bill.stewart@pleasantonca.ncr.com) wrote:
+
+> ]In article <Mouse.Wed_Jun__9_10_14_51_1994@collatz.mcrcim.mcgill.edu>,
+> ]mouse@collatz.mcrcim.mcgill.edu (der Mouse) wrote:
+> ]> I was considering building a password hash function around md5.
+> ]> Specifically, I would generate a salt (nine bytes of data taken largely
+> ]> from the clock), compute its md5 checksum, convert it to a 20-character
+> ]> printable string by expressing it in base 94, then take the provided
+> ]> plaintext password, concatenate it with the aforementioned 20-character
+> ]> string, compute the md5 checksum of the result, express that as another
+> ]> 20-character string, and then store the resulting 40 characters as the
+> ]> password hash.  (In the environment I am considering using this in, I
+> ]> am not constrained by the usual UNIXish limitations of a two-character
+> ]> salt and a 13-character hash.)
+> 
+> It's a decent strategy, if you're trying to design a modern version of
+> the Unix password system, though you should include a better salt
+> source than just the clock, since that's somewhat guessable - 
+> at minimum, include som semi-random source like a hash of the memory
+> of your machine, or the output of ps or something.
+
+> However, you need to examine the threats your system is protecting
+> against - will it be used over a network?  That's always been the
+> major flaw of the Unix password system - wiretapping phone lines was
+> difficult enough that we convinced ourselves that nobody was tapping us,
+> but tapping LANs and watching bits flying across the Internet is easy.
+> Systems like Kerberos or Karn's S/Key or Bellovin & Merritt's EKE or
+> various public-key techniques can help, with varying amounts of convenience.
+
+Guessable? Pardon, but are you proposing that the salt be secret? I thought
+the salt was public knowlege, and used only to frustrate dictionary
+attacks. If your communication channel between the terminal and the system
+is secure, you can use a public salt as a means of securing the database of
+hashes from an attacker.
+
+If the communication channel between the terminal and the system is
+insecure, then the database of passwords becomes insecure and you need
+another layer of encryption, using a private key. And where do you store
+the key securely?
+
+Anyway, if you trust the security of the database of passwords, you can use
+a hash as a challenge-response mechanism. The system sends a random salt to
+the terminal, which privately calculates the hash, then sends the hash
+back. The system then checks the result. An attacker evesdropping on the
+line can compile a codebook of salts and hashes, but presuming the salt is
+never re-used, there is no benefit. I would use a counter that is never
+re-used, even by different users.
+
+> If you've got enough space to store a long public key, and the user's
+> on a different machine with a stored private key, you can do something
+> like send a random challenge, have the user sign with his public key,
+> and validate against the stored signature.
+
+Essentially, hashes are used to 'sign' a salt in the scheme above. You lose
+the protection of asymetric crypto's signatures.
+
+> In article <grinch-090694222644@grinch.tor.hookup.net> grinch@hookup.net (Reginald Braithwaite-Lee) writes:
+> ]Why all this conversion? You can MD5 any arbitrary binary string, so I
+> ]suggest appending your salt to the plaintext password, then MD5 the result.
+> 
+> That's backwards - you need to put the salt first.  The attack you're
+> protecting against is brute-force search discovering users who have
+> wimpy passwords.  MD5 is in some sense a state machine crunching up
+> data as it goes along and representing it as a current state.
+> MD5( foo, bar ) can be calculated by storing the state at the end of "foo"
+> and continuing the calculation for "bar".  If you put the password first,
+> the cracker can store the results of calculating the million wimpiest
+> passwords as the state at the end of each one and then finish off by
+> including the high-quality random salt.  If you put the salt first,
+> the cracker needs to precompute the 2**LargeN salts, look the right
+> one up, and then try the million wimpy passwords, which is infeasible.
+
+Good point, especially if you only use one iteration. In nCrypt, we repeat
+the process 4 times, appending the salt to each result then hashing again.
+The attacker only gains on the first iteration. Another possibility is to
+incorporate the salt into the hashing function's behaviour.
+
+> Now, maybe there's some good attack against salt-first also,
+> so maybe you want to append it as well :-)  *Do* make sure you allow
+> the user to input long passphrases, decide whether to cut off at
+> 512-64-salt or not, and make sure your code doesn't choke if handed a
+> very long or empty password string.
+> 
+> ]The length of the salt is almost completely irrelevant--the general idea is
+> ]to (1) have more salts than passwords, ensuring that no two users get the
+> ]same hash, even if they have the same password, and (2) to make a
+> ]dictionary attack unfeasible. A 32-bit salt is probably enough, since it
+> ]adds complexity on the order of 2^32 to a dictionary attack.
+> 
+> 32 bits is probably enough, for now, but 2**32 isn't very long as
+> computer-speed increases go.  64 bits, on the other hand, should be
+> good for a *long* time, doesn't increase the cost of storage
+> significantly, and only increases the cost of MD5 calculation if it pushes
+> the password+salt over the 512-64-bit boundary.
+
+I agree. Use whatever you like--the more the merrier.
+
+> -- 
+> # Bill Stewart       AT&T Global Information Solutions (new name for NCR!)
+> # 6870 Koll Center Pkwy, Pleasanton CA 94566  1-510-484-6204 fax-6399
+> # Email: bill.stewart@pleasantonca.ncr.com billstewart@attmail.com
+> # ViaCrypt PGP Key IDs 384/C2AFCD 1024/9D6465
+
+-- 
+Reginald Braithwaite-Lee
+grinch@hookup.net
+
+*** enquire about nCrypt, the strong cryptography app for Newton ***
+
+Public Key Fingerprint: D8 B8 C1 D0 DD 56 20 B4  06 A2 81 83 87 E8 8B 64
+(Send message with subject "HELP" to pgp-public-keys@pgp.ox.ac.uk)

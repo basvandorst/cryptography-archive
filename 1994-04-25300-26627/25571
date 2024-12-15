@@ -1,0 +1,176 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Computing multiplicative inverses
+Message-ID: <1994Apr6.093116.27805@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Wed, 6 Apr 94 09:31:16 GMT
+Lines: 163
+
+I got to thinking some more, and wrote down the follwoing ideas.  I'm
+posting it in the hopes it'll be useful to someone.  The Newton's iteration
+thing is, IMHO, really nifty.
+
+More on finding multiplicative inverses
+
+The general method for finding multiplicative inverses (the Extended
+Euclidean Algorithm) involves repeated division.  This is annoyingly
+slow if you're working in extended precision.  Fortunately, there are
+some special cases where it can be made much faster.
+
+The special cases are where the modulus is a power of a small prime.
+This arises particularly in Montgomery's modular reduction algorithm.
+Montgomery's algorithm is typically implemented using signle-digit
+inverses, but can be expressed using full-width inverses, which lets
+you use a subquadratic multiplication algorithm.
+
+(See "Comparison of three modular reduction functions", Antoon
+Bosselaers, Rene' Govaerts and Joos Vandewalle, _Advances in Cryptology,
+Proc. Crypto '93_, Springer-Verlag, ISBN 3-540-57766-1, ISBN 0-387-57766-1)
+
+The following can be derived (look up "valuations"), but I'm going to
+just pull it out of a hat.
+
+First, recall Newton's iteration for finding x = 1/A.  Find the root
+of f(x) = 1/x - A = 0.  The equation to iterate is
+
+x = x - f(x)/f'(x)
+  = x - (x^-1 - A)/(-x^-2)
+  = x + x^2 * (x^-1 - A)
+  = x + x - A*x^2
+  = 2*x - A*x*x
+
+This is usually applied in the real numbers, but it can be applied in
+modular arithmetic as well.  In particular, suppose you have an initial
+approximation x, such that x*A == 1 (mod m).  So write it as follows:
+
+x*A == 1 + k*m
+
+Substituting in the interation, you get
+
+(2*x - A*x*x)*A == 2*x*A - (x*A)^2
+                == 2 + 2*k*m - (1+k*m)^2
+		== 2 + 2*k*m - 1 - 2*k*m - k^2*m^2
+		== 2-1 + 2*k*m-2*k*m - k^2*m^2
+		== 1 - k^2*m^2
+
+... which is 1, mod m^2.
+
+So one iteration of Newton's method squared the modulus to which the
+approximation is accurate!  This is particularly useful in finding
+multiplicative inverses modulo 2^k, since x = 1 is an initial
+approximation that is good to 1 significant bit.  You can double the
+number of bits each iteration.
+
+Each iteration requires two multiplies, plus some adds, but only the
+last iteration need be full-width.  Other iterations are half the width
+or less.  Thus, the total work is less than that of two iterations, or
+four multiplies of k bits.
+
+Actually, there is a better starting estimate.  For all odd x,
+x*x == 1 (mod 8).  Modulo 16, it's a bit more awkward, but if you
+look at the pattern of inverses in binary:
+
+x	x^-1
+0001	0001
+0011	1011
+0101	1101
+0111	0111
+1001	1001
+1011	0011
+1101	0101
+1111	1111
+
+You can see that x^-1 is either x or x+8, and it's x+8 when the two
+middle bits differ.  So you can form your initial estimate thus:
+
+x = ((A<<1 ^ A) & 4) << 1 ^ A;
+
+which is good to 4 bits.  Using either of these starting values, you
+save the first few iterations.  Then, working from there, you can
+compute an inverse modulo 2^32 of any odd a:
+
+unsigned long
+inverse(unsigned long a)
+{
+	unsigned long x = a;
+
+	assert((x*a & 0x7) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0x3F) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFFF) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFFFFFF) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFFFFFFFF) == 1);
+
+	return x;
+}
+
+or:
+
+unsigned long
+inverse(unsigned long a)
+{
+	unsigned long x = ((a<<1 ^ a) & 4) << 1 ^ a;
+
+	assert((x*a & 0xF) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFF) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFFFF) == 1);
+	x += x - a*x*x;
+	assert((x*a & 0xFFFFFFFF) == 1);
+
+	return x;
+}
+
+This is considerably simpler than the Extended Euclidean algorithm,
+and requires substantially fewer iterations.  (See Knuth, section
+4.5.3.)  The average number of iterations needed to find an inverse
+modulo n is 0.843 * ln(n) + 1.47, or 0.584 * log_2(n) + 1.47, so that's
+10.8 iterations for 16 bits and 20.2 for 32.  This method requires
+log_2(log_2(n)) iterations, obviously asymptotically better!
+
+
+I seem to recall that there is a division algorithm that uses
+full-width multiplicative inverses like this, but I can't recall it.
+You can't just compute B/A as B * 1/A modulo 2^k, where k is chosen
+to be big enough, because remainders cause all sorts of problems.
+
+Just for example, let B = 3*14+1 = 43 and A = 3.  The desired
+result is B/A = 14, and it can be seen that it will fit into
+4 bits (modulo 16, that is), but trying to compute it that way produces:
+
+1/3 == 11 (mod 16)
+
+43 * 11 == (32 + 11) * 11
+        == 121
+	== 9
+
+42 would come out exactly, so it can be used as-is for exact division,
+but division with remainder is a different matter.
+
+I have a rather complex algorithm for division in terms of
+multiplication from Maurice Mignotte's _Mathematics For Computer
+Algebra_ (Springer-Verlag, ISBN 0-387-97675-2, ISBN 0-3-540-97675-2),
+but it doesn't look terribly practical.  It reduces an n-bit division
+to two n/2-bit divisions plus some multiplications.
+
+
+This is also useful for doing trial division.  There's a prime sieving
+technique which replaces division by p with multiplication by p^-1,
+modulo the word size b = 2^n.  To find if a word is divisible by p, note
+that the multiples of p are 0, p, ..., k*p, where k = floor((b-1)/p).
+
+So multiplication by p^-1 will map multiples of p back onto that range.
+All you have to do is multiply and compare with the (easily precomputed)
+value floor((b-1)/p).
+
+Assuming you're building these tables on the fly, a cost saving never
+hurts.

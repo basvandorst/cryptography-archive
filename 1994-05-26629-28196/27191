@@ -1,0 +1,65 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!pipex!sunic!EU.net!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: modular arithmetic
+Message-ID: <1994May8.164925.29002@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <2q8mvj$5tv@salmon.maths.tcd.ie>
+Date: Sun, 8 May 94 16:49:25 GMT
+Lines: 51
+
+In article <2q8mvj$5tv@salmon.maths.tcd.ie>,
+Peter McEvoy <gandalf@maths.tcd.ie> wrote:
+>Arrghh!!
+>I'm trying to do the following problem, it's actually
+>for coding theory, but it envolves modular division
+>and most public key codes use the mod function:
+>
+>s(x) = v(x) mod g(x) 
+>
+>now, since this is over GF(2^n), the polynomials
+>can be represented as binary numbers EG:
+>
+>v(x) = 1001101110110111 = x^16 + x^13 + x^12 + ... + x^2 + x +1
+>g(x) = 111010011
+>
+>where v(x) is a received vector, g(x) is the generating
+>polynomial for a cyclic code, and s(x) is the associated 
+>syndrome (for error detection). I think there may be
+>a quick and painless binary trick of calculating s(x), but
+>I'm at a loss...
+
+This computation is the same as a CRC computation.  Tricks for speeding
+it up are well known.
+
+If g(x) is small (one word size), it's especially efficient, but you
+can do it other ways, as well.
+
+It's just standard long division, but you don't have to worry about carries,
+which makes it easier (indeed, trivial) to compute the quotient digits.
+
+Usually, you precompute a table (256 entries is common) of multiples
+of g(x).  These cover all possible 8-bit patterns in the high 8 bitts.
+If you don't need the quotient, you don't need to store the multipliers,
+just index the table on the high 8 bits.  And you don't have to explicitly
+store the high 8 bits, since the table offset prvides them.  Then take
+successive 8-bit chunks off v(x), look them up in the table, and subtract
+the table entry from the next-higiest bits of v(x).  Repeat until the
+remainder is ov lower degree than g(x), and you have s(x).
+
+You can avoid storing the high bits of the intermediate result, because
+they're all 0, and the low bits, because they're the same as v(x).  So
+you only need to keep track of deg(g) bits in the middle that are being
+worked on.
+
+If g(x) is small, you just keep them in a register and repeatedly shift
+the register.  If it's larger, some sort of circular buffer where you
+rotate the entries from the subtraction table is probably better.
+
+In any case, it's a well-understood and solved problem.
+-- 
+	-Colin

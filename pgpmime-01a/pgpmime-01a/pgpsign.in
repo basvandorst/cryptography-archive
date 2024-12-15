@@ -1,0 +1,54 @@
+#!/bin/sh
+pgp=%PGP%
+mimencode=%MIMENCODE%
+
+date=`date`
+BOUNDARY="_PGPMIME $$ $date"
+
+TEMPFILE=/tmp/pgpmime.tmp.$$
+SIGFILE=/tmp/pgpmime.sig.$$
+CANON=/tmp/pgpmime.canon.$$
+
+(echo 'Content-Type: multipart/signed; protocol="application/pgp-signature";'
+ echo '    boundary="'$BOUNDARY'"; micalg=pgp-md5'
+ echo
+ echo 'This message is in the MIME format described by the Internet Draft'
+ echo 'draft-elkins-pem-pgp-01.txt and can be decoded with metamail using'
+ echo 'the PGPMIME toolkit (ftp://cs.hmc.edu/pub/me/pgpmime.tar.Z).'
+ echo
+) > "$TEMPFILE"
+
+#
+# Note the the spec says that signed data must be converted to canonical
+# form.  "tocanon" converts LF to CRLF.
+#
+tocanon < $1 > $CANON
+
+$pgp +Armor=off -sfb < $CANON > $SIGFILE
+/bin/rm -f $CANON
+
+if test $? -ne 0; then
+	/bin/rm -f $TEMPFILE $SIGFILE
+fi
+
+(echo '--'$BOUNDARY
+
+# it's best to use the local version (non-canonical) here
+ cat $1
+
+ echo
+ echo '--'$BOUNDARY
+ echo 'Content-Type: application/pgp-signature'
+ echo 'Content-Transfer-Encoding: base64'
+ echo
+ eval $mimencode -b $SIGFILE
+ if test $? -ne 0; then
+	/bin/rm -f $SIGFILE $TEMPFILE
+	exit 1
+ fi
+ echo
+ echo '--'$BOUNDARY'--'
+) >> "$TEMPFILE"
+
+/bin/rm -f $SIGFILE
+/bin/mv $TEMPFILE $1

@@ -1,0 +1,519 @@
+This is the README for the PGP6 patch to ELM 2.4 PL24
+
+Changes from version 5a to 6 may be found in the file HISTORY and in the
+section '4) Changes' below.
+
+
+Blurb
+-----
+
+Elm-PGP offers tightly coupled usage of PGP in Elm. You are able to
+send PGP encrypted mails, check signatures and read encrypted mails
+with minimal overhead. There is also a user interface (similar to
+the aliases part of ELM) to comfortably manage the PGP keyrings.
+
+
+Authors and contact addresses
+-----------------------------
+
+The PGP6 patch contains changes and extensions to ELM which come from 
+muchsel@acm.org (Robert Muchsel - Main PGP integration),
+chris@phil.uni-sb.de (Chris Blum - Keyring management interface) and 
+caronni@tik.ee.ethz.ch (Germano Caronni - Extensions and bugfixes).
+
+Primary contact address for the PGP6 patch is caronni@tik.ee.ethz.ch
+Send bugreports (better: patches), comments and suggestions to me,
+I will forward them to the appropriate person.
+
+Elm-PGP is originally based on a hack by Mic Shaw <egd017@cent1.lancs.ac.uk>;
+we triedto reach him, but this address doesn't seem to exist anymore.
+This patch has been tested on Linux and Solaris, but it should work on
+any reasonably Unix compatible platform.
+
+
+FTP
+---
+You may get the newest version of Elm-PGP at
+ftp://ftp.tik.ee.ethz.ch/~ftp/pub/packages/elm-pgp/
+
+1. Features of Elm-PGP
+----------------------
+
+Our version of Elm-PGP has the following features:
+
+a. PGP support is only active and visible if the following conditions are met:
+   - Environment variable PGPPATH points to the folder in which the key ring
+     or the pgp config-file reside (pubring.pgp OR config.txt OR .pgprc) OR
+     (if PGPPATH is not set) .pgp exists and contains one of above files AND
+   - User level is greater 0 AND
+   - Command line option -P is supplied OR ELMPGP environment variable is set
+     OR user presses '&' AND
+   - The PGP pass phrase is entered correctly OR the PGPPASS environment
+     variable is set.
+   This makes it possible to install Elm-PGP as the default Elm for all users.
+
+b. Sending PGP messages is done automatically:
+   - If you have the public key of the recipient, the message will be signed
+     and encrypted.
+   - If you don't have the key, it will be signed.
+   - You can exclude recipients from encryption using the ~/.elm/pgpexclude
+     file (see below).
+   - If you want to send it plain (unsigned, un-encrypted), use the p)lain send
+     menu option.
+   - To send it just clearsigned use the si(g)n send menu option.
+
+c. The pass phrase is not kept in the environment and not passed as a command
+   line parameter. The pipe mechanism of PGP is used.
+
+d. Printing, piping, batch mode, etc. are supported.
+
+
+2. Installation
+---------------
+
+a. Make sure PGP and Elm 2.4 PL24 (standard) work and you know how to use
+   them. If you haven't compiled any version of Elm yet, it's probably
+   safer to try the unpatched version first.
+
+b. Apply the patches ('patch -p < elm.pl24-pgp6.diff') in the elm directory
+   itself. Some versions of patch need the '-p' argument to create new
+   files in the correct location, and not in the toplevel directory.
+   Apply later patches (e.g. elm.pgp6-pgp6a.diff) in chronological order.
+
+c. Run Configure. There are three new questions regarding PGP support:
+   - Location of your pgp program (easy, eh?).
+   - Decide whether you want Elm-PGP to check the pass phrase once it is
+     entered (checking the pass phrase is recommended).
+   - The domain part of your users' mail addresses if it differs from the
+     host name. Example: john.doe@magic.net needs to enter magic.net, because
+     the host name is something like 'ripoff122.magic.net'.
+     It is important to answer this question correctly, since Elm-PGP will
+     not be able to encrypt any mails to local recipients if this setting 
+     is misconfigured (the domain name is needed to find the correct public
+     keys).
+   - If possible, don't install Elm-PGP setgid.
+   - Use an ANSI compliant C compiler. gcc works fine. Ensure the symbol
+     ANSI_C is defined (add -DANSI_C to the compiler flags, this removes
+     the -traditional default setting). If you don't, you are asking for
+     trouble (i.e. Elm works without -DANSI_C, but -DANSI_C is recommended).
+   - Look at the end of this section for some hints to compile Elm-PGP under
+     Linux and Solaris.
+
+d. Make Elm-PGP ('make elm' or 'pmake elm') and run 'strip bin/*'.
+
+e. Make a backup copy of standard Elm.
+
+f. Move Elm-PGP to its proper place and set the permissions. This can
+   be done automatically by 'make install' or 'pmake install'.
+
+g. Set PGPPATH and ELMPGP environment variables (preferably in .login or
+   .profile) if you want to use the PGP features.
+   setenv PGPPATH ~/.pgp
+   setenv ELMPGP YES     <--- only if PGP support should be on by default
+
+h. It is useful to add the following line to the .pgprc or config.txt
+   file:
+   MyName = "<Your user id>"
+   Elm-PGP tries to set all other options automatically. Section 5 lists
+   all styles of PGP invocations Elm-PGP does.  For further information, 
+   please check pgpdoc2.txt
+
+i. Check whether you configured the mail domain correctly:
+   Run elm -P  and enter the pass phrase. Now m)ail to your own user id.
+   If PGP-Elm can encrypt the mail ('Encrypting...') and it shows up
+   in the incoming folder with a 'P' status indicator and you can display
+   it properly, everything is OK. As a last check, press '%' and verify
+   that the address is correct.
+
+j. Some Hints for Linux:
+   - If stdarg.h can not be found then make a symbolic link in /usr/include
+     to wherever this file is on your system. (use find).
+   - Does your /etc/passwd file keep full names in Berkeley/V7 format -> Y
+   - Compiler -> gcc
+   - Any additional cc flags? -> -DANSI_C   (__NOT___ --traditional etc.)
+   - Use pmake -> Y
+   - To make: pmake, pmake install (make does not work if you have pmake)
+   - Some systems don't set the domain name correctly. Add a file called
+     'domain' to the Elm lib directory and put the domain name into this file.
+
+k. Hints for Solaris:
+   - Do _NOT_ use the flock() locking style. (dot locking and fcntl is ok)
+   - Under some systems, -DANSI_C might help avoid troubles.
+   - Some systems don't set the domain name correctly. Add a file called
+     'domain' to the Elm lib directory and put the domain name into this file.
+
+
+3. Using Elm-PGP
+----------------
+
+a. Start 
+
+If you have the ELMPGP environment variable set (or you use the -P command 
+line option), you will be asked for the PGP pass phrase. Pressing 'Enter'
+without giving a pass phrase disables PGP support immediately. You can clear
+and re-enter the pass phrase with the '&' key anytime.
+
+
+b. Main menu
+
+The second character in the message status column shows if there is PGP
+information attached to a mail (if there are several PGP related parts
+in the message, K takes precedence over P, P over S):
+
+  K -- Message contains public keys
+  P -- Message is encrypted ('PGP' or 'Private')
+  S -- Message is signed
+
+If you press enter to display the message, it will be decrypted. If it
+contains new keys, you will be asked whether you want to add them to your
+key ring and whether you want to sign the new keys. Messages may be signed,
+encrypted, etc. ad nauseam - Elm-PGP will recurse and should untangle 
+nested messages.
+
+There are five new key assignments:
+
+   P -- Decrypt tagged messages and print them through the PGP filter (like
+        p, but with decryption)
+   S -- Decrypt tagged messages and save them (like s, but with decryption)
+   \ -- Decrypt tagged messages through the PGP filter and pipe them to a
+        command (like |, but with decryption)
+   & -- Disable/Enable PGP support and clear the pass phrase in memory.
+   y -- Enter the key management menu. In this menu you are able to examine
+        your keyrings and to change trust parameters and pass phrases, add 
+	and remove signatures, keys and user IDs, and so forth.
+
+c. Sending messages
+
+When sending a message, it will be signed automatically. If the public keys
+of all recipients are available, it will be encrypted. Otherwise you will be
+asked if you want to send the message signed only. To send a plain unsigned
+message, press p) for plain. To send a signed message only use si(g)n.
+
+If you have the public keys of recipients who cannot handle encrypted mail
+or who don't like encrypted mail, you can exclude them from encryption using
+the pgpexclude file in the .elm directory. 'pgpexclude' is interpreted line
+by line. Each line should contain one user id and nothing else. E.g.
+
+    # This is a comment
+    hl@slow.ibmxt
+    doe@ihatepgp.encrypted.mail 
+
+If Elm-PGP is unable to find the public key (e.g. because the mail address
+and the address encoded within the key don't match), you can add a link
+from the key to the mail address (cf. key management).
+
+It is important to know that Elm-PGP selects the first matching user id in
+your key ring. For example, if you have to different keys from the same person
+(old and new key), Elm-PGP selects the first matching key based on the user
+id.
+
+You are able to enter PGP mode from the send menu by typing '&'. This is
+useful if you have composed a message without first enabling the PGP mode.
+If you are in send-only mode, the passphrase will not be checked. In this
+case it might happen that after hitting s)end or si(g)n you are returned
+to the send menu. In this case PGP failed to run successfully. Just toggle
+'&' off and on, and try entring the passphrase again.
+
+
+d. Key Menu
+
+The key menu allows you to select among your keyrings, and to perform key
+management operations on them. From here you can also send selected keys to
+other users. The currently selected keyring is used for encryption etc. in 
+the other menus. 
+
+An important feature is the ability to link PGP keys to mail addresses. This
+serves multiple goals:
+- When sending mails to a mailing list of which you have the keys of all
+  recipients: Just tag the keys, press 'n' and enter the address of the
+  mailing list. All future mails to the list will then be encrypted with 
+  all indicated keys (if PGP mode is enabled, of course).
+- You send mails to caronni@tik.ee.ethz.ch, but only have the key of 
+  gec@acm.org. Select the key of 'gec', press 'n' and enter the address
+  caronni@tik.ee.ethz.ch. The same is helpful if reply addresses do not
+  match user IDs, as provided in the keyring.
+- If 'rmuchsel@iiic.ethz.ch' has lent his account to Bill Clinton, you 
+  select the key of Bill Clinton and enter muchsels address. Thus mail to 
+  this account will be encrypted with a completely independent key.
+The Option e) of the key menu allows the manual modification of the key 
+link file (needed when deleting links or single key IDs from a link).
+
+
+e. Security
+ 
+Although Elm-PGP tries hard not to leave traces of your pass phrase
+in memory and to delete all temporary decrypted files, it is important to
+know that this is by no means a high security implementation. Elm itself,
+the Elm-PGP modifications and PGP all use temporary files. If you are
+running Elm-PGP on a personal account as the sole user, you could set the
+temp directory to a private directory (Configure asks for the temp 
+directory). 
+
+Don't use this program if you have to keep vital secrets. Elm-PGP might
+crash and core dump everything. Also remember that the Subject: line is sent
+in the clear (together with all the other headers). Thus, take care to
+choose a non-sensitive subject. If you run Elm-PGP from a remote work-
+station, remember this: Each time you type in your PASSPHRASE you give
+it away to the persons who might be snooping on the network. Be careful, 
+and use an encrypting telnet (or a secure IP layer like SKIP) for such
+occasions!
+
+Please don't mail your secret keyring. (Not that Elm-PGP would allow you to
+do so directly). It is a) not very clever to send long-term secrets in an 
+open mail, and b) does slightly confuse the receiving Elm-PGP ;-)
+
+Since the Elm-PGP patches have not been tested widely, it might also be
+wise not to install it setuid or setgid. It might be possible to deliberately
+crash Elm-PGP end end up in a root shell.
+
+
+That's all there is to know about Elm-PGP.
+
+
+4. Changes:
+-----------
+
+For version 6:
+
+- Fixed numerous typos, glitches, errors in the help files and
+  fixed some screen update problems and other loose ends.
+- Added a fix to Configure to work properly with GNU "nr"
+- Fixed the Makefile so that elm-help.4 will be installed on make install.
+- Changed hot keys: 
+    si(g)n instead of C)learsign (the message didn't fit into 1 line)
+    ke(y) management instead of ^K
+- Signing and encrypting a key is now allowed.
+- Added support for PGP keys to mail address links. You can use this
+  function to alias keys, add keys for multiple recipients (when
+  using a mailing list), etc.
+- Key management sub-menu:
+  * Display proper error message when trying to remove signature from
+    a disabled key.
+  * Keys are now sent from the key management sub-menu. Multiple keys
+    can be tagged.
+  * Keys can be tagged and added to a key/address link
+  * The key/address link file can be edited
+  * Changed a few hot keys
+  * Made menu and help more consistent with the alias sub-menu.
+  * All functions now use the key ID instead of the user name.
+- Use the current key ring (i.e. the one selected in the key management 
+  sub-menu) when adding keys from an e-mail and when sending keys.
+- Deleting keys is now interactive and will therefore work if a user
+  has multiple user IDs.
+- Messages can now be interlocked (i.e. the software will detect PGP
+  messages and keys within encrypted messages), ad infinitum.
+
+
+For version 5a:
+
+- Fixed check for keyring to look for config-file too, should now correctly
+  handle default path of pgp.
+- Added hints about ENCRYPTTOSELF to README
+- Changed 'E' to 'P'
+- Before sending keyring the user is asked if ok
+- Messages are encrypted for bcc-keys too
+- Created HISTORY.PGP file, contains comments and changes
+- Fixed configure-script to handle non-existence of pgp
+- Internal fixes...
+- Fixed some typos
+
+
+For version 5:
+I have changed the following from Mic's PGPELM implementation:
+
+PGP pass phrase:
+- will not be stored in the environment
+- will be copied from the PGPPASS variable if it is set
+- will be cleared when <&><Enter> is pressed
+- will be cleared when program exit()s
+- will be queried in 'Send only mode', too.
+PGP support will be disabled after three bad passwords instead of halting
+the program.
+
+Key assignments:
+- Changed not to conflict with the ELM standard keys
+
+Environment variables:
+- ELMPGP=YES is equivalent to the -P option
+- PGPPASS variable is supported (see above)
+
+Send mail menu:
+- check for public keys automatically and encrypt if possible
+- support for pgpexclude file
+- removed extra p)gp menu
+- p)lain send option available to send unsigned and un-encrypted text
+- C)learsign available to send signed mail only
+- '&' is able to toggle pgp mode in send menu too
+- expand alias and carbon copy names properly
+
+Main display:
+- second char in row shows type of message
+- added PGP keyring manager, reachable via ^K
+
+MIME support:
+- removed x-application dependency, PGP messages will be recognized
+  regardless of the MIME information (the whole message is scanned)
+- only encrypted messages and public key messages will get the MIME
+  header so all people can read signed messages
+- replaced MIME application types with "application/pgp" as suggested
+  in the PGP documentation
+
+Message display:
+- display bounced messages properly (not only the PGP part)
+- display messages consisting of more than one PGP part properly
+- recognize pgp encrypted mails not sent by another Elm-PGP
+
+Misc.:
+- find PGP keys independent of the PGP_SLASH configuration option
+- display "Please wait..." message where appropriate
+- pipe pgp output to /dev/null in some cases to preserve the screen
+  layout
+- don't call PGP via the shell
+- use pipes to communicate with PGP in some places (pass phrase)
+- renamed default mail folder to Mail instead of mail
+- print and pipe work with more than 1 message
+- Batch and Send only mode work
+- upgraded to PL24 and created a clean diff
+- removed a bunch of bugs (and introduced a few new ones :)
+
+And many many other changes...
+
+
+
+5. PGP Invocations:
+-------------------
+
+PGP is invoked fordifferent purposes by Elm-PGP. This is an (as of PGP6)
+exhaustive list of invocation methods:
+
+encrypt:
+  pgp -sweat +force +batchmode +encrypttoself +verbose=0
+      [+pubring=/selected/pubring.pgp] tmpfile key-IDs
+sign:
+  pgp -staw +force +batchmode +verbose=0 +clearsign=on tmpfile
+passphrase-check:
+  pgp -sbf +batchmode +force +vebose=0 +textmode=off (on -1 fd)
+sending pgp keys:
+  pgp -kxaf +verbose=0 +batchmode (on fd pointing to tmpfile)
+decryption/signature checking:
+  pgp -t +batchmode _verbose=0 +force [+pubring=/sected/pubring.pgp tmpfile
+key extraction:
+  pgp -ka +verbose=0 +interactive=on tmpfile [keyring]
+key management (generating list):
+  pgp -kvvc +batchmode [keyring]
+key management (key deletion):
+  pgp -kr +verbose=0 key-ID [keyring]
+key management (key modification):
+  pgp -ke +verbose=0 key-ID [keyring]
+key management (key signing):
+  pgp -ks +verbose=0 key-ID [keyring]
+key management (key signature removal):
+  pgp -krs +verbose=0 key-ID [keyring]
+key management (key signature dis/enabling):
+  pgp -kd +verbose=0 key-ID [keyring]
+
+
+========== And now some PGP keys ==========
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: 2.6.2
+
+mQCNAi1CDBsAAAEEALPQMXYAKg7CU/ZSfjGWxDrsxUyiXwQ49AgGnojhoSIAt9A4
+OLO7yccAm144i49hbguXnuxf4/RIZvWmkqgN8VSROG9DoMcus4/PlCSZaU5K0bCt
+mUSlPEAL1c4gP9d54J/024MlwM50zsgmdgaXGaSpjqD4r5iFjkW/rgoB+dHxAAUR
+tCFDaHJpcyBCbHVtIDxjaHJpc0BwaGlsLnVuaS1zYi5kZT60KENocmlzIEJsdW0g
+PGNocmlzQGNocmlzLnRlbGlwLnVuaS1zYi5kZT60I0NocmlzIEJsdW0gPGNocmlz
+QHBoaWwxNS51bmktc2IuZGU+iQCVAgUQLoCoCpTnQ0kvoxr1AQHusgP9Fhhkbudc
+DSYzScF3A8mjPcQeY1h4UzEIuFSV0HpqRZKU5tljAetyMkEfyX3vyxZOQVjk2xKS
+PnwUdbp/1V8kPz94GVXCh3/kohjp5uTcCFdGfKBxgkHV9N/5chhvV90ZtHPwH5Z7
+REIbp/P8wcrAarOmBZjCIaW2yZiw41lAkSGJAJUCBRAthRDaRb+uCgH50fEBAY+P
+A/9O04XnmUCUJkibXs+oYd8sXNdU62SKsAvmdWZnCSk3j0nHFRLF7uOgq7hliNVu
++yQQ9WvG1cHiyrHIGToBHpDHILF/5P8oB03NMMnsdis8uwbxkjsat9v9Hbt2lPGT
+zXemwvgfOA6xbYukBbqmzP0CCyY+ipyQL6ag5sPsugWa5LQkQ2hyaXN0aWFuIEJs
+dW0gPGNoYmxAc3R1ZC51bmktc2IuZGU+iQCVAgUQLYUR8kW/rgoB+dHxAQFReAP+
+LsoOop3527MLg5ByFaAmGtP1iZuoob8SjeQKWUVoBbu32es0H3ZM9jhq6Vx4kFD8
+mMbSxo6AfmlRcI3L6FZBTjNSwYTqIi5cvTwMmeygDIxYyPn0zo4GKxMOyhansDMk
+cTDFv6uniaF1aaMgRcF92veBeiCmMCfpUN7RhfRZunCJAJUCBRAtQzHO1bVsA1te
+xzEBAZJoA/4zIvXku4ZOcmFYkyB5LktlDnKjMAbbsWLOt6PkDewn23ZOBozOs1p9
+NnhnmWXV48MD3y2Y3FJ5zzzvW7g0uOmPdUHKkHKq1eDYRDz2f5YGyhxEWzA0kBa5
+xJfauNdFxGa3/IXm6xpOkxv8QlXE+fOYl4pKQ0eOow27nQdpIrMCRJkAjQMvPVjE
+AAABBADLdM5gjjgNC7qkka+euahsQp+++rJ3xQUgal+uZsaWYRM66f4yslqkeXUC
+ZLrH42nvDZcfiTVSYiQ5+vqxH+W9XEwGwFWdUAH5FfR0y4D6cUMr/YL6spnr/1kX
+SGsZboZZQPPNm7RkyqbKZ2iugsY8TxkIH5ayEdC4YhK0dP+17QAFEbQgUm9iZXJ0
+IE11Y2hzZWwgPG11Y2hzZWxAYWNtLm9yZz6JAJUDBRAwL0nlAChtpI9aymkBASP8
+A/0R3Jz7xbBnafsG7kQ2k0Aejtwd6JE0nvJv/qJ7wMv76rrDaldWCPAe1ZN3lhsH
+zjXJLMnkTHOoDGs/nq8ykWokxzwCG6jdeDxL50hdZwmKJUZkyddKcTSRz/r1yeIW
+T/Kdfbmx9yj1vpcGrTnnW+hrzIjCI0YsoCVTxewwQwCpjokAlQMFEDA4umSx/IyH
+e3rl4QEBBucD/R+1Dy76WdnsMgRLiOuqWUHe9FDe8nJ+mOx03UXOqWukr6nTWszR
+ol8aSN6uCXn0YgoT/6ZA0HSA7WWS1GnJpeonxl+yN9sPtdqoP+UG79yv2VUs0wpT
+7G9qDn/dHxzQdaB2hPuxgNogxI10xQFKqQOv5kH2NeI2WFf4SraOh9tNiQCVAwUQ
+MCKTwLhiErR0/7XtAQGU1wP+NmqARPTGNtOv3ZGQ9UCwcPBGDXKY+QESHBsfsKc4
+vzkurdREGNMt59Mtg0jj6v7UZvMGf9829RT/Yx2r0aC+oyP+WPM1boFmdgGiiebd
+AraPz21EjMrqjhjNfvC13zyxxRqkcnCD3M8ONmDa29Qa++uqHhHQqxqZ/OAjKNwM
++RC0JlJvYmVydCBNdWNoc2VsIDxybXVjaHNlbEBpaWljLmV0aHouY2g+iQCVAwUQ
+L9GjfbH8jId7euXhAQGWggQAgVEeF8diB56yXcWyTScr9BWebp8b/V+QscibZ4Bp
+lhfGfXNgz4zc/ISE68iyU6e5jESFp6VheQfaSRf697guPPwB7r3tn1Y+Z13tCMrw
+H4CkHLTE/3R3QgDrFegKBFv56ElffOOSH/h3AuCCNz+kE2ygvYuXa3BwicoPsLZ+
+VlCJAJUDBRAvPzcBF2VJgjtGFlEBAQeEA/9rlAOdtoxJG+cVSiBK241HkUFhIy37
+6k4VaPYaVTiKVQarzYrr+rpJROCgmqCj2eUtgq2jCvU3KYGn34kOBs8yhdc9XEDj
++9IpUQdCqEAyJQQMbpME/QX8SCv2Dp3fTcsx7uaQwkTEGxy0F4TdLpPHESVPwEVm
+oB5TZModjRC8BokAlQMFEC89WNa4YhK0dP+17QEBByYD/AuOXSu+WtCP9YYHL0Nc
+SyBJc72f2SXoVa278cd7BTJp6TP03VUUnykzg3m+9gG+Kvxg7GV3nxJL9LO5/OSx
+GQlk8dwkdleJlC51EXjXg/fz9FVq7aQOyUp+pTq1YXwTpm9RqZRKofrk0/zX1qRe
+xscOi1Nm8SWBRsYnRo/ilHqAtCZSb2JlcnQgTXVjaHNlbCA8MjoyNDYvODEwMC4x
+MUBGaWRvTmV0PpkAjQMuyOVsAAABBADDaj4C7J7iFL12xNuVysjHttnozINOfRew
+sCfQA839kcSw4QETIVSgNHRIpin0wOam52d9AebFIirkf1XekhlUx4c16BD1mcur
+LJcEC1j8KBLEolhjBVdLAKjxtxCQ3A0ygQjzzlzsKwS4DIh03AxOXeT4m99ny82x
+/IyHe3rl4QAFEbQoR2VybWFubyBDYXJvbm5pIDxjYXJvbm5pQHRpay5lZS5ldGh6
+LmNoPokAlQMFEDBCMCO4YhK0dP+17QEBfVYEALwkWAZfv65UEpJGSfH3w90bhej+
+ILowiB0Ug/pfjzLWTMHuQcC1qQC0eqrZQIQUmdczWi1CIk5gYenjMuePwol41WNj
+5LGe2lbzJt4khE5ZC2sEI/LWimbPVGo3GL1AlPqWovEIJ7333Fz2yVUHlt8juN9G
+8SmarVwfLOyCS9MTtB1HZXJtYW5vIENhcm9ubmkgPGdlY0BhY20ub3JnPokAlQMF
+EDA4ixi4YhK0dP+17QEBB8sD/iuawW3zQ/l72GAl/xuic+IWZbfZwkIWZ+fxAbUF
+YbGqhOGE9fc4mwuGJvAxR2+JoubxVMmxpZGthZyV3rMUVb72fD+2A/RkBd/aETY2
+a3ZBH1ixCb6/tw+P1DJEd1HfAnrGWM3US9qBcb7JYwcEXYVQ9RP1W/f24Aboh3K3
+R/BaiQCVAwUQMDXzWLH8jId7euXhAQHt2AP/ReTlMdhBuw/zJ1qjEv6FocN0DIPM
+VUBNfuZ6N9vg97z78fpFY/COdRJRnaPRDLtq+GOVsk7sFSINIHgjq+Xh3DS25IWe
+aK6+3k8AHWpx8K5L8JSvjdS42cVZQmkJ9AljezHWURMtf/uUHcviKO5M269zPc5s
+0NnRU37HiWcyGa+0LEdlcm1hbm8gQ2Fyb25uaSA8Y2Fyb25uaUB0aWsuZXRoei5j
+aD4gJWdlYy0ziQCVAwUQMBkkcCdGuTtG77LVAQEvuAQA4110jqlikOWIBr9Wg6zi
+RaBuzXjiUorM3b6ig4ESAnFnCNJE9b8HIwUcolvQP/NAh97nT23fGAylWzuUxmqP
+7xfckzbJ1WBfqAaOI19wazawZm6OaLgWkPARfc/nuRhSqPXNtW4Si2QTdVx7nbl2
+ys3PT0j4yI69WAL7hcf8IaWJAJUDBRAwFE3LmuZlUFuB8XkBAfgxA/0VCkIMgOsg
+uZfs7AZdzLoeCVuxJ+ffUJaROQGohfi89K/usAZE/l+vL1PTUCCWH89M7sbHnqts
+eXyY2hmw8UGD13Y5ZRnvnFAuOXKHrDithTVVsMkEKbwQRiTcrPMwZbQUeD8Ulj12
+HjwBC9cI0ayfnSr/u4KG9ZETO1dq8TJwi4kAlQMFEDAO3dPFLUdtDb+QbQEBQ2ED
+/1T9UMiOM12LZ+hZlnaBussyiW2ChUcnOoFRSf6UQQjH8zBY2k1m32uy4XlBXYAf
+06OGnDPCs8SI/Q4DKS3QX6gWejzmbVEVeDRXtmoHhI3G4XOHY5Dc76yE/5apzU5g
+tZCarSJcIOWyLZSZInZe97emTy7ydhTeW8I6771ZuqqjiQCVAwUQMBhNVvvCP42x
+MxQ5AQH6XwP7BPyNyzGc1WSXM9hwVKDeUcC0TjsBQkFX2ijfF7uOhzx/8iRKS7ii
+RKzMK2fjSa3PNbuQnB+0t49FO582uTnibQUfbQC2wc0dJVdV+XFv1hNepuZafIFn
+y8IoMFtIQ5RGkyPUgJMbInYpzIll1iAODPWkEvmg4dhk6b4H8QgIYlWJAJUCBRAw
+D00z4uW74fteFRkBAcldA/0cBwozm8dl9Tun5CiBKU0WOwEcVqSv0h/WoVl2vj7B
+tQUC3owYuwvRxMR4Nt6+fLcQZYnwDoBC0bd1CMRVt701wl8CcKka6/yXN379MOVi
+pNnjv5QrmZR3XKXdO4k3BksQ34OXVZK2gt1IMUHxQI8LUqwWkbLTd+6HwHYRapRr
+C4kAlQMFEDAOUbun4y1TSjMnFQEBNuYD/R2jkZwJm71yEf6ieK0RYMyDzblwj2rq
+RmrqGKtTw2iHY+i+rVGIIb82EQC5uPRO725PpBkd7wEA+ow64Zkf7eomVstoqkZ1
+CMd+YxJi8r9IU+TnN29zA8+VeU2e5LF2TKgnSfbZWiwc8ECwq755HctqNvYknVlJ
+333s6LYIzyFyiQCVAwUQL+GXqrH8jId7euXhAQHYWQQAvR4pBAx3HMBdVkIibdVL
+9D3Zx9bRG+XMduYHHF5bjPW1o/wn80zTbywfu/5zEhFTvPB1u6pz2K5TFMXuDMoW
+ND/lYw6ZiYDvq92BFIMqAInR6hzztZRld+Cmv+h2apVxre1cwibuWkTASXLzRIOr
+YqwBzmcyiaUQqD37WSZKi9+JAJUDBRAv3xk7BBmAwkFmqS0BAUfHBACxLVVyLNUE
+HRnhxJuxMlg62UN+trugKprCfPwGrIMPq0XoDMQV5ZLTw7KyHkIfDRqf69QyugyG
+hWLTdNZ7GUDktPE84V6U1HG8ZsLFG7hjgCbSK2oGQL5dBZEYo1e/pOnHDFGd2MRJ
+Wc4uB7y/czH6pERFAPFDLSBRWFlZBfmsNYkAlQMFEC8/MO8XZUmCO0YWUQEBi0QE
+AJ0Qi7A7kOk1qN9OWyZ6Ma+vmGEW/dhSCETEVDPwjb/89xjpr70NHcUcHJN3wQOH
+Oc+EYpSp8UEYxtj/y0sL9DsGRK3phdZ2cuW5wQWTyAoQdzg+y6AbsRHfOmM3eyOw
+39tV+mkShK5dWAjwpfk8X6vy5oAejILeRDt3kvdcivEiiQCVAwUQLz81FbhiErR0
+/7XtAQEBBwP/VmQcul2BRUgyzroiIDOzCanVHqvM8t1zfVWLkxMwzCdJw4b6lK5b
+zHTZWigse1gMuJIgwlc8N/sMdMiUJa97geT9AS/TFvdI1SgWTalszQTRaxXhd2WC
+FPH0Zv72CIqkRaofjngGUjgvu2xUhwJiBcIy40MS54Kn9e5F9OuFdGqJAJUDBRAv
+FZ0xRb+uCgH50fEBAUOoA/0efu52FLjjGWShCa29wXCogMG0Y3gteRtrgm51n/3a
+uslgZheNtagdYSZWHi8uPH0eLVOw/FEd9BHFyFGR6nsJn+HWFW3y0YesuHe4zBVM
+Q1fypIIcQ2qIgTF/1CifLRg0er14ZzEiJAn1LPEFK1FXmQmrpitDYZv6DfF7X3YL
+1YkAlQMFEC7I5omU50NJL6Ma9QEBULYD/i1ZXD0cXG1UcnuZjK3BaIvGEX9z3itu
+NZlfLxQrnIlPoT4dOodZNxsrVD7np5KxfOvuURYuV9/7jDZ02/LSdsQuYxkQup0K
+O+qdQj8wR1Ah+WI7sN5sbJOtMu8lDCmVqRs9C18N7DNm9G3MToRHm4kN6H63drTh
+R/KX9BH16kiJ
+=vuPT
+-----END PGP PUBLIC KEY BLOCK-----

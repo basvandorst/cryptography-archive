@@ -1,0 +1,132 @@
+From news.lut.fi!news.csc.fi!news.eunet.fi!EU.net!howland.reston.ans.net!newsfeed.internetmci.com!usenet.eel.ufl.edu!news-feed-1.peachnet.edu!paperboy.wellfleet.com!news3.near.net!yale!yale!gumby!news.cs.hope.edu!news Fri Feb 16 14:02:38 1996
+Article: 45724 of sci.crypt
+Path: news.lut.fi!news.csc.fi!news.eunet.fi!EU.net!howland.reston.ans.net!newsfeed.internetmci.com!usenet.eel.ufl.edu!news-feed-1.peachnet.edu!paperboy.wellfleet.com!news3.near.net!yale!yale!gumby!news.cs.hope.edu!news
+From: John Krueger <krueger@cs.hope.edu>
+Newsgroups: sci.crypt
+Subject: Re: Alleged RC2, MD2 and PI
+Date: Thu, 15 Feb 1996 11:09:20 -0500
+Organization: Hope College
+Lines: 113
+Message-ID: <31235AB0.5B9F@cs.hope.edu>
+References: <DM2pH5.4GF@news2.new-york.net> <4erseu$5es@blackice.winternet.com> <4f0man$5bt@azure.acsu.buffalo.edu> <SYEATES.96Feb10113353@borg> <phrDMJ8KD.78D@netcom.com> <4fpf2j$h05@news3.cts.com>
+NNTP-Posting-Host: oin.cs.hope.edu
+Mime-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+X-Mailer: Mozilla 2.0b6a (X11; I; SunOS 5.4 sun4m)
+
+Stewart Strait wrote:
+> 
+> Paul Rubin (phr@netcom.com) wrote:
+> : ... <stuart@cosc.canterbury.ac.nz> wrote:
+> : >>: ...if someone is willing to write a C routine that spits out
+> : >>: the hex digits of pi, I would appreciate it.
+> : >>: I want to add something like
+> : >>: that to my public domain Blowfish code,
+> : >>: for those who don't like carrying
+> : >>: around the initial tables.
+> : >
+> : >I believe the first couple of thousand digits are on one of the
+> : >Gutenburg (spelling ?) etext cdroms, along with code to generate
+> : >them. I know this is the case for primes.
+> 
+> : I haven't checked but it would surprise me very much if the
+> : Gutenberg cd has the first couple thousand digits of pi
+> : IN HEXADECIMAL.  In base 10, I could easily believe.
+> : Converting large numbers between bases is not totally
+> : trivial.
+> 
+> I just checked my July 1995 Gutenberg cd. It does not seem to have
+> pi in hex. In particular, none of the files with names containing
+> 'pi' have such a thing. It does have a million decimal digits.
+> Perhaps on an older cd??
+
+The following C procedure should be able to generate up to about 16 million
+hexadecimal digits of pi, if you can allocate an 8 megabyte array and your
+compiler uses 32-bit integers (If you're using a 16-bit compiler, replacing the
+two occurences of int with long *should* work), and you have a lot of cpu time
+to waste.
+
+---BEGIN-CODE---
+/* Written by John J. Krueger, 2-14-1996                    */
+/* This code is free for anyone to use for anything they    */
+/* want on the condition that I will not be held liable for */
+/* anything it does.                                        */
+/* This procedure will compute num_bytes bytes of Pi in     */
+/* binary (initial 3 not included) and store them in the    */
+/* user-allocated unsigned char array bytes.                */
+/* The last few digits may be wrong due to roundoff.        */
+/* This code is based on the following formula:             */
+/*           infinity    4         2         1         1    */
+/* ------     -----   ------- - ------- - ------- - ------- */
+/*  |  |       \      8 i + 1   8 i + 4   8 i + 5   8 i + 6 */
+/*  |  |   =    )     ------------------------------------- */
+/*  |  |       /                         i                  */
+/*            -----                    16                   */
+/*            i = 0                                         */
+/* This formula was found by Bailey, Borwein and Plouffe,   */
+/* more information can be found at:                        */
+/* http://www.mathsoft.com/asolve/plouffe/plouffe.html      */
+void compute_pi(int num_bytes, unsigned char *bytes)
+{
+  int top, bot, t, i, j, k;
+
+#define SUB_FROM_BYTES(a,b,c) \
+  top=a;bot=b;\
+  for(i=c;i<num_bytes;i++)\
+    {\
+      top*=256;\
+      t=top/bot;\
+      top%=bot;\
+      if((i>0)&&(t>(int)bytes[i]))\
+	{\
+	  j=i-1;\
+	  bytes[j]--;\
+	  while((j>0)&&(bytes[j--]==255))\
+	    bytes[j]--;\
+	};\
+      bytes[i]-=t;\
+    };
+
+#define ADD_TO_BYTES(a,b,c) \
+  top=a;bot=b;\
+  for(i=c;i<num_bytes;i++)\
+    {\
+      top*=256;\
+      t=top/bot;\
+      top%=bot;\
+      if((i>0)&&(t+(int)bytes[i]>255))\
+	{\
+	  j=i-1;\
+	  bytes[j]++;\
+	  while((j>0)&&(bytes[j--]==0))\
+	    bytes[j]++;\
+	};\
+      bytes[i]+=t;\
+    };
+
+  for(i=0;i<num_bytes;i++)
+    bytes[i]=0;
+  
+  for(k=0;k<num_bytes;k++)
+    {
+      ADD_TO_BYTES(4,8*(2*k)+1,k);
+      SUB_FROM_BYTES(2,8*(2*k)+4,k);
+      SUB_FROM_BYTES(1,8*(2*k)+5,k);
+      SUB_FROM_BYTES(1,8*(2*k)+6,k);
+
+      ADD_TO_BYTES(4,(8*(2*k+1)+1)*16,k);
+      SUB_FROM_BYTES(2,(8*(2*k+1)+4)*16,k);
+      SUB_FROM_BYTES(1,(8*(2*k+1)+5)*16,k);
+      SUB_FROM_BYTES(1,(8*(2*k+1)+6)*16,k);
+    };
+}
+---END-CODE---
+
+-- 
+---------------------------------------------------------------------------
+Disclaimer : If you agree with the above opinions you're crazier than I am.
+krueger@cs.hope.edu * John Krueger * This redundant statement is redundant.
+---------------------------------------------------------------------------
+
+

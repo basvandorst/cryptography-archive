@@ -1,0 +1,286 @@
+#!/usr/bin/perl
+#
+# Yet another preprocessor
+#
+# $Id: yapp,v 1.5 1997/10/24 07:51:05 mhw Exp $
+#
+
+%vars = ('' => '$');
+@incPath = (".");
+
+sub Error
+{
+	print STDERR $_[0], "\n";
+	exit(1);
+}
+
+sub VarSubst
+{
+	my ($varName, $undefOkay) = @_;
+
+	if (defined($vars{$varName}))
+	{
+		return $vars{$varName};
+	}
+	elsif (!$undefOkay)
+	{
+		&Error("Undefined variable '$varName' in $fileName line $.");
+	}
+}
+
+sub NullFilter
+{
+	0;
+}
+
+sub IfFilter
+{
+	local $_ = $_[0];
+
+	if (/^##else(\s+.*)?/)
+	{
+		return 1;
+	}
+	elsif (/^##endif(\s+.*)?/)
+	{
+		return 2;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+sub DoFile
+{
+    local $fileName = $_[0];
+	my $path;
+	local *FILE;
+
+	if ($fileName =~ m|^/|)
+	{
+		$path = $fileName;
+	}
+	else
+	{
+		for $dir (@incPath)
+		{
+			if (-e "$dir/$fileName")
+			{
+				$path = "$dir/$fileName";
+				last;
+			}
+		}
+	}
+	if ($path eq "")
+	{
+		&Error("Can't find '$fileName', from $fileName line $.");
+	}
+
+	open(FILE, "<$path") || &Error("Can't open $path: $!");
+	&DoOpenFile(*FILE, *NullFilter, 0);
+	close(FILE) || die;
+	0;
+}
+
+sub DoPrepass
+{
+	local ($_, $skipFlag) = @_;
+
+	return "" if /^###/;
+	s/\s*###.*//;								# Strip comments
+	s/\${(\w+)}/&VarSubst($1, $skipFlag)/eg;	# Do variable substitutions
+	$_;
+}
+
+sub DoOpenFile
+{
+	local *FILE = $_[0];
+	local *filter = $_[1];
+	my $skipFlag = $_[2];
+	my $result;
+	local $_;
+
+	while (<FILE>)
+	{
+		$_ = &DoPrepass($_, $skipFlag);
+		if ($result = &filter($_))
+		{
+			return $result;
+		}
+		elsif (/^##(\w*)(\s+(.*))?/)
+		{
+			my ($cmd, $params) = ($1, $3);
+
+			if ($cmd =~ /^if/)
+			{
+				my $condition;
+				my $ifStartLine = $.;
+
+				if ($cmd eq "if")
+				{
+					if ($params =~ /^(\d+)\s*$/)
+					{
+						$condition = int($1);
+					}
+					elsif ($params =~ /^(\d+)\s*([=!]=|[<>]=?)\s*(\d+)\s*$/)
+					{
+						my ($left, $op, $right) = ($1, $2, $3);
+
+						$condition = eval($left . $op . $right);
+					}
+					elsif ($params =~ /^(\S+)\s*(eq|ne)\s*(\S+)\s*$/)
+					{
+						my ($left, $op, $right) = ($1, $2, $3);
+
+						$left =~ s/([\\'])/\\$1/g;
+						$right =~ s/([\\'])/\\$1/g;
+						$condition = eval("'$left' $op '$right'");
+					}
+					else
+					{
+						&Error("Invalid ##if params: '$params' " .
+							   "in $fileName line $.");
+					}
+				}
+				elsif ($cmd =~ /^ifn?def$/)
+				{
+					if ($params =~ /^(\w+)\s*$/)
+					{
+						$condition = defined($vars{$1});
+						$condition = !$condition if ($cmd eq "ifndef");
+					}
+					else
+					{
+						&Error("Invalid ##$cmd param: '$params' " .
+							   "in $fileName line $.");
+					}
+				}
+
+				# Do main body of if
+				$result = &DoOpenFile(*FILE, *IfFilter,
+									  $skipFlag || !$condition);
+
+				if ($result == 1)	# an '##else' was found
+				{
+					# Handle else
+					$result = &DoOpenFile(*FILE, *IfFilter,
+										  $skipFlag || $condition);
+				}
+
+				if ($result == 1)	# a second '##else' was found
+				{
+					&Error("Two ##else's in a row in $fileName line $.");
+				}
+				elsif ($result == 0)	# EOF was encountered
+				{
+					&Error("Unterminated ##if " .
+						   "in $fileName line $ifStartLine");
+				}
+			}
+			elsif ($cmd eq "include")
+			{
+				if ($skipFlag)
+				{
+				}
+				elsif ($params =~ /^"(.*)"\s*$/)
+				{
+					my $incFile = $1;
+
+					&DoFile($incFile);
+				}
+				else
+				{
+					&Error("Invalid ##include params: '$params'");
+				}
+			}
+			elsif ($cmd eq "set")
+			{
+				if ($params =~ /^(\w+)=<<(")(.*)"\s*$/ or
+					$params =~ /^(\w+)=<<(')(.*)'\s*$/)
+				{
+					my $varName = $1;
+					my $quoteChar = $2;
+					my $endTag = $3 . "\n";
+					my $value;
+
+					while (<FILE>)
+					{
+						if ($_ eq $endTag)
+						{
+							chop $value;
+							last;
+						}
+						else
+						{
+							if ($quoteChar eq '"')
+							{
+								$_ = &DoPrepass($_, $skipFlag);
+							}
+							$value .= $_;
+						}
+					}
+					if (!$skipFlag)
+					{
+						$vars{$varName} = $value;
+					}
+				}
+				elsif ($params =~ /^(\w+)="(.*)"\s*$/ or
+					   $params =~ /^(\w+)=(\S*)\s*$/)
+				{
+					if (!$skipFlag)
+					{
+						$vars{$1} = $2;
+					}
+				}
+				else
+				{
+					&Error("Invalid ##set command: '$params'");
+				}
+			}
+			else
+			{
+				&Error("Unrecognized command: '$_'");
+			}
+		}
+		elsif (!$skipFlag)
+		{
+			print;
+		}
+	}
+	return 0;
+}
+
+$optEnable = 1;
+
+foreach (@ARGV)
+{
+	if ($optEnable and /^-/)
+	{
+		if (/^--$/)
+		{
+			$optEnable = 0;
+		}
+		elsif (/^-D(\w+)=(.*)$/)
+		{
+			$vars{$1} = $2;
+		}
+		elsif (/^-I(.*)$/)
+		{
+			unshift @incPath, $1;
+		}
+		else
+		{
+			&Error("Unrecognized option: '$_'");
+		}
+	}
+	else
+	{
+		&DoFile($_);
+	}
+}
+
+#
+# vi: ai ts=4
+# vim: si
+#

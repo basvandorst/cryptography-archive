@@ -1,0 +1,123 @@
+*** gzip.c	Thu Aug 19 13:39:43 1993
+--- gzip-steg.c	Wed Apr 27 19:19:10 1994
+***************
+*** 198,203 ****
+--- 198,214 ----
+  
+  		/* local variables */
+  
++ /* gzsteg: our variables */
++ 
++ local struct stat stegstat;
++ local char stegname[MAX_PATH_LEN];
++ int steg=0;
++ int sfd;
++ int stegidx=39;
++ ulg steglength=0L;
++ ulg stegbits;
++ uch stegbyte=0;
++ 
+  int ascii = 0;        /* convert end-of-lines to local OS conventions */
+  int to_stdout = 0;    /* output to stdout (-c) */
+  int decompress = 0;   /* decompress (-d) */
+***************
+*** 259,264 ****
+--- 270,276 ----
+      {"quiet",      0, 0, 'q'}, /* quiet mode */
+      {"silent",     0, 0, 'q'}, /* quiet mode */
+      {"recursive",  0, 0, 'r'}, /* recurse through directories */
++     {"steg",       1, 0, 's'}, /* gzsteg: hide/reveal file */
+      {"suffix",     1, 0, 'S'}, /* use given suffix instead of .gz */
+      {"test",       0, 0, 't'}, /* test compressed file integrity */
+      {"no-time",    0, 0, 'T'}, /* don't save or restore the time stamp */
+***************
+*** 347,352 ****
+--- 359,365 ----
+  #ifndef NO_DIR
+   " -r --recursive   operate recursively on directories",
+  #endif
++  " -s --steg        hide/reveal file in compressed data",
+   " -S .suf  --suffix .suf     use suffix .suf on compressed files",
+   " -t --test        test compressed file integrity",
+   " -v --verbose     verbose mode",
+***************
+*** 478,484 ****
+      strncpy(z_suffix, Z_SUFFIX, sizeof(z_suffix)-1);
+      z_len = strlen(z_suffix);
+  
+!     while ((optc = getopt_long (argc, argv, "ab:cdfhH?lLmMnNqrS:tvVZ123456789",
+  				longopts, (int *)0)) != EOF) {
+  	switch (optc) {
+          case 'a':
+--- 491,498 ----
+      strncpy(z_suffix, Z_SUFFIX, sizeof(z_suffix)-1);
+      z_len = strlen(z_suffix);
+  
+!     while ((optc = getopt_long (argc, argv,
+! 				"ab:cdfhH?lLmMnNqrs:S:tvVZ123456789",
+  				longopts, (int *)0)) != EOF) {
+  	switch (optc) {
+          case 'a':
+***************
+*** 523,528 ****
+--- 537,546 ----
+              z_len = strlen(optarg);
+              strcpy(z_suffix, optarg);
+              break;
++ 	case 's':			/* gzsteg: set steganography flag */
++ 	    steg = 1;
++ 	    strcpy(stegname,optarg);
++             break;
+  	case 't':
+  	    test = decompress = to_stdout = 1;
+  	    break;
+***************
+*** 558,563 ****
+--- 576,602 ----
+  
+      file_count = argc - optind;
+  
++ /*
++  * gzsteg: open input/output file depending on steg flag
++  */
++ 
++     if(steg) {
++       if(decompress)
++ 	sfd=OPEN(stegname,O_WRONLY|O_CREAT|O_BINARY,RW_USER);
++       else {
++ 	sfd=OPEN(stegname,O_RDONLY|O_BINARY,RW_USER);
++ 	fstat(sfd,&stegstat);
++ 	steglength=stegstat.st_size;
++ 	stegbits=(steglength*8)+32;
++       }
++       if(sfd == -1) {
++ 	fprintf(stderr, "%s: ", progname);
++ 	perror(stegname);
++ 	exit_code = ERROR;
++ 	return;
++       }
++     }
++ 
+  #if O_BINARY
+  #else
+      if (ascii && !quiet) {
+***************
+*** 598,603 ****
+--- 637,653 ----
+      if (list && !quiet && file_count > 1) {
+  	do_list(-1, -1); /* print totals */
+      }
++ 
++ /* gzsteg: close our file */
++ 
++     if(steg) {
++       if(!decompress && stegbits)
++ 	fprintf(stderr,"%s: %ld bytes too large to hide\n",
++ 		stegname,
++ 		stegbits/8);
++       close(sfd);
++     }
++ 
+      do_exit(exit_code);
+      return exit_code; /* just to avoid lint warning */
+  }

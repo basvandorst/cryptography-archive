@@ -1,0 +1,175 @@
+Newsgroups: alt.security.pgp
+From: mpf@medg.lcs.mit.edu (Michael P. Frank)
+Subject: New version of Emacs interface to PGP
+In-Reply-To: dec@alex.com's message of Wed, 3 Mar 1993 14:06:47 +0000
+Organization: MIT Laboratory for Computer Science
+Distribution: alt
+Date: Thu, 4 Mar 1993 22:01:03 GMT
+
+Here's a somewhat improved version of my Emacs interface to PGP,
+pgp.el-0.2.
+
+Some bugs are fixed since the last version. The main improvement is
+that if you have ange-ftp loaded, then pgp-set-passphrase will use it
+to prompt for your passphrase invisibly.
+
+After loading this up, type C-c p h for a usage summary.
+
+Consider this a beta release. Some egregious known bugs are:
+
+	* Other users on the system can see your pass phrase using
+		"ps" and fortuitous timing.
+	* After decrypting, pgp's output "Pass phrase is good." is
+		stuck on the beginning of the plaintext.
+
+Mike
+========== cut here =============
+;;;
+;;; pgp.el-0.2 -- Emacs support for PGP 2.1
+;;;
+;;; Changes from 0.1:
+;;;   pgp-clear-passphrase bug fixed.
+;;;   If ange-ftp is loaded, password is entered invisibly.
+;;;   On-line help.
+;;;   Immediately after signing in place, C-c p k can be used to delete
+;;;     pgp status garbage.
+;;;
+;;; 0.1 Changes from 0.0:
+;;;   Inconsistent naming of pgp-set-passphrase fixed.
+;;;
+;;;          WARNING: Security Holes!
+;;;
+;;; People can see your PGP passphrase if:
+;;; * You don't have ange-ftp and they see you typing in your passphrase.
+;;; * They (intentionally or accidentally) do a "ps" (with appropriate options)
+;;;     on your machine while you're decrypting/signing.
+;;; * They type C-h v pgp-passphrase after you've entered it.
+;;;
+;;; Plus the system suffers from all the normal Unix and X-windows
+;;; security holes.
+;;; 
+;;; Please report any bugs to mpf@medg.lcs.mit.edu.
+;;; You can finger me for my public key.
+;;;
+
+(defvar pgp-passphrase nil
+  "Variable used internally by the Emacs PGP interface to hold
+the user's pass phrase.")
+
+(defun pgp-set-passphrase ()
+  "Prompts for PGP pass phrase. If ange-ftp is loaded, password is invisible."
+  (interactive)
+  (setq pgp-passphrase
+	(if (boundp 'ange-ftp-version)
+	    (ange-ftp-read-passwd "PGP pass phrase (invisible): ")
+	  (read-string "PGP pass phrase (not invisible): "))))
+
+(defun pgp-clear-passphrase ()
+  "Clears the PGP pass phrase."
+  (interactive)
+  (setq pgp-passphrase nil))
+
+(defun pgp-ensure-passphrase ()
+  "Not an interactive command. If the passphrase is not set, prompts for it."
+  (if (not pgp-passphrase)
+      (call-interactively 'pgp-set-passphrase)))
+
+(defun pgp-encrypt-region (start end pgp-user-id &optional flag)
+  "Encrypt the region using PGP. Prompts for a PGP user ID.
+With prefix arg, puts result in serparate window.
+Noninteractive args are START, END, PGP-USER-ID, and optional FLAG."
+  (interactive "r\nsUser ID to encrypt to: \nP")
+  (shell-command-on-region start end (concat "pgp -fea " pgp-user-id)
+			   (not flag)))
+
+(defun pgp-decrypt-region (start end &optional flag)
+  "Decrypt the region using PGP. Prompts for the user's pass phrase,
+if not already known.  With prefix arg, puts result in separate window.
+Noninteractive args are START and END and optional FLAG."
+  (interactive "r\nP")
+  (pgp-ensure-passphrase)
+  (shell-command-on-region start end
+			   (concat "pgp -f -z \"" pgp-passphrase "\"")
+			   (not flag)))
+
+(defun pgp-sign-and-encrypt-region (start end pgp-user-id &optional flag)
+  "Sign and encrypt the region using PGP. Prompts for a user to
+encrypt to and a pass phrase, if not already known.
+With prefix arg puts result in separate window. 
+Noninteractive args are START, END, and PGP-USER-ID, and optional FLAG."
+  (interactive "r\nsUser ID to encrypt to: \nP")
+  (pgp-ensure-passphrase)
+  (shell-command-on-region start end (concat "pgp -safe " pgp-user-id
+					     " -z \"" pgp-passphrase "\"")
+			   (not flag)))
+
+(defun pgp-sign-region (start end &optional flag)
+  "Sign the region using PGP. Prompts for a pass phrase, if not already
+Known. With prefix arg puts result in separate window.
+Noninteractive args are START and END and optional FLAG."
+  (interactive "r\nP")
+  (pgp-ensure-passphrase)
+  (shell-command-on-region start end (concat "pgp -saft +clearsig=on"
+					     " -z \"" pgp-passphrase "\"")
+			   (not flag)))
+
+(defun pgp-verify-region (start end)
+  "Verify the signature on the text in the given region using PGP."
+  (interactive "r")
+  (shell-command-on-region start end "pgp -f"))
+
+(defun pgp-describe ()
+  "Describe the PGP package.
+
+Quick usage summary:
+
+Default
+Key
+Binding  Command name                 Description
+=======  ===========================  =========================================
+C-c p p  pgp-set-passphrase           Prompts for entry of passphrase. With
+                                       ange-ftp loaded, this is invisible.
+C-c p c  pgp-clear-passphrase         Clears the passphrase from emacs memory.
+                                       (Not very thoroughly; see below.)
+C-c p e  pgp-encrypt-region           Prompts for recipient. Output in place
+                                       unless prefixed.
+C-c p d  pgp-decrypt-region           Prompts for passphrase if unknown.
+                                       Output in place unless prefixed.
+C-c p s  pgp-sign-region              Uses CLEARSIG. Prompts for passphrase
+                                       if unknown. Output in place unless C-u.
+C-c p S  pgp-sign-and-encrypt-region  Prompts for recipient and passphrase if
+                                       unknown. Output in place unless C-u.
+C-c p v  pgp-verify-region            Checks signature for validity. Output in
+                                       separate window.
+C-c p k  pgp-kill-status              Done immediately after C-c p s,
+                                       kills the PGP status information.
+C-c p h  pgp-describe                 Show this documentation.
+
+WARNING: Security Holes:
+People can see your PGP passphrase if:
+* You don't have ange-ftp and they see you typing in your passphrase.
+* They (intentionally or accidentally) do a \"ps\" (with appropriate options)
+    on your machine while you're decrypting/signing.
+* They type C-h v pgp-passphrase after you've entered it.
+
+Plus the system suffers from all the normal Unix and X-windows
+security holes.
+
+More documentation to come."
+  (interactive)
+  (describe-function 'pgp-describe))
+
+(global-set-key "\C-cpp" 'pgp-set-passphrase)
+(global-set-key "\C-cpc" 'pgp-clear-passphrase)
+(global-set-key "\C-cpe" 'pgp-encrypt-region)
+(global-set-key "\C-cpd" 'pgp-decrypt-region)
+(global-set-key "\C-cps" 'pgp-sign-region)
+(global-set-key "\C-cpS" 'pgp-sign-and-encrypt-region)
+(global-set-key "\C-cpv" 'pgp-verify-region)
+(global-set-key "\C-cpk" 'pgp-kill-status)
+(global-set-key "\C-cph" 'pgp-describe)
+(global-set-key "\C-cp?" 'pgp-describe)
+--
+   , ,                       __               MIT Lab for Computer Science
+  /|/| .  _ |_   _   _  |   |_  _  _  ,_  |,  mpf@medg.lcs.mit.edu
+ / | | | (_ | | (_| (-' |   |  |  (_| | | |\  (Finger for PGP Public Key)

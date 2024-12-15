@@ -1,0 +1,471 @@
+                        PKE - PUBLIC KEY ENCRYPTION
+
+     This paper heavily relies on Bruce Schneier's excellent
+     book, Applied Cryptography: Protocols, Algorithms and
+     Source Code in C, cited at the end of the text.
+
+                             Table of Contents
+
+          Introduction
+          RSA Encryption
+          A Quick Runthrough
+          Modular Arithmetic
+          The Extended Euclid's Algorithm
+          Fermat's Little Theorem
+          Euler's Totient Function
+          The Inner Workings
+
+
+                               INTRODUCTION
+     
+     The first Public Key Encryption algorithm was invented by
+Whitfield Diffie and Martin Hellman at Stanford University.  They
+and independently Ralph Merkle invented the concept in 1976.  The
+advantage of PKE is that it avoids the problem of securely
+transmitting secret keys.  
+
+     PKE relies on the difficulty of factoring a very large
+number.  The public and private keys are functions of a pair of
+large prime numbers, 100 to 300 digits.  Recovering the plaintext
+from the keys and the ciphertext is equivalent to factoring the
+product of two primes, 
+
+          n = p * q
+
+or by repeated encryption, which will be explained later, but
+mandates that the product (p - 1) * (q - 1) should have no small
+factors.
+     
+     Using a 512 bit value for n gives a number of 154 digits; a
+1028 bit value for n gives a number of 308 digits.  A 40 digit
+number can today be factored in a matter of hours, but it takes a
+tenfold increase in computing power to factor a number with each
+increase of 10 digits.  A 664 bit number of 200 digits takes
+10^23 operations to factor (an operation is a complex iteration
+of the factoring algorithm, not a simple microcomputer
+operation).  Assuming a super computer can perform a million
+operations per second, and that a network of a million such
+computers is assigned the task, it will take 3700 years to factor
+the 200 digit number.  If n is a 1024 bit number (like the
+product of two primes of 512 bits each) that same array of
+computers will take 10^10 years to factor the 308 digit number,
+and the universe has not yet existed that long.  
+
+
+                              RSA ENCRYPTION
+
+     The RSA algorithm is named after its three inventors, Ron
+Rivest, Adi Shamir, and Leonard Adleman, who first introduced the
+algorithm in 1978.  It is patented.
+
+The Public Key, used to encrypt a message intended for its owner,
+consists of two numbers, n and e.
+
+          n - the product of two primes, p and q 
+              (p and q must remain secret)                  
+                                                                 
+          e - a number chosen at random which is relatively prime
+              to (p-1) * (q-1) 
+                                                       
+     The Secret Key, d, used to decrypt a cyphertext and restore
+a message by its owner, is one number, and we will see why it is
+in this form in the section on the inner workings.  
+
+          (d * e) (mod (p-1) * (q-1)) = 1    
+
+or   
+
+          d ð e^-1 (mod (p-1) * (q-1))                 
+
+To encrypt a message m and create a cyphertext c 
+                                                       
+          c = m^e (mod n)                                   
+                                                       
+To decrypt a cyphertext c and restore the message m 
+
+          m = c^d (mod n)                                   
+     
+
+                            A QUICK RUNTHROUGH
+
+     For those already familiar with number theory, This quick
+runthrough will demonstrate the mathematics of the RSA algorithm
+fro those already familiar with number theory and give others an
+initial overview of the procedure.  The complete mathematical
+framework will be introduced from the ground up following this
+quick runthrough.  
+
+     To generate the public and private keys, choose two large
+prime numbers, p and q.  Compute the product:
+
+          n = p * q
+
+Example:  If p = 47  and  q = 71
+
+          n = p * q = 3337
+
+Then randomly choose the encryption key e, such that e and 
+(p-1) * (q-1) are relatively prime (have no factors in common). 
+Finally, use the extended Euclid's algorithm or Euler's totient
+function to compute the decryption key d by the inverse modululo
+function, such that
+
+          d ð e^-1 (mod (p - 1) * (q - 1))
+
+and this equation is equivalent to
+
+          d * e = (p -1) * (q - 1) * k + 1
+
+Example:  If e is chosen to be 79
+
+          79 * d = 3220 * k + 1
+
+          d ð 79^-1 (mod (71 - 1) * (47 - 1)) 
+
+          d ð 79^-1 mod 3220 = 1019
+
+     Note that d and e are relatively prime.  The two primes p
+and q are no longer needed.  They can be discarded, but should
+never be revealed.
+
+     To encrypt a message m, first divide it into numerical
+blocks such that each block is smaller than n and therefore has a
+unique representation modulo n.  Choose With binary data, choose
+the largest power of 2 less than n.  The encrypted message c will
+be made up of similarly sized message blocks of about the same
+length:
+
+          c = m^e mod n
+
+Example: Let's say the message m is 6882326879666683.  First
+break it into blocks.  n is 3337, a four digit number, so three
+digit blocks will work nicely in this case.  The first block is
+encrypted as: 
+
+          c = 688^79 mod 3337 = 1570
+
+To decrypt a message, take each encrypted block c and compute:
+
+          m = c^d mod n
+
+Example: Decrypting the first block requires performing the same
+exponentiation using the decryption key of 1019.
+
+          m = 1570^1019 mod 3337 = 688 
+
+Of course, your calculator can't deal with a number whose
+exponent is 1019, but we will see how the exponent can be
+partitioned and dealt with in smaller bites.
+
+
+                            MODULAR ARITHMETIC
+
+     If r equals the remainder of d divided by n, modular
+arithmetic expresses this as
+
+          d mod n = r              or   d ð r mod n
+
+The first equation is read, "d mod (or modulo) n equals r," and
+the second is read, "d is congruent to r mod (or modulo) n." 
+
+Example:  1026 mod 7 = 4           or   1026 ð 4 mod 7
+
+These equations are equivalent to 
+
+          1026 / 7 = 146 + 4
+
+     If you depart by plane at 7:00pm and arrive at your
+destination 9 hours later, what time does your watch say before
+setting it to your new time zone?
+
+          (7 + 9) mod 12 = 4  Your watch says 4:00am.
+
+     Modular arithmetic can be added, subtracted, multiplied and
+exponentiated, the equivalent of repeated multiplication.  The
+ability to manipulate the exponents helps when dealing with the
+large exponents we encounter in PKE.  There is an example in the
+secton on the inner workings.
+
+          (x + y) mod n = ((x mod n) + (y mod n)) mod n
+
+          (x - y) mod n = ((x mod n) - (y mod n)) mod n
+
+          (x * y) mod n = ((x mod n) * (y mod n)) mod n
+
+          x^3y mod n = ((x^y mod n) * (x^2y mod n)) mod n
+     
+One cannot divide congruences in all cases, 
+
+          16 ð 6 mod 10 is not equal to  8 ð 3 mod 10.
+ 
+     Any pair of relatively prime integers (having no factors in
+common) has the remarkable property that multiples of each can
+always be found such that their difference is unity.  Stated
+another way, there always exists some multiple of an integer, n,
+which leave a remainder of one when divided by another integer
+prime to it, and the multiplier of n is always a smaller number
+than the divisor of the product.  For 15 and 11, there exists two
+integers x and y, such that 
+
+          (15 * x) - (11 * y) = 1  or   15 * x = 11 * y + 1
+
+This property brings us to the inverse modulo function.
+
+                      THE EXTENDED EUCLID'S ALGORITHM  
+
+     The inverse modulo function is equivalent to finding a
+number d, such that 
+
+          (y * x) mod n = 1        or   y * x ð 1 mod n
+
+Example:  (15 * d) mod 11 = 1      or   15 * d ð 1 mod 11
+
+The inverse of a number is that number which multiplied by the
+original number gives one as the product.  The inverse modulo
+function is that number which multiplied by the original number
+gives one as the remainder.  In the above example, what value of
+d give a remainder of one?  The above equations are usually
+written in the following form,   
+
+          x ð y^-1 mod n
+
+which asks, "What value of x multiplied by the value of y will
+give a remainder of one?"
+
+These equations are the equivalent to the last equation in the
+section above on modular arithmetic, 
+
+          15 * x = 11 * y + 1
+
+which in this form is called a Diophantine equation, an equation
+with integer coefficients for which integer solutions are sought. 
+
+     Sometimes there is no solution.  For example, the inverse of
+5, modulo 14, is 3: 
+
+          5 * 3 = 15 ð 1 mod 14  
+
+On the other hand, 2 has no inverse modulo 14.
+
+I.   If y and n are relatively prime, then x = y^-1 mod n has a
+unique solution.  This is critical to the success of the RSA
+algorithm.
+
+II.  If y and n are not relatively prime, then x = y^-1 mod n 
+     has no solution.  
+
+III. If n is a prime number, then every number from 1 to n-1
+     is relatively prime to n and has exactly one inverse in
+     that range. 
+
+     We shall use the extended Euclidean algorithm can find d,
+the secret key in the RSA algorithm.  The extended algorithm is
+just a variation Euclid's algorithm, which is the method of
+finding the greatest common divisor of two numbers.  Remembering
+that in the RSA algorithm the secret key must be 
+
+          d ð e^-1 (mod (p-1) * (q-1)) 
+
+we will again let e = 79, p = 71, and q = 47, as above.  The
+algorithm proceeds until the remainder equals 0.  
+
+          d ð 79^-1 mod 3220
+
+In its Diophantine form,
+
+          79 * d = 3220 * k + 1
+
+Solving for d, find an integer y (it will equal unity) and a
+remainder:
+
+          d = 40 * y + (60 * k + 1) / 79
+
+For d to be an integer, 60 * k + 1 must be a multiple of 79:
+
+          60 * k + 1 = 79 * a
+
+Now solving for k:
+
+          k = a + (19 * a - 1) / 60 
+
+For k to be an integer, 19 * a - 1 must be a multiple of 60:
+
+          19 * a - 1 = 60 * b
+
+Now solving for a:
+
+          a = 3 * b + (3 * b + 1) / 19
+
+For a to be an integer, (3 * b + 1) must be a multiple of 19:
+
+          3 * b + 1 = 19 * c
+
+Now solving for b:
+
+          b = 6 * c + (c - 1) / 3 
+
+And clearly c can equal 1, making the remainder equal to 0.
+
+          b = 6 * 1 + (1 - 1) / 3 = 6  
+
+Working backwards by substitution, if c = 1, then b = 6, a = 19,
+k = 25, d = 1019.
+
+
+                          FERMAT'S LITTLE THEOREM
+
+     We note that 2^7 - 2 = 126, and 126 is divisible by 7.  In
+fact, this is true for any number x which is not divisible by its
+exponent p, and the exponent p is a prime number.
+  
+     In general terms, for x^p - x = y, y is divisible by p.  
+
+Factoring, 
+
+          x^p - x = x * (x^(p-1) - 1)  
+
+The entire expression is divisible by p, but x is not divisible
+by p, so x^(p-1) - 1 must be divisible by p.  
+
+This brings us to Fermat's Theorem, written in its usual form: 
+
+     If x is any integer not divisible by the prime p, 
+     then x^(p-1) - 1 is divisible by p. 
+
+          x^(p-1) ð 1 mod p
+
+     It may be called a little theorem, but it allows us to know
+instantly that x^(367-1) - 1 is divisible by 367, as long as 367
+is prime, even though when x is a number as small as 2 it would
+have over one-hundred decimal places.
+
+
+                         EULER'S TOTIENT FUNCTION
+
+     The Euler totient function, also called the Euler phi
+function and written as
+
+if gcd(x,n) = 1, then
+
+          x^phi(n) mod n = 1       or   x^phi(n) ð 1 mod n
+
+          phi(n), is the number of positive integers less than n
+that are relatively prime to n.  For example, the reduced set of
+residues mod 12 is {1,5,7,11}.  Unlike Fermat's little theorem, n
+does not have to be prime.  For this reason, Euler's Totient
+Function is referred to as Euler's generalization of Fermat's
+little theorem.  
+
+     Euler's totient function is multiplicative.  If 
+
+          phi(12) = 4 and phi(10) = 4, 
+
+then 
+
+          phi(12 * 10) = 4 * 4 = 16
+
+     If n is prime, then phi(n) = n - 1, since all numbers less
+than a prime are not divisors of a prime.  Euler's function is
+multiplicative, so if n = p * q, where p and q are prime, then
+phi(n) = (p - 1) * (q - 1).  This will allow d to open c, as we
+will see in the section on the inner workings.  
+
+Now taking the inverse of Euler's totient function,
+
+          y ð x^phi(n)-1 mod n
+
+and putting this equation into the form for e and d in the RSA
+algorithm, 
+
+          d ð e^phi(p-1)*(q-1)-1 (mod (p - 1) * (q - 1))
+
+Remember that this is equivalent to the definition of the private
+key
+
+          d ð e^-1 (mod (p - 1) * (q - 1))
+
+and we will later use the fact that this is in turn equivalent to
+the Diophantine equation we have already seen to determine d * e,
+that is
+
+          d * e = (p - 1) * (q - 1) * k + 1
+
+Choosing two primes, p and q, and choosing e at random and
+relatively prime to (p - 1) * (q - 1), we can now easily find d.  
+
+Setting p = 2, q = 17, e = 5
+
+          d ð e^phi(n)-1 (mod (p - 1) * (q - 1))
+
+          d ð 5^phi(2-1)*(17-1)-1 (mod (2 - 1) * (17 - 1)
+
+          d ð 5^phi(16)-1 mod 16
+
+There are 8 elements relatively prime to 16: 1, 3, 5, 7, 9, 11,
+13, 15, therefore phi(16) = 8.
+
+          d ð 5^8-1 mod 16 ð 5^7 mod 16 ð 78125 mod 16 = 13  
+
+     We have now used both the extended Euclid's algorithm and
+Euler's totient function to calculate inverses to solve for d.
+Euclid's algorithm is generally faster for calculating large
+inverses.  
+
+
+                            THE INNER WORKINGS
+
+     Why does d decrypt c?  Since
+
+          c^d mod n = (m^e)^d mod n = m^e*d mod n 
+
+and remembering the Diophantine equation above for e * d, our
+exponent in m^e*d becomes
+
+          m^(p-1)*(q-1)*k+1 mod n
+
+and since n = p * q, and remembering that Euler's totient theorem
+is multiplicative, 
+          
+          phi(n) = phi(p * q) = (p - 1) * (q - 1)
+
+Therefore, 
+
+          c^d mod n = m^phi(n)*k+1 mod n
+
+and according to Euler, 
+
+          m^phi(n) mod n = 1
+
+and of course, m^1 = m.  Therefore
+
+          c^d mod n = (1^k * m)   CHECK!
+
+Example:  If our message m = 6, and e = 5, d = 13, p = 2, q = 17,
+
+          c = m^e mod n = 6^5 mod 34 = 7776 mod 34 = 24
+
+Now if cyphertext c = 24, to restore the original message we take
+
+          c^d mod n = 24^13 mod 34 
+
+          = ((24^3 mod 34) * (24^5 mod 34) * (24^5 mod 34) mod 34 
+
+          = (20 * 28 * 28) mod 34 = 15680 mod 34 = 6   CHECK!  
+
+
+
+1. Albert H. Beiler, Recreations in the Theory of Numbers, (New
+York, Dover Publications, Inc., 1966) ISBN 486-21096-0 
+
+2. LeVeque, William Judson, Elementary Theory of Numbers,
+(Reading, MA, Addison-Wesley, 1962), ISBN 0-486-66348-5 
+
+3. Bruce Schneier, Applied Cryptography: Protocols, Algorithms,
+and Source Code in C, (New York, John Wiley and Sons, Inc.,
+1994), ISBN 0-471-59756-2 (paper)
+
+4. M. R. Schroeder, Number Theory in Science and Communication,
+(New York, Springer-Verlag, 1984, 1986) ISBN 0-387-12164-1
+
+Written by Sid R. Bass 
+CompuServe 76500,1116, Internet 76500,1116@compuserve.com

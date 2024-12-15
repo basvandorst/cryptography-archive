@@ -1,0 +1,417 @@
+// Cc: coderpunks@toad.com
+// Subject: RC5 in java
+// Date: Mon, 01 Dec 1997 14:13:09 EST
+// From: "Mark A. Herschberg" <hershey@MIT.EDU>
+// Sender: owner-coderpunks@toad.com
+// Precedence: bulk
+// 
+// 
+//    A friend of mine developed a java platform for distributed computing using
+//  PCs and workstations (http://www.cag.lcs.mit.edu/bayanihan/).  Key searches
+//  are a natural problem for this type of system, so I've been asked to write a
+//  demo applicable to RSA's RC5 challenges.
+//    I first tried writing a stand alone java application.  However, I can't seem
+//  to get it to work.  I'm probably misaligning or maybe dropping bytes, but
+//  neither I nor those I asked to look at it can find the problem.
+//    If anyone has a moment, I would appreciate it if s/he could take a quick look
+//  at my RC5 java code below.  Thank you.
+//  
+//  
+//  					--Mark A. Herschberg
+//  
+//  
+//  
+//  
+//  -------------------------------------------------------------------------------
+//  
+//  There are two files, the first uses all intergers, the second uses bytes where
+//  appropriate (e.g. for the key array K).  The program doesn't require any
+//  special classes and all variables names come from the RSA paper on RC5.  I
+//  grabbed the sample key/plaintext/ciphertext from RSA's RC5-32/12/8 psuedo
+//  contest (http://www.rsa.com/rsalabs/97challenge/html/test_pseudo.html)
+//  
+//  
+//  
+//  
+class RC5Work {
+
+  int    w  = 32;    /* makes S "int" size */
+  int    r  = 12;
+  int    b  =  8;
+  int    u  = w/8;
+  int    c  = b/u;   /* should be ceiling of b/u, not a problem in this case */
+  int    t  = 2*(r+1);
+  int    Pw = 0xb7e15163;
+  int    Qw = 0x9e3779b9;
+  int[]  K  = new int[b];
+  int[]  L  = new int[c];  /* int = w */
+  int[]  S  = new int[t];  /* int = w */
+  int A;
+  int B;
+  int i;
+  int j;
+
+  int m;
+
+
+  /* Key Expansion algorithm specified by RC5 */
+  public void key_expansion()
+  {
+   // System.out.println("Vars: " + w + " " + r + " " + b + " " + u + " " + c + " " + t);
+   for (int k = (b-1); k>=0; k--) {
+      L[k/u]=rotl( L[k/u] , 8) + K[k];
+   }
+   S[0]= Pw;
+   for (int k = 1; k <= (t-1); k++) {
+      S[k] = (S[k-1] + Qw) % (1 << w);
+   }
+   i = 0;
+   j = 0;
+   A = 0;
+   B = 0;
+   {if (c > t)
+     m = c;
+     else m = t;
+   }
+   for (int k = 1; k <= m; k++) {
+     S[i] = rotl( (S[i] + A + B) , 3);
+     A = S[i];
+     L[j] = rotl( (L[j] + A + B) , (A + B));
+     B = L[j];
+     i = (i + 1) % t;
+     j = (j + 1) % c;
+   }
+  } /* key_expansion() */
+
+
+  /* Encryption algorithm specified by RC5 */
+  public void encrypt()
+  {
+   A = A + S[0];
+   B = B + S[1];
+   for (int k = 1; k <= r; k++) {
+     A = rotl( (A^B) , B) + S[(2*k)];
+     B = rotl( (B^A) , A) + S[(2*k)+1];
+   }
+  } /* encrypt() */
+
+
+  /* Decryption algorithm specified by RC5 */
+  public void decrypt()
+  {
+   for (int k = r; k >= 1; k--) {
+     B = rotr( (B - S[(2*k)+1]) , A) ^ A;
+     A = rotr( (A - S[(2*k)])   , B) ^ B;
+   }
+   B = B - S[1];
+   A = A - S[0];
+  } /* decrypt() */
+
+
+  /* "<<<" function, left circular rotation */
+  public int rotl(int x, int y)
+  {
+   int z = 0;
+   y = y % w;
+   z = x << y;
+   z = z + (x >>> (w - y));
+   return z;
+  }
+
+
+  /* ">>>" function, right circular rotation */
+  public int rotr(int x, int y)
+  {
+   int z = 0;
+   y = y % w;
+   z = x >>> y;
+   z = z + (x << (w - y));
+   return z;
+  }
+
+
+  /* Test code from psuedo contest, sample key */
+  public void init_key_test()
+  {
+   K[0] =  0x82;
+   K[1] =  0xe5;
+   K[2] =  0x1b;
+   K[3] =  0x9f;
+   K[4] =  0x9c;
+   K[5] =  0xc7;
+   K[6] =  0x18;
+   K[7] =  0xf9;
+  }
+
+
+  /* Test code from psuedo contest, sample ciphertext */
+  public void init_ciphertext_test()
+  {
+   A = 0x41e0;
+   B = 0x4bb7;
+  }
+
+
+  /* Test code from psuedo contest, sample plaintext */
+  public void init_plaintext_test()
+  {
+   A = 0x5468;
+   B = 0x6520;
+  }
+
+
+  /* Print out the bytes */
+  public void printText()
+  {
+//   Format.print(System.out, "A = %x\n", A);
+//   Format.print(System.out, "B = %x\n", B);
+     System.out.println("A = " + A);
+     System.out.println("A = " + ((A & 0xF0000000) >>> 28) + ","
+			       + ((A & 0x0F000000) >>> 24) + "    "
+			       + ((A & 0x00F00000) >>> 20) + ","
+			       + ((A & 0x000F0000) >>> 16) + "    "
+			       + ((A & 0x0000F000) >>> 12) + ","
+			       + ((A & 0x00000F00) >>>  8) + "    "
+			       + ((A & 0x000000F0) >>>  4) + ","
+			       + ((A & 0x0000000F) >>>  0));
+     System.out.println("B = " + B);
+     System.out.println("B = " + ((B & 0xF0000000) >>> 28) + ","
+			       + ((B & 0x0F000000) >>> 24) + "    "
+			       + ((B & 0x00F00000) >>> 20) + ","
+			       + ((B & 0x000F0000) >>> 16) + "    "
+			       + ((B & 0x0000F000) >>> 12) + ","
+			       + ((B & 0x00000F00) >>>  8) + "    "
+			       + ((B & 0x000000F0) >>>  4) + ","
+			       + ((B & 0x0000000F) >>>  0));
+  }
+
+
+
+ public static void main( String[] args )
+ {
+   RC5Work w = new RC5Work();
+
+   w.init_key_test();
+   w.key_expansion();
+   w.init_ciphertext_test();
+   w.decrypt();
+   System.out.println("Decryption:");
+   w.printText();
+
+   w.init_key_test();
+   w.key_expansion();
+   w.init_plaintext_test();
+   System.out.println("Encryption:");
+   w.encrypt();
+   w.printText();
+
+   /*
+   w.A = 0x12345678;
+   w.B = 0x12345678;
+   w.A = w.rotr(w.A , 12);
+   w.B = w.rotl(w.B , 12);
+   w.printText();
+   */
+ }
+}
+
+
+
+
+
+
+
+
+
+
+/////////////////////////////////////////////////////////////////////
+//This is the version RC5 using byte where appropriate.
+
+
+
+
+
+
+
+
+class RC5Work2 {
+
+  int    w  = 32;    /* makes S "int" size */
+  int    r  = 12;
+  int    b  =  8;
+  int    u  = w/8;
+  int    c  = b/u;   /* should be ceiling of b/u, not a problem in this case */
+  int    t  = 2*(r+1);
+  int    Pw = 0xb7e15163;
+  int    Qw = 0x9e3779b9;
+  byte[]  K  = new byte[b];
+  int[]  L  = new int[c];  /* int = w */
+  int[]  S  = new int[t];  /* int = w */
+  int A;
+  int B;
+  int i;
+  int j;
+
+  int m;
+
+
+  /* Key Expansion algorithm specified by RC5 */
+  public void key_expansion()
+  {
+   // System.out.println("Vars: " + w + " " + r + " " + b + " " + u + " " + c + " " + t);
+   for (int k = (b-1); k>=0; k--) {
+      L[k/u]=rotl( L[k/u] , 8) + K[k];
+   }
+   S[0]= Pw;
+   for (int k = 1; k <= (t-1); k++) {
+      S[k] = (S[k-1] + Qw) % (1 << w);
+   }
+   i = 0;
+   j = 0;
+   A = 0;
+   B = 0;
+   {if (c > t)
+     m = c;
+     else m = t;
+   }
+   for (int k = 1; k <= m; k++) {
+     S[i] = rotl( (S[i] + A + B) , 3);
+     A = S[i];
+     L[j] = rotl( (L[j] + A + B) , (A + B));
+     B = L[j];
+     i = (i + 1) % t;
+     j = (j + 1) % c;
+   }
+  } /* key_expansion() */
+
+
+  /* Encryption algorithm specified by RC5 */
+  public void encrypt()
+  {
+   A = A + S[0];
+   B = B + S[1];
+   for (int k = 1; k <= r; k++) {
+     A = rotl( (A^B) , B) + S[(2*k)];
+     B = rotl( (B^A) , A) + S[(2*k)+1];
+   }
+  } /* encrypt() */
+
+
+  /* Decryption algorithm specified by RC5 */
+  public void decrypt()
+  {
+   for (int k = r; k >= 1; k--) {
+     B = rotr( (B - S[(2*k)+1]) , A) ^ A;
+     A = rotr( (A - S[(2*k)])   , B) ^ B;
+   }
+   B = B - S[1];
+   A = A - S[0];
+  } /* decrypt() */
+
+
+  /* "<<<" function, left circular rotation */
+  public int rotl(int x, int y)
+  {
+   int z = 0;
+   y = y % w;
+   z = x << y;
+   z = z + (x >>> (w - y));
+   return z;
+  }
+
+
+  /* ">>>" function, right circular rotation */
+  public int rotr(int x, int y)
+  {
+   int z = 0;
+   y = y % w;
+   z = x >>> y;
+   z = z + (x << (w - y));
+   return z;
+  }
+
+
+  /* Test code from psuedo contest, sample key */
+  public void init_key_test()
+  {
+   K[0] = (byte)  0x82;
+   K[1] = (byte)  0xe5;
+   K[2] = (byte)  0x1b;
+   K[3] = (byte)  0x9f;
+   K[4] = (byte)  0x9c;
+   K[5] = (byte)  0xc7;
+   K[6] = (byte)  0x18;
+   K[7] = (byte) 0xf9;
+  }
+
+
+  /* Test code from psuedo contest, sample ciphertext */
+  public void init_ciphertext_test()
+  {
+   A = 0x41e0;
+   B = 0x4bb7;
+  }
+
+
+  /* Test code from psuedo contest, sample plaintext */
+  public void init_plaintext_test()
+  {
+   A = 0x5468;
+   B = 0x6520;
+  }
+
+
+  /* Print out the bytes */
+  public void printText()
+  {
+//   Format.print(System.out, "A = %x\n", A);
+//   Format.print(System.out, "B = %x\n", B);
+     System.out.println("A = " + A);
+     System.out.println("A = " + ((A & 0xF0000000) >>> 28) + ","
+			       + ((A & 0x0F000000) >>> 24) + "    "
+			       + ((A & 0x00F00000) >>> 20) + ","
+			       + ((A & 0x000F0000) >>> 16) + "    "
+			       + ((A & 0x0000F000) >>> 12) + ","
+			       + ((A & 0x00000F00) >>>  8) + "    "
+			       + ((A & 0x000000F0) >>>  4) + ","
+			       + ((A & 0x0000000F) >>>  0));
+     System.out.println("B = " + B);
+     System.out.println("B = " + ((B & 0xF0000000) >>> 28) + ","
+			       + ((B & 0x0F000000) >>> 24) + "    "
+			       + ((B & 0x00F00000) >>> 20) + ","
+			       + ((B & 0x000F0000) >>> 16) + "    "
+			       + ((B & 0x0000F000) >>> 12) + ","
+			       + ((B & 0x00000F00) >>>  8) + "    "
+			       + ((B & 0x000000F0) >>>  4) + ","
+			       + ((B & 0x0000000F) >>>  0));
+  }
+
+
+
+ public static void main( String[] args )
+ {
+   RC5Work2 w = new RC5Work2();
+
+   w.init_key_test();
+   w.key_expansion();
+   w.init_ciphertext_test();
+   w.decrypt();
+   System.out.println("Decryption:");
+   w.printText();
+
+   w.init_key_test();
+   w.key_expansion();
+   w.init_plaintext_test();
+   System.out.println("Encryption:");
+   w.encrypt();
+   w.printText();
+
+   /*
+   w.A = 0x12345678;
+   w.B = 0x12345678;
+   w.A = w.rotr(w.A , 12);
+   w.B = w.rotl(w.B , 12);
+   w.printText();
+   */
+ }
+}

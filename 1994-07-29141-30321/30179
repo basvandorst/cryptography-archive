@@ -1,0 +1,281 @@
+Path: msuinfo!agate!usenet.ins.cwru.edu!eff!news.umbc.edu!olson
+From: olson@umbc.edu (Bryan G. Olson; CMSC (G))
+Newsgroups: sci.crypt
+Subject: Re: Key safeguarding/anti-duress measures in cryptosystems (Long)
+Date: 28 Jul 1994 02:44:17 GMT
+Organization: University of Maryland, Baltimore County
+Lines: 269
+Message-ID: <317621$gkt@news.umbc.edu>
+References: <3134jf$dge@ccu2.auckland.ac.nz>
+NNTP-Posting-Host: umbc7.umbc.edu
+X-Newsreader: TIN [version 1.2 PL2]
+
+Peter Gutmann, author of SFS (pgut1@cs.aukuni.ac.nz) wrote:
+
+
+: What follows are some thoughts on anti-duress measures for cryptosystems that
+: I've been working on whenever I have time (which means: not very often). 
+[...]
+
+: As it turns out, properly implementing anti-duress measures based on a
+: threshold scheme is a nontrivial exercise.
+[...]
+
+: These properties are only useful for long-term bulk storage of data, since,
+: obviously, a recipient must be able to decrypt messages sent to them, which
+: means that property 2 no longer holds.  However if the messages, upon
+: decryption, are written straight to a bulk-encrypted storage area such as an
+: SFS volume, the anti-duress measures are extended to cover stored message
+: traffic as well.
+
+I've also been working on the design of an encrypted file store
+supporting duress codes, although my ideas are somewhat different.  (I
+don't think it should be based on a threshold scheme, as I'll explain
+later) I agree, as I wrote in another thread, that the problem is not
+as great for communication as for storage, since communication can
+employ ephemeral session keys so that data can not be decrypted later
+even under duress.
+
+[Explanation of threshold schemes deleted]
+
+: For example, they
+: may specify that out of a total of 30 shares, 15 will be needed to recreate the
+: original secret.  Therefore up to half of the shares can be lost before
+: recreation of the secret becomes impossible.  This is known as an (M,N)
+: threshold scheme, because the number of shares must cross the threshold level N
+: before a valid result can be returned.  In this case M = 30, the total number
+: of shares, and N = 15, the number of shares which must be combined to produce a
+: valid result.
+
+Minor style point: I think it is more conventional to say (M,N) is "M
+out of N", that is, let the first number denote the quorum size
+(threshold) and second the total number of shares.
+
+: Since each share is unique, but bears no distinguishing marks, there is no way
+: to tell a junk or bogus share apart from a genuine one.  The only way to
+: determine if all the shares are valid is to use them to reconstruct the
+: original secret, and even then a failure to reconstruct the secret will only
+: reveal that one (or more) shares are invalid, but not which ones are invalid.
+: This means that a shareholder can vote yes by returning a valid share, or vote
+: no by returning a junk or bogus share, and an opponent will have no way of
+: telling who voted yes or no.
+
+:   3.  It should not endanger the people holding the partial keys.
+
+:       The shareholder can return a valid share, or a junk or bogus share if
+:       they feel the need to.  Since there is no way to tell the different types
+:       of shares apart, there is no way an attacker can compel them to return a
+:       valid share, as they won't know a valid share when they see it.
+
+
+This is not strictly true.  There is one case in which the adversary
+could tell which shares are bogus: he could get some bogus shares but
+enough valid shares to form the required quorum.  You can partially
+protect all the shareholders by giving some bogus shares, unknown even
+to them, so an adversary can not be sure they intended to vote "no".
+But the election is then unfair, and the adversary still gets some
+information on "no" votes.
+
+: Practical Implementation
+
+: There are two points of attack on a system using anti-duress measures of this
+: sort:
+:     1. An attack on the share issuer.  In this case the issuer must be able to
+:        convince an attacker that they do not posess enough information to
+:        decrypt the secured data (even if they do).
+:
+:     2. An attack on the shareholders.  In this case the shareholder must be
+:        able to convince an attacker that they do not posess any information
+:        which would be useful in reconstructing the encryption key (even if they
+:        do).
+
+
+In my own research on a file store with duress codes, I quickly came
+to the conclusion that I could not convince an adversary of a
+falsehood, such as lack of something really present, except by
+security-by-obscurity sorts of tricks.  A proof of a falsehood is a
+contradiction.
+
+The best that I could systematically provide is either proof for the
+assertion when it is true, or plausibility when it is false.
+Furthermore, it is an _exclusive_ or.  If I can prove my assertion
+whenever it is true, then a claim of its truth without the proof is no
+longer plausible.
+
+[Quoting from earlier in Peter's post:]
+
+> The idea of needing multiple keys held by different people to open a safe can
+> be used for encryption as well - simply take a single key, break it into a
+> number of pieces, and give one piece to each member of a group of people.  To
+
+[Peter proposes a duress-resistant threshold scheme based on this model]
+
+: The shares are implemented using an (M,N) threshold scheme which is used to
+: protect the encryption key for an SFS volume.  The reconstruction of each
+: encryption key is controlled by a *share database*, which can contain three
+: types of shares:
+
+:   Real share records
+
+:     These decrypt to give a valid share.
+
+:   Duress share records
+
+
+To be effective, a duress code must appear to work like a real key.
+This model would only apply if the user normally required all these
+shares to mount an encrypted volume.  This is untenable.  No one
+is going to believe that the user doesn't keep enough valid shares, and has
+to pester his friends every time he wants to mount a volume.
+
+Taking Peter's SFS as our example, to mount an encrypted file system
+the user simply enters his pass-phrase and the file system appears.
+An effective duress code should work the same way.  The secret sharing
+scheme is useful to protect against the catastrophe of key loss, and
+may benefit from its own system of duress codes, but (I would say)
+should not be the primary duress protection of the system.
+
+Peter seems to note the problem:
+
+: Dangers of Anti-Duress Measures
+
+: The use of these measures is not without its risks.  If the share distribution
+: scheme is used properly, the holder of the encrypted data genuinely can't
+: decrypt it, no matter how hard they try.  However convincing the average
+: attacker whose only goal is to get at the data by any means available of this
+: fact can be very difficult, particularly if they barely understand encryption,
+: let alone complex key-protection schemes of this nature.  Their response may be
+: to simply apply more and more duress in an attempt to force the share issuer to
+: comply.  Care should be taken to ensure that the encrypted information really
+: is valuable enough to make it worth protecting in this manner.
+:
+:        ---------------- End of clearly-laid-out bit --------------
+
+So what do I suggest ?
+
+An Alternate Approach:
+
+Rather than claiming to have insufficient information to generate the
+key, I suggest achieving plausible denyability by implementing false
+keys, which appear to work but show only a subset of the files.  No
+third parties are required.  I have, in prior threads, done a terrible
+job of explaining my design.  I'll try to do better here.
+
+First, the system can not be implemented simply as a block driver as
+SFS is.  It must be a file system.  The file system will KEEP ALL FREE
+SPACE FILLED WITH RANDOM BITS, although with another key, this space
+may turn out to hold other files.  The adversary will be unable to
+tell if other hidden files are there, and the user will never be able
+to prove that they are not.
+
+
+How it Works:
+
+The system lets the user set up as many duress "levels" as he wants
+(but at least one), giving each its own pass-phrase.  Let us suppose
+there are six, with 1 being the lowest, 6 the highest.  Each file is
+assigned one of the duress levels.  Entering the pass-phrase for level
+3, for example, will reveal all the files on levels 3, 2 and 1.  The
+system would then appear to have 3 duress levels, and the software will
+run assuming that there are only 3 levels.
+
+(For consistency, we probably need the rule that a file or subdirectory
+has to have at least as high a level as the directory which contains
+it.)
+
+Each duress level has its own system info block(s) which is kept
+encrypted and which can be located by hashing the level's key.  The
+system block has conventional file system information such as a map of
+where files and directories are, and it also holds the key for the
+next level down, if any.  It records nothing to indicate the existence
+of any higher levels.
+
+If the user enters the highest level key, as she _always_ would
+in normal operation, the file system software can therefore follow
+the keys to find all the files, and determine which blocks are really
+free.  The system always assumes that the user entered the highest
+level key, as it has no way to tell.
+
+The reason never to use any key but the highest is that the system can
+not tell free pages (remember they're filled with random bits) from
+pages in use at a higher level (which, since they are encrypted by
+another key, also appear to be full of random bits).  All the file
+maps show that any pages not used at this level or lower are free.  If
+the user enters a key other than the highest, any new file, or
+extension to an old one is likely to overwrite a block which was in
+use at a higher level.  The lower keys are for use as duress codes
+only.
+
+
+Systems Considerations:
+
+The system, of course, must be carefully designed so that all the data
+visible at one level gives no indication of whether there are higher
+levels.  No data (except possibly belonging to the lowest level) can
+have a fixed position on the disk.  All system bookkeeping data must
+belong to a specific level, and be encrypted with that level's key.
+
+A particularly interesting problem is that of the placement of files
+on the disk.  The important requirement is that the usage pattern at
+a lower level must be independent of the existence of higher levels.
+There are two simple strategies which fulfill this requirement: a
+typical allocation policy with the rule that blocks allocated by lower
+levels can displace those used by higher levels, or a random
+allocation policy.  Both of these strategies sacrifice efficiency, and
+there are more efficient allocation policies which fulfill the
+independence requirement.
+
+The placement of the system block for each level is also tricky.  Most
+file systems would put it in a fixed location.  Assume that we store
+in it some predictable plaintext value so given a key we can tell if a
+page holds the system block for that key.  We could then place it
+randomly and search all the blocks, but that would take too long.  We
+could hash based on the key, but then it could collide with a page
+used by a higher level.
+
+Instead we use a hash function on the level's key to generate a pseudo
+random sequence of about 25 pages.  We find all of these that are free
+(remember in normal operation we always run with the highest level
+key, so we know which really are free) and randomly select one of the
+free pages.  As long as any of the 25 are free, the length of the hash
+sequence we have to try is independent of which pages are in use.  (If
+all 25 are used we have to choose a different key.)
+
+The format of a directory is also tricky, but not difficult.  A directory
+may contain files or subdirectories of a higher level, which don't even
+appear if the system is opened at directory's own level.  Sorting by
+level and filling empty space with random bits can solve the problems.
+
+
+How it Would be Used.
+
+The user can set up plausible, but irrelevant files at the lowest level:
+Bad poetry, the secret family recipe for fudge etc.  Actual files which
+the user wants to keep encrypted may have different levels so that the
+user can decide, if under duress, how much data to trade for plausibility.
+
+Programmers could write level-aware software.  A diary system could
+let the user give levels to different entries, and store these in
+files with different levels.  If compelled to hand over the diary, the
+user could open the system at a low level, and all the higher level
+entries would vanish as if never there.
+
+
+Would it Fool Anyone ?
+
+I don't think there is a systematic method of creating the content of
+the files to assure plausible deniability.  That is up to the
+individual user.
+
+The system assures the following:
+
+Given that without the key ciphertext is indistinguishable from
+random noise,  
+for any given content visible under some key, a disk with that content
+and empty space is indistinguishable from a disk with that content
+plus higher level files encrypted under an unknown key.
+
+
+The rest is a SMOP (simple matter of programming).
+
+--Bryan

@@ -1,0 +1,1 @@
+/*____________________________________________________________________________	Copyright (C) 1994-1998 Network Associates, Inc. and its affiliates.	All rights reserved.		$Id: PGPDiskBeta.h,v 1.2.8.1 1998/11/12 03:05:20 heller Exp $____________________________________________________________________________*/#pragma once#if BETA	Boolean	BetaExpired( void );#endif

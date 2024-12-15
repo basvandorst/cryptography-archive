@@ -1,0 +1,284 @@
+			PGPsendmail/Unix
+
+		Richard Gooch  rgooch@atnf.csiro.au
+
+
+1)  What is it?
+
+  PGPsendmail is a drop-in wrapper for the standard  sendmail
+programme which resides as  /usr/lib/sendmail  on most Unix systems.
+It allows the automatic encryption of outgoing messages by using the
+recipient's PGP public keys. It does *not* provide for automatic
+decryption of incoming messages: such a feature would necessarily
+involve compromising your passphrase.
+However, it can provide for automatic signing of outgoing messages by
+using PGPdaemon.
+
+  Read the section on installing before attempting to install. You
+have been warned.
+
+  There is another package: PGPSendmail/AmigaOS which does much
+the same thing as PGPsendmail/Unix except it runs on AmigaOS. See the
+documentation on getting PGPsendmail for details of where to get it.
+
+****
+
+2)  How does it work?
+
+  PGPsendmail has two basic modes of operation:
+
+  a)  If the  PGPPATH  environment variable does not exist, the real
+sendmail  programme is executed with the same command line arguments.
+Hence, it is quite safe to move the original (real)  /usr/lib/sendmail
+to  /usr/lib/sendmail.real  and place PGPsendmail as  /usr/lib/sendmail
+since the system startup scripts (/etc/rc*) should not define  PGPPATH
+The operation of  sendmail  as a daemon is not affected. Also, users
+who do not use PGP are also completely unaffected (as they will not
+have a  PGPPATH  environment variable).
+
+  b)  If the  PGPPATH  environment variable does exist, PGPsendmail
+will check all recipients in the message header (marked by "To: ",
+"Cc: " and "Bcc: " keywords) to determine if they have a PGP public
+key in the senders public keyring. By default, if all recipients have
+a public key, the message is encrypted for all recipients prior to
+transmission. The message is actually transmitted by the use of the
+real  sendmail  programme.
+If one or more recipients does not have PGP public key, the message is
+not encrypted.
+PGPsendmail extracts the Email address of a recipient when determining
+if a PGP public key is available.
+The users' public keyring file must be:  $PGPPATH/pubring.pgp
+
+****
+
+3)  Modifying the behaviour of PGPsendmail
+
+  Nobody is ever happy with the defaults (even though the ones I
+choose are *right*:-). PGPsendmail allows you to configure its operation
+in a variety of ways.
+
+  a)  Per message control
+
+  You may specify a number of flags by inserting the keyword
+"X-Secure: " in the message header. This must be followed by one or
+more legal flags. These are defined below.
+
+  b)  The configuration file
+
+  The file:  $PGPPATH/PGPsendmail.config  may contain global and
+recipient-specific configuration flags. These flags are defined below.
+A blank line or a line with a '#' as the first character is ignored.
+An example is included below.
+
+    i)  Global control
+
+  You may specify global flags by placing the word "GLOBAL" in your
+configuration file. This must be followed by one or more flags. These
+flags are always processed first. You may only have one "GLOBAL" line
+in your configuration file- this restriction is silently enforced.
+
+    ii)  Per recipient control
+
+  You may provide a synonym for a recipient by placing the recipient
+name in the first field of a line in the config file, followed by a
+synonym (which will match a PGP user ID). The synonym may be followed
+by zero or more flags. Both the recipient name and the synonym must be
+of the form: "username" OR "username@email.address". No spaces are
+permitted within a recipient name or a synonym. The synonym may also
+be a numeric keyID, such as "0x55EE05". You should take care to ensure
+that the number of digits you specify is the same number as your
+current version of PGP will display. This can be a trap if you happen
+to go from a version of PGP such as 2.6ui to 2.6
+
+  c)  Legal flags
+
+  Below are the flags recognised, and their meanings:
+
+        always-secure       always use encryption, bounce if can't encrypt
+	secure              synonym for  always-secure
+	always              synonym for  always-secure
+	never-secure        never use encryption
+	insecure            synonym for  never-secure
+	never               synonym for  never-secure
+	return-receipt      return a success message
+	discard-receipt     do not return a success message
+	no-receipt 	    synonym for  discard-receipt
+	add-key             include public key in message
+	no-advertising      do not show advertising message about PGPsendmail
+	sign		    sign message before encrypting (needs PGPdaemon)
+
+  A note on the  return-receipt  flag: if you send a message where not
+all recipients have a PGP public key, and the  always-secure  flag is
+not set, there is *no* return message. The  return-receipt  flag is
+intended to give feedback whenever messages are successfully
+encrypted. This flag is in fact the default.
+
+  d)  Precedence
+
+  There is no real distinction between the "X-Secure:" flags, "GLOBAL"
+flags or recipient flags. This is intentional. Hopefully, the reasons
+for this are made clear below. The highest level of precedence is the
+always-secure  flag. If this flag is set, the message *will not* be
+transmitted without being encrypted: PGPsendmail will bounce it rather
+than sending it in plaintext.
+
+  e)  Subtleties of the  always-secure  and  never-secure  flags
+
+  If you wish to send a message which is *important* to keep secret,
+somehow the  always-secure  flag must be specified. Since this applies
+to this message only, it does not make sense to specify it anywhere
+except with the "X-Secure:" header line. If anything prevents
+encryption from taking place, the message is bounced so that you can
+think again.
+
+  If you *know* that *all* messages to a particular recipient must be
+kept secret, you can add their Email address, followed by their PGP
+userID (which may just be their Email address), followed by the
+always-secure  flag. If for any reason encryption is not possible, the
+message is bounced. If the message happens to have the  never-secure
+flag set on the "X-Secure:" header line, you are guaranteed that the
+message will bounce, rather than being sent encrypted; it will not
+cause the message to be transmitted in plaintext.
+
+  If you set the  always-secure  flag with the "GLOBAL" option in the
+configuration file, PGPsendmail will prevent you from ever sending
+plaintext messages. Using this option is not recommended. The "GLOBAL"
+option is really meant for flags such as:  discard-receipt  ,  add-key
+and  no-advertising  .
+
+  f)  Subtleties of the  return-receipt  and  discard-receipt  flags
+
+  These flags may be specified together. The last one processed
+determines whether or not a return receipt is sent when the message is
+encrypted. Determining which is processed last depends on the relative
+order of the "To:", "Cc:", "Bcc:" and "X-Secure:" header lines. Don't
+expect predictable results (ie. will you get a receipt or not) if you
+specify both flags, unless you know exactly how PGPsendmail and your
+mail reader work.
+
+  g)  Problems with flag interactions?
+
+  If you come across what you think is strange behaviour in the
+interaction of flags, please think carefully about the above
+paragraphs. The interactions have been carefully thought out, so
+please don't submit a bug report unless you're sure it's a bug, and
+not simply different than the way you expected it.
+
+****
+
+4)  How PGPsendmail matches recipients to PGP user IDs
+
+  PGPsendmail maintains a list of all the user IDs extracted from the
+users' public keyring. This file is:  $PGPPATH/.keylist
+This speeds the process of determining if all recipients have a PGP
+public key or not. This list is updated if the users' public keyring
+changes.
+The Email address of each recipient is extracted. Currently, the
+following recipient formats are recognised:
+
+    Real Name <username@email.address>
+    "Real Name" <username@email.address>
+    username@email.address
+    username
+    username (Real Name [,Organisation])
+    username@email.address (Real Name [,Organisation])
+
+  PGPsendmail extracts the "username" or "username@email.address"
+portion, replaces this with a synonym if available (a case insensitive
+comparison of the first fields of the config file is performed), and
+then searches the list of PGP user IDs (another case insensitive
+comparison).
+
+****
+
+5)  Installing PGPsendmail
+
+  Easy! Read the  Makefile  ,grok it and then use it <fingers crossed>. I'll
+gratefully receive comments on how to explain it better, and patches to make
+it work on more exotic flavours of Unix. There is also a manual page
+supplied.
+
+  ***WARNING***  Read the Makefile! There is an important note on
+installing. If you get it wrong, your machine will be hosed (thanks to
+endless processes being forked). It's very simple, but *you must read
+the Makefile*
+
+  *ALSO* If you install PGPsendmail into  /usr/lib  as root, be
+careful. If you "su root" from your regular account and restart the
+sendmail  daemon you might find that your root session has a PGPPATH
+environment variable (a hangover from your regular account). This will
+cause problems, so unset PGPPATH if it was set.
+
+  ***IMPORTANT***  Read the Makefile! See above. Maybe I'm trying to
+tell you something? ;-)
+
+  If you are a mere mortal, and don't have privilege to install
+PGPsendmail into the system area, the  install  script will instead
+attempt to install in the directory specified by the USRBINPATH
+environment variable. If that doesn't exist either, PGPsendmail will
+have to be installed manually.
+Being a mere mortal, you will need to tell all the mailers you use to
+use PGPsendmail to deliver your messages, rather than the regular
+sendmail  programme. Below are a few directions for mailers I've tried
+out. In these examples, the path to PGPsendmail is:
+/users/fred/bin/pgpsendmail
+*REMEMBER* If your have system privilege, you can install PGPsendmail
+in the system area, and hence you don't have to worry about fiddling
+with mailers.
+
+EMACS ViewMail:
+=== add to your  ~/.emacs  file ========================
+(setq sendmail-program "/users/fred/bin/pgpsendmail")
+========================================================
+
+UCBmail:
+=== add to your  ~/.mailrc  file =======================
+set sendmail=/users/fred/bin/pgpsendmail
+========================================================
+
+MH: sorry, so far I haven't seen a version of MH that allows a mere
+mortal to change the mail delivery programme from  sendmail  to
+PGPsendmail. Complain to the author(s) of MH.
+
+****
+
+6)  Example PGPsendmail configuration file
+-------------------------------------------------------------------------------
+# PGPsendmail.config  for Richard Gooch
+#
+# I always want to know if my messages were successfully encrypted, and I
+# want to sign every message.
+GLOBAL	return-receipt sign
+
+# "return-receipt" is actually the default: I just put it here for illustration
+# NOTE: only one line with the GLOBAL option is permitted. If you want multiple
+# global options, place them all in the same line. This restriction is silently
+# enforced.
+#
+# And the list of options:
+#	always-secure       always use encryption, bounce if can't encrypt
+#	secure              synonym for  always-secure
+#	always              synonym for  always-secure
+#	never-secure        never use encryption
+#	insecure            synonym for  never-secure
+#	never               synonym for  never-secure
+#	return-receipt      return a success message
+#	discard-receipt     do not return a success message
+#	no-receipt 	    synonym for  discard-receipt
+#	add-key             include public key in message
+#	no-advertising      do not show advertising message about PGPsendmail
+#	sign		    sign message before encrypting (needs PGPdaemon)
+
+# I have 2 public keys: "rgooch@atnf.csiro.au" and "rgooch@workaholix",
+# so this way I remove the ambiguity by specifying which one. I could
+# use a mail alias, but then I might send mail to the wrong place
+# (since I move around a bit).
+rgooch			rgooch@atnf.csiro.au
+
+# This person has signed my key but doesn't want to receive encrypted
+# messages. Since I want to keep the signature, I disable it here.
+pjordan			pjordan@rp.csiro.au		never-secure
+
+# I've decided I want every message to Peter to be encrypted.
+simons@peti.gun.de	simons@peti.gun.de		always-secure
+-------------------------------------------------------------------------------

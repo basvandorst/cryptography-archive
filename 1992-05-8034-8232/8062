@@ -1,0 +1,98 @@
+Xref: msuinfo comp.arch:30581 sci.crypt:8062
+Path: msuinfo!netnews.upenn.edu!jvnc.net!yale.edu!spool.mu.edu!uunet!ns-mx!pyrite.cs.uiowa.edu
+From: jones@pyrite.cs.uiowa.edu (Douglas W. Jones,201H MLH,3193350740,3193382879)
+Newsgroups: comp.arch,sci.crypt
+Subject: Applications for wierd bit manipulators
+Message-ID: <12490@ns-mx.uiowa.edu>
+Date: 1 May 92 20:22:08 GMT
+Sender: news@ns-mx.uiowa.edu
+Followup-To: comp.arch
+Lines: 87
+
+I had occasion to want things like bitcount a number of times,
+sometimes in applications that the NSA might enjoy, and sometimes
+elsewhere.  Here are two decen examples:
+
+1) The old PLATO alrogithm for recognizing misspelled words in a
+   dictionary.
+
+   Hash each word in the dictionary and the word being looked up
+   using the following scheme, where the hash code is a single 60
+   or 64 bit word.
+
+    ___________________________________________
+   |__________________|________________|_______|
+           (1)                (2)         (3)
+
+   Field 1) For each letter present, flip the associated bit,
+     starting with all zeros.  There are fewer than 26 bits here,
+     and the letters assigned to each bit position are adjusted so
+     that their likelyhood is about the same.
+
+   Field 2) For each pair of consecutive letters, compute a bit
+     index using a simple algorithm like (a + 256b)mod F, where F
+     is the field size and F is relatively prime to 256.  Flip the
+     corresponding bit in this field for each pair, including pairs
+     made by bracketing the word with blanks at the front and back.
+
+   Field 3) For each vowel present, flip the associated bit (this
+     is a short field).
+
+   Now, if you don't get an exact match in the dictionary, look for
+   the word that has a hash code that is closest to the hash code
+   for the search key, where distance is measured as the bitcount of
+   the exclusive or of the hash codes.  The refined version of this
+   algorithm used on the U of Illinois PLATO (now Novanet) system
+   performs very well.
+
+2) Set manipulation.  I had a program where I was representing sets
+   by bit vectors in machine words, as in Pascal's standard set
+   types.  Finding the cardinality of a set was done with bitcount,
+   but the more exciting things were parts of the program that
+   iterated over all members of a given set and over all subsets of
+   a given set.
+
+   Given S, a set, and T, a temporary set, and I, a singleton set
+   used as a loop control variable, all represented as integers,
+   iteration over all members of a set is done as follows (all
+   logical operations are bitwize):
+
+   T := S
+   loop
+      I := (T xor (T-1)) and T
+
+      -- loop body (uses I, does not change I or T)
+
+      T := T and (not I)
+   until T = 0
+
+   (Explanation:  T-1 complements the least significant one bit of T
+   and any less significant zero bits.  T xor (T-1) has only the
+   least significant one bit of T and less significant zero bits of T
+   set to one, all others are zero.  Anding this with T gives the
+   least significant one bit of T as the only one bit of the result.)
+
+   Similarly, to iterate I over all subsets of S, do the following:
+
+   I := 0
+   loop
+
+      -- loop body (uses I, does not change I or S)
+
+      I := ((I or (not S)) + 1) and S
+   until I = 0;
+
+   (Explanation:  I or (not S) puts ones in every bit position where
+   S had a zero, so that carry bits will propagate across the gaps in
+   the set S when the result is incremented.  Anding the result with
+   S turns off those bits that were turned on, and the result is a
+   binary counter that only counts in the bit positions where S had
+   ones.)
+
+I hope these examples help motivate people to understand that tricky bit
+manipulation instructions have some value even to folks outside the NSA.
+I should note that I coded both of the above set manipulators in C when
+I used them, and the result was clearly in need of extended comments.
+
+					Doug Jones
+					jones@cs.uiowa.edu

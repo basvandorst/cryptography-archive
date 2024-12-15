@@ -1,0 +1,62 @@
+
+A few suggested improvements:
+
+Assuming the file is stored deflated (is this available unencrypted),
+you can code up a fast trial decompression of the first block,
+operating on the assumption that it's stored using dynamic
+Huffmann trees (type 2).
+
+You can also deal with stored blocks, because they begin with a
+length followed by its ones-complement.
+
+A deflated block contains the following information:
+- a 1-bit flag indicating if this is the last block
+- A 2-bit type-of-block flag (0 = stored, 1 = fixed huffmann trees
+  (usually short text messages), 2 = dynamic huffmann trees
+  (most common), 3=illegal
+Assuming it's type 2, this is followed by
+- a 5-bit count of the number of length/literal codes (offset 257)
+- a 5-bit count of the number of distance codes (offset 1)
+- a 4-bit count of the number of bit-length codes (offset 3)
+
+The bit-length codes are stored in 3-bit fields, 3+n of them,
+where n is the number in the 4-bit field.  For the non-zero
+values x[i], sum(2^-x[i]) should equal 1.  If this is not
+the case, you have an error.  Throw the key out.
+
+Following that are some run-length-encoded tree descriptions.
+The end of the run lengths is indicated by the total equalling
+the total number of length/literal plus distance codes.
+If you overshoot the end, you have an error.  Throw the key out.
+
+Then you can check the two trees to see if they obey the sum(2^-xi1])=1
+property.  The chances of this coming out right with random data are
+small.
+
+This is more work than checking a few bytes, but if coded efficiently
+can be a lot less work than a trial decompression.  And it should
+leave only a very few possible positives.
+
+In particular, you can check for a full tree quite efficiently in
+the 7-bit case by adding 1<<(7-n) to a counter and seeing if
+the total is 128.  (Use a lookup table, 
+table[8] = {0, 64, 32, 16, 8, 4, 2, 1};
+
+If this test is passed, then use the code from unzip to build a
+huffmann tree with these parameters, and unpack the run-length-encoded
+data.  I'd do this, and the tree tests, at the same time.
+As you unpack the data, keep track of the end to check for overruns
+and accumulate the weights of the trees (the advantage to doing this
+is that you don't need to waste space and time storing all the zeros
+that are typical in such trees) using a similar table, of 16 entries
+that should add up to 32768.
+
+If you want one more test, the first 256 entries in the literal tree
+give you a rough frequency histogram of characters in the first block.
+You can check it to see if it's reasonable.  A zero appears if and only
+if the character never appears in about 32K of plaintext.  Checking for
+the absence of control characters and high-ASCII characters should help.
+
+See the unzip source code (from ftp.uun.et or other places - 5.1 is the
+current version) for details.
+

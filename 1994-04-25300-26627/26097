@@ -1,0 +1,93 @@
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: BLOWFISH, and some attacks on weakened versions.
+Date: Sat, 16 Apr 94 19:45:50 CDT
+Organization: University of Missouri, Columbia
+Lines: 83
+Message-ID: <16F9A115F4S86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+   I've been playing with BLOWFISH since Bruce posted the description
+of the algorithm a few days back, and I wanted to post some of what
+I've found.
+ 
+   First of all, the best way to retrieve the s-box entries I've seen
+is a chosen-plaintext attack on the F-function.
+ 
+ 
+   Choose 256 X's such that X_i = Z||i  where i is 8-bit 0 ..255 and
+                                              Z is a constant 56-bits.
+ 
+   Send all 256 through the F() function.  Find F(X_i) - F(X_0) for all
+256 values.  This gives you enough information to derive all of S4()
+if you know one value in S4(), because the F() outputs differ only in
+that they were added to S4(i).
+ 
+   Now, choose Q0 and Q0' such that they are identical except for the
+next-to-last byte.  Send these through, and you get two values that
+can be expressed as (Z_0 XOR S3(i0))+Z_1 and (Z_0 XOR S3(i0'))+Z_1)
+where i is the next to last byte in Q, i' in Q'.
+ 
+   Now, choose Q1, Q1' the same way, with the next to last byte the
+same for Q0, Q1 and for Q0', Q1'.  Also make sure the last byte is
+the same.
+ 
+   Now, you've got:
+ 
+   (Z_0 xor S3(i0)) + Z_1         A
+   (Z_0 xor S3(i0')) + Z_1        B
+   (Z_2 xor S3(i0)) + Z_1         C
+   (Z_2 xor S3(i0')) + Z_1        D
+ 
+   Start guessing Z_1.  When you've guessed right, A XOR B = C XOR D.
+Now, you've got one entry for S4.  Find the others using the differences
+you already know.
+ 
+   Generate a new set of 256 X_i, such that X_i = K0||K1||i||?, where
+K0, K1 are bytes that don't change for any i, i ranges from 0 to 255, and
+? means you don't care what appears here, because you're going to do
+away with its effects anyway.  Here, I'll assume the ? is just a 0.
+ 
+   This time, keep track of Y_i = F(X_i) - S4(0).  Build a table of
+S3() differences by noting Y_0 XOR Y_i for all i.  You now have the
+XOR differences for all S3(), so if you know one S3() entry, you know
+all of them.  Build two more Q pairs, as
+   Q0 = K0||i||0||0  Q0' = K0||i'||0||0
+   Q1 = K1||i||0||0  Q1' = K1||i'||0||0
+ 
+   Again, send these through, and find
+  A = F(Q0) - S4(0)  B = F(Q0') - S4(0)
+  C = F(Q1) - S4(0)  D = F(Q1') = S4(0)
+ 
+   For this,
+  A =  (S1(K0) + S2(i)) XOR S3(0)  B = (S1(K0) + S2(i')) XOR S3(0)
+  C =  (S1(K1) + S2(i)) XOR S3(0)  D = (S1(K1) + S2(i')) XOR S3(0)
+ 
+   Start guessing S3(0).  When you're right, A XOR guess - B XOR guess
+will equal C XOR guess - D xor guess.
+ 
+   Now, we've got S3 and S4.  I don't see any way to recover S1 and
+S2 directly.  Instead, we recover one of 2**32 possible S1 and S2
+blocks.  We do this by generating our table of differences for both
+S1 *and* S2, so that if we knew one element in S1, we'd know all of
+S1, and if we knew one element of S2, we'd know all of S2.  Now, we
+can use any combined value, such as S1(0) + S2(0), to relate our two
+difference tables, so that knowing S1(0) would let us derive *all*
+S1 and S2 values.  We can't use this to "guess-and-check," as we did
+before, though, because *any* chosen value of S1(0) will give us S1
+and S2 values that match all of our values.  Instead, we choose any
+S1(0) we like, and derive a set of equivalent s-boxes to S1 and S2.
+ 
+   Has anyone found a better attack against this F() function?  We
+wind up using a lot of chosen inputs (1040) to recover the s-boxes.
+Still, we're recovering 1024 values, so this isn't a terribly un-
+reasonable number.
+ 
+   I can't see any reasonable way to apply this to BLOWFISH itself with
+any real number of rounds, because the subkeys and large numbers of
+rounds get in the way of either choosing inputs or of seeing the
+results of the changes.  I'll explain the best attack I've got so
+far in my next post.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

@@ -1,0 +1,282 @@
+.\"
+.\" pgp-integration.7
+.\"
+.\" Copyright (C) 1997 Pretty Good Privacy, Inc.  All rights reserved.
+.\"
+.\" $Id: pgp-integration.7,v 1.1.2.2 1997/08/27 03:57:25 quark Exp $
+.\"
+.\" Process this file with
+.\" groff -man -Tascii pgp.1
+.\"
+.TH PGP 7 "JULY 1997 (v5.0)" PGP "User Manual"
+.SH DESCRIPTION
+This document describes the process of integrating PGP with third
+party applications.
+
+.SH STRATEGIES
+There are two basic possible strategies for PGP integration:  source
+level (calling the PGP libraries directly) and executable level (using
+.BR system (2)
+or some other method to call the PGP executables).
+
+This document will not detail the library method at this time.  When
+PGP 5.5 is released, all support will be migrated to the new
+Source Development Kit (SDK) from the existing APIs.  Developers
+are encouraged to either use the executable integration method
+detailed here or wait for the SDK to be released.
+
+.SH EXECUTABLE INTEGRATION
+The most straightforward means of integrating PGP support into your
+application is to open input and output pipes to the PGP executables.
+For a very thorough example of PGP integration, see the "plugins"
+directory of the PGP 5.0 source distribution, which has a patch for
+the mutt email client.  Most of the ideas in this text are a result of
+experiences modifying Michael Elkins' PGP integration code from
+mutt.
+
+The basic strategy is to use the PGP executables to perform
+encryption, decryption and verification.  While it is possible to take
+a much more complex approach (for example, Mr. Elkins' code actually
+parses the output of
+.BR pgpk (1)
+in order to present users with a list of keys), the more complex
+efforts are outside the scope of this document.
+
+All examples are in "C", and assume the following variables:
+.nf
+
+char *recipients; /*A space-delimited list of message recipients*/
+char *buf;        /*The message to be operated on*/
+char *passphrase; /*The user's passphrase*/
+.fi
+
+All allocation is assumed already handled by the application.  The
+reader is assumed to be familiar with concepts of C programming and to
+have read and understood the
+.BR pgp.cfg (5)
+man page.  Also be aware that the following code assumes all buffers
+are big enough and isn't always perfect about handling errors
+gracefully.  This should be considered a starting point, not a
+complete system.
+
+.SH COMMON ROUTINE
+The following routine uses
+.BR fork (2)
+and
+.BR pipe (2)
+to open both read and write file handles to a child process.  It is
+used to invoke PGP in these examples.  You may use it effectively
+without understanding how it works.
+.nf
+
+/*Runs cmd, and hooks in to the process' stdin, and out to its stdout.
+ *Inspiration stolen from Michael Elkins; see mutt for how to do this
+ *properly with error checking, etc.
+ */
+int run_pgp(char *cmd, FILE **in, FILE **out)
+{
+  int pin[2], pout[2], child_pid;
+
+  *in = *out = NULL;
+
+  pipe(pin);
+  pipe(pout);
+
+  if(!(child_pid = fork()))
+  {
+    /*We're the child.*/
+    close(pin[1]);
+    dup2(pin[0], 0);
+    close(pin[0]);
+
+    close(pout[0]);
+    dup2(pout[1], 1);
+    close(pout[1]);
+
+    execl("/bin/sh", "sh", "-c", cmd, NULL);
+    _exit(127);
+  }
+
+  /*Only get here if we're the parent.*/
+  close(pout[1]);
+  *out = fdopen(pout[0], "r");
+
+  close(pin[0]);
+  *in = fdopen(pin[1], "w");
+
+  return(child_pid);
+}
+.fi
+
+.SH ENCRYPTION
+The easiest case is to simply pass your buffer to PGP.  The most
+minimal form of this would be to write your data out, and have PGP
+encrypt it.  Unfortunately, this would mean that the cleartext
+document would be placed on the hard drive, which is undesirable.
+However, we can use PGP's stream mode (the -f option) to get PGP to
+accept the plaintext on stdin and place the encrypted text on stdout:
+
+.nf
+/*Takes the buffer you wish to encrypt and the recipients; writes the
+ *result into encrypt_buffer.
+ */
+void encrypt_buffer(char *buf, char *recipients)
+{
+  FILE *pgpin, *pgpout;
+  char sys_buf[256], tmpbuf[1024] = "\\0";
+
+  sprintf(sys_buf, "pgpe -at -r %s -f +batchmode=1", recipients);
+  run_pgp(sys_buf, &pgpin, &pgpout); /*Execute PGP*/
+  if(pgpin && pgpout)
+  {
+    /*Output buffer to PGP:*/
+    fwrite(buf, sizeof(char), strlen(buf), pgpin);
+    fclose(pgpin);
+
+    /*Now, read the result back from PGP:*/
+    *buf = '\\0';
+    fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    while(!feof(pgpout))
+    {
+       strcat(buf, tmpbuf);
+       fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    }
+    fclose(pgpout);
+  }
+}
+
+.fi
+
+Additional functionality would include using the
+.I -s
+flag to sign the message if the user so requested.  Implementation is
+quite similar to the
+.BR pgps (1)
+integration, shown next.
+
+If you find that PGP is mysteriously failing during this step, it may
+be because you are encrypting to keys that are not completely valid.
+By default, PGP will fail during batch mode when this is encountered.
+The solution is to place
+.I NoBatchInvalidKeys = off
+in your
+.I pgp.cfg
+file.  It is requested that you 
+.I not
+pass this option on the command line, as some users will prefer not to
+encrypt to invalid keys.
+
+.SH SIGNING
+Conceptually, signing is quite similar, but with a twist - the user
+must specify a passphrase!  The simple way to handle this is to allow
+PGP to ask the user for the passphrase.  However, if you wish to hide
+PGP's functionality a little bit more, you may wish to ask for the
+passphrase yourself, prior to signing, and pass it through.
+
+There are a number of ways to get the passphrase to PGP, but the best
+is probably using the environment variable
+.IR PGPPASSFD .
+This allows you to specify a file descriptor on which you will pass
+the passphrase as the first input.  Commonly, this is set to 0,
+.IR stdin :
+.nf
+
+/*Signs a buffer.  The output is placed in buf.*/
+void sign_buffer(char *buf, char *passphrase)
+{
+  FILE *pgpin, *pgpout;
+  char tmpbuf[1024] = " ";
+
+  setenv("PGPPASSFD", "0", 1);
+  run_pgp("pgps -at -f +batchmode=1", &pgpin, &pgpout);
+  if(pgpin && pgpout)
+  {
+    fprintf(pgpin, "%s\\n", passphrase); /*Send the passphrase in, first*/
+    memset(passphrase, '\\0', strlen(passphrase)); /*Burn the passphrase*/
+    fwrite(buf, sizeof(char), strlen(buf), pgpin);
+    fclose(pgpin);
+
+    *buf = '\\0';
+    fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    while(!feof(pgpout))
+    {
+      strcat(buf, tmpbuf);
+      fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    }
+
+    wait(NULL);
+
+    fclose(pgpout);
+  }
+  unsetenv("PGPPASSFD");
+}
+.fi
+
+Note the use of
+.BR memset (3)
+to clear the passphrase immediately after use.  Not clearing the
+passphrase can result in numerous security issues.
+
+.SH DECRYPTION/VERIFICATION
+Decryption is almost identical to signing (the same passphrase
+requirements apply).  The options passed in are slightly different,
+however:
+.nf
+
+/*Verifies a PGP buffer.  Note that, if the buffer is only signed, the
+ *passphrase may be unnecessary - a complete program should probably
+ *check for the "BEGIN PGP SIGNED MESSAGE" tag before prompting the
+ *user for a passphrase.  The output is placed in buf, as well.
+ */
+void verify_buffer(char *buf, char *passphrase)
+{
+  FILE *pgpin, *pgpout;
+  char tmpbuf[1024] = " ";
+
+  setenv("PGPPASSFD", "0", 1);
+  run_pgp("pgpv -f +batchmode=1 +OutputInformationFD=1", 
+          &pgpin, &pgpout);
+  if(pgpin && pgpout)
+  {
+    fprintf(pgpin, "%s\\n", passphrase); /*Send the passphrase in, first*/
+    memset(passphrase, '\\0', strlen(passphrase)); /*Burn the passphrase*/
+    fprintf(pgpin, "%s", buf);
+    fclose(pgpin);
+
+    *buf = '\\0';
+    fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    while(!feof(pgpout))
+    {
+      strcat(buf, tmpbuf);
+      fgets(tmpbuf, sizeof(tmpbuf), pgpout);
+    }
+
+    wait(NULL);
+
+    fclose(pgpout);
+  }
+  unsetenv("PGPPASSFD");
+}
+.fi
+
+The
+.I +OutputInformationFD
+option is used to have PGP output information about the message (in
+this case, who signed it, if anyone) on the same stream as the
+decrypted or verified data.
+
+.SH CONFIGURATION OPTIONS
+Application integrators are encourages to read the
+.BR pgp.cfg (5)
+documentation, which details how to pass configuration options on the
+command line, including the public and private keyrings your
+application wishes to use.
+.SH "SEE ALSO"
+.BR pgp (1),
+.BR pgpe (1),
+.BR pgpv (1),
+.BR pgps (1),
+.BR pgpk (1),
+http://www.pgp.com (US versions)
+and
+http://www.pgpi.com (International versions)

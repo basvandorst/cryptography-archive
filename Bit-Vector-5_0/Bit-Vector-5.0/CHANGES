@@ -1,0 +1,881 @@
+                    =====================================
+                      Package "Bit::Vector" Version 5.0
+                    =====================================
+
+
+            Copyright (c) 1995, 1996, 1997, 1998 by Steffen Beyer.
+                             All rights reserved.
+
+
+Contents of this file:
+----------------------
+
+  -  New features in version 5.0
+  -  Migration strategy to version 5.0 from previous versions
+  -  New features in version 4.2
+  -  New features in version 4.1
+  -  New features in version 4.0
+  -  Migration strategy to version 4.0 from previous versions
+  -  Most important differences between versions 3.x and 4.0
+  -  Most important differences between versions 2.x and 3.0
+  -  Most important differences between versions 1.x and 2.0
+  -  Version history in details
+
+
+New features in version 5.0:
+----------------------------
+
+Starting with version 5.0 of the "Bit::Vector" distribution, all accompanying
+modules that were previously part of this distribution have been "out-sourced",
+i.e., they are now distributed separately as modules of their own.
+
+This was done because it became more and more difficult to handle such a huge
+distribution.
+
+Another reason is that version 5.0 of the "Bit::Vector" module contains a large
+number of new methods:
+
+  -  Version()
+  -  Word_Bits()
+  -  Long_Bits()
+  -  Shadow()
+  -  Clone()
+  -  Concat()
+  -  Concat_List()
+  -  Primes()
+  -  Reverse()
+  -  Interval_Reverse()
+  -  Interval_Copy()
+  -  Interval_Substitute()
+  -  Lexicompare()
+  -  to_Hex()
+  -  from_Hex()
+  -  to_Bin()
+  -  from_Bin()
+  -  to_Dec()
+  -  from_Dec()
+  -  to_Enum()
+  -  from_Enum()
+  -  Bit_Copy()
+  -  LSB()
+  -  MSB()
+  -  lsb()
+  -  msb()
+  -  Insert()
+  -  Delete()
+  -  add()
+  -  subtract()
+  -  Negate()
+  -  Absolute()
+  -  Sign()
+  -  Multiply()
+  -  Divide()
+  -  GCD()
+  -  Block_Store()
+  -  Block_Read()
+  -  Word_Size()
+  -  Word_Store()
+  -  Word_Read()
+  -  Word_List_Store()
+  -  Word_List_Read()
+  -  Word_Insert()
+  -  Word_Delete()
+  -  Chunk_Store()
+  -  Chunk_Read()
+  -  Chunk_List_Store()
+  -  Chunk_List_Read()
+  -  Index_List_Remove()
+  -  Index_List_Store()
+  -  Index_List_Read()
+  -  Transpose()
+
+See the "Bit::Vector" man page (after installing this module) for more
+details about these new methods.
+
+
+Migration strategy to version 5.0 from previous versions:
+---------------------------------------------------------
+
+Step 0:
+-------
+
+If you haven't done so already, first apply the changes recommended in
+section "Migration strategy to version 4.0 from previous versions" in
+this document in case you have applications that use a version of
+"Bit::Vector" prior to 4.0.
+
+Step 1:
+-------
+
+First of all, install version 5.0 of the "Bit::Vector" package.
+
+This will also install an upgrade utility in your Perl "bin"
+directory which you will need in order to upgrade your existing
+application(s).
+
+After doing so, upgrade your existing application(s) using the
+following command:
+
+    % upgrade_BV50  appl1.pl  appl2.pl  appl3.pl  ...
+
+Note that this utility renames the original file "appli.pl"
+to "appli.pl.bak" before creating a fresh copy of this file
+(again named "appli.pl"), and before applying any changes
+to that copy.
+
+Be cautious to keep this backup copy (or better still, another
+copy of the original file) in a safe place!
+
+Beware that this backup file will get overwritten WITHOUT WARNING if
+you run the upgrade utility more than once on the same application!
+
+Beware also that this utility is far from fool-proof.
+
+For instance, method calls may not span over multiple lines, or
+the upgrade utility will not work!
+
+Moreover, the upgrade utility assumes that method calls use the
+arrow ("->") - other forms of method calls that are legal in Perl
+are not supported.
+
+Some examples of things the upgrade utility can't handle properly:
+
+        ('10110110' + $vector1)->lexorder($vector2)
+
+(The bit vector object for which the method is invoked must start
+with a dollar sign. This means that "($vec1 + $vec2)->" instead of
+"('10110110' + $vector1)->" would actually work, but this is not
+recommended, either. You always risk parentheses at the wrong places
+after the upgrade. See below for how to circumvent this problem!)
+
+        $vector[$index]->lexorder($vector[int($index/2)+1])
+
+(Nested parentheses cannot be parsed with regular expressions.
+Therefore, parentheses in the method's arguments cannot be
+resolved properly, leading to parentheses in the wrong places
+after the upgrade.)
+
+You will need to fix these cases manually.
+
+The best method for doing so is to simplify this kind of statement
+BEFORE upgrading your application. A sure way to go is to store such
+intermediate results in a temporary variable which is then used in
+the method call.
+
+For example:
+
+        $temp = '10110110' + $vector1;
+        $temp->lexorder($vector2)
+
+        $temp = int($index/2)+1;
+        $vector[$index]->lexorder($vector[$temp])
+
+Note also that in most cases, the upgrade utility assumes that all
+method calls have parentheses, even though this is not absolutely
+required by Perl syntax.
+
+Spaces before and after the method call arrow ("->") and between
+the method name and the opening parenthesis are optional, though.
+
+The method calls affected by the upgrade utility are the following:
+
+          to_ASCII            ==>                 to_Enum
+
+          from_ASCII          ==>                 from_Enum
+
+          to_String           ==>                 to_Hex
+
+    ... ->from_string( ... )  ==>  ( eval { ... ->from_Hex( ... ); !$@; } )
+
+    ... ->lexorder( ... )     ==>         ( ... ->Lexicompare( ... ) <= 0)
+
+    ... = Bit::Vector->new_from_String( ... );
+
+                              ==>
+
+    ... = Bit::Vector->new(length( ... ) << 2);
+    ... ->from_Hex( ... );
+
+Step 2:
+-------
+
+BEWARE that the semantics of the method "Compare()" have changed:
+
+While previously it assumed its two bit vector arguments to be UNSIGNED,
+it now assumes them to be SIGNED.
+
+If you want to perform a comparison assuming UNSIGNED bit vectors, use
+the new method "Lexicompare()" instead!
+
+(Which in fact is the old "Compare()" method in new disguise, er, name.)
+
+
+New features in version 4.2:
+----------------------------
+
+Two new methods are available in the "Bit::Vector" and the
+"Set::IntegerRange" module: "is_empty()" and "is_full()".
+
+These methods test wether ALL bits in the given bit vector
+are cleared or set, respectively.
+
+
+New features in version 4.1:
+----------------------------
+
+1) In the "Bit::Vector" module:
+
+a) There are two new methods called "Move_Left()" and "Move_Right()"
+   for shifting a bit vector by more than one bit at a time.
+
+   These methods are far more efficient than calling "shift_left()" or
+   "shift_right()" the desired number of times.
+
+b) BEWARE that the semantics of the overloaded operators "<<" and ">>"
+   has been changed accordingly:
+
+   These operators now use "Move_Left()" and "Move_Right()" internally
+   to produce the usual behaviour for these two operators, i.e.,
+
+       $vector << 5
+       $vector >> 5
+
+   moves all bits up/down by 5 places (inserting 5 zero bits at the
+   right/left end), respectively.
+
+c) Two new methods named "increment()" and "decrement()" have been added
+   which increment/decrement a given bit vector as though it was one large
+   (unsigned) integer in binary representation.
+
+d) BEWARE that the semantics of the overloaded operators "++" and "--"
+   has been changed accordingly: Whereas in previous versions, "++"
+   was the same as setting bit #1 to the "on" state and "--" was the
+   same as setting bit #1 to the "off" state, these two operators now
+   perform a true increment and decrement operation on the given bit
+   vector, which - by the way - can be used in its pre-increment and
+   post-increment or pre-decrement and post-decrement form, as usual!
+
+2) In the "Set::IntegerRange" module:
+
+a) A "Resize()" method was added which allows you to change the size of
+   an existing set while preserving as many bits (i.e., elements) of the
+   old set as will fit into the new set.
+
+b) The methods "Interval_Scan_inc()" and "Interval_Scan_dec()" are now
+   also available in the "Set::IntegerRange" module.
+
+c) A method "BitVector()" is now available which allows you to call any
+   of the methods of the "Bit::Vector" class for the underlying bit vector
+   which contains your set. Use wisely and with precaution!
+
+3) In general:
+
+   A complexity analysis has been added to this distribution that shows
+   the time complexity of the methods implemented in the C library which
+   is the core of the "Bit::Vector" module. See the file "COMPLEXITY" in
+   this distribution for more details.
+
+   (NB: This file is not available in version 5.0!)
+
+
+New features in version 4.0:
+----------------------------
+
+Flip
+    $vector->Flip();
+
+Interval_Scan_inc
+    while (($min,$max) = $vector->Interval_Scan_inc($start))
+
+Interval_Scan_dec
+    while (($min,$max) = $vector->Interval_Scan_dec($start))
+
+rotate_left
+    $carry_out = $vector->rotate_left();
+
+rotate_right
+    $carry_out = $vector->rotate_right();
+
+shift_left
+    $carry_out = $vector->shift_left($carry_in);
+
+shift_right
+    $carry_out = $vector->shift_right($carry_in);
+
+to_String
+    $string = $vector->to_String(); # e.g., "A08A28AC"
+
+from_string
+    $ok = $vector->from_string($string);
+
+Multiplication
+    $matrix1->Multiplication($rows1,$cols1,
+    $matrix2,$rows2,$cols2,
+    $matrix3,$rows3,$cols3);
+
+Closure
+    $matrix->Closure($rows,$cols);
+
+Shadow
+    $other_vector = $some_vector->Shadow();
+
+Clone
+    $twin_vector = $some_vector->Clone();
+
+new_from_String
+    eval { $vector = Bit::Vector->new_from_String($string); };
+
+to_ASCII
+    $string = $vector->to_ASCII(); # e.g., "2,3,5-7,11,13-19"
+
+from_ASCII
+    eval { $vector->from_ASCII($string); };
+
+Emptyness
+    if ($vector) # if not empty
+    if (! $vector) # if empty
+    unless ($vector) # if empty
+
+    # "$index" is a number or a Perl scalar variable containing a
+    # number which represents the set containing only that element:
+
+Equality
+    if ($vector1 == $vector2)
+    if ($vector1 != $vector2)
+    if ($vector == $index)
+    if ($vector != $index)
+
+Lexical Comparison
+
+    $cmp = $vector1 cmp $vector2;
+    if ($vector1 lt $vector2)
+    if ($vector1 le $vector2)
+    if ($vector1 gt $vector2)
+    if ($vector1 ge $vector2)
+    if ($vector1 eq $vector2)
+    if ($vector1 ne $vector2)
+    $cmp = $vector cmp $index;
+    if ($vector lt $index)
+    if ($vector le $index)
+    if ($vector gt $index)
+    if ($vector ge $index)
+    if ($vector eq $index)
+    if ($vector ne $index)
+
+Shift Register
+    $carry_out = $vector << $carry_in;
+    $carry_out = $vector >> $carry_in;
+    $carry_out = $carry_in >> $vector;
+    $vector <<= $carry_in;
+    $vector >>= $carry_in;
+
+Rotate Register
+    $carry_out = $vector << $vector->bit_test($vector->Size()-1);
+    $carry_out = $vector >> $vector->bit_test(0);
+    $carry_out = $vector->bit_test(0) >> $vector;
+    $vector <<= $vector->bit_test($vector->Size()-1);
+    $vector >>= $vector->bit_test(0);
+
+String Conversion
+    $string = "$vector";
+    print "\$vector = '$vector'\n";
+
+Union
+    $set1 = $set2 + $set3;
+    $set1 += $set2;
+    $set1 = $set2 | $set3;
+    $set1 |= $set2;
+    $vector1 = $vector2 + $index;
+    $vector += $index;
+    $vector1 = $vector2 | $index;
+    $vector |= $index;
+
+Intersection
+    $set1 = $set2 * $set3;
+    $set1 *= $set2;
+    $set1 = $set2 & $set3;
+    $set1 &= $set2;
+    $vector1 = $vector2 * $index;
+    $vector *= $index;
+    $vector1 = $vector2 & $index;
+    $vector &= $index;
+
+Difference
+    $set1 = $set2 - $set3;
+    $set1 -= $set2;
+    $set1 = $set2 - $set1;
+    $vector1 = $vector2 - $index;
+    $vector1 = $index - $vector2;
+    $vector -= $index;
+
+ExclusiveOr
+    $set1 = $set2 ^ $set3;
+    $set1 ^= $set2;
+    $vector1 = $vector2 ^ $index;
+    $vector ^= $index;
+
+Complement
+    $set1 = -$set2;
+    $set1 = ~$set2;
+    $set = -$set;
+    $set = ~$set;
+
+Subset Relationship
+    if ($set1 <= $set2)
+
+True Subset Relationship
+    if ($set1 < $set2)
+
+Superset Relationship
+    if ($set1 >= $set2)
+
+True Superset Relationship
+    if ($set1 > $set2)
+
+Norm
+    $norm = abs($set);
+
+
+Migration strategy to version 4.0 from previous versions:
+---------------------------------------------------------
+
+You will need to apply the following changes to your existing
+applications that use the "Set::IntegerFast" module (use
+interactive global text search & replace for this):
+
+    "Set::IntegerFast"    -->    "Bit::Vector"         (required)
+
+    "Empty_Interval("     -->    "Interval_Empty("     (recommended)
+    "Fill_Interval("      -->    "Interval_Fill("      (recommended)
+    "Flip_Interval("      -->    "Interval_Flip("      (recommended)
+    "Delete("             -->    "Bit_Off("            (recommended)
+    "Insert("             -->    "Bit_On("             (recommended)
+    "flip("               -->    "bit_flip("           (recommended)
+    "in("                 -->    "bit_test("           (recommended)
+    "in("                 -->    "contains("           (alternative)
+    "inclusion("          -->    "subset("             (recommended)
+
+You should also apply these very changes to all of your applications
+using the "Set::IntegerRange" and the "Math::MatrixBool" module.
+
+This is because the same changes and additions as in the new "Bit::Vector"
+module have also been applied to these two modules, including (some of)
+the new methods and (all of) the new method names and aliases!
+
+The old method names on the left of the table above are still supported,
+but deprecated from now on (this means that they could disappear at some
+day in the future).
+
+The module "Set::IntegerFast" still exists, but it is maintained only to
+assure backward compatibility. It might also go sometime in the future.
+
+Therefore, it is strongly recommended that you migrate your application(s).
+
+
+Most important differences between versions 3.x and 4.0:
+--------------------------------------------------------
+
+This module (base class) has been renamed from "Set::IntegerFast"
+to "Bit::Vector".
+
+A module "Set::IntegerFast" still exists; but it is now just
+a wrapper module to maintain backward compatibility.
+
+If you continue to "use Set::IntegerFast" your applications should
+continue to work as before.
+
+The only difference will be in the exact content of the error messages
+issued by the "Bit::Vector" module and possibly in speed of execution.
+
+If your application doesn't rely on the contents of any error messages,
+backward compatibility should be 100%.
+
+A couple of methods have been renamed to make things more consistent,
+meaningful or comfortable, but the "Bit::Vector" class provides alias
+names for those methods to maintain backward compatibility, so you don't
+need to worry about that if you don't want to use the new names.
+
+The "Set::IntegerRange" and "Math::MatrixBool" modules underwent the
+same changes but also provide alias names for the new method names to
+maintain backward compatibility.
+
+Note that the "Set::IntegerFast" wrapper module also supports the new
+methods and new method names in the "Bit::Vector" class, not just the
+old ones!
+
+(But you should rather migrate than making heavy use of this feature!)
+
+The separate version number for the distribution has been abandoned;
+the version of the distribution and the module with the same name are
+now identical (this is achieved in the "Makefile.PL"!).
+
+
+Most important differences between versions 2.x and 3.0:
+--------------------------------------------------------
+
+Starting with the version 2.1 of the "Set::IntegerFast" module, the
+"Set-IntegerFast" distribution has a version number independent of the
+"Set::IntegerFast" module, beginning with version number 3.0.
+
+This is because in this version, a couple of (mostly independent) companion
+or application modules have been added to form a bundle.
+
+
+Most important differences between versions 1.x and 2.0:
+--------------------------------------------------------
+
+1) The standard calling convention for the object constructor method
+   is supported now, i.e.
+
+            $set = Set::IntegerFast::Create($elements);
+
+   is _gone_ and is replaced by
+
+            $set = new Set::IntegerFast($elements);
+
+   (and also including all other possibilities of calling a class method
+   offered by Perl)
+
+2) The object destructor method has also changed its name:
+
+            $set->Destroy();
+
+   is also _gone_ and replaced by
+
+            $set->DESTROY();
+
+   Note however that you don't need to call this method explicitly
+   anymore (!) - Perl will do it automatically for you when the last
+   reference to your set is deleted, for instance through assigning
+   a different value to the Perl variable containing the reference
+   to your set, like in "$set = 0;".
+
+3) The man page is no separate file anymore, it is now included in
+   the file "IntegerFast.pm" in POD format, where it will automatically
+   be found and installed in your "man" directory by "make install".
+
+4) A wrapper module named "Set::IntegerRange" has been added to this
+   package which allows you to use sets of integers in an *arbitrary*
+   interval (instead of from zero to some positive integer).
+
+
+Version history in details:
+---------------------------
+
+Version 1.0 was the initial release.
+
+----------------------------------------------------------------------------
+
+Version 1.1 offered a new "Resize" method which allows you to change the
+size of an existing set while keeping the information it contains (as much
+of it as will fit into the new set) and fixed some errors in the documen-
+tation (the methods Create, Empty, Fill and Copy had complexity n/8 and not
+n/b) by changing the implementation of these methods (so that they became
+of complexity n/b).
+
+The interface of the C routines was made more consistent (the pointer to
+the set is now always the first argument) and a few more paragraphs were
+added to the documentation.
+
+The method "ExclusiveOr" (which calculates the symmetric difference X =
+(Y + Z) \ (Y * Z) of two sets Y and Z) was also added in this version.
+
+Version 1.1 broke with the next new release of Perl, version 5.002 (problems
+with the "Destroy" method and "bad free() ignored" warnings that caused some
+of the tests in "make test" to fail).
+
+----------------------------------------------------------------------------
+
+Version 2.0 fixed the problem that had appeared with Perl 5.002 in version
+1.1.
+
+As a matter of fact, version 2.0 was a complete rewrite of the XSUB part
+of this package. The C library of the package ("lib_set.c") was also changed
+slightly; the functions "lexorder" and "Compare" were changed to become more
+efficient (complexity 1..n/b instead of 1..n/8). Parameter types were adjusted
+to reflect their nature as those integers that the sets of this package are
+all about. The documentation was rewritten completely and ported to POD format.
+
+A new module (in fact a "wrapper" module for the "Set::IntegerFast" module)
+named "Set::IntegerRange" (with version number 1.0) was added in version 2.0
+of this package which allows you to use sets of integers in an *arbitrary*
+interval (instead of from zero to some positive integer).
+
+----------------------------------------------------------------------------
+
+Version 3.0 of the distribution:
+
+Starting with the version 2.1 of the "Set::IntegerFast" module, the
+"Set-IntegerFast" distribution had a version number independent of the
+"Set::IntegerFast" module, beginning with version number 3.0.
+
+Version 2.1 of the "Set::IntegerFast" module (and also version 2.0 of the
+"Set::IntegerRange" module) introduced a new method, "flip", which flips
+an element and returns its new state. It also fixed the "known bug" men-
+tioned in the README file and man page of "Set::IntegerFast" version 2.0.
+
+Moreover, version 2.0 of the "Set::IntegerRange" module introduced the
+possibility to use overloaded operators (instead of explicit method calls).
+
+The independent version number of the distribution was esteemed necessary
+because in that version a couple of companion modules were added:
+
+"Math::MatrixBool", "Math::MatrixReal" and "DFA::Kleene"; moreover,
+the former "kruskal" demo program was upgraded to a Perl module
+(christianed "Graph::Kruskal").
+
+A short essay about the theory behind Kleene's algorithm was also added.
+
+Because many of these modules are only loosely related to the main module
+and since some of these modules are also distributed separately, it was
+important to be able to maintain separate version numbers for them.
+
+Hence the introduction of a separate version number for the distribution
+(which in hindsight may not have been a good idea).
+
+The directory structure of the distribution had to be adjusted accordingly,
+and separate Makefiles had to be provided instead of a single one in order
+to assure correct building and installation of the modules without changing
+the standard installation procedure (which is "perl Makefile.PL", "make",
+"make test" and "make install").
+
+There is actually an alternate way of doing this which doesn't need the many
+"Makefile.PL"s and which consists of creating a "lib" subdirectory in the
+root directory of this distribution and to move the subdirectories "DFA",
+"Graph" and "Math" into it. The problem with this alternative is that it
+adds the word "lib/" in the headers of the man pages of the corresponding
+modules, which makes the names too long for the available space and thus
+clutters the whole headline.
+
+----------------------------------------------------------------------------
+
+In version 3.1 of this distribution, a bug related to 64 bit machines was
+fixed in the "Set::IntegerFast" module, which received version number 2.2.
+
+On 64 bit machines with 64 bits of address space the type "size_t" (the type
+of the byte count argument for the "malloc" system call) needs to have 64 bits
+as well. But type "int" does not necessarily have 64 bits, too, so assuming
+that "int" and "size_t" have the same size leads to errors.
+
+Note that if you know for sure that your machine has built-in "long" integer
+arithmetic at the machine language instruction level AND that type "size_t"
+(the type of the result of the "sizeof" operator and of the argument for the
+"malloc" system call) is (at least) as large as a "long" on your machine, then
+you may safely change the two lines
+
+typedef  unsigned   int     unit;
+typedef  unsigned   int     N_int;
+
+in the file "Set/lib_defs.h" to
+
+typedef  unsigned   long    unit;
+typedef  unsigned   long    N_int;
+
+in order to improve the complexity of the functions of the "Set::IntegerFast"
+module.
+
+BEWARE that if you do this you may not use sets larger than (with more
+elements than) the constant "LONG_MAX" on your system MINUS ONE, or the
+two functions "Set_Min" and "Set_Max" will produce inconsistent (weird)
+results!
+
+NOTE that there is NO CHECK in this module to ensure this condition!!
+
+Also remember to apply this same change to the file "Math/lib_defs.h" in
+case the latter is not a symbolic link to the former on your system!
+
+----------------------------------------------------------------------------
+
+Version 3.2 of the "Set-IntegerFast" distribution featured three new methods
+in the "Set::IntegerFast" module (which received version number 3.0) which fill
+the gap between setting or clearing either *all* elements at once or a *single*
+element at a time: it is now possible to set, clear and flip a whole *interval*
+of elements (of arbitrary size, as long as it will fit into the set as a whole)
+all at once!
+
+It also introduced a new "Size()" method which returns the size a given set
+has been created with (or "Resize()"d to).
+
+The same four methods were also added to the "Set::IntegerRange" module in
+a similar fashion. (The version number of the "Set::IntegerRange" module went
+up to 3.0, too.)
+
+The "Math::MatrixBool" module (which received version number 2.0) was
+improved significantly through a C library (linked to Perl via the XSUB
+interface) that handled matrix multiplication and the calculation of a
+matrix's closure (Kleene's algorithm). At the same time the bugs which
+had existed in their Perl (predecessor) versions were fixed in the new
+C version.
+
+The module also featured a new "new_from_string()" method analogue to the one
+which had already been implemented before in the "Math::MatrixReal" module.
+
+Moreover, it was also equipped with a "Dim()" (dimensions) method which
+the "Math::MatrixReal" module also already had had and which I simply had
+forgotten to implement in the previous version.
+
+A severe bug was fixed in the "kleene()" method of the "Math::MatrixReal"
+module, whose version number moved on to 1.1.
+
+----------------------------------------------------------------------------
+
+Version 4.0 was a complete rewrite of the whole "Set::Integerfast" module
+(which besides has been renamed to "Bit::Vector") with also large additions
+to its associated application modules.
+
+The module has been renamed to "Bit::Vector" since it now not only offers
+methods for the handling of sets, but also for other applications based
+on bit vectors, like boolean matrices and shift registers.
+
+A huge number of new methods has been added to the "Bit::Vector" module,
+as well as to its application classes (see the corresponding list above
+under "New features"!).
+
+For instance, and for the first time in this module's history, it is
+possible to convert a set or bit vector into a string representation,
+which can be stored in a file, for example, and which can be read back
+in later!
+
+The extra version number for the distribution was abandoned, the version
+number of the distribution is now linked to the version number of the
+module with the same name as the distribution (this is achieved in the
+file "Makefile.PL").
+
+Moreover, the separate "Makefile.PL"s were abandoned because they made
+things too complicated to maintain.
+
+Instead, the solution (already mentioned further above) using the "lib"
+subdirectory was adopted.
+
+Also, the multiple modules using C code via the XSUB interface made things
+too complicated, which is one of the reasons why everything was assembled
+into one unique C library.
+
+Another reason was the arrival of the new functionality to implement bit
+shift registers, which fits well into a bit vector class (but not into a
+set calculations class).
+
+The latter was also a major reason for renaming the module to "Bit::Vector".
+
+----------------------------------------------------------------------------
+
+In version 4.1, two new methods named "Move_Left()" and "Move_Right()"
+have been added to the "Bit::Vector" module for shifting a bit vector
+to the left or right by more than one bit at a time.
+
+Note that the semantics of the overloaded operators "<<" and ">>" returned
+to their usual behaviour, i.e., they now shift the given bit vector left
+or right by the indicated number of bits.
+
+Moreover, two new methods named "increment()" and "decrement()" have been
+added which increment/decrement a given bit vector as though it was one
+large (unsigned) integer in binary representation.
+
+Note that the semantics of the overloaded operators "++" and "--" have
+been changed to call these two new methods instead of setting/clearing
+bit #1, as they did before.
+
+The two new methods "Move_Left()" and "Move_Right()" allowed to implement
+a likewise rather efficient new method in the "Set::IntegerRange" module
+named "Resize()" which allows you to change the size of an existing set
+while preserving as many bits (i.e., elements) of the old set as will
+possibly fit into the new set.
+
+(If you INCREASE the size of your set there will be no loss at all!)
+
+Finally, the two methods "Interval_Scan_inc()" and "Interval_Scan_dec()"
+(from the "Bit::Vector" module) are now also available in the
+"Set::IntegerRange" module (with similar functionality).
+
+In order to facilitate the calling of methods of the underlying "Bit::Vector"
+class without violating the module's privacy (i.e., without having to know
+the module's implementation), a method named "BitVector()" has been added.
+
+----------------------------------------------------------------------------
+
+In version 4.2, two new methods have been added to the "Bit::Vector" and
+the "Set::IntegerRange" module which test wether ALL bits of a given bit
+vector are cleared or set: "is_empty()" and "is_full()".
+
+----------------------------------------------------------------------------
+
+Starting with version 5.0 of the "Bit::Vector" distribution, all modules
+that were previously part of this distribution are now available separately.
+
+In version 5.0, the following new methods have been added:
+
+  -  Word_Bits()
+  -  Long_Bits()
+  -  Concat()
+  -  Concat_List()
+  -  Primes()
+  -  Reverse()
+  -  Interval_Reverse()
+  -  Interval_Copy()
+  -  Interval_Substitute()
+  -  Lexicompare()
+  -  to_Bin()
+  -  from_Bin()
+  -  to_Dec()
+  -  from_Dec()
+  -  Bit_Copy()
+  -  LSB()
+  -  MSB()
+  -  lsb()
+  -  msb()
+  -  Insert()
+  -  Delete()
+  -  add()
+  -  subtract()
+  -  Negate()
+  -  Absolute()
+  -  Sign()
+  -  Multiply()
+  -  Divide()
+  -  GCD()
+  -  Block_Store()
+  -  Block_Read()
+  -  Word_Size()
+  -  Word_Store()
+  -  Word_Read()
+  -  Word_List_Store()
+  -  Word_List_Read()
+  -  Word_Insert()
+  -  Word_Delete()
+  -  Chunk_Store()
+  -  Chunk_Read()
+  -  Chunk_List_Store()
+  -  Chunk_List_Read()
+  -  Index_List_Remove()
+  -  Index_List_Store()
+  -  Index_List_Read()
+  -  Transpose()
+
+The following methods have been re-implemented in C (instead of Perl):
+
+  -  Version()
+  -  Shadow()
+  -  Clone()
+  -  to_Enum()       (previously named "to_ASCII")
+  -  from_Enum()     (previously named "from_ASCII")
+
+The following method has changed its behaviour:
+
+  -  Compare()       (now assumes that bit vectors are SIGNED)
+
+The following methods have been renamed:
+
+  -  to_String()      -->    to_Hex()
+  -  from_string()    -->    from_Hex()
+  -  to_ASCII()       -->    to_Enum()
+  -  from_ASCII()     -->    from_Enum()
+
+(Aliases for the old names are still available but deprecated!)
+
+And finally, the following methods are gone:
+
+  -  lexorder()
+  -  new_from_String()
+
+----------------------------------------------------------------------------
+

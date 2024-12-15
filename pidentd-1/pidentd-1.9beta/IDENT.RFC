@@ -1,0 +1,605 @@
+Below follows two slightly different versions of the soon-to-be RFC
+document describing the IDENT protocol. Please note that these are just
+*WORKING* documents and that they change almost every day. The reason for
+two version is that there are some discussion about what should go into
+the RFC and not. The discussion is talking place on the mailing list:
+
+   ident@nri.reston.va.us
+
+/Peter Eriksson <pen@lysator.liu.se>, 1 June 1992
+
+------------------------------ VERSION 1 ------------------------------
+From ident-request@NRI.Reston.VA.US Thu May 28 20:13:23 1992
+Flags: 000000000011
+Received: from NRI.RESTON.VA.US by lysator.liu.se  with SMTP
+          (5.65c8/1.34/Lysator-3.1) id AA12459; Thu, 28 May 1992 20:13:13 +0200 
+Received: from nri.reston.va.us by NRI.Reston.VA.US id aa01907;
+          28 May 92 13:52 EDT
+Received: from umd5.umd.edu by NRI.Reston.VA.US id aa01903; 28 May 92 13:51 EDT
+Received: by umd5.umd.edu id <AA01290@umd5.umd.edu>; Thu, 28 May 92 13:52:48 -0400
+Message-Id: <9205281752.AA01290@umd5.umd.edu>
+To: ident@NRI.Reston.VA.US
+Subject: Next version - Alternative 1
+Date: Thu, 28 May 92 13:52:47 -0400
+From: Mike StJohns <stjohns@umd5.umd.edu>
+X-Mts: smtp
+Keywords: ident
+
+I've got two possible versions going forward - this one which differs
+>From the last only in wordsmithing the security considerations
+section, and one which I'll post in an hour or so which includes
+changes along the lines of the message I sent earlier in the week.
+Comments please!  Mike
+
+
+Network Working Group                                       Mike StJohns
+Request for Comments:                                                DOD
+Supersedes: RFC912, RFC931                                    April 1992
+
+			Identification Server
+
+
+STATUS OF THIS MEMO
+
+INTRODUCTION
+
+   The Identification Server Protocol provides a means to determine the
+   identity of a user of a particular TCP connection.  Given a TCP port
+   number pair, it returns a character string which identifies the owner
+   of that connection on the server's system.
+
+   The Identification Server Protocol was formerly called the
+   Authentication Server Protocol.  It has been renamed to better
+   reflect its function.
+
+OVERVIEW
+
+   This is a connection based application on TCP.  A server listens for
+   TCP connections on TCP port 113 (decimal).  Once a connection is
+   established, the server reads one line of data which specifies the
+   connection of interest.  If it exists, the system dependent user
+   identifier of the connection of interest is sent out the connection.
+   The service closes the connection after sending the user identifier.
+
+RESTRICTIONS
+
+   Queries are permitted only for fully specified connections.  The
+   query contains the local/foreign port pair -- the local/foreign
+   address pair used to fully specify the connection is taken from the
+   local and foreign address of query connection.  This means a user
+   on address A may only query the server on address B about
+   connections between A and B.
+
+
+QUERY/RESPONSE FORMAT
+
+   The server accepts simple text query requests of the form
+
+      <local-port> , <foreign-port>
+
+   where <local-port> is the TCP port (decimal) on the target (where
+   the "ident" server is running) system, and <foreign-port> is the TCP
+   port (decimal) on the source (client) system.
+   
+   N.B - "local" and "foreign" are relative.  If there is a TCP
+   connection from host A to host B, <local-port> on host A equals
+   <foreign-port> on host B and <foreign-port> on host A equals
+   <local-port> on host B.  If a client on host A wants to ask a
+   server on host B about a connection specified locally as 23, 6191
+   (an inbound TELNET connection), the client must actually ask about
+   6191, 23 - which is how the connection would be specified on host
+   B.
+
+      For example:
+
+         6191, 23
+
+   The response is of the form
+
+      <local-port> , <foreign-port> : <response-type> : <additional-info>
+
+   where <local-port>,<foreign-port> are the same pair as the query,
+   <response-type> is a keyword identifying the type of response, and
+   <additional info> is context dependent.
+   
+   The information returned is that associated with the fully
+   specified TCP connection identified by <local-host>,
+   <foreign-host>, <local-port>, <foreign-port>, where <local-host>
+   and <foreign-host> are the local and foreign IP addresses of the
+   querying connection -- i.e. the TCP connection to the Identity
+   Protocol Server.  (<local-port> and <foreign-port> are taken from
+   the query.)
+
+      For example:
+
+         6193, 23 : USERID : UNIX : stjohns
+         6195, 23 : ERROR : NO-USER
+
+RESPONSE TYPES
+
+   A response can be one of two types:
+
+   USERID
+
+      In this case, <additional-info> is a string consisting of an
+      operating system name, followed by a ":", followed by user
+      identification string in a format peculiar to the system running
+      the ident server.  N.B. This is a change from the RFC931
+      specification.  The user identification string returned by this
+      protocol, its syntax, and relative meaning may vary from
+      implementation to implementation and from host to host.
+
+
+      Permitted operating system names are specified in RFC-1060,
+      "Assigned Numbers" or its successors.  The only other name
+      permitted is "OTHER" to specify any operating system not yet
+      registered with the IANA (Internet Assigned Numbers Authority).
+      "OTHER" should also be used to represent unregistered operating
+      system types.  It MAY optionally be used in place of a
+      registered OS to hide such information.
+
+
+   ERROR
+
+      For some reason the owner of <TCP-port> could not be determined,
+      <additional-info> tells why.  The following are the permitted
+      values of <additional-info> and their meanings:
+
+      INVALID-PORT
+
+         Either the local or foreign port was improperly specified.
+	 This should be returned if either or both of the port ids
+         were out of range (TCP port #s are from 1-65535), negative
+         integers, reals or in any fashion not recognized as a
+         non-negative integer.
+
+      NO-USER
+
+         The connection specified by the port pair is not currently in
+         use or currently not owned by an identifiable entity.
+
+      UNKNOWN-ERROR
+
+         Can't determine connection owner; reason unknown.  Any error
+         not covered above should return this error code value.
+	 Optionally, this code MAY be returned in lieu of "NO-USER" or
+	 "INVALID-PORT" to hide such information.  If a server
+	 implements such a feature, it MUST be configurable and it
+	 MUST default to returning the proper error message.
+
+   Other values may eventually be specified and defined in future
+   revisions to this document.  If an implementer has a need to
+   specify a non-standard error code, that code must begin with "X-".
+
+   In addition, the server is allowed to drop the query connection
+   without responding.  Any close, whether graceful or an abort should
+   be considered to have the same meaning as "ERROR : UNKNOWN-ERROR".
+
+
+
+FORMAL SYNTAX
+
+   <request> ::= <port-pair> <CR> <LF>
+
+   <port-pair> ::= <integer> "," <integer>
+
+   <reply> ::= <reply-text> <CR> <LF>
+
+   <reply-text> ::= <error-reply> | <auth-reply>
+
+   <error-reply> ::= <port-pair> ":" "ERROR" ":" <error-type>
+
+   <auth-reply> ::= <port-pair> ":" "USERID" ":" <opsys> ":" <user-id>
+
+   <error-type> ::= "INVALID-PORT" | "NO-USER" | "UNKNOWN-ERROR"
+                /   |  <error-token>
+
+   <opsys> ::= "OTHER" | "MULTICS" | "UNIX" | <token> ...etc.  (See
+      "Assigned Numbers")
+
+   <user-id>   ::= <octet-string>
+
+   <token>     ::= 1*64<token-characters> ; 1-64 characters
+
+   <error-token> ::= "X"<token>
+
+   <integer>     ::= 1*5<digit> ; 1-5 digits.
+
+   <digit> ::= "0" | "1" ... "8" | "9" ; 0-9
+
+   <token-characters> ::= <Any of these ASCII characters: a-z, A-Z, /
+      - (dash), .!@#$%^&*()_=+.,<>/?"'~`{}[];\| > ; upper and
+      lowercase a-z plus printables minus ; the colon ":" character.
+
+   <octet-string> ::= 1*512<octet-characters>
+
+   <octet-characters> ::= <any octet from 0 to '377 (octal) except for
+      / ASCII NUL, CR and LF>
+
+   Notes on Syntax:
+
+      1) White space (blanks and tab characters) between tokens is not
+      important and may be ignored.  White space may occur anywhere,
+      except within a token -- specifically, any amount of white space
+      is permitted at the beginning or end of a line both for queries
+      and responses.  Note that this does not apply for responses that
+      contain a user ID -- everything after the colon after the
+      operating system type until the terminating CR/LF is taken as
+      part of the user ID.  The terminating CR/LF is NOT considered
+      part of the user ID.
+      
+      2) Note that neither whitespace nor the ":" character may appear
+      within a token.  If there is a need to represent a colon or
+      whitespace within a token, continguous whitespace within the
+      value to be represented as a token should be replaced by a
+      single dash (ASCII ?), and the ":" (colon) character should be
+      replaced by ".." (period period - a colon on its side).
+      
+      3) For purposes of comparison for all fields, uppercase is
+      distinct from lower case.  I.e. "Error" and "ERROR" are not the
+      same value.
+
+      4)  Any additional <error-type>s must also be <token>s. 
+
+      5) The 512 character limit on user IDs and the 64 character
+      limit on tokens should be understood to mean as follows: a) No
+      new token (i.e. OPSYS or ERROR-TYPE) token will be defined that
+      has a length greater than 64 and b) a server SHOULD NOT send
+      more than 512 octets of user ID and a client MUST accept at
+      least 512 octets of user ID.  Because of this limitation, a
+      server MUST return the most significant portion of the user ID
+      in the first 512 octets.
+
+Notes on User Identifier:
+
+   The user identifier returned by the server should be the standard
+   one for the system.  Usually, but not always, this has the same
+   value and format as a users mailing address.
+
+Security Considerations:
+
+
+
+
+   The information returned by this protocol is at most as trustworthy
+   as the host providing it OR the organization operating the host.
+   For example, a PC in an open lab has few if any controls on it to
+   prevent a user from having this protocol return any identifier the
+   user wants.  Likewise, if the host has been compromised the
+   information returned may be completely erroneous and misleading.
+
+
+   The Identity Protocol is not intended as an authorization or access
+   control protocol.  At best, it provides some additional auditing
+   information with respect to TCP connections.  At worst, it can
+   provide misleading, incorrect, or maliciously incorrect
+   information.
+
+   The use of the information returned by this protocol for other than
+   auditing is strongly discouraged.  Specifically, using Identity
+   Protocol information to make access control decisions - either as
+   the primary method (i.e no other checks) or as an adjunct to other
+   methods may result in a weakening of normal host security.
+
+   An Ident server may reveal information about users, entities,
+   objects or processes which might normally be considered private.
+   An Ident server provides service which is a rough analog of the
+   CallerID (tm) services provided by some phone companies and many of
+   the same privacy considerations and arguments that apply to the
+   CallerID service apply to Ident.  If you wouldn't run a "finger"
+   server due to privacy considerations you may not want to run this
+   protocol.
+
+ACKNOWLEDGEMENTS:
+
+   Acknowledgement is given to Dan Bernstein who is primarily
+   responsible for renewing interest in this protocol and for pointing
+   out some annoying errors in RFC931. 
+
+
+
+------------------------------ VERSION 2 ------------------------------
+From ident-request@NRI.Reston.VA.US Thu May 28 21:23:49 1992
+Flags: 000000000011
+Received: from NRI.RESTON.VA.US by lysator.liu.se  with SMTP
+          (5.65c8/1.34/Lysator-3.1) id AA12801; Thu, 28 May 1992 21:23:42 +0200 
+Received: from nri.reston.va.us by NRI.Reston.VA.US id aa05785;
+          28 May 92 14:59 EDT
+Received: from umd5.umd.edu by NRI.Reston.VA.US id aa05768; 28 May 92 14:59 EDT
+Received: by umd5.umd.edu id <AA03050@umd5.umd.edu>; Thu, 28 May 92 15:00:03 -0400
+Message-Id: <9205281900.AA03050@umd5.umd.edu>
+To: ident@NRI.Reston.VA.US
+Subject: Alternative 2
+Date: Thu, 28 May 92 15:00:01 -0400
+From: Mike StJohns <stjohns@umd5.umd.edu>
+X-Mts: smtp
+Keywords: ident
+
+
+Network Working Group                                       Mike StJohns
+Request for Comments:                                                DOD
+Supersedes: RFC912, RFC931                                    April 1992
+
+			Identification Server
+
+
+STATUS OF THIS MEMO
+
+INTRODUCTION
+
+   The Identification Server Protocol provides a means to determine the
+   identity of a user of a particular TCP connection.  Given a TCP port
+   number pair, it returns a character string which identifies the owner
+   of that connection on the server's system.
+
+   The Identification Server Protocol was formerly called the
+   Authentication Server Protocol.  It has been renamed to better
+   reflect its function.
+
+OVERVIEW
+
+   This is a connection based application on TCP.  A server listens for
+   TCP connections on TCP port 113 (decimal).  Once a connection is
+   established, the server reads one line of data which specifies the
+   connection of interest.  If it exists, the system dependent user
+   identifier of the connection of interest is sent out the connection.
+   The service closes the connection after sending the user identifier.
+
+RESTRICTIONS
+
+   Queries are permitted only for fully specified connections.  The
+   query contains the local/foreign port pair -- the local/foreign
+   address pair used to fully specify the connection is taken from the
+   local and foreign address of query connection.  This means a user
+   on address A may only query the server on address B about
+   connections between A and B.
+
+
+QUERY/RESPONSE FORMAT
+
+   The server accepts simple text query requests of the form
+
+      <local-port> , <foreign-port>
+
+   where <local-port> is the TCP port (decimal) on the target (where
+   the "ident" server is running) system, and <foreign-port> is the TCP
+   port (decimal) on the source (client) system.
+   
+   N.B - "local" and "foreign" are relative.  If there is a TCP
+   connection from host A to host B, <local-port> on host A equals
+   <foreign-port> on host B and <foreign-port> on host A equals
+   <local-port> on host B.  If a client on host A wants to ask a
+   server on host B about a connection specified locally as 23, 6191
+   (an inbound TELNET connection), the client must actually ask about
+   6191, 23 - which is how the connection would be specified on host
+   B.
+
+      For example:
+
+         6191, 23
+
+   The response is of the form
+
+      <local-port> , <foreign-port> : <response-type> : <additional-info>
+
+   where <local-port>,<foreign-port> are the same pair as the query,
+   <response-type> is a keyword identifying the type of response, and
+   <additional info> is context dependent.
+   
+   The information returned is that associated with the fully
+   specified TCP connection identified by <local-host>,
+   <foreign-host>, <local-port>, <foreign-port>, where <local-host>
+   and <foreign-host> are the local and foreign IP addresses of the
+   querying connection -- i.e. the TCP connection to the Identity
+   Protocol Server.  (<local-port> and <foreign-port> are taken from
+   the query.)
+
+      For example:
+
+         6193, 23 : USERID : UNIX : stjohns
+         6195, 23 : ERROR : NO-USER
+
+RESPONSE TYPES
+
+   A response can be one of two types:
+
+   USERID
+
+      In this case, <additional-info> is a string consisting of an
+      operating system name (with an optional character set
+      identifier), followed by a ":", followed by identification
+      string.  The character set identifier is used to indicate the
+      character set of the identification string.  If a character set
+      identifier is omitted, the identification string is assumed to
+      be in "NVT-ASCII".
+
+      Permitted operating system names and character set names are
+      specified in RFC-1060, "Assigned Numbers" or its successors.
+
+      A particular operating system identifier implies a specific
+      consistent format for the user identification string.  E.g.
+      "UNIX" implies an 8 character user id.  An Ident server must use
+      an operating system identifier of "OTHER" if it returns a user
+      identification string which is not properly formatted (e.g.
+      "Michael StJohns, DOD, Analyst" is an invalid UNIX user id) -
+      see below.
+
+      In addition to those operating system names specified in
+      Assigned numbers there are two special case identifiers:
+      "OCTET" and "OTHER".  
+
+      "OCTET" indicates the identifier is an unformatted octet string
+      - all octets are permissible EXCEPT \000 (NUL), \012 (LF) and
+      \015 (CR).  NB - space characters (\040) following the colon
+      seperator ARE part of the identifier string and may not be
+      ingored. A response containing an OCTET string is still
+      terminated normally by a CR/LF.  A character set MAY be
+      specified with OCTET, but can safely be ignored.
+
+      "OTHER" indicates the identifier is an unformatted character
+      string consisting of printable characters in the specified
+      character set.  "OTHER" must be specified if there is no
+      registered format for a user id for this operating system, if
+      the system wishes to return an identification which is not in
+      the format registered for this system (eg. an encrypted audit
+      token), or if there is a desire to hide the operating system
+      type.  The main difference between "OCTET" and "OTHER" is that
+      and "OTHER" identification string is expected to be printable in
+      some character set.
+
+   ERROR
+
+      For some reason the owner of <TCP-port> could not be determined,
+      <additional-info> tells why.  The following are the permitted
+      values of <additional-info> and their meanings:
+
+      INVALID-PORT
+
+         Either the local or foreign port was improperly specified.
+	 This should be returned if either or both of the port ids
+         were out of range (TCP port #s are from 1-65535), negative
+         integers, reals or in any fashion not recognized as a
+         non-negative integer.
+
+      NO-USER
+
+         The connection specified by the port pair is not currently in
+         use or currently not owned by an identifiable entity.
+
+      UNKNOWN-ERROR
+
+         Can't determine connection owner; reason unknown.  Any error
+         not covered above should return this error code value.
+	 Optionally, this code MAY be returned in lieu of "NO-USER" or
+	 "INVALID-PORT" to hide such information.  If a server
+	 implements such a feature, it MUST be configurable and it
+	 MUST default to returning the proper error message.
+
+   Other values may eventually be specified and defined in future
+   revisions to this document.  If an implementer has a need to
+   specify a non-standard error code, that code must begin with "X".
+
+   In addition, the server is allowed to drop the query connection
+   without responding.  Any close, whether graceful or an abort should
+   be considered to have the same meaning as "ERROR : UNKNOWN-ERROR".
+
+
+
+FORMAL SYNTAX
+
+   <request> ::= <port-pair> <CR> <LF>
+
+   <port-pair> ::= <integer> "," <integer>
+
+   <reply> ::= <reply-text> <CR> <LF>
+
+   <reply-text> ::= <error-reply> | <auth-reply>
+
+   <error-reply> ::= <port-pair> ":" "ERROR" ":" <error-type>
+
+   <auth-reply> ::= <port-pair> ":" "USERID" ":" <opsys-field> ":" <user-id>
+
+   <error-type> ::= "INVALID-PORT" | "NO-USER" | "UNKNOWN-ERROR"
+                /   |  <error-token>
+
+   <opsys-field> ::= <opsys> [ "/" <charset>]
+
+   <opsys> ::= "OTHER" | "OCTET" | "UNIX" | <token> ...etc.  (See
+      "Assigned Numbers")
+
+   <charset> ::= "NVT-ASCII" | ...etc.  (See "Assigned Numbers")
+
+   <user-id>   ::= <octet-string>
+
+   <token>     ::= 1*64<token-characters> ; 1-64 characters
+
+   <error-token> ::= "X"<token>
+
+   <integer>     ::= 1*5<digit> ; 1-5 digits.
+
+   <digit> ::= "0" | "1" ... "8" | "9" ; 0-9
+
+   <token-characters> ::= <Any of these ASCII characters: a-z, A-Z, /
+      - (dash), .!@#$%^&*()_=+.,<>/?"'~`{}[];\| > ; upper and
+      lowercase a-z plus printables minus ; the colon ":" character.
+
+   <octet-string> ::= 1*512<octet-characters>
+
+   <octet-characters> ::= <any octet from \000 to \377 (octal) except for
+      / ASCII NUL (\000), CR (\015) and LF (\012)>
+
+   Notes on Syntax:
+
+      1) White space (blanks and tab characters) between tokens is not
+      important and may be ignored.  White space may occur anywhere,
+      except within a token -- specifically, any amount of white space
+      is permitted at the beginning or end of a line both for queries
+      and responses.  Note that this does not apply for responses that
+      contain a user ID -- everything after the colon after the
+      operating system type until the terminating CR/LF is taken as
+      part of the user ID.  The terminating CR/LF is NOT considered
+      part of the user ID.
+      
+      2) For purposes of comparison for all fields the USERID
+      field, uppercase is not distinct from lower case.  I.e.
+      "Error" and "ERROR" are the same value.
+
+      3)  Any additional <error-type>s must also be <token>s. 
+
+      4) The 512 character limit on user IDs and the 64 character
+      limit on tokens should be understood to mean as follows: a) No
+      new token (i.e. OPSYS or ERROR-TYPE) token will be defined that
+      has a length greater than 64 and b) a server SHOULD NOT send
+      more than 512 octets of user ID and a client MUST accept at
+      least 512 octets of user ID.  Because of this limitation, a
+      server MUST return the most significant portion of the user ID
+      in the first 512 octets.
+
+      5) The character sets and character set identifiers should map
+      directly to those specified and used by the MIME Mail
+      extensions.  Character set identifiers only apply to the user
+      identification field - all other fields will be defined in and
+      must be sent as NVT-ASCII.
+
+      6) Although <user-id> is defined as an <octet-string> above, it
+      must follow the format and character set constraints implied by
+      the <opsys-field>.
+
+Security Considerations:
+
+   The information returned by this protocol is at most as trustworthy
+   as the host providing it OR the organization operating the host.
+   For example, a PC in an open lab has few if any controls on it to
+   prevent a user from having this protocol return any identifier the
+   user wants.  Likewise, if the host has been compromised the
+   information returned may be completely erroneous and misleading.
+
+
+   The Identity Protocol is not intended as an authorization or access
+   control protocol.  At best, it provides some additional auditing
+   information with respect to TCP connections.  At worst, it can
+   provide misleading, incorrect, or maliciously incorrect
+   information.
+
+   The use of the information returned by this protocol for other than
+   auditing is strongly discouraged.  Specifically, using Identity
+   Protocol information to make access control decisions - either as
+   the primary method (i.e no other checks) or as an adjunct to other
+   methods may result in a weakening of normal host security.
+
+   An Ident server may reveal information about users, entities,
+   objects or processes which might normally be considered private.
+   An Ident server provides service which is a rough analog of the
+   CallerID (tm) services provided by some phone companies and many of
+   the same privacy considerations and arguments that apply to the
+   CallerID service apply to Ident.  If you wouldn't run a "finger"
+   server due to privacy considerations you may not want to run this
+   protocol.
+ACKNOWLEDGEMENTS:
+
+   Acknowledgement is given to Dan Bernstein who is primarily
+   responsible for renewing interest in this protocol and for pointing
+   out some annoying errors in RFC931. 
+
+
+

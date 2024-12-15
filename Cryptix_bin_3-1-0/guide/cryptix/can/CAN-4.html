@@ -1,0 +1,607 @@
+<HTML>
+<HEAD>
+   <TITLE>A Java Implementation of RPK</TITLE>
+</HEAD>
+<BODY BGCOLOR="#FFFFFF">
+
+<H1 ALIGN=CENTER><A NAME="top"></A><IMG
+SRC="../images/Cryptix-logo.gif" ALT="Cryptix logo" WIDTH=266
+HEIGHT=120 BORDER=0 ALIGN=middle></H1>
+
+<H1 ALIGN=CENTER>A Java<SUP><FONT SIZE="-2">TM</FONT></SUP>
+implementation of RPK</H1>
+
+<P ALIGN=CENTER>(Cryptix Application Note #4 -- October 1997)</P>
+
+<P>&nbsp;<B>Table of Contents</B></P>
+
+<UL>
+   <LI><A HREF="#overview">Overview</A>
+   
+   <LI><A HREF="#api">RPK --An informal introduction</A>
+   
+   <LI><A HREF="#features">Java implementation specifics</A>
+   
+   <UL>
+      <LI><A HREF="#crc32">CRC32 and SecureRandom</A>
+      
+      <LI><A HREF="#exp">Key exponentiation</A>
+      
+      <LI><A HREF="#key">RPK Keys</A>
+      
+      <UL>
+         <LI><A HREF="#data">Key data</A>
+         
+         <LI><A HREF="#granularity">Key granularity</A>
+      </UL>
+      
+      <LI><A HREF="#id">Key ID</A>
+      
+      <LI><A HREF="#blocksize">Encryption/Decryption block size</A>
+      
+      <LI><A HREF="#cipher">Using the IJCE API for stream and block
+      cipher operations</A>
+      
+      <LI><A HREF="#sig">Using the IJCE API for signing/verification
+      of digital signatures</A>
+   </UL>
+   
+   <LI><A HREF="#howto">Using the Java RPK package</A>
+   
+   <LI><A HREF="#test">Does it work?</A>
+   
+   <LI><A HREF="#refs">References</A>
+</UL>
+
+<P>Return to the <A HREF="index.html">Application Notes Index</A> or
+the <A HREF="../../../FAQ.html">FAQ</A> or the
+<A HREF="../../../overview.html">Overview</A>.</P>
+
+<P>
+<HR>
+</P>
+
+<H3><A NAME="overview"></A><A HREF="#top"><IMG
+SRC="../images/chrnd03.gif" WIDTH=20 HEIGHT=12 BORDER=0
+ALIGN=bottom></A>Overview</H3>
+
+<P>The RPK system is a comprehensive set of procedures for secure
+exchange of communication designed by <CITE>
+<A HREF="mailto:raike@swdev.co.nz">William Raike</A> </CITE>. The
+publicly available documents describing the system and a Borland
+Delphi/Pascal implementation of it are available at
+<A HREF="http://crypto.swdev.co.nz">http://crypto.swdev.co.nz/</A>.
+</P>
+
+<P>The reader is encouraged to examine those documents since they
+describe more formally the mathematical basis used in constructing
+the algorithm, and the resultant cryptographic qualities.</P>
+
+<P>This application note only deals with programming decisions
+adopted in the Java implementation of the system and how and why they
+differ from the Delphi one. It is not a substitute for a proper
+understanding of the algorithm. The term <I>RPK</I> is applied to the
+algorithm of that name, rather than the company.</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="api"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>RPK --An informal
+introduction</H3>
+
+<P>RPK cryptography relies basically on an instance of a
+<I>keystream</I> generator that both <I>Alice</I> and <I>Bob</I>
+--the parties wishing to communicate securely-- have to
+<B>synchronise</B> to the same state (by convention referred to as
+<I>K</I>). Once the <I>keystream</I> automaton is initialised to the
+state <I>K</I>, Alice creates a <I>ciphertext</I> by combining the
+<I>plaintext</I> with the <I>keystream</I> output, while Bob
+reconstructs the <I>plaintext</I> from the <I>ciphertext</I> by
+combining the latter with the same <I>keystream</I> output. The
+combination function in this case being a bit-wise XOR of both
+sources (<I>plaintext/ciphertext</I> and <I>keystream</I>).</P>
+
+<P>The secure exchange of the value <I>K</I> (i.e., the starting
+state of the <I>keystream</I> automaton) relies on the mathematics of
+polynomials in the field <I>F<SUB><FONT SIZE="-1">2</FONT></SUB><FONT
+SIZE="-1">L</FONT> = Z<SUB><FONT SIZE="-1">2</FONT></SUB><FONT
+SIZE="-1"> </FONT>/ f(x)</I>, <I>f(x)</I> a primitive polynomial of
+degree <I>L</I>. In this field, the following formula, which embodies
+the RPK system, is true:</P>
+
+<P ALIGN=CENTER>(x<SUP> <FONT SIZE="-1">D</FONT></SUP>)<SUP> R</SUP>
+= (x<SUP> <FONT SIZE="-1">R</FONT></SUP>)<SUP> D</SUP> = K (<I>mod
+f(x)</I>)</P>
+
+<P>Written differently, the same equality can be stated as follows:
+</P>
+
+<P ALIGN=CENTER>E<SUP><FONT SIZE="-1"> R</FONT></SUP> = Q<SUP><FONT
+SIZE="-1"> D</FONT></SUP> = K (<I>mod f(x)</I>)</P>
+
+<P>In this syntax, <I>E</I> and <I>Q</I> are called <I>states</I> of
+the <I>keystream</I> generator, while <I>D</I> and <I>R</I> are
+referred to as <I>distances</I> or <I>exponents</I>.</P>
+
+<P>If <I>E</I> is the public key of the recipient, and <I>D</I> is
+his private one, then transmitting the crucial value of the state
+<I>K</I> is equivalent to the originator Alice generating another
+functionally similar pair (<I>Q, R</I>), and sending only the
+<I>Q</I> portion to Bob. In turn, for Bob to synchronize the
+<I>keystream</I> generator, he needs to compute <I>Q<SUP> <FONT
+SIZE="-1">D</FONT></SUP></I>, from the state <I>Q</I> and his private
+key <I>D</I>.</P>
+
+<P>&nbsp;</P>
+
+<P>Keys in the RPK scheme are either <I>states</I> of a Non-Linear
+Feedback Shift Register (NLFSR), or <I>distances</I>; ie. number of
+steps to advance the said NLFSR by. Effectively, RPK uses a special
+case of a <I>Combination Generator</I>, where one NLFSR called the
+<I>Mixer</I>, is used to select the source of the next output among
+two other NLFSRs. This NLFSR triplet arrangement is called a
+<I>Mixture Generator</I>.</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="features"></A><IMG SRC="../images/chrnd03.gif" WIDTH=20
+HEIGHT=12 ALIGN=bottom>Java implementation specifics</H3>
+
+<P>The publicly available Delphi implementation of the RPK system is
+programmed in Borland's Delphi 2.0. Some parts of the code are
+removed but the available documentation is sufficient to re-implement
+the missing code.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="crc32"></A>CRC32 and SecureRandom</H4>
+
+<P>The major characteristic of the Delphi implementation, is that
+<B><I>everything</I></B> is built from scratch. I don't know if this
+is the case because (a) no basic utilities and/or classes exist for
+Delphi programmers which are unencumbered by intellectual property
+rights, or (b) the author chose to re-code these basic classes to
+better control their behaviour, enhance the performance, etc...</P>
+
+<P>For the Java implementation I chose to use and rely on the
+available classes of Sun's JDK (1.1.4 was used for this project).
+More specifically, <CODE>java.util.zip.CRC32</CODE> and
+<CODE>java.security.SecureRandom</CODE> classes were used for CCITT
+CRC 32-bit handling and cryptographically strong pseudo random number
+generation respectively.</P>
+
+<P>The rational for using <CODE>java.util.zip.CRC32</CODE> is
+trivial: why re-invent the wheel? The JDK CRC32 class is the CCITT
+version, although the documentation of the class does not state it
+explicitly. Any class that implements the
+<CODE>java.util.zip.Checksum</CODE> interface can be substituted.
+</P>
+
+<P>The choice for <CODE>SecureRandom</CODE> as the source of random
+data, instead of building a class from RPK's NLFSR as suggested by
+the Delphi implementation, is less obvious. Contrary to what it may
+seem from browsing the Delphi sources, RPK is not about generating
+random numbers. The concept of NLFSR as used by RPK, surely yields to
+building pseudo random number generators, but ultimately, any
+cryptographically secure PRNG should fill the requirement. In fact,
+and for the sake of argument, <CODE>java.util.Random</CODE> could
+have been used instead. However, since we're dealing with
+cryptographic classes, it makes sense to only use cryptographically
+strong PRNGs.</P>
+
+<P>The documentation for <CODE>SecureRandom</CODE> states:</P>
+
+<BLOCKQUOTE><P><CITE>This class provides a cryptographically strong
+pseudo-random number generator based on the SHA-1 hash
+algorithm.</CITE></P>
+
+<P><CITE>The calls inherited from Random will be implemented in terms
+of the strengthened functionality.</CITE></P></BLOCKQUOTE>
+
+<P>and further on:</P>
+
+<BLOCKQUOTE><P><CITE>... We attempt to provide sufficient seed bytes
+to completely randomize the internal state of the generator (20
+bytes). Note, however, that our seed generation algorithm has not
+been thoroughly studied or widely deployed. It relies on counting the
+number of times that the calling thread can yield while waiting for
+another thread to sleep for a specified interval. </CITE></P>
+</BLOCKQUOTE>
+
+<P>In the absence of tools to measure the claimed strength/randomness
+of the generated output sequence, I'll take Sun's word for it!
+However, any class that implements the
+<CODE>java.security.SecureRandom</CODE> interface can be substituted
+by the user of the provider.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="exp"></A>Key exponentiation</H4>
+
+<P>The Delphi implementation uses pre-computed values of all possible
+powers of a given RPK Key. Remember an RPK Key is a triplet of
+NLFSRs. Each one, called also a <I>Generator</I> is chosen so its
+underlying LFSR has a maximum-length output of 2<SUP><FONT
+SIZE="-1">L</FONT></SUP>-1. The default specifications for the
+<I>Generators</I> used in generating RPK Keys have: 2<SUP><FONT
+SIZE="-1">89</FONT></SUP>-1, 2<SUP><FONT SIZE="-1">127</FONT></SUP>-1
+and 2<SUP><FONT SIZE="-1">521</FONT></SUP>-1 different non-zero
+states/powers respectively. Each state is represented by 12, 16, and
+66 bytes respectively.</P>
+
+<P>The Java implementation does not pre-compute these values. Instead
+it computes the required exponentiation using an adaptation of
+Knuth's <I>Algorithm A</I>. In doing so, the Java implementation
+gains in storage requirements but loses in speed.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="key"></A>RPK Keys</H4>
+
+<P>The differences between the Delphi and Java implementations of an
+RPK key relate to three areas.</P>
+
+<H5><A NAME="data"></A>Key data</H5>
+
+<P>An RPK Key is an instance of a <I>Mixture Generator</I>; ie. a
+triplet of <I>Generators</I>, with the first one acting as the
+<I>Mixer</I>. The source of the final key output is selected
+according to the value of the <I>Mixer</I>'s underlying NLFSR output
+value: if it's zero then the first sub-generator (the second
+<I>Generator</I> in the list) is chosen, otherwise it's the second
+sub-generator (the last <I>Generator</I> in the list).</P>
+
+<P>The specifications for a <I>Generator</I> are a pair of integers
+that define the powers of the terms of the polynomial: x<SUP><FONT
+SIZE="-1">n</FONT></SUP> + x<SUP><FONT SIZE="-1">k</FONT></SUP> + 1,
+which govern the output sequence of the underlying LFSR.</P>
+
+<P>The Delphi implementation uses {{89, 38}, {127, 30}, {521, 163}}
+as default values, while the Java one uses: {{89, 38}, {127, 63},
+{521, 168}}. The reason for this deviation is to improve the
+performance of the Java code; this minimises the shift operations on
+the contents of the LFSR without loosing any meaningful output. See
+the code for a fuller comment.</P>
+
+<P>In order to generate keys with the same behaviour as the Delphi
+implementation, do this:</P>
+
+<PRE>    // use delphi/pascal generator specs
+    int[][] newspecs = {{89, 38}, {127, 30}, {521, 163}};
+    int newgranularity = 8;
+    SecureRandom newprng = new SecureRandom();
+    RPKKeyGenerator kg = new RPKKeyGenerator();
+ 
+    kg.initialize(newspecs, newgranularity, newprng);
+ 
+    RPKKey k = (RPKKey) kg.generateKey();
+&nbsp;</PRE>
+
+<H5><A NAME="granularity"></A>Key granularity</H5>
+
+<P>The <I>granularity</I> property tells how many bits of the
+<I>Mixture Generator</I> output are to be combined with the
+plain/cipher-text to produce a cipher/plain-text. The smaller this
+value is, the less secure the final output becomes.</P>
+
+<P>The Delphi code defines three values for this property: 1, 8 and
+32 bits, with 8 being the default value.</P>
+
+<P>The Java implementation, using the byte as the basic data storage
+unit to allow for platform independence, re-defines the
+<I>granularity</I> property as a value between 1 and 8 inclusive.
+This new property is then a superset of the Delphi one, which allows
+for more complexities in the produced output. 8-bit
+<I>Granularity</I> is also the default here as well.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="id"></A>Key ID</H4>
+
+<P>The Delphi implementation implicitly associates a notion of
+<I>certificate</I> to the contents of an RPK Key when computing the
+ID of a Key. Specifically, the ID is based on the actual contents of
+an encoding of the Key framed within a packet whose header contains
+application dependent information. This <I>certificate</I> does not
+follow any standard but is rather specific to the implementation
+itself. Furthermore, and for the specific case of a Key, it contains
+information that is alien to the key itself.</P>
+
+<P>The Java implementation computes the ID based on the Raw-Encoded
+bytes of the key only. The Raw-Encoded bytes contains enough
+information to reproduce the Key on any other
+platform/implementation.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="blocksize"></A>Encryption/Decryption block size</H4>
+
+<P>In the Delphi implementation, the encryption process is done as
+follows:</P>
+
+<BLOCKQUOTE><P>For every <I>block-size</I> bytes of input generate a
+new <I>swap-table</I> and divide the input into n blocks of 256 bytes
+each. For every one of these 256-byte blocks do the following:</P>
+
+<OL>
+   <LI>Update a CRC on the total input data processed so far
+   including the current 256-byte block,
+   
+   <LI>Transpose the 256-byte block contents according to the current
+   swap-table,
+   
+   <LI>Combine the session key's generator output with the data to
+   produce the cipher-text using the key's <I>granularity</I>
+   property,
+   
+   <LI>Discard a number of the session key's generator output
+   obtained by masking the CRC value obtained in step 1 above with a
+   specified <I>Mask</I>.
+</OL></BLOCKQUOTE>
+
+<P>The default <I>block-size</I> value is 4096.</P>
+
+<P>The Java implementation does not use the block-size property at
+all. Rather, it generates a new swap-table for every new 256-byte
+block. Implicitly this is equivalent to being hard-wired for a
+<I>block-size</I> equal to 256.</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="cipher"></A>Using the IJCE API for stream and block
+cipher operations</H4>
+
+<P>The Java implementation provides two classes that permit the use
+of the RPK system as either a stream cipher or as a 256-byte block
+cipher.</P>
+
+<P>The standard JCE/IJCE API for instantiating and using
+<CODE>java.security.Cipher</CODE> instances are catered for.&nbsp;
+</P>
+
+<P>&nbsp;</P>
+
+<H4><A NAME="sig"></A>Using the IJCE API for signing/verification of
+digital signatures</H4>
+
+<P>In public cryptography, a digital signature is computed from the
+message to be signed, and the signer's private key. Anybody wishing
+to verify the obtained digital signature, would use the alleged
+signer's public key and the signed message to check the authenticity
+of the fact that the digital signature was indeed produced by the
+signer.</P>
+
+<P>In the RPK system, a digital signature can not be produced without
+prior knowledge of the intended recipient or recipients. As a
+consequence, the usual passing of the signer's private key as the
+argument to the <CODE>initSign()</CODE> method is replaced by passing
+the recipient's public key instead. Also, the passing of the owner's
+public key to the <CODE>initVerify()</CODE> method is replaced by the
+passing of the owner's private key instead.</P>
+
+<P>More specifically, here are the steps involved in RPK digital
+signature/verification:</P>
+
+<BLOCKQUOTE><P>Signer:</P>
+
+<OL>
+   <LI>Hash the message to be signed, obtaining its <I>md</I>;
+   
+   <LI>Frame <I>md</I> in a PKCS#1 type 0 frame. Call this <I>Mp</I>;
+   
+   <LI>Choose a random number. Call it <I>R</I>;
+   
+   <LI>Compute <I>Q = x<SUP><FONT SIZE="-1"> R</FONT></SUP></I>;
+   
+   <LI>Compute <I>K = E<SUP><FONT SIZE="-1"> R</FONT></SUP></I>,
+   where <I>E</I> is the recipient's public key;
+   
+   <LI>Encrypt <I>Mp</I> with an RPK stream cipher initialised to
+   <I>state K</I>. Call the result <I>Mc</I>;
+   
+   <LI>Return the digital signature as the concatenation of <I>Q ||
+   Mc</I>.
+</OL>
+
+<P>Recipient:</P>
+
+<OL>
+   <LI>Hash the message to be verified, obtaining its <I>md</I>;
+   
+   <LI>Frame <I>md</I> in a PKCS#1 type 0 frame. Call this <I>Mp</I>;
+   
+   <LI>Extract <I>Q</I> and <I>Mc</I> from the digital signature to
+   be checked;
+   
+   <LI>Compute <I>K' = Q<SUP><FONT SIZE="-1"> D</FONT></SUP></I>,
+   where <I>D</I> is the recipient's private key;
+   
+   <LI>Decrypt <I>Mc</I> with an RPK stream cipher initialised to
+   state <I>K'</I>. Call the result <I>Mp'</I>;
+   
+   <LI>Assert that <I>Mp = Mp'</I>.
+</OL></BLOCKQUOTE>
+
+<P>For performance reasons, the Java implementation, only uses the
+last generator in the RPK Key triplet during exponentiation steps.
+</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="howto"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Using the Java RPK
+package</H3>
+
+<P>In the following code examples we will assume that
+<CODE>prng</CODE> is an instance of java.security.SecureRandom or one
+of its subclasses.</P>
+
+<P>&nbsp;</P>
+
+<H4>Generating Secret Keys</H4>
+
+<P>To generate new RPK Secret Keys with default specifications and
+default granularity (8 bits) for use with
+<CODE>java.security.Cipher</CODE> objects:</P>
+
+<BLOCKQUOTE><PRE>KeyGenerator kg = KeyGenerator.getInstance("RPK");
+kg.initialize(prng);
+RPKKey key1 = (RPKKey) kg.generateKey();
+RPKKey key2 = (RPKKey) kg.generateKey();
+...
+RPKKey keyN = (RPKKey) kg.generateKey();</PRE></BLOCKQUOTE>
+
+<P>&nbsp;</P>
+
+<H4>Visualising the actual contents of an RPK Key</H4>
+
+<P>To view the actual contents of an RPK Key:</P>
+
+<BLOCKQUOTE><P><CODE>System.out.println(key);</CODE></P>
+</BLOCKQUOTE>
+
+<P>The output will be similar to the following:</P>
+
+<PRE>&nbsp;
+RPK Key...
+          ID: [EIEJFBIF]
+      Length: 737 bits
+ Granularity: 8
+    Material: RPK Mixture Generator (1 + 2)...
+Mixer: [...
+ TrinomialLFSR &lt;89, x89 + x38 + 1&gt;...
+ current state is: Binary dump of a BigRegister [89-bit]...
+Byte #:|........|........|........|........|........|........|........|........|
+    12:                                     00000001 11111000 00110010 11111001
+     8: 10000100 11110101 11001100 11100010 00011111 00010100 01000001 10001111
+...]
+&nbsp;
+Generator #1: [...
+ TrinomialLFSR &lt;127, x127 + x63 + 1&gt;...
+ current state is: Binary dump of a BigRegister [127-bit]...
+Byte #:|........|........|........|........|........|........|........|........|
+    16: 00000010 10011111 01110011 01010110 00101101 10001011 11101010 01011110
+     8: 01100010 10011101 00100010 00010100 10111010 10000101 01011000 00000101
+...]
+&nbsp;
+Generator #2: [...
+ TrinomialLFSR &lt;521, x521 + x168 + 1&gt;...
+ current state is: Binary dump of a BigRegister [521-bit]...
+Byte #:|........|........|........|........|........|........|........|........|
+    66: 00000000 11110001
+    64: 01001000 01101010 01011010 11101000 10101111 11110011 10110010 11000111
+    56: 11101000 11001110 01100000 10111100 00100010 01001000 00001000 10101010
+    48: 11101111 11000111 01001110 11100010 00001000 10011111 11110011 11010010
+    40: 10100111 00101010 10001100 01011000 11010001 01011110 01010001 11011101
+    32: 01001001 01010101 11101000 10011100 00101011 01110011 01011111 11101100
+    24: 10000000 11110111 10100011 10101111 10111010 01001100 10000010 10001111
+    16: 10010010 11110000 01111111 11011001 10001010 01110101 11001101 01100101
+     8: 00010100 00110010 01111001 00011000 00001101 10100100 01110110 01111111
+...]</PRE>
+
+<P>&nbsp;</P>
+
+<H4>Generating Pairs of Public and Private Keys</H4>
+
+<P>To generate new RPK key pairs of public and private keys with
+default specifications, default pseudo-random number generator
+(<CODE>java.security.SecureRandom</CODE>), and a granularity of 8 for
+use with <CODE>java.security.Signature</CODE> objects:</P>
+
+<BLOCKQUOTE><PRE>KeyPairGenerator kg = KeyPairGenerator.getInstance("RPK");
+kg.initialize(8);
+KeyPair pair = kg.generateKeyPair();
+RPKKey E = (RPKKey) pair.getPublic();
+RPKKey D = (RPKKey) pair.getPrivate();</PRE></BLOCKQUOTE>
+
+<P>&nbsp;</P>
+
+<H4>Creating and using stream and block Cipher instances</H4>
+
+<P>To create a new RPK stream cipher object and initialise it to
+state K (an instance of <CODE>RPKKey</CODE>) and encrypt an input
+byte array:</P>
+
+<BLOCKQUOTE><PRE>Cipher rpk = Cipher.getInstance("RPK.stream.cipher", "Cryptix");
+rpk.initEncrypt(K);
+byte[] output = rpk.crypt(input);</PRE></BLOCKQUOTE>
+
+<P>To do the same with an RPK block cipher used in ECB mode with no
+padding:</P>
+
+<BLOCKQUOTE><PRE>Cipher rpk = Cipher.getInstance("RPK.block.cipher", "Cryptix");
+rpk.initEncrypt(K);
+byte[] output = rpk.crypt(input);</PRE></BLOCKQUOTE>
+
+<P>&nbsp;</P>
+
+<H4>Creating and using RPK-based digital signatures</H4>
+
+<P>To create an RPK-SHA digital signature and use it to sign a byte[]
+<CODE>message</CODE> addressed to Bob who claims to own the public
+key <CODE>E</CODE>:</P>
+
+<BLOCKQUOTE><PRE>Signature ds = Signature.getInstance("RPK-SHA");
+ds.initSign((PrivateKey) E);    // role reversal in RPK
+ds.update(message);
+byte[] signature = ds.sign();</PRE></BLOCKQUOTE>
+
+<P>To verify that a received digital signature relates to a message
+that was originally signed by Alice who is supposed to have used our
+public key.</P>
+
+<BLOCKQUOTE><PRE>ds.initVerify((PublicKey) D);    // D is our private key
+ds.update(message);
+System.out.println(ds.verify(signature) ? "OK..." : "Failed...");</PRE>
+</BLOCKQUOTE>
+
+<H3>
+<HR SIZE="1">
+<A NAME="test"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>Does it work?</H3>
+
+<P>Two test classes are provided to test the RPK package: TestRPK and
+TestRPK2.</P>
+
+<P>The first one tests the key pair generation process, the basic RPK
+formula, the stream cipher operation and the digital signature
+classes, while the other tests the key generation and the block
+cipher operations in ECB, CBC, CFB and OFB modes with no padding.
+</P>
+
+<H3>
+<HR SIZE="1">
+<A NAME="refs"></A><A HREF="#top"><IMG SRC="../images/chrnd03.gif"
+WIDTH=20 HEIGHT=12 BORDER=0 ALIGN=bottom></A>References</H3>
+
+<P>William Raike, <CITE>RPK Implementation in Borland
+Delphi/Pascal</CITE>, documentation.<BR>
+
+Alfred Menezes et al, <CITE>Handbook of Applied Cryptography</CITE>,
+pp 195-222.<BR>
+
+Bruce Schneier, <CITE>Applied Cryptography</CITE>, chap. 16.<BR>
+
+Donald E. Knuth, <CITE>The Art of Computer Programming</CITE>, Vol 2.
+pp 442.<BR>
+
+</P>
+
+<P>
+<hr size="3" noshade>
+<img src=../../../images/cryptix.gif alt=Cryptix align=right>
+
+<font size=-1>
+<ADDRESS><A HREF="mailto:raif@fl.net.au">Raif S. Naffah</A><BR>
+Chatswood, 30 September 1997.</ADDRESS>
+<P>
+<B>Copyright</B> &copy; 1996-1997 Systemics Ltd<br>
+on behalf of the Cryptix Development Team.<BR>
+All rights reserved.<BR>
+Cryptix is a trademark of Systemics Ltd.<BR>
+RPK is a patent-pending algorithm of RPK Ltd.<BR>
+All other trademarks and registered trademarks<BR>
+are the property of their respective owners.<BR>
+</font>
+</BODY>
+</HTML>

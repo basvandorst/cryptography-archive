@@ -1,0 +1,180 @@
+Newsgroups: sci.crypt
+Path: msuinfo!caen!umeecs!umn.edu!lynx.unm.edu!nmsu.edu!opus!ted
+From: ted@nmsu.edu (Ted Dunning)
+Subject: Re: Wanted: very fast random number generator
+In-Reply-To: rdippold@qualcom.qualcomm.com's message of Wed, 27 Jan 1993 01:12:54 GMT
+Message-ID: <TED.93Jan28201657@lole.nmsu.edu>
+Sender: usenet@nmsu.edu
+Organization: Computing Research Lab
+References: <C1H7tG.7At.2@cs.cmu.edu> <rdippold.728097174@qualcom>
+Date: Fri, 29 Jan 1993 03:16:57 GMT
+Lines: 168
+
+
+
+a linear shift register generator like this can be sped up enormously
+by using a little bit of table lookup.  this allows one to generate 8
+or more bits per iteration.
+
+
+here is some code.  have fun.
+
+#!/bin/sh
+# This is a shell archive (produced by shar 3.50)
+# To extract the files from this archive, save it to a file, remove
+# everything above the "!/bin/sh" line above, and type "sh file_name".
+#
+# made 01/29/1993 03:16 UTC by ted@lole.NMSU.Edu
+# Source directory /lole2/ted/src
+#
+# existing files will NOT be overwritten unless -c is specified
+#
+# This shar contains:
+# length  mode       name
+# ------ ---------- ------------------------------------------
+#   1643 -rw-rw-r-- crc.c
+#    310 -rw-rw-r-- crc.h
+#
+# ============= crc.c ==============
+if test -f 'crc.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crc.c (File already exists)'
+else
+echo 'x - extracting crc.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crc.c' &&
+/* compute crc sums */
+X
+long preload[256];
+X
+/* 8 bit checksum */
+long crc8(poly,data,count)
+long poly;
+char *data;
+long count;
+{
+X    int i,j,sum;
+X
+X    for (i=0;i<256;i++) {
+X	sum = i;
+X	for (j=0;j<8;j++) {
+X	    if (sum&0x80) {
+X		sum = (sum<<1) ^ poly;
+X	    }
+X	    else {
+X		sum <<= 1;
+X	    }
+X	}
+X	preload[i] = sum&0xff;
+X    }
+X
+X    sum = 0;
+X    if (data) {
+X	for (;count;count--) {
+X	    sum = preload[sum] ^ *data++;
+X	}
+X    }
+X    return sum;
+}
+X    
+/* 16 bit checksum */	
+long crc16(poly,data,count)
+long poly;
+char *data;
+long count;
+{
+X    int i,j,sum;
+X
+X    for (i=0;i<256;i++) {
+X	sum = i<<8;
+X	for (j=0;j<8;j++) {
+X	    if (sum&0x8000) {
+X		sum = (sum<<1) ^ poly;
+X	    }
+X	    else {
+X		sum <<= 1;
+X	    }
+X	}
+X	preload[i] = sum&0xffff;
+X    }
+X
+X    sum = 0;
+X    if (data) {
+X	for (;count;count--) {
+X	    sum = 0xffff & (preload[sum>>8] ^ (sum<<8) ^ *data++);
+X	}
+X    }
+X    sum = 0xffff & (preload[sum>>8] ^ (sum<<8));
+X    sum = 0xffff & (preload[sum>>8] ^ (sum<<8));
+X    return sum;
+}
+X    
+X	
+/* 32 bit checksum */
+long crc32(poly,data,count)
+long poly;
+char *data;
+long count;
+{
+X    int i,j,sum;
+X
+X    for (i=0;i<256;i++) {
+X	sum = i<<24;
+X	for (j=0;j<8;j++) {
+X	    if (sum&0x80000000) {
+X		sum = (sum<<1) ^ poly;
+X	    }
+X	    else {
+X		sum <<= 1;
+X	    }
+X	}
+X	preload[i] = sum&0xffffffff;
+X    }
+X
+X    sum = 0;
+X    if (data) {
+X	for (;count;count--) {
+X	    sum = 0xffffffff & (preload[sum>>24] ^ (sum<<8) ^ *data++);
+X	}
+X    }
+X    sum = 0xffffffff & (preload[sum>>24] ^ (sum<<8));
+X    sum = 0xffffffff & (preload[sum>>24] ^ (sum<<8));
+X    sum = 0xffffffff & (preload[sum>>24] ^ (sum<<8));
+X    sum = 0xffffffff & (preload[sum>>24] ^ (sum<<8));
+X
+X    return sum;
+}
+X    
+X	
+SHAR_EOF
+chmod 0664 crc.c ||
+echo 'restore of crc.c failed'
+Wc_c="`wc -c < 'crc.c'`"
+test 1643 -eq "$Wc_c" ||
+	echo 'crc.c: original size 1643, current size' "$Wc_c"
+fi
+# ============= crc.h ==============
+if test -f 'crc.h' -a X"$1" != X"-c"; then
+	echo 'x - skipping crc.h (File already exists)'
+else
+echo 'x - extracting crc.h (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crc.h' &&
+/* compute crc sums */
+X
+#define CRC_16 (0x8005)
+#define CRC_CCITT (0x1005)
+X
+/* 8 bit checksums */
+long crc8(/* long poly, char *data, long count */);
+X    
+/* 16 bit checksums */	
+long crc16(/* long poly, char *data, long count */);
+X	
+/* 32 bit checksums */
+long crc32(/* long poly, char *data, long count */);
+SHAR_EOF
+chmod 0664 crc.h ||
+echo 'restore of crc.h failed'
+Wc_c="`wc -c < 'crc.h'`"
+test 310 -eq "$Wc_c" ||
+	echo 'crc.h: original size 310, current size' "$Wc_c"
+fi
+exit 0

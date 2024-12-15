@@ -1,0 +1,63 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!uunet!mnemosyne.cs.du.edu!nyx!colin
+From: colin@nyx.cs.du.edu (Colin Plumb)
+Subject: Re: Using MD5 as a cipher
+Message-ID: <1993Oct12.101041.13242@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx's hardware; my opinions.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <01H3VYDDPCGO91WMC7@delphi.com>
+Date: Tue, 12 Oct 93 10:10:41 GMT
+Lines: 51
+
+In article <01H3VYDDPCGO91WMC7@delphi.com>,
+Mike Ingle <MIKEINGLE@delphi.com> wrote:
+> I remember reading about a method of using MD5 and similar hash functions
+> as ciphers. Does anyone know where to get code or a description of this?
+> How does it work? How strong are the resulting ciphers?
+
+MD5 is based on a central Transform() function, which takes a 16-byte hash
+and 64 bytes of text as input, and produces a 16-byte updated hash.
+
+One way to look at this is a (non-invertible) block cipher with a 16-byte
+block size and a 64-byte key size.
+
+However, if you use a cipher in CFB (Cipher Feedback) mode, you don't need
+to invert it.  If x[] is the plaintext, y[] is the ciphertext, and CRYPT()
+is some encryption function, then CFB uses
+
+y[i] = x[i] ^ CRYPT(y[i-1])
+x[i] = y[i] ^ CRYPT(y[i-1])
+
+The only thing you need is an IV y[-1].  This should either be
+random, or x[0] should be random.  This latter technique avoids
+storing the IV as part of the key.
+
+
+Some people are distressec by the fact that x[i] does not pass through the
+CRYPT() operation in CFB mode, thinking that weakens it, and thus prefer
+CBC (Cipher Block Chaining).  Well, with CFB, changing one bit in block
+y[i] changes the corresponding bit in x[i] and trashes x[i+1].
+
+CBC operation is:
+
+y[i] = CRYPT(x[i] ^ y[i-1])
+x[i] = y[i-1] ^ DECRYPT(y[i])
+
+CRYPT() and DECRYPT() are basically identical in strength (with ciphers like
+DES and IDEA, it's just a matter of changing how the key is scheduled),
+so decryption is basically the same process.  Changing one bit in y[i]
+will trash x[i] and change the corresponding bit in x[i+1].
+
+This makes them very similar is strength.
+
+As for the effectiveness of MD5 as a cipher this way, I don't know, but
+have no great reason to doubt it.
+
+If doing this, you can expand the key 4 times and pre-add the Mysterious
+Constants, and probably put the data in sequential use order to maximize
+cache locality and the usefulness of autoincrement addressing modes.
+
+Now, I wonder if this counts as cryptographic technical data?
+-- 
+	-Colin

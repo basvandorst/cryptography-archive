@@ -1,0 +1,190 @@
+Some Facts about NFS Response Time
+
+Robert E. Cousins, 
+AIM Technology
+
+A brief discussion of NFS technology, response time issues, and
+AIM's NFS Response Time Monitor (NFSRTM).
+
+What is NFS?
+
+NFS is a network protocol which allows a client computer (such as a
+workstation) to remotely access disk files on a server computer (such
+as a fileserver). There are 18 NFS operations which can be viewed as
+the primitive operations upon which all other file operations can be
+built. NFS operations are implemented using a facility known as RPC 
+Remote Procedure Call). A feature of RPC is that a client makes a
+request and the server replies once the operation is complete. (The
+client never "trusts" the server -- if a request is not matched by a
+reply within a short period of time, the client is responsible for
+retrying the operation.) The list of NFS operations are:
+
+TABLE 1. 
+	Null
+	Create 
+	GetAttr
+	Remove 
+	SetAttr
+	Rename 
+	Root
+	Link 
+	LookUp
+	SymLink 
+	ReadLink
+	MkDir 
+	Read
+	RmDir 
+	WriteCache
+	ReadDir 
+	Write
+	StatFS
+
+These commands can be classified into several areas:
+
+1. Read Operations: GetAttr, LookUp, ReadLink, Read, ReadDir -- These
+operations return information or data about files. The server's buffer
+cache will contain this information in a large portion of the cases.
+
+2. Write operations: SetAttr, Write, -- These operations cause
+existing data to be modified. The NFS protocol requires that the
+server not reply until these changes have been sent to "stable store"
+-- disk or other medium that will be relatively immune from system
+failures. Another term for these operations is "Synchronous." 
+
+3. Housekeeping operations: Create, Remove, Rename, Link, SymLink,
+MkDir, RmDir, StatFS -- most of these functions are also synchronous
+since they involve modifying the filesystem in ways which could make
+crash recovery difficult. The exception is StatFS which provides
+filesystem statistics such as the amount of free space, etc.
+
+4. Unimplemented operations: Null, Root, WriteCache -- these functions
+are defined as NO-OPs (they perform no actual function). Null is used
+to verify NFS services by the automounter command. WriteCache and Root
+are functions which are for future use and are outdated, respectively.
+Except for Null, these functions should never be called.
+
+Not all NFS operations are created equal. 
+
+Different NFS operations take different periods of time. Read
+operations have a high probability of hitting the server's buffer
+cache and therefore are usually the fastest operations being dependent
+solely on CPU speeds. This is fortunate since they are also usually
+the most popular operations. Write operations are typically much
+slower since they are limited not by CPU speed but by mechanical disk
+movements. Most housekeeping operations are also mechanically
+limited.
+
+Synchronous operations can become very slow when many synchronous
+operations queue on the same disk. Furthermore, once a fileserver
+begins to slow because of a load of synchronous operations, read
+operations which are not in the buffer cache are also slowed.
+
+This picture is further complicated by the fact that the "mix" of NFS
+operation varies wildly from place to place and minute to minute. For
+example, in CAD environments, read operations dominate throughout most
+of the day but write operations dominate before lunch and quitting
+time as databases are saved. In software development environments, the
+load of synchronous operations is more continuous and heavier on
+average (though will usually be less than the peak under CAD
+environments). 
+
+It is common for a fileserver to go a second or more between NFS
+requests. It is also common for a server to receive 200 or more NFS
+operations in a single second. The NFS load is at best called "burst
+." However, most servers respond quickly when lightly loaded and
+slower as the load increases.
+
+So what is "Good Enough?"
+
+Since each environment varies by mix and the mix varies minute by
+minute, it is difficult to define an acceptable threshold of
+performance. It is common to have GetAttr operations (generally the
+most common operation) responding in about 1 millisecond (0.001 second
+) while write operations for the same fileserver can take 100
+milliseconds (0.100 seconds).
+
+Even lightly loaded (on average) systems will routinely take "long
+times" to service faster operations occurring during periods of peak
+loading. In other words, it is "normal" to have some operations which
+violate a given performance threshold. The key is to monitor not only
+the performance threshold but also the percentage which violates the
+threshold. Using the command "nfsstat -m" one is able to view a subset
+of the performance characteristics of a working system. Typically,
+read operations will operate in the 7-12 millisecond range for lightly
+loaded system. Write operations will typically take 4 to 5 times
+longer than reads. 
+
+Computing Your Own Performance Threshold
+
+The first question to be answered is: "At what point in the day does
+my response time first slow down to an unacceptable level?" At this
+time, run the NFSRTM program with a narrow window of 5 to 10 minutes.
+This will tell you what the average response times are for the various
+fileservers and give you an idea of how busy these fileservers truly
+are. (Don't forget that many of the NFS operations which take place
+are "hidden" ones generated by background tasks, paging, swapping and
+other activities which are often ignored.) Then run NFSRTM at a time
+of minimal load such as early in the morning or late in the evening
+when backups are not being run. Lastly run it at a time with peak
+loading. This will give you three data points from which to calculate
+your local thresholds.
+
+The ideal threshold is one in which more than 90% of all NFS requests
+are serviced under the threshold *and* response time is viewed as "goo
+" to "satisfactory." Therefore, a good starting point is either the
+first value measured above or the average of the three readings. Once
+this threshold value is calculated, NFSRTM will allow you to monitor
+fileserver performance over longer periods of time so that you can
+better judge your fileserver performance.
+
+"What if My Response is Bad?"
+
+First of all, don't panic. There are many possible causes for poor
+performance-most are easily fixable. The following is a quick list of 
+easy fixes."
+
+o Remove remote mounts going through routers and/or bridges. For best
+performance make sure that most operations go to fileservers on the
+local subnet.
+
+o Keep network loading down. Limit the number of workstations and
+fileservers on a net so that the network load is under 30% at peak
+times. A good alternate rule of thumb is to limit suspect networks to
+15 to 20 workstations as an experiment. If using diskless workstation
+, consider making this number even smaller at first. Monitor the
+collisions rate over the LAN to measure your progress.
+
+o Use high speed routers. It is common mistake to use a workstation or
+fileserver with two ethernet interfaces as a bridge between subnets.
+This often DOUBLES NFS response time.
+
+o Avoid overloading any one fileserver. Spread popular files over
+multiple fileservers.
+
+o Avoid overloading any one filesystem. Make sure that you are not
+spending all of your time with a filesystem level bottleneck instead
+of a fileserver bottleneck.
+
+o Avoid SymLinks in common file paths. These generate large numbers of
+NFS operations since SymLinks are not cached on the client side. The
+worst are SymLinks which are near the root of filesystems so that a
+high percentage of file lookups will result in SymLink traversals.
+
+o Verify that your operating systems are properly tuned. Your
+fileserver should not be dropping packets, should have lots of nfsd's
+and a good hit rate on its filename and buffer caches. Your clients
+should not be aggressively retrying commands when the server becomes
+too loaded.
+
+There are many other items to watch, but these will get you started.
+For those situations where you suspect that you might have a problem
+or where you need to have a better feel for your overall system's
+performance, consider investigating AIM's SharpShooter distributed
+Client/Server Performance Monitor. It will help you to track down your
+loading on a client by client and fileserver by fileserver basis. It
+will even help you to monitor filesystem level loading. It will also
+allow you to study graphical displays of your network loading to help
+you to manage your resources and plan future expansions.
+
+If you have any comments or questions regarding NFSRTM, you can
+contact AIM Technology at (408)748-8649 or nfsrtm-comments@aim.com.

@@ -1,0 +1,139 @@
+From mrr@scss3.cl.msu.edu Tue Mar 22 16:36:50 PST 1994
+Article: 17448 of sci.crypt
+Path: sqwest!vanbc.wimsey.com!cyber2.cyberstore.ca!nntp.cs.ubc.ca!newsxfer.itd.umich.edu!gatech!europa.eng.gtefsd.com!library.ucla.edu!agate!msuinfo!scss3.cl.msu.edu!mrr
+From: mrr@scss3.cl.msu.edu (Mark Riordan)
+Newsgroups: sci.crypt
+Subject: Re: Ladder DES
+Date: 1 Mar 1994 02:40:12 GMT
+Organization: Michigan State University
+Lines: 123
+Message-ID: <2ku9uc$sr8@msuinfo.cl.msu.edu>
+References: <1994Feb22.083353.26012@cactus.org> <2kejt8$1384@msuinfo.cl.msu.edu> <1994Feb25.175256.1510@cactus.org> <2km7dv$jf2@msuinfo.cl.msu.edu>
+NNTP-Posting-Host: scss3.cl.msu.edu
+X-Newsreader: TIN [version 1.2 PL1]
+
+Mark Riordan (mrr@scss3.cl.msu.edu) wrote:
+: I will prepare a description of the algorithm and have
+: someone who has not seen RSA DSI's code reimplement it 
+: in C.  (RSA's implementation is about 150 lines of C,
+: so it shouldn't be too hard.)  Then we'll have a public
+: domain implementation of a stronger-than-DES cipher
+: designed by recognized experts.
+
+So, here it is:
+
+DESX is an encryption algorithm that extends the famous DES
+(Data Encryption Standard) algorithm to a keysize of 120 bits.
+It does this by simply XORing the input block with a bit pattern
+(pre-Whitening), encrypting with standard DES, and then XORing 
+the result with another bit pattern (post-Whitening).
+
+DESX was designed by RSA Data Security, and has been in use
+in its MailSafe and BSafe encryption products since 1986/87.
+RSA DSI says:
+  "We claim no intellectual property ownership of DESX except for a
+  copyright on our own implementation and a trademark on DESX.  If
+  someone wanted to use our spec for DESX, they could call it DESX if it
+  were an accurate implementation. In any case, no money is involved."
+
+The algorithm is quite simple, and is described below.  Nearly all
+of the steps in the algorithm are at key setup time.
+
+DESX encrypts 64 bits (8 bytes) at a time, just like DES.
+
+DESX takes two keys:  a DES key (represented as 8 bytes, but 
+of course only 56 bits are used, as per DES specs), and a
+"Whitening" key of length 8 bytes, of which all 64 bits are significant.
+
+The Whitening key is expanded into two 64-bit bit patterns, the
+pre-Whitening pattern, and the post-Whitening pattern.
+
+Because DESX uses absolutely off-the-shelf DES as one of its
+pieces, a particular DES implementation is not included as part
+of the specification of DESX.  It is assumed that you have your
+own favorite DES implementation with its own peculiarities in
+terms of procedure calling sequences, key data structures, and
+so on.
+
+Let's assume the following data structures and procedures.
+(I am deliberately using something other than pseudo-C
+to help demonstrate that I am not simply publishing RSA's C
+source code.  I admit that the result is not completely clear,
+but I am trying to avoid writing actual code, for various reasons.)
+
+TypDESXKey has members:
+   DESKey64        -- 8-byte DES key supplied by user
+   Whitening64     -- 8-byte secondary key supplied by user
+
+TypDESXContext has members:
+   DESContext      -- Processed version of DESKey64.  Length and
+                      other details depend upon which DES implementation
+                      you use.
+   PreWhitening64  -- 8-byte XOR pattern computed by key setup
+   PostWhitening64 -- Another 8-byte XOR pattern computed by key setup
+    
+Assume the following functions:
+
+DESXKeySetup(output: TypDESXContext, input: TypDESXKey)
+DESXEncryptBlock(input: DESXContext, output: OutData64, input: InData64)
+DESXDecryptBlock(input: DESXContext, output: OutData64, input: InData64)
+
+Assume the following lookup table, based in the digits of PI:
+
+DESXSubstTable[0:255] =
+  189, 86,234,242,162,241,172, 42,176,147,209,156, 27, 51,253,208,
+   48,  4,182,220,125,223, 50, 75,247,203, 69,155, 49,187, 33, 90, 
+   65,159,225,217, 74, 77,158,218,160,104, 44,195, 39, 95,128, 54, 
+   62,238,251,149, 26,254,206,168, 52,169, 19,240,166, 63,216, 12,
+  120, 36,175, 35, 82,193,103, 23,245,102,144,231,232,  7,184, 96,
+   72,230, 30, 83,243,146,164,114,140,  8, 21,110,134,  0,132,250,
+  244,127,138, 66, 25,246,219,205, 20,141, 80, 18,186, 60,  6, 78, 
+  236,179, 53, 17,161,136,142, 43,148,153,183,113,116,211,228,191,
+   58,222,150, 14,188, 10,237,119,252, 55,107,  3,121,137, 98,198,
+  215,192,210,124,106,139, 34,163, 91,  5, 93,  2,117,213, 97,227,
+   24,143, 85, 81,173, 31, 11, 94,133,229,194, 87, 99,202, 61,108,
+  180,197,204,112,178,145, 89, 13, 71, 32,200, 79, 88,224,  1,226,
+   22, 56,196,111, 59, 15,101, 70,190,126, 45,123,130,249, 64,181, 
+   29,115,248,235, 38,199,135,151, 37, 84,177, 40,170,152,157,165,
+  100,109,122,212, 16,129, 68,239, 73,214,174, 46,221,118, 92, 47, 
+  167, 28,201,  9,105,154,131,207, 41, 57,185,233, 76,255, 67,171
+
+
+==> DESXKeySetup works as follows:
+
+Compute DESContext from DESKey64 using the key setup procedures
+that come with whatever DES implementation you are using.
+
+Set PreWhitening64 to the input key Whitening64.
+
+Compute PostWhitening64 as:
+ 
+  PostWhitening64 := 0
+  Run Hash procedure with Input := DESKey64
+  Run Hash procedure with Input := Whitening64
+
+Hash procedure:
+    For each Ibyte of the 8 bytes of Input, left to right:
+      tableindex := left 8 bits of PostWhitening64 XOR
+                    next 8 bits (just to right of above) of PostWhitening64
+      lastbyte := DESXSubstTable[tableindex]
+      Shift PostWhitening64 left 8 bits 
+      last (right) 8 bits of PostWhitening64 := lastbyte XOR Ibyte
+       
+
+==> DESXEncryptBlock does this:
+
+   OutData64 := InData64 XOR PreWhitening64
+   OutData64 := DESEncrypt(DESContext,OutData64)
+   OutData64 := OutData64 XOR PostWhitening64
+
+==> DESXDecryptBlock does this:
+
+   OutData64 := InData64 XOR PostWhitening64
+   OutData64 := DESDecrypt(DESContext,OutData64)
+   OutData64 := OutData64 XOR PreWhitening64
+
+
+Mark Riordan   28 February 1994   mrr@ripem.msu.edu
+
+

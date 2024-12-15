@@ -1,0 +1,57 @@
+#!/bin/sh
+
+#set -x
+
+MNTDIR=/mnt
+#MNTDIR=/tmp/mnt
+TSTBIN=.
+KFSBIN=..
+
+export MNTDIR TSTBIN KFSBIN
+
+pname=`basename $0`
+umask 77
+
+errs=0
+
+trap leave 0
+
+leave()
+{
+#	echo "$pname: all done"
+	:
+}
+
+
+if [ ! -d $MNTDIR ]; then
+	echo "$pname: $MNTDIR does not exist!" 2>&1
+	exit 1
+else
+	echo "$pname: test dir is $MNTDIR:"
+fi
+chmod -f 777 $MNTDIR
+for f in $MNTDIR/private $MNTDIR/private.readable $MNTDIR/private.u1000 $MNTDIR/public;
+do
+	rm -f $f
+	if cp /etc/termcap $f; then
+		echo "$pname: PASSED: created new file."
+	else
+		echo "$pname: FAILED: could not create new file."
+		errs=`expr $errs + 1`
+	fi
+	if cmp -s /etc/termcap $f; then
+		echo "$pname: PASSED: new file data matches orig file."
+	else
+		echo "$pname: FAILED: copied file does not match original!"
+		errs=`expr $errs + 1`
+	fi
+done
+chmod 600 $MNTDIR/private
+chmod 644 $MNTDIR/private.readable
+chmod 666 $MNTDIR/public
+#addacl 'foo' $MNTDIR/public
+
+su u1000 $TSTBIN/t1acl
+
+#echo "$pname: there were $errs errors" 2>&1
+echo "$pname: DONE."

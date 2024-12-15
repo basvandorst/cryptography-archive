@@ -1,0 +1,112 @@
+This is the authentication library.
+
+It is designed to be used to support multiple authentication schemes.
+eg. X509, PKCS-7 and PGP.
+
+While PKCS-7 is a superset of X509, this just means that the PKCS-7 routines
+can depend on X509 routines and use their cache.
+
+Each authentication type will have access methods.  Each access method is
+composed of argument records and functions to implement the method.
+
+typedef struct private_key_st
+	{
+	int type;
+	EVP_CIPHER *encrypt;
+	int key_len;
+	char key;
+	char *iv;
+	union	{
+		RSA	*rsa;
+		DH	*dh;
+		} d;
+	} PRIVATE_KEY;
+	
+typedef struct x509_obj_st
+	{
+	int type;		/* x509/PGP */
+	union	{
+		struct	{
+			X509 *cert;
+			CRL *crl;
+			PRIVATE_KEY *key;
+			} x509
+		} d
+	} X509_OBJ;
+	
+#define M_X509				0x100
+#define M_PKCS7				0x200
+
+#define	M_X509_BY_SUBJECT		0x101
+#define	M_X509_BY_ALIAS			0x103
+#define M_X509_BY_ISSUER_AND_SUBJECT	0x104	/* reverse lookup */
+
+typedef struct auth_method_st
+	{
+	int type;
+	int (*init)();		/* run on startup */
+	int (*shutdown)();	/* run on shutdown */
+	int (*control)();	/* IOCTL? */
+	int (*doit)();		/* do command */
+	int (*cache_free)();	/* free() the cache objects */
+	} AUTH_METHOD;
+	
+#define	M_FLAGS_NOCACHE
+#define M_NEED_INIT
+#define M_ACTIVE
+
+typedef struct method_ctx_st
+	{
+	int flags;		/* do we cache or keep decrypted? */
+	AUTH_METHOD *method;
+	LIST *args;		/* The arguments */
+	lhash *cache;		/* perhaps a cache of values? */
+	} METHOD_CTX
+
+typedef struct method_arg_st
+	{
+	int type;
+	union	{
+		char *x509_by_alias;
+		X509_NAME *x509_by_subject;
+		struct	{
+			X509_NAME *issuer;
+			DER_BIT_STRING *serial;
+			} x509_by_issuer_and_serial;
+		} d
+	} METHOD_ARG;
+
+typedef struct method_ret_st
+	{
+	int type;
+	union	{
+		LIST	*x509;	/* a list of X509_OBJs */
+		} d;
+	} METHOD_RET;	
+	
+typedef struct auth_ctx_st
+	{
+	LIST *x509_methods;
+	LIST *pkcs7_methods;
+	} AUTH_CTX;
+
+
+ctx=	AUTH_new();
+meth=	AUTH_push_method(ctx,M_X509_BY_SUBJECT,lookup_file)
+	AUTH_push_arg(meth,"/home/.pub_certs",len);
+	
+meth=	AUTH_push_method(ctx,M_X509_BY_SUBJECT,lookup_dir)
+	AUTH_push_arg(meth,"/home/.certs.der");
+	AUTH_push_arg(meth,"/usr/local/ssl/certs",len);
+/*
+meth=	AUTH_push_method(ctx,M_X509_BY_SUBJECT,lookup_host)
+	AUTH_push_arg(meth,"orb.mincom.oz.au:9876");
+	AUTH_push_arg(meth,"cygnus.mincom.oz.au:8888",len);
+	
+meth=	AUTH_push_method(ctx,M_X509_BY_ISSUER_AND_SUBJECT,lookup_dir)
+	AUTH_push_arg(meth,"/home/.prv_certs",len);
+*/	
+meth=	AUTH_push_method(ctx,M_X509_BY_ISSUER_AND_SUBJECT,lookup_default)
+	AUTH_push_arg(meth,(X509_OBJ *)default,len);
+
+	AUTH_init(ctx);

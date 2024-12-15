@@ -1,0 +1,72 @@
+#!/usr/bin/perl -s
+#
+# bootstrap2 -- Second stage bootstrapper, a version of unmunge
+#
+# $Id: bootstrap2,v 1.4 1997/11/14 03:52:54 mhw Exp $
+
+sub Cleanup	{ close(IN);  close(OUT);  unlink(@files);  @files = (); }
+sub Fatal	{ &Cleanup();  print STDERR @_;  exit(1); }
+sub TabSkip	{ $tabWidth - 1 - (length($_[0]) % $tabWidth); }
+sub TabFix	{ my ($needed, $actual) = (&TabSkip($_[0]), length($_[1]));
+    $tmp1 . ($tmp2 x $needed) . (" " x ($actual - $needed)); }
+sub HumanEdit	{ my ($file, $line, @message) = ($inFile, @_);  &Cleanup();
+    @old = stat($file);  system($editor, "+$line", $file);  @new = stat($file);
+    redo doFile if ($old[9] != $new[9]);	# Check mod date
+    &Fatal("Line $line, ", @message); }
+
+($tab,$yen,$pilc,$cdot,$tmp1,$tmp2)=("\244","\245","\266","\267","\377","\376");
+$editor = $ENV{'VISUAL'} || $ENV{'EDITOR'} || 'vi';
+($inFile, $manifest, @rest) = @ARGV;
+if ($manifest ne "") {		# Read manifest file
+    open(MANIFEST, "<$manifest") || &Fatal("$manifest: $!\n");
+    while (<MANIFEST>) { $dir = $1 if /^D\s+(.*)$/;
+	$index[$1] = $dir . $2 if /^(\d+)\s+(.*)$/; }
+}
+doFile: {
+    $seenPCRC = $pcrc1 = 0;  $lastFlags = 1;  $lastFileNum = 0;
+    open(IN, "<$inFile") || &Fatal("$inFile: $!\n");
+    for ($line = 1; ($_ = <IN>); $line++) {
+	s/^\s+//;  s/\s+$//;	# Strip leading and trailing spaces
+	next if (/^$/);		# Ignore blank lines
+	($prefix, $seenCRCStr, $dummy, $_) = /^(\S{2})(\S{4})( (.*))?/;
+	while (s/$tab( *)/&TabFix($`, $1)/eo) {}  # Correct spaces after tabs
+	s/($tmp2| )( +)/$1 . ($cdot x length($2))/ego;	# Correct center dots
+	s/$tmp1/$tab/go;  s/$tmp2/ /go;  # Restore tabs/spaces from correction
+	s/\s*$/\n/;		# Strip trailing spaces, and add a newline
+
+	$crc = 0;  $pcrc = $pcrc1;		# Calculate CRCs
+	for ($data = $_; $data ne ""; $data = substr($data, 1)) {
+	    $crc ^= ord($data);  $pcrc1 ^= ord($data);
+	    for (1..8) { $crc = ($crc >> 1) ^ (($crc & 1) ? 0x8408 : 0);
+		$pcrc1 = ($pcrc1 >> 1) ^ (($pcrc1 & 1) ? 0xedb88320 : 0); }
+	}
+	($seenPLCRC, $seenCRC) = map { hex($_) } ($prefix, $seenCRCStr);
+	&HumanEdit($line, "CRC failed: $_") if $crc != $seenCRC;
+	if ($prefix eq '--') {			# Process header line
+	    &HumanEdit($line - 1, "Page CRC failed") if $pcrc != $seenPCRC;
+	    ($humanHdr, $pageNum, $file) = /^\S{19} (Page (\d+) of (.*))/;
+	    ($vers, $flags, $seenPCRC, $tabWidth, $prodNum, $fileNum) =
+		map { hex($_) } /^(\S)(\S\S)(\S{8})(\S)(\S{3})(\S{4})/;
+	    if ($fileNum != $lastFileNum) {
+		print STDERR "MISSING files\n" if $fileNum != $lastFileNum + 1;
+		&Fatal("Missing pages\n") if $pageNum != 1 || !($lastFlags & 1);
+		if ($manifest ne "") {
+		    ($_ = $index[$fileNum]) =~ m%([^/]*)$%;
+		    &Fatal("Manifest mismatch\n") if ($file ne $1);
+		    ($file = $_) =~ s|/+|mkdir($`, 0777), "/"|eg;  # mkdir -p
+		}
+		&Fatal("$file: already exists\n") if (!$f && (-e $file));
+		close(OUT);  open(OUT, ">$file") || &Fatal("$file: $!\n");
+		push(@files, $file);  print "$fileNum $file\n";
+	    } else {
+		&Fatal("MISSING pages\n") if ($pageNum != $lastPageNum + 1);
+	    }
+	    ($lastFlags,$lastFileNum,$lastPageNum) = ($flags,$fileNum,$pageNum);
+	    $pcrc1 = 0;
+	} else {				# Unmunge normal line
+	    &HumanEdit($line, "CRC failed: $_") if ($pcrc1 >> 24) != $seenPLCRC;
+	    s/$tab( *)/"\t".(" " x (length($1) - &TabSkip($`)))/ego;
+	    s/$yen\n/\f/o;  s/$pilc\n//o;  s/$cdot/ /go;  print OUT;
+	}
+    }
+}

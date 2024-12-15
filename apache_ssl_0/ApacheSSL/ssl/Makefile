@@ -1,0 +1,183 @@
+#
+# Makefile for all the SSL related library routines and utilities
+VERSION	= 0.5.1
+#
+# make install will install:
+#   libraries into $INSTALLTOP/lib
+#   headers   into $INSTALLTOP/include
+#   utilities into $INSTALLTOP/bin
+#
+# By default INSTALLTOP is set to /usr/local/ssl
+#
+# Interesting Mailing Lists:
+#     ssl-bugs@mincom.oz.au
+#     ssl-users@mincom.oz.au
+#     ssl-users-request@mincom.oz.au
+#
+# If you must get hold of people directly (we much prefer the above
+# lists to be used!):
+#	Eric Young <eay@mincom.oz.au>
+#	Tim Hudson <tjh@mincom.oz.au>
+#	or both    <ssleay@mincom.oz.au>
+#
+# NOCONST - Define for C compilers that don't like the const key word.
+# NOPROTO - Define in if your compiler does not support prototypes.
+# RSAref  - Define if we are to link with RSAref.
+# NOIDEA  - Define to build without the IDEA algorithm
+# NORC4   - Define to build without the RC4 algorithm
+# THREADS - Define when building with threads, you will also need any
+#	    system defines as well, i.e. _REENTERANT for Solaris 2.[34]
+
+CC= gcc
+CFLAG= -O3 -mv8
+PEX_LIBS= -L. -L.. -L../.. 
+EX_LIBS= 
+BN_MULW= bn_mulw.o
+
+# If you change the INSTALLTOP, make sure to also change the values
+# in crypto/localion.h
+INSTALLTOP=/usr/local/ssl
+
+MAKEFILE= Makefile.ssl
+MAKE=	  make -f $(MAKEFILE)
+
+MAN1=1
+MAN3=3
+SHELL=/bin/sh
+
+DIRS=	crypto ssl rsaref apps test
+EDIRS=	times doc bugs util include certs
+MISC=	COPYRIGHT Configure INSTALL Makefile.ssl Makefile \
+	RAMBLINGS README README.050 README.051 TODO \
+	VERSION
+WDIRS=	windows
+LIB=	libcrypto.a
+LIBS=	libcrypto.a libssl.a libRSAglue.a
+
+GENERAL=	Makefile
+BASENAME=	SSLeay
+NAME=		$(BASENAME)-$(VERSION)
+TARFILE=	$(NAME).tar
+WTARFILE=	$(NAME)-win.tar
+
+all:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making $$i..."; \
+	$(MAKE) CC=${CC} CFLAG='${CFLAG}' INSTALLTOP='${INSTALLTOP}' PEX_LIBS='${PEX_LIBS}' EX_LIBS='${EX_LIBS}' BN_MULW='${BN_MULW}' all ); \
+	done;
+
+sub_all:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making $$i..."; \
+	$(MAKE) CC=${CC} CFLAG='${CFLAG}' SDIRS='$(SDIRS)' INSTALLTOP='${INSTALLTOP}' PEX_LIBS='${PEX_LIBS}' EX_LIBS='${EX_LIBS}' BN_MULW='${BN_MULW}' all ); \
+	done;
+
+clean:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "cleaning $$i..."; \
+	$(MAKE) clean ); \
+	/bin/rm -f $(LIB); \
+	done;
+	/bin/rm -f *.a
+	/bin/rm -f $(TARFILE)
+
+links:
+	/bin/rm -f Makefile
+	util/point.sh Makefile.ssl Makefile
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making links in $$i..."; \
+	$(MAKE) links ); \
+	done;
+
+dclean:
+	/bin/rm -f *.bak
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "undoing makedepend in $$i..."; \
+	$(MAKE) dclean ); \
+	done;
+
+rehash:
+	(cd certs; tools/c_rehash *.pem)
+
+test:	tests
+
+tests:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "testing $$i..."; \
+	$(MAKE) CC=${CC} CFLAG='${CFLAG}' EX_LIBS='${EX_LIBS}' tests ); \
+	done;
+
+depend:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making dependancies $$i..."; \
+	$(MAKE) depend ); \
+	done;
+
+lint:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making lint $$i..."; \
+	$(MAKE) lint ); \
+	done;
+
+tags:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making tags $$i..."; \
+	$(MAKE) tags ); \
+	done;
+
+errors:
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "making errors in $$i..."; \
+	$(MAKE) errors ); \
+	done;
+
+tar:
+	@(cd ..;\
+	mv $(BASENAME) $(NAME); \
+	export STUFF; \
+	for i in $(MISC) $(DIRS) $(EDIRS) ;\
+	do \
+		STUFF="$$STUFF $(NAME)/$$i"; \
+	done; \
+	tar cf $(NAME)/$(TARFILE) $$STUFF; \
+	tar cf $(NAME)/$(WTARFILE) $(NAME)/$(WDIRS); \
+	mv $(NAME) $(BASENAME) ) 
+	gzip -f $(TARFILE)
+	gzip -f $(WTARFILE)
+
+dist:
+	./Configure dist
+	@$(MAKE) clean
+	@$(MAKE) dclean
+	@$(MAKE) tar
+
+install: all
+	@-mkdir -p $(INSTALLTOP)/bin 2>/dev/null
+	@-mkdir -p $(INSTALLTOP)/lib 2>/dev/null
+	@-mkdir -p $(INSTALLTOP)/include 2>/dev/null
+	@-mkdir -p $(INSTALLTOP)/certs 2>/dev/null
+	@-mkdir -p $(INSTALLTOP)/private 2>/dev/null
+	@for i in $(DIRS) ;\
+	do \
+	(cd $$i; echo "installing $$i..."; \
+	$(MAKE) CC=${CC} CFLAG='${CFLAG}' INSTALLTOP='${INSTALLTOP}' EX_LIBS='${EX_LIBS}' install ); \
+	done
+	@for i in $(LIBS) ;\
+	do \
+	(	echo installing $$i; \
+		cp $$i $(INSTALLTOP)/lib; \
+		util/ranlib.sh $(INSTALLTOP)/lib/$$i; \
+		chmod 644 $(INSTALLTOP)/lib/$$i ) \
+	done
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.

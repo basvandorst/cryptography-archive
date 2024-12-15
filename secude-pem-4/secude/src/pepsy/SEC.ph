@@ -1,0 +1,17 @@
+0/2/1: TOURINTEGER |encode decode print
+0/3/1: TBitString |encode decode print
+0/16/1: TAlgorithmIdentifier |encode decode print
+0/4/1: OctetString |encode decode print
+0/17/1: SETOFOctetString |encode decode print
+0/17/1: SETOFObjId |encode decode print
+0/3/1: BitString |encode decode print
+0/2/1: OURINTEGER |encode decode print
+0/16/1: KeyBits |encode decode print
+0/16/1: KeyInfo |encode decode print
+0/16/1: DigestInfo |encode decode print
+0/16/1: EncryptedKey |encode decode print
+0/16/1: AlgorithmIdentifier |encode decode print
+0/17/1: SETOFAlgorithmIdentifier |encode decode print
+0/17/1: PSEObjects |encode decode print
+0/16/1: PSEToc |encode decode print
+0/16/1: PSEObject |encode decode print

@@ -1,0 +1,117 @@
+                  ***************************************
+                  *****   I N S T A L L A T I O N   *****
+                  ***************************************
+
+================================================================================
+= Insert the machines of your network in 'dbatch.h': 
+= HOSTNAMELIST = { HostName MaxNumOfDbatchJobsOnThisHost }.
+
+#define HOSTNAMELIST    "isibee23 1 isibee22 1 isibee21 1\
+                         isibee20 1 isibee19 1 isibee18 1 isibee17 1 isibee16 1\
+                         isibee15 1 isibee14 1 isibee13 1 isibee12 1 isibee11 1\
+                         isibee10 1 isibee9  1 isibee8  1 isibee7  1 isibee6  1\
+                         isibee5  1 isibee4  1 isibee3  1 isibee2  1 isibee1  1\
+                         isidor   1"
+#define NOFHOST          24
+
+#define DBATCHADMIN       "demoline"           /* user responsible for dbatch */
+#define PROGDBATCH        "/usr/local/bin/dbatch"
+#define ADDRESSFILE       "/usr/local/bin/dbatchd.adr"
+#define SAVEFILE          "/usr/local/bin/dbatchd.sav"
+
+================================================================================
+= Run 'make' to build the executables 'dbatch' and 'dbatchd':
+= 'dbatchd' is the deamon running with root privileges.
+= 'dbatch' is the user command to communicate with the daemon.
+= Copy bouth executables to '/usr/local/bin' or whatever path you have
+= specified in 'dbatch.h'. Notice that each host must have access to the
+= files 'dbatch' and 'dbatchd.adr'. The host on which the daemon is running
+= must also have root access to all other hosts in 'HOSTNAMELIST'.
+
+================================================================================
+= '~.login' of each user in the network:
+
+if ( `tty` == "/dev/console" ) then
+  /usr/local/bin/dbatch -login >& /dev/null
+fi
+
+================================================================================
+= '~/.logout' of each user in the network:
+
+if ( `tty` == "/dev/console" ) then
+  /usr/local/bin/dbatch -logout >& /dev/null
+fi
+
+================================================================================
+= '/etc/rc.local' of each host in the network:
+
+if [ -x /usr/local/bin/dbatch ]; then
+        /usr/local/bin/dbatch -reboot >/dev/null 2>&1 &
+fi
+
+================================================================================
+= '/etc/rc.local' of host running the dbatch-daemon:
+
+if [ -x /usr/local/bin/dbatchd ]; then
+        /bin/rm -f /usr/local/bin/dbatchd.adr
+        ( sleep 60; /usr/local/bin/dbatchd >/dev/null 2>&1 ) &
+fi
+if [ -x /usr/local/bin/dbatch ]; then
+        ( sleep 90; /usr/local/bin/dbatch -reboot >/dev/null 2>&1 ) &
+fi
+
+================================================================================
+= root 'crontab' of host running the dbatch-daemon:
+
+30 * * * * /usr/local/bin/dbatch -checkstate >/dev/null 2>&1
+35 * * * * /usr/local/bin/dbatch -savestate >/dev/null 2>&1
+
+================================================================================
+= man-page
+
+make the man-page 'manl/dbatch.l' global accessable (for example: 
+copy it to '/usr/local/man/manl').
+
+
+            ***********************************************
+            *****   M O D U L E - H I E R A R C H Y   *****
+            ***********************************************
+
+                           +---------+
+                           | DBatchD |
+                           +---------+
+                            ^ ^ ^ ^ ^
+                            | | | | |
+              +-------------+ | | | +---+
+              |          +----+ | |     |
+              |          |      | |     |
+          +-------+  +-------+  | | +-------+  +-------+
+          | User  |->|  Job  |<-----| Host  |  |DBatch |
+          +-------+  +-------+  | | +-------+  +-------+
+                ^     ^  ^  ^   | |  ^  ^  ^    ^  ^  ^
+                |     |  |  |   | |  |  |  |    |  |  |
+                |     |  |  +--------+  |  |    |  |  |
+                |     |  |  |   | |     |  |    |  |  |
+                +--------+--------+-----+-------+  |  |
+                      |     |   |       |  |       |  |
+                      | +-----+ |  +-----+ |  +-----+ |
+                      | | OSD | |  | IPC | |  | OS  | |
+                      | +-----+ |  +-----+ |  +-----+ |
+                      |     ^   |       ^  |       ^  |
+                      |     |   |       |  |       |  |
+                      +-----+---+-------+--+-------+--+
+                                |
+                            +-------+
+                            | Base  |
+                            +-------+
+
+DBatchD: main module of dbatch-daemon
+Dbatch:  main module of dbatch (unix command)
+User:    database managing user informations (used cpu-time)
+Job:     database managing batch-job informations (queue of jobs)
+Host:    database managing host informations (state, ..)
+OSD:     interface to operating system for dbatch-daemon
+OS:      interface to operating system for dbatch
+IPC:     module for interprocess communication (based on TLI)
+Base:    common utilities
+

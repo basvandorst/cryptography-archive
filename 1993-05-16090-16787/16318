@@ -1,0 +1,200 @@
+Path: msuinfo!agate!howland.reston.ans.net!ira.uka.de!news.dfn.de!mailgzrz.TU-Berlin.DE!news.netmbx.de!Germany.EU.net!mcsun!julienas!seti!couchey.inria.fr!doligez
+From: doligez@couchey.inria.fr (Planar)
+Newsgroups: sci.crypt
+Subject: Re: One-time pad authentication
+Keywords: one-time pad, authentication, permutations
+Message-ID: <6320@seti.inria.fr>
+Date: 5 May 93 18:16:37 GMT
+References: <1s1dbmINNehb@elang05.acslab.umbc.edu> <9312311.1752@mulga.cs.mu.OZ.AU> <16BC2116C6.C445585@mizzou1.missouri.edu> <1s6hl2$e3v@transfer.stratus.com>
+Sender: news@seti.inria.fr
+Followup-To: sci.crypt
+Organization: Spaceman Spiff
+Lines: 187
+
+[ About the problem where Eve controls the transmission medium between Alice
+  and Bob, and she can alter the message if she happens to know its contents
+  by other means, even though Alice and Bob use the "provably secure" one-time
+  pad algorithm.
+]
+In article <1s1dbmINNehb@elang05.acslab.umbc.edu>, Bryan Olson writes:
+
+>Can we define something like "ideal authentication" which is the
+>analog of ideal security.  Can we obtain ideal authentication ?
+>
+>If not, how much can we limit Eve's control over the message ?
+>
+>If we can achieve ideal authentication, does the solution use more
+>key bits or expand the message ?  Can we show the solution to be
+>optimal in one or more parameters ?
+>
+>Does anyone know if these questions have been aswered before ?
+
+In article <9312311.1752@mulga.cs.mu.OZ.AU>, Greg Rose writes:
+
+>I agree that the weakness exists, but I have a lot of trouble
+>believing that it represents a difficulty in real life. Given:
+
+I think this problem might have practical consequences.  Consider
+the case where you send normalized (as opposed to free-form) messages.
+For example, Eve knows that every message sent from Alice to Bob begins
+with some sort of standard header.  Eve would change the header and this
+could change the whole meaning of the body.
+
+In article <16BC2116C6.C445585@mizzou1.missouri.edu>, John Kelsey writes:
+
+>   Now, I can see a simple way of doing this that's got to be as secure
+>as a one-time pad, at a cost of using 4 times the message length in pad bits.
+> 
+>   For each message bit, M_i, use one random bit, R_i, and xor them together
+>to get X_i.  Now, encrypt the three bits with the one-time pad.  The enemy
+>has no way of guessing what R_i is, so he/she can't guess what X_i is, either.
+>Any change she makes in the ciphertext stream will have to involve a guess
+>of what R_i was.  Is there any way to do this without using so many pad bits?
+
+
+If I understand your proposal, Alice has a message bit M, a random bit R,
+and 3 pad bits P1, P2, P3 (bits from the one-time pad).
+(The notations are described at the end of this article.)
+
+Alice computes B1 = M xor P1
+               B2 = R xor P2
+               B3 = M xor R xor P3         [ your X_i is (M xor R) ]
+and transmits B1, B2, B3.
+
+Eve knows M, B1, B2 and B3.
+
+If Eve wants to replace M with M', she replaces B1, B2 and B3 with:
+     B'1 = B1 xor (M xor M') = M xor P1 xor M xor M' =       M' xor P1
+     B'2 = B2 =                                              R xor P2
+     B'3 = B3 xor (M xor M') = M xor R xor P3 xor M xor M' = M' xor R xor P3
+
+And Bob receives message M' instead of M.
+
+I'm afraid your scheme does not work.
+
+
+Let us try something else.
+
+Suppose we use the one-time pad as the key to a transposition cipher.
+Alice has N message (cleartext) bits M1...MN, and N pad bits P1...PN.
+Alice transmits the sequence (Mi where Pi = 1) followed by (Mi where Pi = 0).
+That means she first transmit the message bits that correspond to pad bits
+with a value of 1, and then the message bits that correspond to 0 pad bits.
+This should work quite well in practice, but there might be a possible attack
+based on trying to match the beginning of the ciphertext with all possible
+subsequences of the cleartext.
+A better solution would be to use another N pad bits (Q1...QN) and to do
+a classical one-time-pad encoding in addition to the transposition.
+In this case, Alice transmits ((Mi xor Qi) where Pi = 1) followed by
+((Mi xor Qi) where Pi = 0).
+
+But this is not perfect authentication yet.
+
+Consider the case N = 1.  Alice transmits (M1 xor Q1) and P1 is not used.
+Thus Alice should be careful not to send 1-bit messages.
+A more interesting case is when N = 2.  Depending on P1 and P2, Alice will
+send (M1 xor Q1) + (M2 xor Q2) or (M2 xor Q2) + (M1 xor Q1).
+Suppose M is 01, the ciphertext C is 11, and Eve wants to change the message
+to M' = 11.  The corresponding ciphertext is either 01 or 10, because only
+one bit has changed between M and M'.  Eve knows that the answer is not 00.
+In an ideal system, Eve would only know that the answer is not 01 (because
+M and M' are different).
+And things are even worse in the case where M' = 10.  Then Eve knows she
+must transmit 00 because both bits are changed, and the order does not matter.
+This "change all bits" attack remains valid with any method of choosing
+the transposition.  For example:
+
+In article <1s6hl2$e3v@transfer.stratus.com>, Carl Ellison writes:
+
+>The problem occurs only because Eve knows both what and where the plaintext
+>is.  If key bits were used to drive a transposition composed with the XOR
+>of the One Time Pad, Eve would have no chance to modify the message.
+
+This is vulnerable to a "change all bits" attack.
+
+Let us generalise a little.
+
+There are 2**N possible messages of length N.  Alice uses the one-time
+pad as a random number generator to choose one of the (fact (2**N))
+permutations of 1..2**N, applies this permutation to her message, and
+transmits the result.  Now Eve knows C = p (M), but she has no clue about
+p (M'), because Alice was very careful to make every permutation just as
+likely as any other.  The only information that Eve can deduce from M and C
+is that p (M') is different from C.  This leaves (2**N - 1) possible answers,
+which is the maximum you can hope for, because the number of possible
+ciphertexts is 2**N.
+Note that, because (2**1 - 1) is 1, a 1-bit message is still vulnerable.
+
+What does it cost ?
+
+Unless there is a bug in my calculations, (log (fact (n))) is between
+((n-1) * log (n)) and (n * log (n)), so you need about (N * 2**N) pad bits
+to transmit a message of length N.  This is quite a lot.
+
+But this is overkill.
+
+What we really need is to make sure that, for all (M, C, M') such that
+p (M) = C, the message p (M') is just as likely to have any value as any other.
+This translates to the following formula:
+
+Let P be a set of permutations of 1..n, and K > 0 be a constant.
+  for all M, C, M', C' in 1..n, card {p in P | p (M) = C and p (M') = C'} = K
+   (such that M != M' and C != C')
+
+(The condition reads : for all M, C, M', C', the number of permutations
+ that are elements of P and map M to C and M' to C' is K.)
+If we find such a set P, Alice will use her one-time pad to select one of
+the permutations in P, and transmit P (M).  Eve knows M, C, M' and wants to
+find C'.  But card {p in P | p (M) = C and p (M') = C'} = K for all C'.
+So every C' is just as likely as any other.  Eve has no more probability of
+succeding than if she did only know that M and M' are different.  This
+probability is 1/(n-1).  It would be 1/n if Eve knew nothing about M, M' and C.
+(Keep in mind that n is 2**N where N is the length of the message.)
+So Eve might as well send any random string.  This is ideal, theoretically
+maximal security, and not even one bit of additional bandwith is needed.
+
+Of course, this method needs more pad bits than the traditional one-time pad.
+How many more ?  I do not know.  It depends on card (P).
+The number of pad bits needed will be log (card (P)).
+Here is a lower bound:
+The formula above implies (with M = 1 and M' = 2) :
+  for all C, C' in 1..n, card {p in P | p (1) = C and P (2) = C'} = K
+By enumerating all possible pairs for (C, C'), we get (n * (n-1)) * K different
+permutations in P (not (n*n) because C has to be different from C').
+The minimum value for K is 1, so P must have at least (n * (n-1)) elements.
+This translates to (2 * log (n)), that is (2 * N) pad bits for a message
+of length N.  Remember that this is a lower bound.
+
+I have verified by hand that this bound is reached for n = 4 and n = 5.
+Is it reached for all or some or no other values of n ?
+I'm afraid I have to leave this as an open problem.
+
+
+I'm sure this has already been published somewhere, but I have no bibliography
+(see Disclaimer 1 for the reason).
+Thus the last question asked by Bryan Olson remains unanswered.
+
+--
+
+Notations:
+1..n     is the set of integers i such that i>=1 and i<=n
+M1...Mn  is a sequence of n bits
+A xor B  is the (bitwise) exclusive or of A and B
+x**y     is x raised to the power of y
+S1+S2    is the concatenation of the sequences S1 and S2
+log (n)  is the radix-2 logarithm of n
+fact (n) is the factorial of n
+A != B   means "A is not equal to B"
+card (S) is the number of elements in the set S
+*        is good old multiplication
+
+Claimer: This usenet article and the ideas it contains are hereby placed in
+         the public domain.  No copyright, no patent.
+Disclaimer1: All I know about cryptography is what I have read from this group.
+Disclaimer2: INRIA is not my employer, and neither of them shares my opinions.
+Aside:
+Please do not refer to the Skipjack chip as "the Clipper chip", as it implies
+that the US government has a right to jump into the semiconductor market and
+steal a registered trade mark.  What do you think would happen if they called
+it "The Pentium chip" ?
+

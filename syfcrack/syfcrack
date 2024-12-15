@@ -1,0 +1,125 @@
+From jim@acm.org Sat Jan 21 14:48:53 1995
+Path: comlab.ox.ac.uk!uknet!str-ccsun!news.dcs.warwick.ac.uk!hgmp.mrc.ac.uk!sunsite.doc.ic.ac.uk!agate!overload.lbl.gov!lll-winken.llnl.gov!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!usc!rand.org!mycroft.rand.org!not-for-mail
+From: Jim Gillogly <jim@acm.org>
+Newsgroups: sci.crypt
+Subject: Re: Identify this scheme?
+Date: 16 Jan 1995 14:25:02 -0800
+Organization: Banzai Institute
+Lines: 110
+Sender: jim@mycroft.rand.org
+Message-ID: <3fernu$iv5@mycroft.rand.org>
+References: <3femrb$cjo@on-ramp.ior.com>
+Reply-To: jim@acm.org
+NNTP-Posting-Host: mycroft.rand.org
+
+In article <3femrb$cjo@on-ramp.ior.com>,
+Charles J. Fishburn <fishburn@on-ramp.ior.com> wrote:
+>I am somewhat new in my study of encryption algorithms and terminology et 
+>al.  And I am curious about what the following encryption scheme is 
+>called (i.e. does it have a specific name (e.g. MD4, RC5), or is an 
+
+Yes, it's called "weak".
+
+>clear.  And here is the pertinent C code (as implemented from "What's the 
+>Code", by David Stafford, Computer Shopper, July 1993:
+>
+>#define MULTIPLIER 0X15A4E35L
+>#define INCREMENT 1
+...
+>  RandomSeed = MULTIPLIER * RandomSeed + INCREMENT;
+>  return (RandomSeed);
+...
+>  while ((Ch = getc(InFile)) != EOF)
+...
+>    fputc(Ch^RandomNumber(256), OutFile);
+...
+
+>On my 486DX-50, 8MB RAM, en/decrypting a 100K file takes probably 15-20 
+>seconds.  (I haven't taken a very recent estimate... so it may be a 
+
+Cracking it (ciphertext-only) takes considerably less time, since you don't
+need much ciphertext to find a workable key.  I append the response I wrote
+when this thing was published in comp.souces in Aug 93.
+
+	Jim Gillogly
+	Hevensday, 25 Afteryule S.R. 1995, 22:20
+____________________________________________________________________________
+
+From: jim@rand.org (Jim Gillogly)
+Newsgroups: comp.sources.d
+Subject: Re: syf - file encryption program
+Date: 31 Aug 1993 19:27:21 GMT
+Organization: Banzai Institute
+
+Here's a program to break the encryption on an ASCII file, in case you
+forget your password.  :)  As I note in the comments, this cipher gives
+you security nearly an order of magnitude better than ROT-13!  Not nearly
+as good as simple substitution, though.
+
+	Jim Gillogly
+	Highday, 9 Halimath S.R. 1993, 19:27
+
+--------------------------------------------
+/* syfcrack: decrypt the output of syf.c without the key.
+ *
+ * Usage: syfcrack < encrypted-file
+ * Output: an equivalent decryption key
+ *
+ * Reference: v39i066 of comp.sources.misc, author blackman@cs.buffalo.edu
+ *
+ * Assumes the plaintext is ASCII.
+ * The relevant observation is that the program uses the low-order 8 bits
+ * of a linear congruential PRNG, which cycles in 256 steps... the same
+ * 256 for each key.  The result is that there are 256 possible keys,
+ * meaning he gets almost an order of magnitude improvement over ROT-13!
+ *
+ * 31 Aug 93, SCRYER
+ */
+
+#include <stdio.h>
+
+#define MULTIPLIER 0x015A4E35L
+#define INCREMENT 1
+
+long RandomSeed;
+
+int GetRandomNumber( int Range )
+{
+	RandomSeed = MULTIPLIER*RandomSeed+INCREMENT;
+	return(RandomSeed%Range);
+}
+
+#define CTSIZE 512              /* Don't need much ciphertext to break it */
+
+char ciphertext[CTSIZE];
+int ctlen;
+
+main()
+{
+	long Start;
+	int i;
+
+	for (ctlen = 0; ctlen < CTSIZE; ctlen++)
+		ciphertext[ctlen] = getchar();
+	for (Start = 0; Start < 256; Start++)
+	{
+	    RandomSeed = Start;
+	    for (i = 0; i < ctlen; i++)
+		if ((0x80 & (ciphertext[i] ^ GetRandomNumber(256))) != 0)
+		    goto leave2;
+	    printf("%d is a reasonable key: ", Start);
+	    RandomSeed = Start;
+	    for (i = 0; i < 20; i++)    /* Here's a sample */
+		putchar(ciphertext[i] ^ GetRandomNumber(256));
+	    putchar('\n');
+	  leave2:;
+	}
+}
+-- 
+	Jim Gillogly
+	Highday, 9 Halimath S.R. 1993, 19:27
+____________________________________________________________________________
+-- 
+	Jim Gillogly
+	Hevensday, 25 Afteryule S.R. 1995, 22:25
+

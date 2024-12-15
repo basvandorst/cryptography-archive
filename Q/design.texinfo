@@ -1,0 +1,602 @@
+\input texinfo @c -*-texinfo-*-
+@setfilename design.info
+@comment %**start of header
+@settitle Design notes for the Q Language
+@comment %**end of header
+@ifinfo
+This file discussed issues in the design of the Q Programming Language.
+@end ifinfo
+
+@titlepage
+@sp 6
+@center @titlefont(Design Notes for the Q Language)
+@sp 4
+@center Per Bothner
+@end titlepage
+
+@ifinfo
+@node Top, ,(dir),(dir)
+
+@menu
+* Internals::
+* Ideas:: Thoughts for future work
+
+-- Sub-nodes of ideas --
+
+* List syntax::
+* Output lists::
+* Records::
+* Constructors with tuples::
+* Garbage collection::
+* Application::
+* Scanning and Pattern matching::
+* Types::
+* Syntax::
+* First-class disjunctions::
+* Evaluation and quoting::
+* Jobs:: Job control
+@end menu
+
+@node Internals, , , Top
+@chapter Q Internals
+
+@menu
+* Values and Types::
+* Evaluation::
+@end menu
+
+@node Values and Types
+@section Values and Types
+
+Most Q data types are implemented using C++ classes that inherit
+from the @code{Root} class.  This @code{Root} class implements
+many virtual functions (such as @code{printon}, to print an object
+on an @code{ostream}).  @code{Root} is defined in @code{types.h}.
+
+However, there are "values" that are not Root objects.
+See ...
+
+@node Evaluation
+@section Evaluation
+
+The main loop for handling interactive Q commands in in ReadEvalPrint
+in misc.C.  It first reads in an expression (using ParseCommand,
+which ends up calling ParseScan in parse.c, which is the main
+parse routine).  The parse returns an object of class Expression, which
+is a sub-class of Root.
+
+The raw expression is then "traversed".  This binds the identifiers,
+and does various cleanups and optimizations.  The main body of
+"traversing" is done by calling the Expression::traverse virtual method.
+Most of the code for traversing is in optimize.C, traverse.C, and expression.C.
+
+Now the expression is ready for evaluation.  This is done by
+calling the Expression::eval virtual method.  This evaluates the
+expression, and returns a result.  Normally, the result is a Root
+object, but you can specify in the call to Expression::eval that
+it should return the result as some different type.
+The EvalCommon routine (called by ReadEvalPrint) directs
+the eval method to return its result as an object of type Text.
+Text is not a normal type, since there aren't real "Text" objects,
+Instead, the Text type indiactes that the result is to be printed
+on the given output file.  (This wins big if the expression runs a
+command, in which case the "result" is the output emitted by the file.
+The concerptual model is that the command returns a string, which
+then needs to get printed.  Using the Text return type, we can just
+print the result directly.)
+
+@node Ideas, , , Top
+@chapter Ideas - Thoughts for future work
+
+@menu
+* List syntax::
+* Output lists::
+* Records::
+* Constructors with tuples::
+* Garbage collection::
+* Application::
+* Scanning and Pattern matching::
+* Types::
+* Syntax::
+* First-class disjunctions::
+* Evaluation and quoting::
+* Jobs:: Job control
+* Units:: Physical units
+@end menu
+
+@node List syntax
+@section List syntax
+Allow @code{(@var{e1}, @var{e2}, ..., @var{en})} to be syntactic sugar
+for @code{(@var{e1})(@var{e2})...(@var{en})}.
+
+Use @code{&} for building lists (a la Lisp's "list" function):
+@code{& x0 x1 ... xn} is @code{[x0 x1 ... xn]}.
+Or: @code{&(x0, x1, ..., xn)}.
+Allow final @code{&}: @code{&(x0, x1, ..., xn&)}.
+
+A prefix arg is pre-concatenated: @code{L & x} is @code{[L@ x]}.
+
+@node Output lists
+@section Output lists
+
+Problem: dealing with commands whose output is most naturally
+considered to be a string (i.e. stdout).
+
+Idea: ";" (and "\n") are concatenation operators
+
+Change: relational and assignment operators return "".
+The null (non-failing) result becomes "".
+"" ; x returns x (even if x is not a sequence)
+
+Loop operator:
+for i=sequence do body
+Result is concatenation of all bodies
+No delimiter is needed:
+for i=1..10 [(
+  if p => Missing ||
+   ...
+)]
+
+Digression:
+[ xx ; yy ; zz ] == [xx];[yy];[zz] ??
+
+[3\n4\n5] 
+[3 4\n 45\n5 6] ??
+End digression:
+
+Destinations:
+Unification
+Assignment
+Operation
+File (e.g. stdout)
+Pipe
+
+Need (at least) two eval routines:
+Root * Expression::eval(env) # eval-giving-result
+void Expression::evalout(env [, file]) # eval-to-stdout (or other file?)
+
+[a+b].eval() == return [a].eval + [b].eval
+[a+b].evalout(file) == ([a].eval + [b].eval).printon(file)
+[a=b].evalout(file) == x:=[a].eval(); y:=[b].eval(); unify(x,y)
+[a=b].eval() == x:=[a].eval(); y:=[b].eval(); unify(x,y); return ""
+[const].evalout(out) const.printon(out)
+[run foo].evalout(file) == fork; exec foo, setting out to file
+[run foo].eval == make temp file, set to out, call foo<out
+[a;b].evalout(file) == [a].evalout(file); [b].evalout(file)
+[a;b].eval() == t:= [a].eval(). if (t == "") return [b].eval()
+				else concat(t, [b].eval())
+[>f a].eval() == out:=open(f); [a].evalout(out)
+[(run a) run b].evalout() ==
+[a run b].evalout() == fork; inf: a.evalout(); sup: pipe; run b
+  or: 
+
+[default].evalout(out) ==
+  t:=[default].eval(); if t<>"" => (t.printon(out); print('\n'))
+[default].eval() --abort ?
+
+@node Records
+@section Records
+
+@code{:@var{name}=atom}
+
+@code{:@var{name}=record @var{param-spec}}
+
+@code{:@var{name}=union @var{name-list}}
+Each @var{name} in @var{name-list} refers to an @code{atom} or @code{record}.
+
+Example:
+:Cons=record (car: cdr:~List)
+:Nil=Atom
+:List = union Nil Cons
+
+:(Length Nil)=0
+:(Length (Cons :x :y)) = (Length y)
+
+@node Constructors with tuples
+@section List constructors with tuple insertions
+
+Requirements: General pattern matching against sequences;
+limited matching of actual parameters against formals.
+
+Consider: [1 2 3 x:4] = [1 2 :A@@]
+Does this yield: A=[3 x:4] (i.e. [0:3 x:4]) or A=[2:3 x:4] or FAIL?
+
+Option: Each mapping knows how many of its elements
+have shiftable vector indices. One printout, these are not
+prefixed by key value. Thus [1 2 3 x:4] has three vector indices
+(and four total). Then A=[3 x:4] <=> [1 2 3 x:4]=[1 2 :A@@]
+and A=[2:3 x:4] <=> [1 2 2:3 x:4]=[1 2 :A@@].
+Disadvantage: No longer have: [0:a]=[a]
+Disadvantage: More complex algebra/data structures/data model.
+Advantage: X@@ in list constructor [] can be used for both sequences
+(concatenation: shift keys) and mappings (union: merge keys).
+Advantage: Can do pattern matching against squenes with patterns
+containing arbitrary number of unknown tuples, while also matching
+arbitrary mappings with a pattern contain at most one unknown tuple
+(representing the "remaining" parameters in a function call).
+Advantage: [a ... [b ...]@@ c ...] would mean the same as
+[a ... b ... c ...] (i.e., some compensating simplicity).
+Question: Does [a b 10:c d] mean [a b 10:c 11:d]
+or [a b d 10:c]?
+
+Option: Distinguish semanticly between sequences and mappings (even
+though with appropriate keys). Again: [0:a]<>[a] - the former is
+a mapping, the latter a sequence. Then [...] is a mapping iff
+any component is mapping (tuple). However: [2 x:3]=[0:2 x:3].
+General idea: contageon - combining sequences yields a sequence;
+combining a sequence and a mapping yields a mapping.
+Disadvantage: Does not solve [1 2 3 x:4] = [1 2 :A@@] problem.
+Tentative conclusion: As complicated as previous solution,
+without any of its benefits.
+
+Option: Restrict T@@ operation such that T must be a sequence.
+Note: it would be nice to say that T@@ *coerces* T to a sequence
+(by stripping the keys), but this causes ambiguuity when pattern
+matching: [2 3]=[:A@@] could yield A=[2 3], but another valid
+answers would be (say) A=[100:2 200:3], so that would lose.
+Advantage: simplicity.
+Disadvantage: Loss of useful (?) features.
+Disadvantage(?): A tuple component cannot match keyword paramters.
+Note: could add a *different* non-coercing tuple operator, to achieve
+most advantages of previous solutions (except operator parsimony).
+
+Conclusion: Go with last option.
+Can use *:M is merge in mapping; also some operator V*->A
+which takes a sequence of keys and a sequence of value.
+
+@node Garbage collection
+@section Garbage collection
+
+class Value @{
+    Root *ptr;
+@};
+class ValueTmp @{
+    Root *ptr;
+@};
+
+ValueTmp operator+(ValueTmp, ValueTmp);
+
+A ValueTmp parameter means that the callee is supposed to delete
+the argument; a Value parameter means that the callee must *not*
+delete the argument.
+
+Functions speciify which parameters (and result) are Tmp and which
+are value.
+
+Value copy(ValueTmp x) returns y; @{ y.ptr = x.ptr->copy(); @}
+
+Problem: How should operator+ be defined? We should all four
+combinations of Value[Tmp] parameters be supported as different
+virtuals?
+
+Option: Having multiple implementations for different modes.
+Advantage: probably most efficient and flexible.
+Disadvantage: larger virtual tables.
+Disadvantage: How to specify modes, and select between variants
+depending on modes.
+Disdvantage: complexity?
+
+Option: each operation (e.g. "+") has only one mode.
+Disadvatage: Arbitrary. Would require extra copying.
+
+@node Application
+@section Application
+
+General case: A sequence of left args, and a list of right expressions.
+Default action::
+  append this to left-arg-list
+  more:
+  if 1st (leftmost) right-expression is:
+     tuple:
+	evaluate argument and post-append to left-arg-list
+	goto more
+     named  binding: fail
+     empty:
+	if (left-arg-list is singleton) return that element
+     normal expression:
+	next:=evaluate it
+	return call next.append(left-arg-list, rest of right-and)
+
+Function:
+  evaluate args until end or at least enough for Func
+  If named: evaluate rest.
+  if #args too few (and no named args): curry
+  else: call
+
+Root *Root::apply(Root **largs, Root **rargs, Root **nargs,
+    Symbol **names, int lcount, int rcount, int ncount)
+@{
+    if (rcount) @{
+	Root **buf = (Root**)alloca((lcount+1) * sizeof(Root*));
+	for (int i = lcount; --i >= 0; ) buf[i] = largs[i];
+	buf[lcount+1] = this;
+	return rargs[0]->apply(buf, rargs+1, nargs,
+	    names, lcount+1, rcount-1, ncount);
+    @}
+    else if (lcount+bcount ==0) return this;
+    else RaiseDomainError(NULL):
+@}
+
+Root * GenMap::apply(Root **largs, Root **rargs, Root **nargs,
+    Symbol **names, int lcount, int rcount, int ncount)
+@{
+    if (rcount) @{
+	Root *index = rargs[0];
+	if (index is not a function) @{
+	    return prefix(index)->apply(largs, rargs+1, nargs,
+		names, lcount, rcount - 1, ncount);
+	@}
+    @}
+    return Root::apply(largs, rargs, nargs, names, lcount, rcount, ncount);
+@}
+
+Root * GFunction::apply(Root **largs, Root **rargs, Root **nargs,
+    Symbol **names, int lcount, int rcount, int ncount)
+@{
+
+@}
+
+@node Scanning and Pattern matching
+@section Scanning and Pattern matching
+
+unify seq with pattern, where pattern
+is [ pattern_element* ]
+
+A pattern element is either a:
+
+* ground expression
+* non-ground plain expresssion (e.g. _)
+* pat@@
+* pat~class@@
+* pat~scanner@@
+
+A scanner is function whose left-arg is a (readable) file.
+
+file scanner => extracted value
+
+:val = (string scanner)
+ == (:f=(string open); :val=(f scanner); f.atend)
+
+scanner default left arg is current input file
+
+string-or-buffer scan expr == eval expr with cur-inp rebound
+
+Is scan needed ? Just use string-or-buffer = [ ] (in many cases)
+
+From Icon:
+file tab i == seek(file, 1, i), return segment
+file move i == seek(file, 0, i), return segment
+
+file match string Icon return new pos; Q: return string
+file upto charset I: generate seq of indexes
+file any charset get 1 if in charset
+file find s == _@@ s, returning indexes of s
+file many charset == skip charset*
+file bal
+
+[ ... :x~t@ ... ]
+[ ... (pattern)* ...]
+
+file scanner* #repeat, return sequence of result
+:x~scanner*@@
+:x~type* == sequence of type
+file(scanner1;scanner2) == (file scanner1);(file scanner2)
+
+@{?scanner1|?scanner2@}
+
+file string == file match string
+
+[ ... :x~"string"@@ ...] no
+
+@node Types
+@section Types
+
+Root
+  LVariable
+  Known
+    Assignable
+    Functional
+      Simple (arg is Scalar)
+        Mapping
+	  Sequence
+    Scalar
+      Numeric
+      Symbol
+Series/non-series
+
+scalar
+mapping with scalar args
+mapping with (mapping with scalar args) args
+
+x(unknown) function
+if x is Simple or Scalar, can apply function
+(simpmap1 simpmap2) x == simpmap1 (simpmap2 x)
+(f_ _g_ h_) x == (f_ x) _g_ (h_ x) if f,g are simple
+x (_f _g_ h_) y == (x _f) _g_ (h_ y)
+(f_ g_) x = f_ (g_ x)
+x (_f _g) = (x _f) _g
+(q_ _f) x = (q_ x) _f
+
+op_ _f
+
+reduce f
+
+function args
+non-func id args
+
+@node Syntax
+@section Syntax
+
+x=y x=y
+f x=y
+x:=a + b
+expr file
+
+ident  ==> (ident) #ExprList
++ident
+
+@node First-class disjunctions
+@section First-class disjunctions
+
+Earlier version of Q implemented disjunctions using backtracking,
+just like most Prologs. This has a number of disadvantages:
+Disjunctive values are implicitly spread out over time,
+and a not all available at any one time.
+Cannot easily etend to parallel implementations.
+
+A number of solutions are possible.
+
+@menu
+* Global environments::
+* Per-function environments::
+@end menu
+
+@node Global environments
+@subsection Global environments
+
+Maintain explicit separate environments.
+Each environment is a colect of constaints.
+
+Environments may be nested (chained); that is an environment
+may extend an environment with some extra constraints.
+
+The is a global (or per-process) variable that contains the
+current environment.
+
+To evaluate: @code{x|y}.
+Create two new sub-environments.
+These are both extensions of the current environment.
+Set the environment pointer to the first of the new
+sub-environment. Evaluate @code{x} using the latter.
+Similarly evaluate @code{y}.
+The result is (xval where env1) OR (yval where env2).
+
+Logically, @code{x|y} should clone the entire environment,
+using one clone for each of @code{x} and @code{y}.
+After @code{x} and @code{y} return, any new bindings
+should be entered in both environments.
+Problem: Cominatorial explosion of environments
+Solution 1: Share environments.
+Solution 2: Use lazy evaluation for @code{y}, and only
+create its environment when it is needed.
+
+@node Per-function environments
+@subsection Per-function environments
+
+The idea is to use a variant of Epilog's scheme.
+Each function invocation contains a set a variable bindings
+for the its own local variables.
+Unification is only allowed to bind local variables.
+
+@node Evaluation and quoting
+@section Evaluation and quoting
+
+@code{$} undoes quoting.
+@code{$@var{expr}}: @var{expr} is evaluated, as normal.
+If the result is in quoting contexnt, it is still evaluated,
+usinging the quote. Otherwise, the result should be an expression
+of a string, which is evaluated.
+
+Unevaluated parameters could be used in three ways:
+1) Always quoted - the parameter expression is coerced
+to a (list of) strings.
+Useful for shell-like things.
+2) Evaluate parameter (on demand using @code{$x}) with
+environment from call site. Parameter is implemented as thunk,
+is if actual were wrapped in a lambda.
+Useful for simulating (manually) lazy evaluation.
+3) More general: parameter is may be evaluated (with a specified
+environment), may be quoted, or both.
+Parameter is implemented as explicit Expression object, with explicit
+environment (from call-site). Expression can be evaluated with
+deafult environment, or any other environment.
+Use: ???
+
+Typing: In 1) Parameter is expr(T) for for some type T.
+In 2) parameter is string.
+In 3) ???.
+
+Operations:
+@code{glob @var{string}} => list of matching file names (string vector).
+
+@code{@var{string} match @var{pattern}}
+
+@code{@var{string} replace @var{pattern1} @var{pattern2}}
+
+If formal parameter @code{X} in @code{$:X@@} is list of strings
+(option 1 above):
+@code{"$X"} coerces X to a single string.
+@code{$X} evaluate X in some default environment (the global one?).
+@code{run foo $X} runs @code{foo} with @code{argv} set from @code{X}.@
+@code{glob X}
+@code{globsh X} - shell-style globbing when no match:
+	@{if glob X? == [] => [(remquote X?)] || glob X? @} concat
+	globsh [] ==> []
+	globsh x,y ==>
+		[(if glob x == [] => [remquote x] || glob x) (globsh y)@@]
+@code{run foo $(globsh X)} runs foo with globbing.
+
+If parameters can be expressions (option 3 above):
+Given parameter @code{$:X}, @var{X} is an expression,
+while with parameter @code{$:X@@}, @var{X} is an expression vector.
+@code{"$X"} coerces expression or expression vector to single string.
+@code{$X} evaluate X is a default environment (that of the call site).
+
+@node Jobs
+@section Background jobs
+
+The following interface to csh-style background jobs is not yet finished.
+It (like other parts of Q) uses code from @samp{bash}, the GNU shell,
+written primarily by Brain Fox.
+
+@example
+bg @var{command_line}
+@end example
+Run the @var{command_line} is the background.
+(Most shells use: @code{@var{command_line}&}.)
+
+@example
+bg %@var{job_number}
+@end example
+Run in the background the existing job with indicated @var{job_number}.
+
+@example
+fg @var{command_line}
+@end example
+Run the @var{command_line} is the foreground.
+This is the same as plain @var{command_line}, except that it forces
+a fork, even if the @var{command_line} is a plain Q expression.
+Thus it can later be put into the background.
+
+@example
+fg %@var{job_number}
+@end example
+Run in the foreground the existing job with indicated @var{job_number}.
+
+@node Units
+@section Physical units
+
+Base unit:
+
+:NAME = UNIT
+
+Derived unit:
+
+:NAME = UNIT EXPR
+
+class Quantity : public Numeric @{
+  double val;
+  struct Unit *unit;
+@};
+
+class Unit @{
+  char *name;
+  double val;
+  struct @{
+     struct BaseUnit *base;
+     int exponent;
+  @} dim[N];  
+@};
+
+@contents
+@bye

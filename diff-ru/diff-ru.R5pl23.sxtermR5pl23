@@ -1,0 +1,458 @@
+diff -ru xtermR5pl23/XTerm.ad sxtermR5pl23/XTerm.ad
+--- xtermR5pl23/XTerm.ad	Thu Jul 18 18:40:24 1991
++++ sxtermR5pl23/XTerm.ad	Thu Nov 16 00:21:15 1995
+@@ -9,6 +9,7 @@
+ *mainMenu*securekbd*Label:  Secure Keyboard
+ *mainMenu*allowsends*Label:  Allow SendEvents
+ *mainMenu*logging*Label:  Log to File
++XTerm*mainMenu*secureonpwd*Label:  Secure kbd on Passwd
+ *mainMenu*redraw*Label:  Redraw Window
+ *mainMenu*suspend*Label:  Send STOP Signal
+ *mainMenu*continue*Label:  Send CONT Signal
+@@ -76,3 +77,5 @@
+ *tek4014*font3: 6x13
+ *tek4014*fontSmall: 6x10
+ 
++XTerm*AutoGrab: true
++XTerm*PwdPrompt: Password:
+diff -ru xtermR5pl23/cursor.c sxtermR5pl23/cursor.c
+--- xtermR5pl23/cursor.c	Fri May 10 23:57:15 1991
++++ sxtermR5pl23/cursor.c	Thu Nov 16 00:21:15 1995
+@@ -203,9 +203,14 @@
+ CarriageReturn(screen)
+ register TScreen *screen;
+ {
++  extern void DoAutoGrab();                    /* NYH - ADD !!! */ 
++  extern KbdAutoGrabbed;                       /* NYH - ADD !!! */
++
+ 	screen->cur_col = 0;
+ 	screen->do_wrap = 0;
+ 	_CheckSelection(screen);
++  if (KbdAutoGrabbed)                          /* NYH - ADD !!! */ 
++    DoAutoGrab(FALSE);
+ }
+ 
+ /*
+diff -ru xtermR5pl23/main.c sxtermR5pl23/main.c
+--- xtermR5pl23/main.c	Wed Nov 15 23:48:14 1995
++++ sxtermR5pl23/main.c	Thu Nov 16 00:21:15 1995
+@@ -422,9 +422,11 @@
+     char *icon_name;
+     char *term_name;
+     char *tty_modes;
++    char *pwd_prompt;                        /* for 'secureonpwd' */
+     Boolean utmpInhibit;
+     Boolean sunFunctionKeys;	/* %%% should be widget resource? */
+     Boolean wait_for_map;
++    Boolean AutoGrab;
+     Boolean useInsertMode;
+ } resource;
+ 
+@@ -451,6 +453,10 @@
+ 	offset(sunFunctionKeys), XtRString, "false"},
+     {"waitForMap", "WaitForMap", XtRBoolean, sizeof (Boolean),
+         offset(wait_for_map), XtRString, "false"},
++    {"pwdPrompt", "PwdPrompt", XtRString, sizeof (char *),
++        offset(pwd_prompt), XtRString, "Password:"},
++    {"autoGrab", "AutoGrab", XtRBoolean, sizeof (Boolean),
++        offset(AutoGrab), XtRString, "true"},
+     {"useInsertMode", "UseInsertMode", XtRBoolean, sizeof (Boolean),
+         offset(useInsertMode), XtRString, "false"},
+ };
+@@ -753,9 +759,13 @@
+ 	int Xsocket, mode;
+ 	char *base_name();
+ 	int xerror(), xioerror();
++	extern int PassStrLen;                       /* NYH - ADD !!! */
++	extern Boolean *KbdGrabOnPasswd;             /* NYH - ADD !!! */
++	extern char *PassStr;                        /* NYH - ADD !!! */
+ 
+ 	ProgramName = argv[0];
+ 
++
+ 	ttydev = (char *) malloc (strlen (TTYDEV) + 1);
+ 	ptydev = (char *) malloc (strlen (PTYDEV) + 1);
+ 	if (!ttydev || !ptydev) {
+@@ -901,6 +911,11 @@
+ 	    }
+ 	}
+ 
++
++	KbdGrabOnPasswd = &resource.AutoGrab;
++	PassStr=resource.pwd_prompt;
++	PassStrLen = strlen(PassStr);
++
+ 	xterm_name = resource.xterm_name;
+ 	sunFunctionKeys = resource.sunFunctionKeys;
+ 	if (strcmp(xterm_name, "-") == 0) xterm_name = "xterm";
+@@ -1067,7 +1082,12 @@
+ 		unsigned char *old_bufend;
+ 
+ 		old_bufend = (unsigned char *) _bufend(stderr);
++#if     defined(hpux) /* && (OsMajorVersion > 7) */
++		stderr->__fileL = i & 0x00ff;
++		stderr->__fileH = (i & 0xff00) >> 8;
++#else
+ 		stderr->_file = i;
++#endif
+ 		_bufend(stderr) = old_bufend;
+ #else	/* USE_SYSV_TERMIO */
+ 		stderr->_file = i;
+diff -ru xtermR5pl23/menu.c sxtermR5pl23/menu.c
+--- xtermR5pl23/menu.c	Wed Nov 15 23:48:14 1995
++++ sxtermR5pl23/menu.c	Thu Nov 16 00:28:56 1995
+@@ -1,4 +1,4 @@
+-/* $XConsortium: menu.c,v 1.62 93/02/25 17:21:30 gildea Exp $ */
++/* $XConsortium: menu.c,v 1.61 92/04/20 18:46:39 rws Exp $ */
+ /*
+ Copyright 1989 Massachusetts Institute of Technology
+ 
+@@ -25,6 +25,9 @@
+ #include <stdio.h>
+ #include <signal.h>
+ 
++Boolean     *KbdGrabOnPasswd;              /* NYH - ADD !!! */
++Boolean KbdAutoGrabbed=FALSE;              /* NYH - ADD !!! */
++
+ extern void FindFontSelection();
+ 
+ Arg menuArgs[2] = {{ XtNleftBitmap, (XtArgVal) 0 },
+@@ -45,7 +48,7 @@
+     do_tekmode(), do_vthide(), 
+     do_tektextlarge(), do_tektext2(), do_tektext3(), do_tektextsmall(), 
+     do_tekpage(), do_tekreset(), do_tekcopy(), do_vtshow(), do_vtmode(), 
+-    do_tekhide(), do_vtfont();
++    do_tekhide(), do_vtfont(), do_secureonpwd();
+ 
+ 
+ /*
+@@ -53,20 +56,21 @@
+  */
+ MenuEntry mainMenuEntries[] = {
+     { "securekbd",	do_securekbd, NULL },		/*  0 */
+-    { "allowsends",	do_allowsends, NULL },		/*  1 */
++    { "secureonpwd",	do_secureonpwd, NULL },		/*  1 */
++    { "allowsends",	do_allowsends, NULL },		/*  2 */
+ #ifdef ALLOWLOGGING
+-    { "logging",	do_logging, NULL },		/*  2 */
++    { "logging",	do_logging, NULL },		/*  3 */
+ #endif
+-    { "redraw",		do_redraw, NULL },		/*  3 */
+-    { "line1",		NULL, NULL },			/*  4 */
+-    { "suspend",	do_suspend, NULL },		/*  5 */
+-    { "continue",	do_continue, NULL },		/*  6 */
+-    { "interrupt",	do_interrupt, NULL },		/*  7 */
+-    { "hangup",		do_hangup, NULL },		/*  8 */
+-    { "terminate",	do_terminate, NULL },		/*  9 */
+-    { "kill",		do_kill, NULL },		/* 10 */
+-    { "line2",		NULL, NULL },			/* 11 */
+-    { "quit",		do_quit, NULL }};		/* 12 */
++    { "redraw",		do_redraw, NULL },		/*  4 */
++    { "line1",		NULL, NULL },			/*  5 */
++    { "suspend",	do_suspend, NULL },		/*  6 */
++    { "continue",	do_continue, NULL },		/*  7 */
++    { "interrupt",	do_interrupt, NULL },		/*  8 */
++    { "hangup",		do_hangup, NULL },		/*  9 */
++    { "terminate",	do_terminate, NULL },		/* 10 */
++    { "kill",		do_kill, NULL },		/* 11 */
++    { "line2",		NULL, NULL },			/* 12 */
++    { "quit",		do_quit, NULL }};		/* 13 */
+ 
+ MenuEntry vtMenuEntries[] = {
+     { "scrollbar",	do_scrollbar, NULL },		/*  0 */
+@@ -159,6 +163,7 @@
+ 					    mainMenuEntries,
+ 					    XtNumber(mainMenuEntries));
+ 	    update_securekbd();
++	    update_KbdGrabOnPasswd();
+ 	    update_allowsends();
+ #ifdef ALLOWLOGGING
+ 	    update_logging();
+@@ -313,6 +318,36 @@
+  * action routines
+  */
+ 
++/* NYH - ADD !!! */
++/* -------------------------------NYH AutoGrab------------------- */
++void DoAutoGrab(on)                                
++     Boolean on;
++{
++  register TScreen *screen = &term->screen;  
++
++  if(on) { /* grabb it ... */
++    if (screen->grabbedKbd){
++      XBell (screen->display, 100); /* beep once if already grabbed */
++      return;
++    }
++    KbdAutoGrabbed = TRUE;
++    do_securekbd (term->screen.mainMenu, NULL, NULL);
++  }
++  
++  else{
++    if (!KbdAutoGrabbed){
++      XBell (screen->display, 100); /* beep annoyingly if isn't grabbed */
++      XBell (screen->display, 100);
++      XBell (screen->display, 100);
++      return;
++    }
++    KbdAutoGrabbed = FALSE;
++    if (screen->grabbedKbd)
++      do_securekbd (term->screen.mainMenu, NULL, NULL);
++  }
++}
++/* --------------------------------------------------- */
++
+ /* ARGSUSED */
+ void DoSecureKeyboard (time)
+     Time time;
+@@ -336,6 +371,7 @@
+ 			   True, GrabModeAsync, GrabModeAsync, time)
+ 	    != GrabSuccess) {
+ 	    XBell (screen->display, 100);
++	    KbdAutoGrabbed = FALSE;
+ 	} else {
+ 	    ReverseVideo (term);
+ 	    screen->grabbedKbd = TRUE;
+@@ -354,6 +390,15 @@
+     screen->allowSendEvents = !screen->allowSendEvents;
+     update_allowsends ();
+ }
++
++static void do_secureonpwd (gw, closure, data) /* NYH - ADD !!! */
++    Widget gw;
++    caddr_t closure, data;
++{
++  *KbdGrabOnPasswd = !*KbdGrabOnPasswd;
++  update_KbdGrabOnPasswd ();
++}
++
+ 
+ static void do_visualbell (gw, closure, data)
+     Widget gw;
+diff -ru xtermR5pl23/menu.h sxtermR5pl23/menu.h
+--- xtermR5pl23/menu.h	Wed Nov 15 23:48:15 1995
++++ sxtermR5pl23/menu.h	Thu Nov 16 00:23:56 1995
+@@ -24,6 +24,10 @@
+ extern MenuEntry fontMenuEntries[];
+ extern Arg menuArgs[];
+ 
++extern Boolean *KbdGrabOnPasswd;             /* NYH - ADD !!! */
++extern Boolean KbdAutoGrabbed;               /* NYH - ADD !!! */
++ 
++
+ extern void HandleAllowSends();
+ extern void HandleSetVisualBell();
+ #ifdef ALLOWLOGGING
+@@ -66,20 +70,21 @@
+  * items in primary menu
+  */
+ #define mainMenu_securekbd 0
+-#define mainMenu_allowsends 1
++#define mainMenu_secureonpwd 1
++#define mainMenu_allowsends 2
+ #ifdef ALLOWLOGGING
+-#define mainMenu_logging 2
++#define mainMenu_logging 3
+ #endif
+-#define mainMenu_redraw 3
+-#define mainMenu_line1 4
+-#define mainMenu_suspend 5
+-#define mainMenu_continue 6
+-#define mainMenu_interrupt 7
+-#define mainMenu_hangup 8
+-#define mainMenu_terminate 9
+-#define mainMenu_kill 10
+-#define mainMenu_line2 11
+-#define mainMenu_quit 12
++#define mainMenu_redraw 4
++#define mainMenu_line1 5
++#define mainMenu_suspend 6
++#define mainMenu_continue 7
++#define mainMenu_interrupt 8
++#define mainMenu_hangup 9
++#define mainMenu_terminate 10
++#define mainMenu_kill 11
++#define mainMenu_line2 12
++#define mainMenu_quit 13
+ 
+ 
+ /*
+@@ -167,6 +172,12 @@
+   update_menu_item (term->screen.mainMenu, \
+ 		    mainMenuEntries[mainMenu_securekbd].widget, \
+ 		    term->screen.grabbedKbd)
++
++                                     /* NYH - ADD !!! */
++#define update_KbdGrabOnPasswd() \
++  update_menu_item (term->screen.mainMenu, \
++		    mainMenuEntries[mainMenu_secureonpwd].widget, \
++		    *KbdGrabOnPasswd)
+ 
+ #define update_allowsends() \
+   update_menu_item (term->screen.mainMenu, \
+diff -ru xtermR5pl23/screen.c sxtermR5pl23/screen.c
+--- xtermR5pl23/screen.c	Thu Aug 22 23:30:38 1991
++++ sxtermR5pl23/screen.c	Thu Nov 16 00:21:16 1995
+@@ -32,6 +32,7 @@
+ #include "data.h"
+ 
+ #include <stdio.h>
++#include <string.h>
+ #include <signal.h>
+ #ifdef SVR4
+ #include <termios.h>
+@@ -156,6 +157,9 @@
+ 	return move_down ? move_down/2 : -move_up/2; /* convert to rows */
+ }
+ 
++char   *PassStr;                             /* NYH - ADD !!! */
++int  PassStrLen;                             /* NYH - ADD !!! */
++
+ ScreenWrite (screen, str, flags, length)
+ /*
+    Writes str into buf at row row and column col.  Characters are set to match
+@@ -166,9 +170,14 @@
+ register unsigned flags;
+ register int length;		/* length of string */
+ {
++        extern void DoAutoGrab(/*Boolean*/);         /* NYH - ADD !!! */
++        extern Boolean *KbdGrabOnPasswd;             /* NYH - ADD !!! */
++	extern Boolean KbdAutoGrabbed;               /* NYH - ADD !!! */
++
+ 	register Char *attrs;
+ 	register int avail  = screen->max_col - screen->cur_col + 1;
+ 	register Char *col;
++	int i;
+ 
+ 	if (length > avail)
+ 	    length = avail;
+@@ -179,7 +188,27 @@
+ 	attrs = screen->buf[avail + 1] + screen->cur_col;
+ 	flags &= ATTRIBUTES;
+ 	flags |= CHARDRAWN;
+-	bcopy(str, col, length);
++
++	if (*KbdGrabOnPasswd &&                      /* NYH - ADD !!! */
++	    !screen->grabbedKbd &&  /* or !KbdAutoGrabbed depends on what feel you want */
++#if 0
++	    /* Match "Password:" string */
++	    length == PassStrLen && 
++	    !strncasecmp(str, PassStr,strlen(PassStr)) /* or stricmp() */
++#else
++            /* Match "Password:" and "Password: " strings */
++            ((length == PassStrLen || length == PassStrLen + 1) &&
++                !strncasecmp(str, PassStr, PassStrLen))
++#endif
++							) { /* or stricmp() */
++	  DoAutoGrab(TRUE);
++	  if(!KbdAutoGrabbed)  /* if failed to grab try a bit more */
++	    for (i=4;i>0 && !KbdAutoGrabbed ;i--){sleep(3);DoAutoGrab(TRUE);}
++	  bcopy(str, col, length);
++	  Redraw();
++	}
++	else
++	  bcopy(str, col, length);
+ 	while(length-- > 0)
+ 		*attrs++ = flags;
+ }
+diff -ru xtermR5pl23/xterm.man sxtermR5pl23/xterm.man
+--- xtermR5pl23/xterm.man	Wed Nov 15 23:48:15 1995
++++ sxtermR5pl23/xterm.man	Thu Nov 16 00:21:16 1995
+@@ -1,5 +1,5 @@
+ .\" $XConsortium: xterm.man,v 1.72.1.1 93/11/03 18:03:48 gildea Exp $
+-.TH XTERM 1 "Release 5" "X Version 11"
++.TH "XTERM (Patched)" 1 "Release 5" "X Version 11"
+ .SH NAME
+ xterm \- terminal emulator for X
+ .SH SYNOPSIS
+@@ -756,6 +756,17 @@
+ .\".in -1in
+ .sp
+ .PP
++The following resources were added for the AutoGrab patch:
++.TP 8
++.B "autoGrab"
++Enable/Disable AutoGrab on startup.
++.\".in +1in
++.TP 8
++.B "pwdPrompt"
++AutoGrab's search string.
++.\".in +1in
++.sp
++.PP
+ The resources that may be specified for the various menus are described in
+ the documentation for the Athena \fBSimpleMenu\fP widget.  The name and classes
+ of the entries in each of the menus are listed below.
+@@ -769,6 +780,9 @@
+ .B "allowsends (\fPclass\fB SmeBSB)"
+ This entry invokes the \fBallow-send-events(toggle)\fP action.
+ .TP 8
++.B "secureonpwd (\fPclass\fB SmeBSB)"
++This entry invokes the \fBdo_secureonpwdg(toggle)\fP action.
++.TP 8
+ .B "redraw (\fPclass\fB SmeBSB)"
+ This entry invokes the \fBredraw()\fP action.
+ .TP 8
+@@ -1076,6 +1090,15 @@
+ mode is be used when typing in passwords or other sensitive data in an
+ unsecure environment;
+ see \fBSECURITY\fP below.
++
++.B In this patched version of 
++.B xterm, 
++.B xterm
++will automatically attempt to secure the keyboard when the user is
++prompted for a password; see \fBSECURITY\fP below.
++
++
++
+ Notable entries in the command section of the menu are the
+ .BR Continue ,
+ .BR Suspend ,
+@@ -1159,6 +1182,21 @@
+ spoofing.  You can also bring up the menu again and make sure that a check
+ mark appears next to the entry.
+ .PP
++To make life easier for those who just type their password in xterm
++the feature '\fBSecure kbd on Passwd\fP' was added (patch).  When
++active (the feature can be toggled in the menu and the defult state
++can be set with the autoGrab resource) this feature will scan for a
++password prompt "Password:" by default (can be set with the resource
++pwdPrompt) when found \fBSecure Keyboard\fP will get activated and
++will be de-activated when a new-line is sent [obviously nothing
++should happen when allready in \fBSecure Keyboad\fP mode is turned
++on].  If keyboard is already grabbed \fBSecure kbd on Passswd\fP will
++fail and screen colors will not reverse.  Behaviour is not defined
++for the special cases described below (under which \fBSecure
++Keyboard\fP will fail) but the state can be restored by toggeling
++\fBSecure Keyboard\fP couple of times.
++
++.PP
+ \fBSecure Keyboard\fP mode will be disabled automatically if your xterm
+ window becomes iconified (or otherwise unmapped), or if you start up
+ a reparenting window manager (that places a title bar or other decoration
+@@ -1604,3 +1642,24 @@
+ Steve Pitschke (Stellar), Ron Newman (MIT-Athena), Jim Fulton (MIT X 
+ Consortium), Dave Serisky (HP), Jonathan Kamens (MIT-Athena)
+ 
++
++.SH PATCH NOTES
++.PP
++The automatic switching of keyboard grabbing is done by monitoring the
++strings coming into the text widget (screen.c).  XTerm*PwdPrompt is
++"Password:" by default.  Any other string will be acceptable, however
++in order to avoid hectic string searches the string length has to
++equal before the strings are compared [case in-sensative].  Usually
++this will not be a problem, however, some prompts might say "Please
++enter password:".  In such case, given that the sources exists, the
++printing of the prompt can be done in 2 steps seperated by a fflush(3s).
++.PP
++No more then one window can secure the keyboard at a time so that an
++attempt to secure the keyboard automatically may fail and you should
++secure it manually.  On such a failure xterm will beep and attempt to
++repeat few more times. The keyboard is secured when it's colors are
++reversed.
++.sp
++
++.SH PATCHED BY
++Nevo Y Hed, APR 92 (R5-  JUL 92), nyh@wpi.wpi.edu.

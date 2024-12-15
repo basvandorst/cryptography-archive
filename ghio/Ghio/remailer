@@ -1,0 +1,101 @@
+#!/bin/csh
+
+setenv REMAIL /home/remailer/remail
+# Put your directory/filename here
+setenv MAILSPOOL /usr/spool/mail/`whoami`
+
+cat >$REMAIL/temp$$
+$REMAIL/stats `date +"%h %d %H"` + $REMAIL/statsdata
+recurse:
+if (! -r $REMAIL/count) then
+echo 0 >$REMAIL/count
+endif
+$REMAIL/increment $REMAIL/count
+setenv TO `$REMAIL/readheaders $REMAIL/temp$$a $REMAIL/temp$$r $REMAIL/temp$$l $REMAIL/temp$$k $REMAIL/temp$$t <$REMAIL/temp$$`
+if ( $TO == "" ) then
+echo "" >>$REMAIL/temp$$
+cat $REMAIL/temp$$ >>$MAILSPOOL
+else
+if ( $TO == "pgp" ) then
+#cat $REMAIL/temp$$ >>$REMAIL/log
+$REMAIL/stats `date +"%h %d %H"` p $REMAIL/statsdata
+$REMAIL/pgpext $REMAIL/temp$$e $REMAIL/temp$$c <$REMAIL/temp$$
+setenv PGPPASS your-pgp-pass
+cd $REMAIL
+/usr/local/bin/pgp -f <$REMAIL/temp$$e >$REMAIL/temp$$d
+unsetenv PGPPASS
+mv $REMAIL/temp$$ $REMAIL/temp$$o
+echo "pgp-recursive" >$REMAIL/temp$$
+/usr/bin/grep "From:" <$REMAIL/temp$$o >>$REMAIL/temp$$
+echo "" >>$REMAIL/temp$$
+rm $REMAIL/temp$$o
+cat $REMAIL/temp$$d $REMAIL/temp$$c >>$REMAIL/temp$$
+rm $REMAIL/temp$$c
+rm $REMAIL/temp$$d
+rm $REMAIL/temp$$e
+goto recurse
+else
+if (-r $REMAIL/temp$$t) then
+cd $REMAIL
+#setenv PGPPASS `cat $REMAIL/temp$$k`
+/usr/local/bin/pgp +batchmode -z `cat $REMAIL/temp$$k` -cta $REMAIL/temp$$t -o temp$$e
+#unsetenv PGPPASS
+rm $REMAIL/temp$$k
+cat $REMAIL/temp$$a $REMAIL/temp$$e.asc >$REMAIL/temp$$t
+rm $REMAIL/temp$$e.asc
+mv $REMAIL/temp$$t $REMAIL/temp$$a
+endif
+if ( $TO == "post" ) then
+/usr/local/bin/inews -h $REMAIL/temp$$a |& cat >$REMAIL/error$$
+if (`$REMAIL/length <$REMAIL/error$$` != "0") then
+echo "From: Anonymous Remailer at <address@?>" >$REMAIL/error$$a
+echo "Subject: Post to usenet failed" >>$REMAIL/error$$a
+echo "Reply-To: remailer-complaints@your.site" >>$REMAIL/error$$a
+echo "To: `$REMAIL/getfrom <$REMAIL/temp$$`" >>$REMAIL/error$$a
+echo "" >>$REMAIL/error$$a
+echo "Your message could not be posted for the following reason:" >>$REMAIL/error$$a
+echo "" >>$REMAIL/error$$a
+cat $REMAIL/error$$ >>$REMAIL/error$$a
+echo "" >>$REMAIL/error$$a
+echo "Unsent message follows:"  >>$REMAIL/error$$a
+echo "" >>$REMAIL/error$$a
+cat $REMAIL/temp$$a >>$REMAIL/error$$a
+cat $REMAIL/error$$a | /usr/lib/sendmail `$REMAIL/getfrom <$REMAIL/temp$$`
+#cat $REMAIL/error$$a | /usr/lib/sendmail your-address
+# Use this if you want errors CCed to you
+rm $REMAIL/error$$a
+endif
+rm $REMAIL/error$$
+setenv TO null
+endif
+if ( $TO == "stat" ) then
+$REMAIL/stats `date +"%h %d %H"` v $REMAIL/statsdata | /usr/lib/sendmail `$REMAIL/getfrom <$REMAIL/temp$$`
+setenv TO null
+endif
+if ( $TO == "help" ) then
+cat $REMAIL/remailer-help | /usr/lib/sendmail `$REMAIL/getfrom <$REMAIL/temp$$`
+setenv TO null
+endif
+if ( $TO != "null" ) then
+if (-r $REMAIL/temp$$l) then 
+$REMAIL/stats `date +"%h %d %H"` l $REMAIL/statsdata
+date >$REMAIL/time$$
+$REMAIL/convtime $REMAIL/time$$ $REMAIL/temp$$l >$REMAIL/queue/q`cat $REMAIL/count`
+echo $TO >>$REMAIL/queue/q`cat $REMAIL/count`
+cp $REMAIL/temp$$a $REMAIL/queue/m`cat $REMAIL/count`
+rm $REMAIL/time$$
+rm $REMAIL/temp$$l
+else
+cat $REMAIL/temp$$a | /usr/lib/sendmail $TO
+endif
+endif
+endif
+endif
+rm $REMAIL/temp$$
+rm $REMAIL/temp$$a
+unsetenv TO
+if ( -r $REMAIL/temp$$r ) then
+mv $REMAIL/temp$$r $REMAIL/temp$$
+goto recurse
+endif
+source $REMAIL/sendlatents

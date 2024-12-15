@@ -1,0 +1,290 @@
+@(#) README 1.7 92/06/11 22:21:17
+
+General description
+-------------------
+
+With this package you can monitor incoming connections to the SYSTAT,
+FINGER, FTP, TELNET, RLOGIN, RSH, EXEC, TFTP, TALK, and other IP
+network services.  Connections are reported through the syslog daemon.
+Requirements are that network daemons are started by the inetd program
+or something similar, and the availability of a syslog(3) library.
+
+The programs are tiny front ends. By default, they just report the name
+or address of the remote host and of the requested service, and then
+invoke the real network daemon; no information is exchanged with the
+remote client process.
+
+Optional features are: access control that limits the number of hosts
+that can connect to your network daemons, remote user name lookups with
+the RFC 931 protocol, and protection against hosts that pretend to have
+someone elses host name.
+
+The programs can be installed without any changes to existing software
+or to existing configuration files.  Just move the vendor-provided
+daemons to another directory and install the front ends into their
+original places.  Installation details are given below.
+
+Early versions of the programs were tested with Ultrix >= 2.2, with
+SunOS >= 3.4 and ISC 2.2. Later versions have been installed on a wide
+variety of platforms such as SunOS 4.1.1, Ultrix 4.0 and 4.2, Apollo
+SR10.3.5 and an unknown number of other ones. The software should run
+without modification on top of most BSD-style TCP/IP implementations.
+
+Restrictions
+------------
+
+Some UDP (and RPC) daemons linger around for a while after they have
+serviced a request, just in case another request comes in.  In the
+inetd configuration file these daemons are registered with the `wait'
+option. Only the request that started such a daemon will be handled by
+the front ends.  This restriction does not apply to connection-oriented
+(TCP) services.
+
+Some ConvexOS versions come with a broken recvfrom(2) implementation.
+This makes it impossible for the daemon front ends to look up the
+remote host address (and hence, the name) in case of UDP connections.
+
+Access control
+--------------
+
+When compiled with -DHOSTS_ACCESS, the front-end programs support a
+simple form of access control that is based on pattern matching.  The
+access-control software provides hooks for the execution of shell
+commands when a pattern fires; this feature may be useful to install
+"booby traps" on specific network services.  For details, see the
+hosts_access(5) manual page, which is in `nroff -man' format.
+
+Detection of hosts that pretend to have someone elses host name
+---------------------------------------------------------------
+
+Authentication based on host names, such as used by RLOGIN and RSH,
+used to work quite reliably when all host name lookups were done from
+a _local_ hosts file.
+
+With _distributed_ name services, authentication schemes that rely on
+host names can be subverted by playing games with the address->name and
+name->address maps that are maintained by some far-away name servers.
+
+The front-end programs verify the remote host name that is returned by
+the DNS server responsible for the address->name mapping, by looking at
+the name and address that are returned by the DNS server responsible
+for the name->address mapping. If any discrepancies are found, the
+front ends conclude that they are dealing with a host that pretends to
+have someone elses host name.
+
+If the sources are compiled with -DPARANOID, the front ends will drop
+the connection in case of a host name/address mismatch. Otherwise, the
+front ends pretend that the host name is unknown when logging the
+connection and consulting the optional access control tables.
+
+RFC 931 support
+---------------
+
+The protocol described in RFC 931 provides a means to get the remote
+user name from the client host.  The requirement is that the client
+host runs an RFC 931-compliant daemon.
+
+User name lookups are enabled if the source is compiled with -DRFC931.
+There are some limitations, though: the number of hosts that run an RFC
+931 daemon is still small; user name lookups do not work for datagram
+(UDP) connections. More seriously, remote user name loookups can cause
+noticeable delays with connections from PCs.
+
+Hooks for extending the access control language
+-----------------------------------------------
+
+A skeleton is available for adding user-defined extensions to the
+access control language.  The options.c file implements examples that
+selectively (1) make a daemon front end switch to another user or group
+id, (2) perform remote user name lookups, and (3) run an alternate
+server (for example, a bogus ftp daemon that mumbles some faked error
+message before hanging up).
+
+The the language extension hook is not enabled by default because it
+introduces a minor change to the access control language syntax.
+
+Related software
+----------------
+
+Versions of rshd and rlogind, hacked to report the remote user name in
+addition to the remote host name, are available for anonymous ftp
+(ftp.win.tue.nl:/pub/security/logdaemon.tar.Z).  These programs are
+derived from source code on the first 43BSD network source tape; they
+have been tested only with SunOS >= 4.0 (the rshd appears to work with
+Ultrix 4.x, too).
+
+The securelib shared library by William LeFebvre can be used to control
+access to network daemons that are not run under control of the inetd,
+such as the RPC daemons that are registered with the portmap daemon.
+Available as eecs.nwu.edu:/pub/securelib.tar.
+
+An alternative portmap daemon can also help to improve RPC security.
+ftp.win.tue.nl:/pub/security/portmap.shar.Z was tested with SunOS
+4.1.1, Ultrix 3.0 and Ultrix 4.x. The protection is less effective than
+that of the securelib library because portmap's primary task is to
+maintain the RPC daemon lookup table. SunOS 4.x users should install
+the latest revision of the portmap and NIS software.
+
+Another way to manage access to TCP/IP services is illustrated by the
+servers provided with the authutil package (comp.sources.unix volume
+22) by Dan Bernstein. This one relies on RFC 931.
+
+Source for a reasonably fast and portable RFC 931 daemon by Peter
+Eriksson is available from ftp.lysator.liu.se:/pub/net/pauthd*.tar.Z.
+
+Some TCP/IP implementations come without syslog library. A replacement
+can be found in ftp.win.tue.nl:/pub/security/surrogate-syslog.tar.Z.
+
+Configuration and installation (the easy way)
+---------------------------------------------
+
+An advanced installation recipe is given later on. The "easy" recipe
+requires no changes to existing software or configuration files.
+
+If you don't run Ultrix, you don't need the miscd front-end program.
+The miscd daemon implements among others the SYSTAT service, which
+produces the same output as the the WHO command.
+
+By default, the front-end programs assume that the vendor-provided
+daemons will be moved to the "/usr/etc/..." directory.  If you want
+something else, adjust the REAL_DAEMON_DIR macro in the file tcpd.c
+(and the REAL_DAEMON macro in miscd.c).
+
+Follow the instructions at the beginning of the Makefile and compile
+the programs. The result is two binaries (three in case of Ultrix). The
+`try' program can be used to play with host access control tables and
+is described in a later section. 
+
+The tcpd program can be used for monitoring requests for the telnet,
+finger, ftp, exec, rsh, rlogin, tftp, talk, spray, rusers, comsat and
+other services that have a one-to-one mapping onto executable files.
+
+Decide which services you want to be monitored. Move the corresponding
+vendor-provided daemon programs to the location specified by the
+REAL_DAEMON_DIR macro in the file tcpd.c, and copy the tcpd front end
+to the locations where the vendor-provided daemons used to be. That is,
+one copy of (or link to) the tcpd program for each service that you
+want to monitor.
+
+Ultrix only:  If you want to monitor and/or restrict access to the
+SYSTAT service, move the vendor-provided miscd daemon to the location
+specified by the REAL_DAEMON macro in the miscd.c file, and install the
+miscd front end into the original miscd location.
+
+Configuration and installation (the advanced way)
+-------------------------------------------------
+
+Instead of moving the vendor-provided daemons to another directory,
+define the REAL_DAEMON_DIR macro in the file tcpd.c (and, if you run
+Ultrix, REAL_DAEMON in miscd.c) to reflect the present location of
+those daemons. Then follow the instructions in the Makefile and do
+a "make".
+
+The tcpd program can be used for monitoring requests for the telnet,
+finger, ftp, exec, rsh, rlogin, tftp, talk, spray, rusers, comsat and
+other services that have a one-to-one mapping onto executable files.
+
+Install the tcpd command in a suitable place. Apollo UNIX users will
+want to install it under a different name because tcpd is the name of
+an already existing command. A suitable name for the front-end program
+would be "frontd".  Then perform the following edits on the inetd
+configuration file (usually /etc/inetd.conf):
+
+    finger  stream  tcp     nowait  nobody  /usr/etc/in.fingerd     in.fingerd
+
+becomes:
+
+    finger  stream  tcp     nowait  nobody  /usr/etc/tcpd           in.fingerd
+
+The example applies to SunOS 4.x; other UNIX implementations should not
+differ much. Similar changes will be needed for other services that are
+to be covered by the tcpd (or frontd) front-end program. Send a SIGHUP
+to the inetd process to make the changes effective.
+
+The miscd daemon that comes with Ultrix implements several network
+services. It decides what to do by looking at its process name. One of
+the services is systat, which is a kind of limited finger service.  If
+you want to monitor the systat service, install the miscd front end in
+a suitable place and update the inetd configuration file:
+
+    systat  stream  tcp     nowait  /front/ends/miscd           systatd
+
+That's right, Ultrix still runs its daemons with root privileges.
+
+Daemons with arbitrary path names
+---------------------------------
+
+The above tcpd examples work fine with network daemons that live in a
+common directory, but sometimes that is not possible. You can cope with
+these cases by specifying, in the inetd configuration file, an absolute
+path name for the daemon process name.  For example,
+
+    ntalk   dgram   udp     wait    root    /usr/etc/tcpd /usr/local/lib/ntalkd
+
+Tcpd ignores the REAL_DAEMON_DIR macro when the daemon process name is
+an absolute pathname;  logging and access control will be based on the
+last component of the daemon process name.
+
+Testing the access control files
+--------------------------------
+
+The "try" command, provided with this package, can be used to test out
+the access control files.  The command syntax is:
+
+    ./try process_name hostname	(e.g. ./try in.tftpd localhost)
+
+    ./try process_name address	(e.g. ./try in.tftpd 127.0.0.1)
+
+In the first case, the program will use both the host name and
+address.  In the second case, the program will pretend that the host
+name is unknown, so that you can simulate what happens when hostname
+lookup fails.  If there are any serious errors they will be reported
+via the syslog daemon.  Run a "tail -f" on the logfile while playing
+with the "try" command.
+
+Other applications
+------------------
+
+The access control routines can easily be integrated with other
+programs.  The hosts_access.3 manual page (`nroff -man' format)
+describes the external interface of the libwrap.a library.
+
+The tcpd front end can even be used to control access to the smtp port.
+In that case, sendmail should not be run as a stand-alone daemon, but
+it should be registered in the inetd.conf file. For example:
+
+    smtp    stream  tcp     nowait  root    /usr/etc/tcpd /usr/lib/sendmail -bs
+
+You will periodically want to run sendmail to process queued-up
+messages. A crontab entry like:
+
+    0,15,30,45 * * * * /usr/lib/sendmail -q
+
+should take care of that.
+
+Acknowledgements
+----------------
+
+Thanks to Brendan Kehoe (brendan@cs.widener.edu), Heimir Sverrisson
+(heimir@hafro.is) and Dan Bernstein (brnstnd@kramden.acf.nyu.edu) for
+feedback on an early release of this product.  The host name/address
+check was suggested by John Kimball (jkimball@src.honeywell.com).
+Apollo's UNIX environment has some peculiar quirks: Willem-Jan Withagen
+(wjw@eb.ele.tue.nl), Pieter Schoenmakers (tiggr@es.ele.tue.nl) and
+Charles S. Fuller (fuller@wccs.psc.edu) provided assistance.  Hal R.
+Brand (BRAND@addvax.llnl.gov) told me how to get the remote IP address
+in case of datagram-oriented services, and suggested the optional shell
+command feature.  Shabbir Safdar (shabby@mentor.cc.purdue.edu) provided
+a first version of a much-needed manual page.  Granville Boman Goza, IV
+(gbg@sei.cmu.edu) suggested to use the remote IP address even when the
+host name is available.  Casper H.S. Dik (casper@fwi.uva.nl) provided
+additional insight into DNS spoofing techniques.  The bogus daemon
+feature was inspired by code from Andrew Macpherson (BNR Europe Ltd).
+I appreciate the code fragments that I received from Howard Chu
+(hyc@hanauma.jpl.nasa.gov), John P. Rouillard (rouilj@cs.umb.edu) and
+others. These saved me a lot of work.
+
+	Wietse Venema (wietse@wzv.win.tue.nl),
+	Department of Mathematics and Computing Science,
+	Eindhoven University of Technology,
+	The Netherlands.

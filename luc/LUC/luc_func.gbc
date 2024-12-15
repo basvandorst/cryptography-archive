@@ -1,0 +1,269 @@
+/*
+ * LUC Public Key Encryption Made Easy
+ *
+ * Copyright 1993 Raymond S. Brand, All Rights Reserved
+ *
+ *
+ * NOTE: This file conforms to the syntax of GNU bc (tested with GNU bc
+ *	version 1.02). If you don't have GNU bc, think of the functions
+ *	defined below as pseudo code.
+ *
+ *
+ * Setup:
+ *
+ *	Each user selects 2 large prime numbers, Prime1 and Prime2, and
+ *	multiplies them together to create the Modulus. Each user then
+ *	selects another number as the PublicKey and makes the PublicKey
+ *	and the Modulus known to all that wish to communicate with the
+ *	user.
+ *
+ *	The chosen PublicKey must meet the following conditions:
+ *
+ *		0 < PublicKey < Modulus
+ *		GCD(PublicKey, Prime1-1) = 1
+ *		GCD(PublicKey, Prime1+1) = 1
+ *		GCD(PublicKey, Prime2-1) = 1
+ *		GCD(PublicKey, Prime2+1) = 1
+ *
+ *	and a good PublicKey will also meet the following conditions:
+ *
+ *		LogBase2(Modulus) < PublicKey < Modulus-1
+ *		GCD(PublicKey, Prime1) = 1
+ *		GCD(PublicKey, Prime2) = 1
+ *
+ *		LogBase2(Modulus) < Private1 < Modulus-1
+ *		LogBase2(Modulus) < Private2 < Modulus-1
+ *		LogBase2(Modulus) < Private3 < Modulus-1
+ *		LogBase2(Modulus) < Private4 < Modulus-1
+ *
+ *	where
+ *
+ *		Private1 = Inv_Mod_N(PublicKey, LCM(Prime1-1, Prime2-1))
+ *		Private2 = Inv_Mod_N(PublicKey, LCM(Prime1+1, Prime2-1))
+ *		Private3 = Inv_Mod_N(PublicKey, LCM(Prime1-1, Prime2+1))
+ *		Private4 = Inv_Mod_N(PublicKey, LCM(Prime1+1, Prime2+1))
+ *
+ *
+ * Encrypting a message:
+ *
+ *	To send a LUC encrypted message, PlainText, to user A, user B
+ *	calculates the cipher text, CipherText, as follows and sends it
+ *	user A.
+ *
+ *		PlainText < Modulus_A
+ *		CipherText = LUC(PlainText, PublicKey_A, Modulus_A)
+ *
+ *
+ * Decrypting a message:
+ *
+ *	To decrypt a LUC encrypted message, CipherText, user A does the
+ *	following:
+ *
+ *		CipherText < Modulus_A
+ *		MessageText = LUC(PrivateKey_A, CipherText, Modulus_A)
+ *
+ *	where
+ *
+ *		PrivateKey_A = PrivateFromMessage(CipherText, PublicKey_A,
+ *				Prime1_A, Prime2_A)
+ *
+ *	or
+ *
+ *		PrivateKey_A = PrivateFromPrimes(PublicKey_A,
+ *				Prime1_A, Prime2_A)
+ *
+ *	The first method of calculating the private key has the advantage
+ *	of calculating a short key, and the disadvantage of having to
+ *	do the calculation for every message decrypted.
+ *
+ *	The second method has the advantage of not having to do the
+ *	calculation for every message to be decrypted, and the disadvantage
+ *	of calculating a long key.
+ *
+ *
+ * Sending a signed a message:
+ *
+ *	To send a signed a message, MessageText, to user A, user B
+ *	calculates the signed message, SignedText, as follows and sends
+ *	it to user A:
+ *
+ *		MessageText < Modulus_B
+ *		SignedText = LUC(PrivateKey_B, MessageText, Modulus_B)
+ *
+ *	where
+ *
+ *		PrivateKey_B = PrivateFromMessage(CipherText, PublicKey_B,
+ *				Prime1_B, Prime2_B)
+ *
+ *	or
+ *
+ *		PrivateKey_B = PrivateFromPrimes(PublicKey_B,
+ *				Prime1_B, Prime2_B)
+ *
+ *
+ * Decrypting a signed message:
+ *
+ *	Decoding a signed message, SignedText, from user B is done as
+ *	follows:
+ *
+ *		SignedText < Modulus_B
+ *		MessageText = LUC(Public_B, SignedText, Modulus_B)
+ */
+
+
+
+/*
+ * LUC encryption/decryption function
+ */
+	define luc(message, key, modulus) {
+		return (v_p1_n(key, message, modulus));
+	}
+
+
+/*
+ * Calculates LUC private key from message, public key, primes.
+ */
+	define private_from_message(message, public, p, q) {
+		return (inv_mod_n(public, s(message, p, q)));
+	}
+
+
+/*
+ * Calculates LUC private key from public key, primes. Can be used with any
+ *	message but will be VERY big (slow).
+ */
+	define private_from_primes(public, p, q) {
+		return (inv_mod_n(public, r(p, q)));
+	}
+
+
+/*
+ * Lucas function. Calculates V sub e (p, q) mod n
+ */
+	define v_pq_n(subscript, p, q, mod) {
+		auto vm1, v, vm1_n, v_n, testbit, qek, qekm1, qek_n, qekm1_n;
+
+		if (0 == subscript) {
+			return (2);
+		}
+
+		p = p%mod;
+		vm1 = 2;
+		v = p;
+		qek = q;
+		qekm1 = 1;
+
+		testbit = 1;
+		while (testbit <= subscript) {
+			testbit *= 2;
+		}
+		testbit /= 2;
+		subscript -= testbit;
+		testbit /= 2;
+
+		while (testbit >= 1) {
+			if (testbit > subscript) {
+				vm1_n = (v*vm1)%mod;
+				vm1_n += (mod-((p*qekm1)%mod))%mod;
+				vm1_n %= mod;
+				v_n = (v*v)%mod;
+				v_n += (mod-((2*qek)%mod))%mod;
+				v_n %= mod;
+				qek_n = qek*qek;
+				qekm1_n = qek*qekm1;
+			} else {
+				vm1_n = (v*v)%mod;
+				vm1_n += (mod-((2*qek)%mod))%mod;
+				vm1_n %= mod;
+				v_n = (p*((v*v)%mod))%mod;
+				v_n += (mod-((q*v*vm1)%mod))%mod;
+				v_n += (mod-((p*qek)%mod))%mod;
+				v_n %= mod;
+				qek_n = q*qek*qek;
+				qekm1_n = qek*qek;
+
+				subscript -= testbit;
+			}
+
+			vm1 = vm1_n;
+			v = v_n;
+			qek = qek_n;
+			qekm1 = qekm1_n;
+
+			testbit /= 2;
+		}
+
+		return (v);
+	}
+
+
+/*
+ * Lucas function. Calculates V sub e (p, 1) mod n
+ */
+	define v_p1_n(subscript, p, mod) {
+		auto vm1, v, vm1_next, v_next, testbit;
+
+		if (0 == subscript) {
+			return (2);
+		}
+
+		p = p%mod;
+		vm1 = 2;
+		v = p;
+
+		testbit = 1;
+		while (testbit <= subscript) {
+			testbit *= 2;
+		}
+		testbit /= 2;
+		subscript -= testbit;
+		testbit /= 2;
+
+		while (testbit >= 1) {
+			if (testbit > subscript) {
+				vm1_next = (v*vm1)%mod;
+				vm1_next += (mod-p)%mod;
+				vm1_next %= mod;
+				v_next = (v*v)%mod;
+				v_next += (mod-2)%mod;
+				v_next %= mod;
+			} else {
+				vm1_next = (v*v)%mod;
+				vm1_next += (mod-2)%mod;
+				vm1_next %= mod;
+				v_next = (p*((v*v)%mod))%mod;
+				v_next += (mod-((v*vm1)%mod))%mod;
+				v_next += (mod-p)%mod;
+				v_next %= mod;
+
+				subscript -= testbit;
+			}
+
+			vm1 = vm1_next;
+			v = v_next;
+
+			testbit /= 2;
+		}
+
+		return (v);
+	}
+
+
+/*
+ * Used in calculating private key from public key, message, and primes.
+ */
+	define s(m, p, q) {
+		auto d;
+
+		d = (m*m)-4;
+
+		return (lcm(p-jacobi(d, p), q-jacobi(d, q)));
+		}
+
+
+/*
+ * Used in calculating private key from public key and primes.
+ */
+	define r(p, q) {
+		return (lcm(p-1, lcm(p+1, lcm(q-1, q+1))));
+		}

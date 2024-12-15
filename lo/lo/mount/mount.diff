@@ -1,0 +1,494 @@
+diff -cr --new-file mount.orig/Makefile mount/Makefile
+*** mount.orig/Makefile	Wed Jul 20 13:53:11 1994
+--- mount/Makefile	Mon Jul 25 23:29:17 1994
+***************
+*** 8,14 ****
+  CC = gcc
+  CFLAGS = -pipe -O2 -m486 -fomit-frame-pointer
+  WARNFLAGS = -Wall -Wstrict-prototypes -Wmissing-prototypes
+! LDFLAGS = -s
+  LDLIBS =
+  RPCSVCDIR = rpcsvc
+  RPC_CFLAGS = -Wno-unused 
+--- 8,14 ----
+  CC = gcc
+  CFLAGS = -pipe -O2 -m486 -fomit-frame-pointer
+  WARNFLAGS = -Wall -Wstrict-prototypes -Wmissing-prototypes
+! LDFLAGS = -s -N
+  LDLIBS =
+  RPCSVCDIR = rpcsvc
+  RPC_CFLAGS = -Wno-unused 
+***************
+*** 35,45 ****
+  MAN5 = fstab.5 nfs.5
+  MAN8 = mount.8 swapoff.8 swapon.8 umount.8
+  
+! # comment these out if you are are compiling in NFS support
+  NFS_OBJS = nfsmount.o mount_xdr.o mount_clnt.o
+  # uncomment this if you don't have libc-4.2 but do have the rpclib
+  GEN_FILES = mount.x mount.h mount_xdr.c mount_clnt.c
+  
+  all: $(PROGS)
+  
+  install: $(PROGS)
+--- 35,48 ----
+  MAN5 = fstab.5 nfs.5
+  MAN8 = mount.8 swapoff.8 swapon.8 umount.8
+  
+! # comment these out if you are not compiling in NFS support
+  NFS_OBJS = nfsmount.o mount_xdr.o mount_clnt.o
+  # uncomment this if you don't have libc-4.2 but do have the rpclib
+  GEN_FILES = mount.x mount.h mount_xdr.c mount_clnt.c
+  
++ # comment these out if you are not compiling in loop support
++ LO_OBJS=lomount.o
++ 
+  all: $(PROGS)
+  
+  install: $(PROGS)
+***************
+*** 54,63 ****
+  .c.o:
+  	$(COMPILE) $<
+  
+! mount: mount.o fstab.o sundries.o realpath.o version.o $(NFS_OBJS)
+  	$(LINK) $^ $(LDLIBS) -o $@
+  
+! umount: umount.o fstab.o sundries.o realpath.o version.o
+  	$(LINK) $^ $(LDLIBS) -o $@
+  
+  swapon:	swapon.o fstab.o version.o
+--- 57,66 ----
+  .c.o:
+  	$(COMPILE) $<
+  
+! mount: mount.o fstab.o sundries.o version.o $(NFS_OBJS) $(LO_OBJS)
+  	$(LINK) $^ $(LDLIBS) -o $@
+  
+! umount: umount.o fstab.o sundries.o version.o $(LO_OBJS)
+  	$(LINK) $^ $(LDLIBS) -o $@
+  
+  swapon:	swapon.o fstab.o version.o
+diff -cr --new-file mount.orig/lomount.c mount/lomount.c
+*** mount.orig/lomount.c
+--- mount/lomount.c	Mon Jul 25 20:50:00 1994
+***************
+*** 0 ****
+--- 1,223 ----
++ /* Taken from Ted's losetup.c - Mitch <m.dsouza@mrc-apu.cam.ac.uk> */
++ 
++ /*
++  * losetup.c - setup and control loop devices
++  */
++ 
++ #include <stdio.h>
++ #include <string.h>
++ #include <ctype.h>
++ #include <fcntl.h>
++ #include <stdlib.h>
++ #include <unistd.h>
++ #include <sys/ioctl.h>
++ #include <linux/fs.h>
++ #include "loop.h"
++ 
++ char *crypt_name (int);
++ int crypt_type (char *);
++ void show_loop (char *);
++ int del_loop (const char *);
++ int set_loop (const char *, const char *, int offset, char *);
++ int lomount (const char *, const char *, const char *, char **,
++ 	     int *, char **, char **);
++ 
++ struct crypt_type_struct {
++   int id;
++   char *name;
++ } crypt_type_tbl[] = {
++ 
++   {
++     LO_CRYPT_NONE, "no"
++   },
++   {
++     LO_CRYPT_NONE, "none"
++   },
++   {
++     LO_CRYPT_XOR, "xor"
++   },
++   {
++     LO_CRYPT_DES, "DES"
++   },
++   {
++     -1, NULL
++   }
++ };
++ 
++ char *
++ crypt_name (int id)
++ {
++   int i;
++ 
++   for (i = 0; crypt_type_tbl[i].id != -1; i++)
++     if (id == crypt_type_tbl[i].id)
++       return crypt_type_tbl[i].name;
++   return "undefined";
++ }
++ 
++ int 
++ crypt_type (char *name)
++ {
++   int i;
++ 
++   for (i = 0; crypt_type_tbl[i].id != -1; i++)
++     if (!strcasecmp (name, crypt_type_tbl[i].name))
++       return crypt_type_tbl[i].id;
++   return -1;
++ }
++ 
++ void 
++ show_loop (char *device)
++ {
++   struct loop_info loopinfo;
++   int fd;
++ 
++   if ((fd = open (device, O_RDWR)) < 0) {
++     fprintf(stderr, "loop: can't open device %s: %s\n",
++ 	    device, strerror (errno));
++     return;
++   }
++   if (ioctl (fd, LOOP_GET_STATUS, &loopinfo) < 0) {
++     fprintf(stderr, "loop: can't get info on device %s: %s\n",
++ 	    device, strerror (errno));
++     close (fd);
++     return;
++   }
++   printf ("%s: [%04x]:%ld (%s) offset %d, %s encryption\n",
++ 	  device, loopinfo.lo_device, loopinfo.lo_inode,
++ 	  loopinfo.lo_name, loopinfo.lo_offset,
++ 	  crypt_name (loopinfo.lo_encrypt_type));
++   close (fd);
++ }
++ 
++ int
++ set_loop (const char *device, const char *file, int offset, char *encryption)
++ {
++   struct loop_info loopinfo;
++   int fd,
++     ffd,
++     i;
++   char *pass;
++ 
++   if ((fd = open (device, O_RDWR)) < 0) {
++     perror (device);
++     return 1;
++   }
++   if ((ffd = open (file, O_RDWR)) < 0) {
++     perror (file);
++     return 1;
++   }
++   memset (&loopinfo, 0, sizeof (loopinfo));
++   strncpy (loopinfo.lo_name, file, LO_NAME_SIZE);
++   loopinfo.lo_name[LO_NAME_SIZE - 1] = 0;
++   if (encryption && (loopinfo.lo_encrypt_type = crypt_type (encryption))
++       < 0) {
++     fprintf (stderr, "Unsupported encryption type %s", encryption);
++     return 1;
++   }
++   loopinfo.lo_offset = offset;
++   switch (loopinfo.lo_encrypt_type) {
++   case LO_CRYPT_NONE:
++     loopinfo.lo_encrypt_key_size = 0;
++     break;
++   case LO_CRYPT_XOR:
++     pass = getpass ("Password: ");
++     strncpy (loopinfo.lo_encrypt_key, pass, LO_KEY_SIZE);
++     loopinfo.lo_encrypt_key[LO_KEY_SIZE - 1] = 0;
++     loopinfo.lo_encrypt_key_size = strlen (loopinfo.lo_encrypt_key);
++     break;
++   case LO_CRYPT_DES:
++     pass = getpass ("Password: ");
++     strncpy (loopinfo.lo_encrypt_key, pass, 8);
++     loopinfo.lo_encrypt_key[8] = 0;
++     loopinfo.lo_encrypt_key_size = 8;
++     pass = getpass ("Init (up to 16 hex digits): ");
++     for (i = 0; i < 16 && pass[i]; i++)
++       if (isxdigit (pass[i]))
++ 	loopinfo.lo_init[i >> 3] |= (pass[i] > '9' ?
++ 				     (islower (pass[i]) ? toupper (pass[i]) :
++ 			pass[i]) - 'A' + 10 : pass[i] - '0') << (i & 7) * 4;
++       else {
++ 	fprintf (stderr, "Non-hex digit '%c'.\n", pass[i]);
++ 	return 1;
++       }
++     break;
++   default:
++     fprintf (stderr,
++ 	     "Don't know how to get key for encryption system %d\n",
++ 	     loopinfo.lo_encrypt_type);
++     return 1;
++   }
++   if (ioctl (fd, LOOP_SET_FD, ffd) < 0) {
++     perror ("ioctl: LOOP_SET_FD");
++     return 1;
++   }
++   if (ioctl (fd, LOOP_SET_STATUS, &loopinfo) < 0) {
++     (void) ioctl (fd, LOOP_CLR_FD, 0);
++     perror ("ioctl: LOOP_SET_STATUS");
++     return 1;
++   }
++   close (fd);
++   close (ffd);
++   return 0;
++ }
++ 
++ int 
++ del_loop (const char *device)
++ {
++   int fd;
++ 
++   if ((fd = open (device, O_RDONLY)) < 0) {
++     fprintf(stderr, "loop: can't delete device %s: %s\n",
++ 	    device, strerror (errno));
++     return 1;
++   }
++   if (ioctl (fd, LOOP_CLR_FD, 0) < 0) {
++ #if 0
++     perror ("ioctl: LOOP_CLR_FD");
++ #endif
++     return 1;
++   }
++   return 0;
++ }
++ 
++ 
++ int 
++ lomount (const char *spec, const char *node, const char *device, char **type,
++ 	 int *flags, char **extra_opts, char **mount_opts)
++ {
++   char *opt,
++    *opteq;
++   int val;
++   char *encryption = NULL, *vfs = NULL;
++   int offset = 0, err;
++   char new_opts[1024];
++ 
++   for (opt = strtok (*extra_opts, ","); opt; opt = strtok (NULL, ",")) {
++     if ((opteq = strchr (opt, '='))) {
++       val = atoi (opteq + 1);
++       *opteq = '\0';
++       if (!strcmp (opt, "encryption"))
++ 	encryption = strdup(opteq + 1);
++       else if (!strcmp (opt, "vfs"))
++ 	vfs = strdup(opteq + 1);
++       else if (!strcmp (opt, "offset"))
++ 	offset = val;
++       else {
++ 	printf ("unknown loop mount parameter: "
++ 		"%s=%d (%s)\n", opt, val, opteq+1);
++ 	return 1;
++       }
++     } else {
++       printf ("unknown loop mount parameter: "
++ 	      "%s\n", opt);
++       return 1;
++     }
++   }
++   err = set_loop (device, spec, offset, encryption);
++   sprintf(new_opts, "vfs=%s,offset=%d,encryption=%s",
++ 	  *type = vfs ? vfs : FSTYPE_DEFAULT, offset,
++ 	  encryption=crypt_type(encryption)<0?"none":encryption);
++   *extra_opts=strdup(new_opts);
++   return err;
++ }
+diff -cr --new-file mount.orig/loop.h mount/loop.h
+*** mount.orig/loop.h
+--- mount/loop.h	Sun Jul 24 23:46:29 1994
+***************
+*** 0 ****
+--- 1,77 ----
++ #ifndef _LINUX_LOOP_H
++ #define _LINUX_LOOP_H
++ 
++ /*
++  * include/linux/loop.h
++  *
++  * Written by Theodore Ts'o, 3/29/93.
++  *
++  * Copyright 1993 by Theodore Ts'o.  Redistribution of this file is
++  * permitted under the GNU Public License.
++  */
++ 
++ #define LO_NAME_SIZE	64
++ #define LO_KEY_SIZE	32
++        
++ struct loop_device {
++ 	int		lo_number;
++ 	struct inode	*lo_inode;
++ 	int		lo_refcnt;
++ 	dev_t		lo_device;
++ 	int		lo_offset;
++ 	int		lo_encrypt_type;
++ 	int		lo_encrypt_key_size;
++ 	int		lo_flags;
++ 	int		(*transfer)(struct loop_device *, int cmd,
++ 				    char *raw_buf, char *loop_buf, int size);
++ 	char		lo_name[LO_NAME_SIZE];
++ 	char		lo_encrypt_key[LO_KEY_SIZE];
++ #ifdef DES_AVAILABLE
++ 	des_key_schedule lo_des_key;
++ 	unsigned long	lo_des_init[2];
++ #endif
++ };
++ 
++ typedef	int (* transfer_proc_t)(struct loop_device *, int cmd,
++ 				char *raw_buf, char *loop_buf, int size);
++ 
++ /*
++  * Loop flags
++  */
++ #define LO_FLAGS_DO_BMAP	0x00000001
++ 
++ struct loop_info {
++ 	int		lo_number;	/* ioctl r/o */
++ 	dev_t		lo_device; 	/* ioctl r/o */
++ 	unsigned long	lo_inode; 	/* ioctl r/o */
++ 	dev_t		lo_rdevice; 	/* ioctl r/o */
++ 	int		lo_offset;
++ 	int		lo_encrypt_type;
++ 	int		lo_encrypt_key_size; 	/* ioctl w/o */
++ 	int		lo_flags;	/* ioctl r/o */
++ 	char		lo_name[LO_NAME_SIZE];
++ 	unsigned char	lo_encrypt_key[LO_KEY_SIZE]; /* ioctl w/o */
++ 	unsigned long	lo_init[2];
++ 	char		reserved[4];
++ };
++ 
++ /*
++  * Loop encryption types --- LO_CRYPT_IDEA isn't supported yet
++  */
++ 
++ #define LO_CRYPT_NONE	0
++ #define LO_CRYPT_XOR	1
++ #define LO_CRYPT_DES	2
++ #define LO_CRYPT_IDEA	4
++ #define MAX_LO_CRYPT	3
++ 
++ /*
++  * IOCTL commands --- we will commandeer 0x4C ('L')
++  */
++ 
++ #define LOOP_SET_FD	0x4C00
++ #define LOOP_CLR_FD	0x4C01
++ #define LOOP_SET_STATUS	0x4C02
++ #define LOOP_GET_STATUS	0x4C03
++ 
++ #endif
+diff -cr --new-file mount.orig/mount.c mount/mount.c
+*** mount.orig/mount.c	Thu Jul 14 11:55:13 1994
+--- mount/mount.c	Mon Jul 25 23:02:28 1994
+***************
+*** 233,238 ****
+--- 233,239 ----
+    int flags;
+    char *extra_opts;
+    char *mount_opts;
++   int loop=0;
+  
+    if (type == NULL)
+      {
+***************
+*** 252,257 ****
+--- 253,271 ----
+  
+    mount_opts = extra_opts;
+  
++   if (!fake && type && strncmp("lo@", type, 3)==0) {
++     extern int lomount (char *, char *, char *, char **, 
++ 			int *, char **, char **);
++     char *dev=type+3;
++ 
++     loop=1;
++     if (lomount (spec, node, dev, &type,
++ 		 &flags, &opts, &mount_opts) != 0)
++       return 1;
++     spec=dev;
++     mount_opts=NULL;
++   }
++ 
+    if (!fake && type && streq (type, "nfs"))
+  #ifdef HAVE_NFS
+      if (nfsmount (spec, node, &flags, &extra_opts, &mount_opts) != 0)
+***************
+*** 270,277 ****
+  	{
+  	  mnt.mnt_fsname = canonicalize (spec);
+  	  mnt.mnt_dir = canonicalize (node);
+! 	  mnt.mnt_type = type;
+! 	  mnt.mnt_opts = fix_opts_string (flags & ~MS_NOMTAB, extra_opts);
+  	  mnt.mnt_freq = freq;
+  	  mnt.mnt_passno = pass;
+        
+--- 284,292 ----
+  	{
+  	  mnt.mnt_fsname = canonicalize (spec);
+  	  mnt.mnt_dir = canonicalize (node);
+! 	  mnt.mnt_type = loop?"loop":type;
+! 	  mnt.mnt_opts = fix_opts_string (flags & ~MS_NOMTAB, 
+! 					  loop?opts:extra_opts);
+  	  mnt.mnt_freq = freq;
+  	  mnt.mnt_passno = pass;
+        
+***************
+*** 296,301 ****
+--- 311,319 ----
+        return 0;
+      }
+  
++   if (loop)
++ 	del_loop(spec);
++ 
+    mnt_err = errno; /* work around for errno bug in sigprocmask */
+  
+    block_signals (SIG_UNBLOCK);
+diff -cr --new-file mount.orig/umount.c mount/umount.c
+*** mount.orig/umount.c	Thu Nov 18 08:40:51 1993
+--- mount/umount.c	Mon Jul 25 22:41:01 1994
+***************
+*** 23,28 ****
+--- 23,29 ----
+  {
+    int umnt_err;
+    int isroot;
++   struct mntent *mnt;
+  
+    /* Special case for root.  As of 0.99pl10 we can (almost) unmount root;
+       the kernel will remount it readonly so that we can carry on running
+***************
+*** 41,46 ****
+--- 42,59 ----
+        if (verbose)
+  	printf ("%s umounted\n", spec);
+        
++       open_mtab("r");
++       if ((mnt = getmntfile (spec)) ||
++ 	  (mnt = getmntfile (node))) {
++ 	if (mnt && streq(mnt->mnt_type, "loop")) {
++ 	extern int del_loop(const char *);
++ 
++ 	if (del_loop(spec))
++ 		goto fail;
++       }
++       }
++       close_mtab();
++ 
+        if (!isroot)
+  	{
+  	  update_mtab (node, NULL);
+***************
+*** 49,54 ****
+--- 62,68 ----
+        return 0;
+      }
+  
++ fail:
+    /* Umount failed, complain, but don't die.  */
+    umnt_err = errno;
+    if (!isroot)

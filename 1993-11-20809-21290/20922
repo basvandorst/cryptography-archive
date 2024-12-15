@@ -1,0 +1,143 @@
+Newsgroups: sci.crypt,alt.security.ripem,alt.security.keydist
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!gatech!news-feed-1.peachnet.edu!umn.edu!csus.edu!netcom.com!mjohnson
+From: mjohnson@netcom.com (Mark Johnson)
+Subject: Experimental Results with Maurer's "universal" entropy-based test
+Message-ID: <mjohnsonCG4sJq.3yA@netcom.com>
+Organization: Netcom
+Date: Sun, 7 Nov 1993 16:59:50 GMT
+Lines: 133
+Xref: msuinfo sci.crypt:20922 alt.security.ripem:377 alt.security.keydist:189
+
+
+In the CRYPTO '90 book there is an interesting paper by Ueli M. Maurer
+entitled "A Universal Statistical Test for Random Bit Generators."
+Maurer's test procedure measures the entropy per output bit of a
+generator.  Quoting from section 4 of the paper,
+
+   "... the new test is able to detect any one of the very general class
+    of statistical defects that can be modeled by an ergodic stationary
+    source with finite memory ...which includes all those that could
+    realistically be assumed to occur in a practical implementation of
+    a random bit generator.
+
+    (2) The test measures the actual amount by which the security of a
+    cipher system would be reduced if the tested generator were used
+    as the key source, i.e. it measures the effective key size of a
+    cipher system with key source G."
+
+
+This sounded to me like quite a powerful method, so I implemented
+Maurer's program.  Admittedly I found it persuasive that
+"An implementation of our statistical test by {the Swiss commercial
+firm} Omnisec AG for testing random bit generators used in their
+equipment has confirmed the theoretical results and their practical
+usefulness" (Section 5).
+
+But, my own results are negative and surprisingly strongly so.
+Two linear congruential pseudorandom number generators "passed" the
+test, i.e. their output was declared "indistinguishable from truly
+random".  But it is well known that linear congruential generators
+are not cryptographically secure, and Plumstead (among others) has
+published a paper explaining how to break them.
+
+More distressing, one of the two generators is the infamous RANDU
+generator, which Knuth singles out for special vilification (sec 3.3.4):
+  "its very name RANDU is enough to bring dismay into the eyes and
+   stomachs of many computer scientists!  The generator fails most
+   three dimensional criteria for randomness, and it should never
+   have been used."
+
+My implementation of Maurer's test isn't just a printf statement
+that says "pass" (despite what you may suspect :-); it does "fail"
+some generators.  For example, it fails two maximum length linear
+feedback shift registers, one of length 2^31 - 1 and one of length 7.
+
+I would welcome correspondence from others who have experimented
+with Maurer's test, to compare notes and see if I have made a
+careless error.  Is it "well known" either that Maurer's test is
+fatally flawed, in which case I've just (re)discovered the fact;
+or that Maurer's test is perfectly reliable, in which case I've
+made an implementation mistake?
+
+
+DETAILS
+-------
+In my tests, I used
+
+       block length (Maurer "L")         = 16 bits/block
+       initialization (Maurer "Q")       = 360400 blocks
+       test sequence length (Maurer "K") = 500000 blocks
+       Fail probability (Maurer "rho")   = 0.01
+
+
+
+Linear Congruential sequence 1:  the Marsaglia generator
+
+     x[n+1] = (1 + (x[n] * 69069)) mod 2^32
+
+I used random bit #n = the MSB of Marsaglia random integer #n.
+The results were
+
+  (t1 = 15.160630)   <  (ftu = 15.165962)  <  (t2 = 15.174127)
+
+so the sequence of MSB's passes the test.
+
+
+
+
+Linear Congruential sequence 2:  the RANDU generator
+
+     x[n+1] = (x[n] * 65539) mod 2^31
+
+I used random bit #n = the MSB of RANDU random integer #n.
+The results were
+
+  (t1 = 15.160630)   <  (ftu = 15.166801)  <  (t2 = 15.174127)
+
+so the sequence of MSB's passes the test.
+
+
+
+
+LFSR sequence A:  I tried the 31-stage linear feedback
+shift register whose characteristic polynomial is
+
+       31       3
+      x    +   x   +   1
+
+which is a maximum-length register having period = 2^31 - 1.
+The results were
+
+                    NOT
+  (t1 = 15.160630)   <  (ftu = 15.152990)  <  (t2 = 15.174127)
+
+so the sequence of bits produced by this LFSR fails the test.
+
+
+
+
+LFSR sequence B:  I tried the (trivial) 3-stage linear
+feedback shift register whose characteristic polynomial is
+
+       3       1
+      x   +   x   +   1
+
+which is a maximum-length register having period = 2^3 - 1.
+The results were
+
+                    NOT
+  (t1 = 15.160630)   <  (ftu = 2.807355)  <  (t2 = 15.174127)
+
+so the sequence of bits produced by this LFSR fails the test.
+
+
+
+
+
+Ref: A. J. Menezes and S. A. Vanstone (eds), _Advances_in_
+     _Cryptology - CRYPTO_90_(Proceedings)_, Springer Verlag,
+     {Lecture Notes in Computer Science 537}, Berlin, Copyright
+     1991, ISBN 0-38754508-5.
+
+        U.M. Maurer, "A Universal Statistical Test for Random
+        Bit Generators", CRYPTO 90 Proceedings, pp. 409-420.

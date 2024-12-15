@@ -1,0 +1,65 @@
+Path: msuinfo!uwm.edu!news.moneng.mei.com!sol.ctr.columbia.edu!howland.reston.ans.net!pipex!uknet!EU.net!uunet!mnemosyne.cs.du.edu!nyx10.cs.du.edu!not-for-mail
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Newsgroups: sci.crypt
+Subject: Re: MDC
+Date: 30 May 1994 19:28:04 -0600
+Organization: /usr/lib/news/organi[sz]ation
+Lines: 55
+Message-ID: <2se3r4$n78@nyx10.cs.du.edu>
+References: <1994May27.160649.1074967@magic-bbs.corp.apple.com>
+
+In article <1994May27.160649.1074967@magic-bbs.corp.apple.com>,
+ <R._Braithwaite-Lee@magic-bbs.corp.apple.com> wrote:
+> Unless I've completely misunderstood MDC, it works as follows:
+> 
+> A varient of MD5 is constructed which uses a user-supplied key to change
+> MD5's constants to values which are unknown to a cryptanalyst. Different
+> keys thus produce different hash functions. The function takes as its input
+> a 'register' and produces as its output a 'mask'. The mask is xored with a
+> block of plaintext and the resulting ciphertext is mixed into the register.
+> The mixing function is to 'push' the ciphertext onto one end of the
+> register while 'popping' the other end of the register off and discarding
+> it. Thus the register at any one time contains a series of prior
+> ciphertexts concatenated together.
+
+Actually, no.  It's even simpler than that.
+The MD5 Transform function takes 128 bits of input hash and 512 bits of
+input data and produces 128 bits of output hash.
+
+Shuffle the name tags, so the inout hash is called the plaintext, the
+output hash is called the ciphertext, and the input data is called the key.
+
+You now have a block cipher.  It only works encrypting, but you can use it
+in CFB mode.
+
+If you use full-block CFB mode, then indeed an attacker who knows
+one block of the plaintext can deduce the input to and output from
+the MD5 operation.  And yes, this is relying on its strength as a cipher.
+But consider: suppose I wish to alter a block of a message protected by
+MD5.  I know the original message, so I know the input to and output from
+the MD5 block in question.  What I want to do is a find a *different*
+message that will map the input hash to the same output hash.  Since
+the probability of mapping a given input hash to a given output hash is 2^-128
+and there are 2^512 possible blocks, there are obviously many possibilities.
+
+But MD5 says that I can't find one.  My best bet is to try 2^128 different
+data blocks until I get the mapping I want.
+
+This is very close to saying that I can't find the key in MDC.
+
+One problem with MDC that I can put together information from multiple
+plaintext/ciphertext pairs to deduce the key.  Even if the leakage of
+information about the key is not enough to appreciably reduce the search
+for a key if you only have one plaintext/ciphertext pair (as is the case
+in its use as a hash function), this does not necessarily apply if you
+have thousands of pairs.
+
+> This will always be true for a block cipher running in OFB or CFB mode. The
+> security of OFB and CFB mode ciphers rests on the conjecture that known
+> inputs and outputs of the hash function does not enable a cryptanalyst to
+> predict future outputs for known inputs.
+
+And CBC, actually.  CBC is just CFB run backwards.  Instead of
+p[i] = c[i] ^ CRYPT(c[i-1]), you have p[i] = c[i-1] ^ CRYPT(c[i]).
+-- 
+	-Colin

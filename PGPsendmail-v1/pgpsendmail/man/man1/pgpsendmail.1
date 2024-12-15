@@ -1,0 +1,208 @@
+.\" Copyright (C) 1994-1997  Richard Gooch
+.\"
+.\" This program is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation; either version 2 of the License, or
+.\" (at your option) any later version.
+
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program; if not, write to the Free Software
+.\" Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+.\"
+.\" Richard Gooch may be reached by email at  rgooch@atnf.csiro.au
+.\" The postal address is:
+.\"   Richard Gooch, c/o ATNF, P. O. Box 76, Epping, N.S.W., 2121, Australia.
+.\"
+.\"	pgpsendmail.1		Richard Gooch	5-OCT-1997
+.\"
+.TH PGPSENDMAIL 1 "5 Oct 1997" "PGPsendmail/Unix Suite"
+.SH NAME
+PGPsendmail \- drop\-in wrapper to  sendmail  to allow PGP encryption
+.SH SYNOPSIS
+.B pgpsendmail
+[
+.B args
+]
+.SH DESCRIPTION
+The \fIpgpsendmail\fP programme is a drop\-in wrapper to the standard
+Unix  \fIsendmail\fP  programme. \fIpgpsendmail\fP may operate in two basic
+modes. Each of these is described below:
+.PP
+If the PGPPATH environment variable does not exist, the real  \fIsendmail\fP
+programme is executed with the same command line arguments.  Hence, it
+is quite safe to move the original (real) /usr/lib/sendmail to
+/usr/lib/sendmail.real and place PGPsendmail as /usr/lib/sendmail
+since the system startup scripts (/etc/rc*) should not define PGPPATH.
+The operation of \fIsendmail\fP as a daemon is not affected. Also, users who
+do not use PGP are also completely unaffected (as they will not have a
+PGPPATH environment variable).
+.PP
+If the PGPPATH environment variable does exist, PGPsendmail will check
+all recipients in the message header (marked by "To: ", "Cc: " and
+"Bcc: " keywords) to determine if they have a PGP public key in the
+senders public keyring. By default, if all recipients have a public
+key, the message is encrypted for all recipients prior to
+transmission. The message is actually transmitted by the use of the
+real \fIsendmail\fP programme.  If one or more recipients does not have PGP
+public key, the message is not encrypted.  PGPsendmail extracts the
+Email address of a recipient when determining if a PGP public key is
+available.
+.SH CONFIGURATION
+.\" Make sure the '#' is NOT at the start of a line!
+The configuration file $PGPPATH/PGPsendmail.config configures the
+\fIpgpsendmail\fP programme. It is a simple ASCII file with one
+configuration option per line. Each comment line must start with a
+leading '#' character. Comment lines and blank lines are ignored. Each
+configuration option is a keyword followed by zero or more parameters,
+depending on the option. The following configuration options are
+supported:
+.TP
+.B GLOBAL [flags...]
+This specifies global recipient processing flags. The flags are
+described in the next section. Only one line with the GLOBAL option is
+permitted. If you want multiple global flags, place them all in the
+same line. This restriction is silently enforced.
+.TP
+.B HEADER_TAIL_FILE file
+This will append the contents of \fIfile\fP to the transmitted
+header. Note that this is done even if the message is not encrypted.
+.TP
+.B BODY_HEAD_FILE file
+This will insert the contents of \fIfile\fP into the body of the
+message, if the message is encrypted. The contents of \fIfile\fP are
+\fBnot\fP encrypted.
+.TP
+.B ALIAS recipient [sysalias]
+This tells PGPsendmail that the system aliases database /etc/aliases
+should be used to expand an alias. If \fIsysalias\fP is provided, it
+is used as the system alias to search for. If \fIsysalias\fP is not
+provided, then \fIrecipient\fP is used instead. Conventional
+comma-separated alias lists as well as \fIsendmail\fP ":include:path"
+lists are supported. Pipe directives are ignored. Each recipient in
+the expanded alias list will be processed according to the usual
+rules. Note that alias expansion by PGPsendmail does not modify the
+header passed to \fIsendmail\fP: it is only used to determine PGP
+userIDs. The real \fIsendmail\fP will still expand aliases as
+normal.
+.TP
+.B ADDRESSLOG logfile [searchfiles...]
+This will cause PGPsendmail to log each new email address (before
+recipient translation, see below) in the file
+\fIlogfile\fP. PGPsendmail determines if an address is new by
+searching the optional \fIsearchfiles\fP. These searchfiles follow the
+same format as that supported by \fImatch-email-addr\fP. If you omit
+the searchfiles then the \fIlogfile\fP will grow indefinately. You can
+use this facility to maintain a list of people you send messages to,
+which can be very useful with certain spam (junk email) filters. This
+option must come before any recipient translation options. You may
+place a leading "~/" in the filenames to specify files relative to
+your home directory. The "ADDRESSLOG" directive must come after all
+"ALIAS" directives.
+.TP
+.B recipient synonym [flags...]
+If the email address matches \fIrecipient\fP it is translated to the
+string \fIsynonym\fP. This is useful if the email address does not
+match the PGP user id of the recipient. The \fIsynonym\fP must be a
+minimal, non-ambiguous match of the PGP user ID. The \fIflags\fP may
+be used to control how processing for this recipient is controlled.
+.TP
+.B !regexp synonym [flags...]
+If the email address matches the regular expression \fIregexp\fP it is
+translated to the string \fIsynonym\fP. This is useful if the email
+address does not match the PGP user id of the recipient. The
+\fIsynonym\fP must be a minimal, non-ambiguous match of the PGP user
+ID. The \fIflags\fP may be used to control how processing for this
+recipient is controlled.
+.SH RECIPIENT PROCESSING FLAGS
+.TP
+.B always-secure
+Always use encryption, bounce if can't encrypt.
+.TP
+.B secure
+Synonym for always-secure.
+.TP
+.B always
+Synonym for always-secure.
+.TP
+.B never-secure
+Never use encryption.
+.TP
+.B insecure
+Synonym for never-secure.
+.TP
+.B never
+Synonym for never-secure.
+.TP
+.B return-receipt
+Return a success message. NOTE: if you send a message where not all
+recipients have a PGP public key, and the always-secure flag is not
+set, there is *no* return message. The return-receipt flag is intended
+to give feedback whenever messages are successfully encrypted. This
+flag is in fact the default.
+.TP
+.B discard-receipt
+Do not return a success message.
+.TP
+.B no-receipt
+Synonym for  discard-receipt.
+.TP
+.B add-key
+Include public key in message.
+.TP
+.B no-advertising
+Do not show advertising message about PGPsendmail.
+.TP
+.B sign
+Sign message before encrypting (needs PGPdaemon).
+.TP
+.B no-sign
+Don't sign message before encrypting.
+.SH DEBUGGING
+To enable verbose debugging output from PGPsendmail, create the file
+\fI$PGPPATH/PGPsendmail.debug\fP. Upon each Email you send, the file
+/tmp/PGPsendmail.debug.<UID> will be over\-written with a log for that
+message.
+.SH FILES
+.PD 0
+.TP 30
+.BI $PGPPATH/pubring.pgp
+the users' public keyring file
+.TP
+.BI $PGPPATH/randseed.bin
+the seed file for PGP
+.TP
+.BI $PGPPATH/PGPsendmail.config
+the users' configuration file
+.TP
+.BI $PGPPATH/PGPsendmail.debug
+enable debugging if exists
+.TP
+.BI /tmp/PGPsendmail.debug.<UID>
+debugging output file
+.TP
+.BI pgpsendmail/doc/README.PGPsendmail
+distribution README (has more info.)
+.PD
+.SH BUGS
+PGPsendmail doesn't work with UCBMail and NeXTMail on the NEXTSTEP. It
+does work with Pine and Rnmail.
+.SH SEE ALSO
+.BR sendmail (8),
+.BR pgp (1),
+.BR pgpdaemon (8),
+.BR sendpgppass (1),
+.BR pgppipe (1)
+.SH AUTHOR
+Richard Gooch (rgooch@atnf.csiro.au)
+.SH AVAILABILITY
+The PGPsendmail/Unix Suite is available for anonymous ftp from:
+
+ftp.atnf.csiro.au:pub/people/rgooch
+ftp.dhp.com:pub/crypto/pgp/PGPsendmail
+ftp.ox.ac.uk:pub/crypto/pgp/utils
+linux.nrao.edu:pub/src/pgp/PGPsendmail

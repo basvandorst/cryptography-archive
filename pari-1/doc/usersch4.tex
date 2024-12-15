@@ -1,0 +1,1154 @@
+\chapter{Programming PARI in Library Mode}
+
+\section{Introduction: initializations, universal objects, input and output.}
+
+To be able to use PARI in \ref{library mode}, you must write a C program and link it
+to the PARI library and the PARI include files. See the installation guide 
+(given in Appendix A) on how to create and install the PARI
+library and include files. A sample Makefile is also given in Appendix B.
+
+Probably the best way to understand how programming is done is to work
+through a complete example. We will write such a program in section 4.3.
+Before doing this, a few explanations are in order.
+
+\subsec{Initializations and universal objects.}
+
+First, one must explain to the outside world what kind of objects and
+programs we are going to use. This is done simply with the statement
+
+{\tt \#include <genpari.h>}
+
+Note that this is usually a link, created when you make the library, to
+a file called either {\tt genpari68k.h} (for 680x0-based machines with x at
+least 2) or {\tt genpariother.h} (for all other machines).
+
+This file {\tt \ref{genpari.h}}, first exports all the necessary constants, variables
+and functions, defines some important macros, and also defines the fundamental
+type for all PARI objects: the type {\bf \ref{GEN}}, which is simply
+a pointer to {\tt long}.
+
+{\bf Technical note}: we would have liked to define a type GEN to be a
+pointer on itself. This unfortunately is not possible in C, except by
+using structures, but then the names become unwieldy. On the other hand,
+by a simple trick, it can be done in Pascal for example. The result of this
+is that when we will use a component of a PARI object, it will be a {\sl long},
+hence will need to be typecasted to a GEN again if we want to avoid warnings
+from the compiler. This will sometimes be quite tedious, but of course is
+trivially done.
+
+To take an example, a polynomial $P$ of degree 2 will be represented by a chunk
+of memory pointed to by the GEN $P$. $P[0]$ and $P[1]$ contain code
+information, in particular the type of the object, the degree of $P$, etc\dots.
+$P[2]$, $P[3]$, $P[4]$ contain pointers to the coefficients of degree 0, 1,
+and 2 of $P$ respectively (note the ascending order). This is where typecasting
+will be necessary: in principle $P[i]$ (for $i=2,3,4$) is a long, but we will
+want to use it as a GEN. 
+The coefficients $P[i]$ themselves are in chunks of memory whose complexity
+depends on the types of the coefficients, and so on.
+
+Now we must state the most important law about programming in PARI, which
+must be respected if one wants to avoid disasters:
+
+{\bf Apart from universal objects {\rm (see below)} the chunks of memory
+used by a given PARI object must be in consecutive memory locations}.
+
+Don't panic: let's see the reason and the meaning of this, and how 
+it can be achieved.
+
+When doing large computations, unwanted intermediate results clutter up
+memory very fast so some kind of garbage collecting is needed. Most large
+systems do garbage collecting when the cluttering gets heavy, and this slows
+down the performance. In PARI we have taken a different approach: you must
+do your own cleaning up as soon as the intermediate results are not needed.
+Special purpose routines have been written to do this, but the primary
+requirement is exactly as stated above: a PARI object must be (essentially)
+connected. As a consequence of this explanation, one also sees that there
+is an evident exception to the above law: if your computation is small enough
+so that you don't need to do any garbage collecting, then just go ahead,
+PARI won't mind disconnected objects in most cases. However, since PARI
+routines do their own garbage collecting, watch carefully what you are doing.
+
+The notion of \ref{universal object} alluded to above is quite simple:
+during the execution of your program, a number of objects will have been
+defined (by the system or by yourself) with the idea that they stay permanently
+with the same values. Examples are the integer 1, the fraction $\dfrac 1 2$,
+the polynomial $X$, or a prime $p$ which is used as a base modulus for
+integermods or $p$-adics. These universal objects are of course allowed to be
+disconnected from the other PARI objects.
+
+After declaring the use of the file genpari.h, the first executable statement
+of a main program should be to initialize the PARI system, and in particular
+the PARI stack which will contain all the computations. This is simply done
+with a call to the two variable function {\bf \ref{init}}, like 
+{\tt init(4000000,100000)}.
+The first argument (here 4 million) is the number of bytes given to PARI to
+work with (it should not reasonably drop under 500000), and the second is the
+upper limit on a precomputed prime number table. If you don't want prime numbers,
+just put 2, but put an argument anyway because {\tt init()} expects one.
+
+We have now at our disposal:
+
+$\bullet$ the following universal objects: the integer 0 ({\bf \ref{gzero}} as a GEN,
+{\tt \ref{zero}} as a long), the integer 1 ({\bf \ref{gun}} as a GEN, {\tt \ref{un}} as a long), the integer 2
+({\bf \ref{gdeux}} as a GEN, {\tt \ref{deux}} as a long), the fraction $\dfrac 1 2$ ({\bf \ref{ghalf}} as
+a GEN, {\tt \ref{lhalf}} as a long), the complex number $i$, {\bf \ref{gi}} as a GEN. In addition, space is 
+reserved for the polynomials 1 ({\bf \ref{polun[]}} as a GEN, {\tt \ref{lpolun}} as a long),
+and the polynomials $x_v$, ({\bf \ref{polx[]}} as GENs, {\tt \ref{lpolx}} as longs), where
+$x_v$ is the name of variable number $v$, where $0\le v\le 255$. However, 
+they are not created upon initialization, and it is the programmer's
+responsibility to fill them before use. Since this is not very easy, we
+advise the user to use the function {\tt \ref{lisseq}} which has essentially
+the same effect as {\tt \ref{lisexpr}} except that it can execute a sequence of
+expressions and not only a single expression. For example, to prepare for use
+the variables $a$,$b$,$c$,$x$, write 
+
+\centerline{\tt lisseq("x;a;b;c")}
+
+Note that {\tt polun} and {\tt polx} are arrays, the index being the 
+polynomial variable number.
+
+$\bullet$ a large PARI \ref{stack} containing nothing but (in the present version)
+the 167 long words (668 bytes) of the predefined universal objects.
+
+$\bullet$ a \ref{heap} which is dealt with in a different way from the stack,
+and will contain other permanent universal objects.
+
+$\bullet$ a table of primes.
+
+$\bullet$ access to all the built-in functions of the PARI library.
+
+We have already described many of these functions in the preceding chapters.
+However some of them are specific to library mode and thus will be explained
+in this chapter.
+
+\subsec{Input and output.}
+
+Two important aspects have not yet been explained since they are specific
+to library mode: input and output of PARI objects.
+
+For \ref{input}, PARI provides you with two powerful high level functions which enables
+you to input your objects as if you were under GP. In fact, the second
+one {\sl is \/}
+essentially the GP syntactical parser, hence you can use it not only for
+input but for any computation that you can do under GP. These functions are
+called {\bf \ref{lisexpr}} and {\bf \ref{lisseq}}. The first one has the following syntax:
+
+{\tt GEN lisexpr(char* s);}
+
+Its effect is to analyze the input string s and to compute the result as in GP.
+However it is limited to one expression. If you want to read and evaluate
+a sequence of expressions, use
+
+{\tt GEN lisseq(char* s);}
+
+Warning: there is a slight difference between these functions and the GP
+syntactical parser: the expressions and sequences which you use must not
+contain any spaces.
+
+Once in a while, it may be useful to have the evaluation of the string
+involving
+a call to a function you have defined in C. The function {\bf \ref{install}}
+allows you to give a name to a function taking 0, 1, 2 or 3 GEN arguments and
+returning a single GEN. The syntax is 
+
+{\tt void install(GEN (*f)(), char *name, int valence)}
+
+where {\tt f} is the (address of) the function, {\tt name} its new name, and
+{\tt valence} the number of its arguments, an integer between 0 and 3.
+
+For \ref{output}, there exist four different functions. First, you can
+use the function {\bf \ref{sor}} with the following syntax:
+
+{\tt void sor(GEN x,char format,long dec,long field);}
+
+Here format is either {\tt 'e'}, {\tt 'f'} or {\tt 'g'} corresponding to
+the three output formats of GP, {\tt dec} is the number of printed significant
+digits for real numbers, and should be put equal to -1 if all of them are
+wanted, and {\tt field} corresponds to the field width of GP used for printing
+integers.
+
+A default use of this function is to use the macro {\tt \ref{outbeaut}(GEN x)}
+which is equivalent to {\tt sor(x,'g',-1,0)} followed by a newline and a
+buffer flush.
+
+The second format corresponds to the ``raw'' format of GP (see section 2.2.5)
+and is obtained by using the function {\bf \ref{brute}} with the following 
+syntax:
+
+{\tt void brute(GEN x,char format,long dec);}
+
+A default use of this function is to use the macro {\tt \ref{output}(GEN x)} 
+which is equivalent to {\tt brute(x,'g',-1)} followed by a newline and a 
+buffer flush.
+
+Note that during debugging, the function {\tt brute} cannot be nicely used
+since the buffer is not flushed, and the macro {\tt output} cannot be 
+executed, being a macro. For this reason only, Pari provides you with the
+fuunction {\tt void imprimer(GEN x)} which has the same effect as {\tt output},
+but can now be called under a debugger. For example, under GDB, if x is a GEN,
+to see the contents of x simply type {\tt p imprimer(x)}.
+
+The third format corresponds to the {\tt texprint} function of GP, and gives
+a \TeX{} output of the result. It is obtained by using the function
+{\bf texe} with the following syntax:
+
+{\tt void \ref{texe}(GEN x,char format,long dec);}
+
+Finally, you can use the \ref{hexadecimal tree output} corresponding to the GP
+command \bs x using the function {\bf \ref{voir}} with the following syntax:
+
+{\tt void voir(GEN x,-1);}
+
+Again the last parameter must be given and put equal to -1. In principle this
+last type of output is used only for debugging purposes.
+
+{\bf Remark.} All Pari output is done on the stream {\tt \ref{outfile}}, which by
+default is initialized to {\tt stdout}. If you want that your output be
+directed to another file, you should use the function {\tt \ref{switchout}(name)}
+where {\tt name} is a character string giving the name of the file you
+are going to use. The printing is {\it appended\/} at the end of the file.
+When you want to close the file, you simply call {\tt switchout(NULL)}.
+
+Similarly, errors are sent to the stream {\tt \ref{errfile}} ({\tt stderr}
+by default), and input is done on the stream {\tt infile} using the function 
+{\tt \ref{switchin}} analogous to {\tt stdout}.
+
+The is currently no way to send a Pari output to a string.
+
+\section{Creation, destruction, and implementation of the PARI objects.}
+
+By far the most important functions which are specific to the library mode
+are the functions which allow the programmer to create and delete PARI objects,
+and the assignment statements.
+
+\subsec{Creation of PARI objects.}\sref{creation}
+The basic function which creates a PARI object is the function
+{\bf \ref{cgetg}} whose syntax is:
+
+ {\tt cgetg(long length,long type);}
+
+Here length is a long specifying the number of longwords to be allocated to
+the object, and type is a long which is the type number of the object
+(see chapter 1 or below for the list of these
+type numbers). Note that the length is the first argument, and type the second.
+The precise effect of this function is as follows: it first creates on the stack
+a chunk of memory of size ``length'' longwords, and puts the address of the chunk
+as the returned value.
+If not enough memory is available, a message to the effect that the PARI stack
+overflows will be printed. Otherwise, it sets the type of the chunk to ``type'',
+sets the length, and sets the reference count to 1. In effect, it fills
+correctly and completely the first codeword (z[0] or *z) of the PARI object.
+Many PARI objects having also a second codeword (types 1,2,7,10,11),
+{\it it is the programmer's responsibility to fill this second codeword\/},
+either explicitly (see below), or implicitly using an assignment statement.
+
+Note that the argument ``length'' is forced for a number of types:
+3 for types 3,4,5,6,9,13,14 and 16, 4 for type 8 (Quad), and 5 for type 7 ($p$-adic).
+However for efficiency's sake no checking is made in the function {\tt cgetg} so
+disastrous results can occur if you give an incorrect length.
+
+Notes: 1) the creation of leaves, i.e. integers or reals, being so common,
+{\bf \ref{cgeti}} and {\bf \ref{cgetr}} should be used instead of 
+{\tt cgetg( ,1)} and {\tt cgetg( ,2)}.
+
+2) the macros {\tt \ref{lgetg}}, {\tt \ref{lgeti}} and {\tt \ref{lgetr}} are predefined as
+{\tt (long)cgetg}, {\tt (long)cgeti} and {\tt (long)cgetr} respectively.
+
+Examples:
+
+{\tt z = cgeti(6);} (or {\tt cgetg(6, 1);}) creates an integer type which
+can hold numbers of absolute value less than $2^{128}$ (2 codewords +
+4 mantissa longwords).
+
+{\tt z = cgetg(3, 6); z[1] = lgetr(5); z[2] = lgetr(5);}
+creates a complex type whose real and imaginary part can hold real numbers
+of precision 96 bits.
+
+{\tt z = cgetg(4, 19); for(i=1; i<4; i++) z[i] = lgetg(5, 18);}
+creates a matrix type for $4\times 3$ matrices. One must also create space
+for the matrix elements themselves using a double loop.
+
+These last two examples illustrates the fact that since PARI types are recursive,
+all the branches of the tree must be created. The function {\tt cgetg} creates only the
+``root'', and other calls to {\tt cgetg} must be made to get the whole tree.
+For matrices, a common mistake is to think that {\tt z = cgetg(4, 19)}
+(for example) will create the root of the matrix: one needs also to create 
+the column vectors of the
+matrix. This is because a matrix is really nothing else than a line vector of
+column vectors (hence a priori not a basic type), but it has been given a special
+type number so that operations with matrices become possible.
+
+\subsec{Implementation of the PARI types}.
+
+Although it is a little tedious, we must go through each type and explain their
+implementation. Let z be a PARI object. Common to all the types is the first
+codeword (z[0]), which we don't have to worry about since this is taken care of
+by {\tt cgetg}. However we need its precise description: the first
+byte is the \ref{type number}, the second byte is the \ref{reference count} (used only
+for garbage collecting purposes), and the last two bytes (the low order word if
+you prefer) is the \ref{length} of the root in longwords. For instance in the example
+{\tt z = cgeti(6)} above, z[0] will be set to {\tt 0x01010006}.
+
+These bytes can be handled through the following functions:
+
+{\tt long \ref{typ}(GEN z);} returns the type number of z.
+
+{\tt void \ref{settyp}(GEN z, long n);} sets equal to {\tt n} the type number of z
+(you should not have to use this function if you use cgetg).
+
+{\tt long \ref{pere}(GEN z);} returns the reference count of z.
+
+{\tt void \ref{setpere}(GEN z, long n);} sets equal to {\tt n} the reference count of z.
+
+{\tt void \ref{incpere}(GEN z);} increments the reference count of z
+(with saturation at 255).
+
+{\tt long \ref{lg}(GEN z);} returns the length (in longwords) of the root of z.
+
+{\tt long \ref{setlg}(GEN z, long l);} sets equal to {\tt l} the length of z 
+(you should not have to use this function if you use {\tt cgetg}; however,
+see an example of the use of this function in the matexp function given in 
+section 4.3).
+
+Let us now look precisely at the types:
+
+{\bf Type 1 (integers)}: \sref{Integer}
+this type has a second codeword z[1] which contains the
+following information. The first byte is the sign of z, i.e. 1 if z $>$ 0,
+0 if z $=$ 0, $-1$ if z $<$ 0. The second byte is unused. The low order word is
+the {\bf effective length} of z, i.e. the total number of significant longwords.
+This means the following: apart from the integer 0 (whose second codeword is
+equal to 2), every integer is ``normalized'', meaning that the first
+mantissa longword (i.e. z[2]) is non zero. However, the integer may have been
+created with a longer length. Hence the ``length'' which is in z[0] can
+be larger than the ``effective length'' which is in z[1]. In fact, it would be
+a disaster to try to access z[i] for i larger than or equal to the effective length.
+
+This information can be handled using the following functions:
+
+{\tt long \ref{signe}(GEN z);} returns the sign of z.
+
+{\tt void \ref{setsigne}(GEN z, long s);} sets equal to {\tt s} the sign of z.
+
+{\tt long \ref{lgef}(GEN z);} returns the \ref{effective length} of z.
+
+{\tt void \ref{setlgef}(GEN z, long l);} sets equal to {\tt l} the effective length of z.
+
+The integer 0 can be characterized either by its sign equal to 0, or by
+its effective length equal to 2. Apart from z $=$ 0, z[2] exists and is non zero,
+and the absolute value of z is (z[2],z[3],\dots,z[lgef(z)-1]) in base $2^{32}$,
+where as usual in this notation z[2] is the high order longword.
+
+{\bf Type 2 (real numbers)}: \sref{Real number}
+this type has a second codeword z[1] whose first byte
+is also the sign (obtained or set using the same functions as for the integers),
+but whose 3 low order bytes contains a biased binary exponent (i.e. the exponent
+plus $2^{23}$). This exponent can be handled using the following functions:
+
+{\tt long \ref{expo}(GEN z);} returns the true (unbiased) exponent of z. This is
+defined even when z is equal to zero, see section 1.2.6.
+
+Note also the function {\tt long \ref{gexpo}(GEN z)} which tries to return an exponent
+for $z$ even if $z$ is not a real number.
+
+{\tt void \ref{setexpo}(GEN z, long e);} sets equal to {\tt e} the exponent of z, of course
+after adding the bias.
+
+The real zero is characterized by having its sign equal to 0. However, usually
+the first mantissa word z[2] is defined and equal to 0. This fact must {\it never\/}
+be used to characterize 0. If z is not equal to 0, the first mantissa word z[2]
+is normalized, i.e. its first bit is 1. The mantissa is (z[2],z[3],\dots,z[lg(z]-1])
+in base $2^{32}$ where z[2] is the most significant longword, and the mantissa
+is understood to be between 1 and 2. Thus the real number $-3.5$ is represented
+(if the length is 4) as {\tt 0x02010004, 0xff800001, 0xe0000000, 0}.
+
+{\bf Type 3 (integermods)}: \sref{Integermod}
+z[1] points to the modulus, and z[2] on the number
+representing the class z. Both must be of type integer. In principle z[1] $>$
+0 and 0 $<=$ z[2] $<$ z[1], but this rule does not have to be strictly obeyed
+by the user. Any integermod obtained after a PARI operation will in principle
+satisfy these conditions.
+
+{\bf Types 4 and 5 (rational numbers)}: \sref{Rational number}
+z[1] points to the numerator, and z[2] on the 
+denominator. Both must be of type integer. In principle z[2] $>$ 0, but this
+rule does not have to be strictly obeyed either.
+
+{\bf Type 6 (complex numbers)}: 
+\sref{Complex number}z[1] points on the real part, and z[2] on the
+imaginary part. A priori z[1] and z[2] can be of any type, but only certain types
+are useful and make sense.
+
+{\bf Type 7 ($p$-adic numbers)}: \sref{p-adic number}
+this type has a second codeword z[1] which
+contains the following information: the first {\it word\/} contains the exponent
+of $p$ modulo which the $p$-adic unit corresponding to z is defined (if z is not 0),
+i.e. one less than the number of significant $p$-adic digits. the second word
+contains the biased exponent of z (the bias being here equal to $2^{15}$).
+This information can be handled using the following functions:
+
+{\tt long \ref{precp}(GEN z);} returns the $p$-adic precision of z, i.e. one less
+than the number of significant $p$-adic digits.
+
+{\tt void \ref{setprecp}(GEN z, long l);} sets equal to {\tt l} the $p$-adic precision of z.
+
+{\tt long \ref{valp}(GEN z);} returns the $p$-adic valuation of z (i.e. the
+unbiased exponent). This is defined even if z is equal to 0, see section 1.2.6.
+
+{\tt void \ref{setvalp}(GEN z, long e);} sets equal to {\tt e} the $p$-adic valuation of z.
+
+In addition to this codeword, z[2] points to the prime $p$, z[3] points to
+$p^{\text{precp(z)}}$, and z[4] points to an integer representing the $p$-adic
+unit associated to z modulo z[3] (or points to zero if z is zero).
+To summarize, we have the equality:
+$$z=p^{\text{valp(z)}}*(z[4]+O(z[3]))=p^{\text{valp(z)}}*(z[4]+O(p^{\text{precp(z)}}))$$
+
+{\bf Type 8 (quadratic numbers)}: \sref{Quadratic number}
+z[1] points on the polynomial defining the
+quadratic field, z[2] on the ``real part'' and z[3] on the ``imaginary part'',
+where this is to be taken as the coefficients of z on the ``canonical'' basis (1,w)
+(see section 1.2.3). Complex numbers are particular cases of quadratics but deserve
+a separate type.
+
+{\bf Type 9 (polymods)}: \sref{Polymod}
+exactly as for integermods, z[1] points on the modulus,
+and z[2] on a polynomial representing the class of z. Both must be of type 
+polynomial. However, one must obey the rules explained in chapter 2 concerning
+the hierarchical structure of the variables of a polymod.
+
+{\bf Type 10 (polynomials)}: \sref{Polynomial}
+this type has a second codeword which is analogous to
+the one for integers. The first byte is the ``sign'', i.e. 0 if the polynomial
+is equal to 0, and 1 if not (see however the important remark below).
+The second byte is the variable number 
+(e.g. 0 for $X$, 1 for $Y$, etc\dots). This number can be handled with the 
+following functions:
+
+{\tt long \ref{varn}(GEN z);} returns the variable number of the object z.
+
+Note also the function {\tt long \ref{gvar}(GEN z)} which tries to return a variable number
+for $z$, even if $z$ is not a polynomial or power series. The variable number of
+a scalar type is set by definition equal to 32767.
+
+{\tt void \ref{setvarn}(GEN z,long v);} sets equal to {\tt v} the variable number of z.
+
+The least significant word of the second codeword is the effective length of
+the polynomial. Note that the degree of the polynomial is equal to the effective
+length minus three. The functions used to handle this codeword are the same
+as for integers. The components z[2], z[3],\dots z[lgef(z)-1]
+point to the coefficients of the polynomial {\it in ascending order\/}, with
+z[2] being the constant term and so on.
+
+{\sl Important remark\/}. A zero polynomial can be characterized by the fact
+that its sign is 0. However, its effective length may be equal to 2, or greater
+than 2. If it is greater than 2, this means that all the coefficients of the
+polynomial are equal to zero (as they should for a zero polynomial), but not
+all of these zeros are exact zeros, and more precisely the leading term
+z[lgef(z)-1] is not an exact zero.
+
+{\bf Type 11 (power series)}: \sref{Power series}
+This type also has a second codeword.
+Its first byte is the ``sign'', i.e. 0 if the power series
+is 0, and 1 if not. The second byte is the variable number, as for polynomials.
+The last two bytes code for a biased exponent with a bias of
+$2^{15}$. This information can be handled with the following functions:
+
+{\tt \ref{signe}, \ref{setsigne}, \ref{varn}, \ref{setvarn}} as for 
+polynomials, and {\tt \ref{valp}, \ref{setvalp}} for
+the exponent. Beware not to use {\tt expo} and {\tt setexpo} for power series.
+
+If the power series is non zero, z[2], z[3],\dots z[lg(z)-1] point to the
+coefficients of z in ascending order, z[2] being the first non-zero coefficient.
+Note that the exponent of a power series can be negative, i.e. we can deal with
+Laurent series with a finite number of negative terms.
+
+{\bf Types 13 and 14 (rational functions)}: \sref{Rational function}
+z[1] points on the numerator, and z[2]
+on the denominator. Both must be of type polynomial.
+
+{\bf Type 16 (binary quadratic forms)}: \sref{Binary quadratic form}
+z[1], z[2], z[3] point on the three
+coefficients of the form. All three should be of type integer.
+
+{\bf Types 17 and 18 (vectors)}: \sref{Row vector}\sref{Column vector}
+z[1], z[2],\dots z[lg(z)-1] point on the components
+of the vector.
+
+{\bf Type 19 (matrices)}: \sref{Matrix}
+z[1], z[2],\dots z[lg(z)-1] point on the column vectors
+of z, i.e. they must be of type 18 and of the same length.
+
+\subsec{Assignment and copying of PARI objects}.
+
+The general \ref{assignment} function is the function {\bf \ref{gaffect}} with
+the following syntax:
+
+{\tt void gaffect(GEN x, GEN y);}
+
+Its effect is to assign the PARI object x into the (preexisting) object y.
+Many conditions must be met for the assignment to be possible. For instance it is
+allowed to assign an integer into a real number, but the converse is forbidden.
+For that, you must use the truncation or rounding function of your choice
+(see section 3.2). It can
+also happen that y is not large enough or does not have the proper tree structure
+to receive the object x. As an extreme example, assume y is the zero integer with
+length equal to 2. Then all assignments of a non zero integer into y will
+result in an error message since y is not large enough to fit a non zero integer.
+In general common sense will tell you what is possible, keeping in mind the
+PARI philosophy which says that if it makes sense it is legal (the assignment of
+an imprecise object into a precise one does {\it not\/} make sense. However,
+a change in precision of imprecise objects is allowed).
+
+It is also necessary to assign ordinary 32-bit long numbers of C into a PARI
+object. This is done using the function {\bf \ref{gaffsg}} with the following syntax:
+
+{\tt void gaffsg(long s, GEN y);}
+
+It is also very useful to copy a PARI object, not just by moving around a pointer,
+but by physically creating a copy of the whole tree structure. The function
+which does this is called {\bf \ref{gcopy}}, with the predefined macro 
+{\tt \ref{lcopy}} as a synonym for {\tt (long)gcopy}. Its syntax is:
+
+{\tt GEN gcopy(GEN x);}
+
+and the effect is to create a new copy of x on the PARI stack.
+
+However, it may also be useful to create a {\sl permanent} copy of a PARI
+object. This will not be created on the stack but on the heap. The function
+which does this is called {\bf \ref{gclone}}, with the predefined macro 
+{\tt \ref{lclone}} as a synonym for {\tt (long)gclone}. Its syntax is:
+
+{\tt GEN gclone(GEN x);}
+
+A final class of functions should be mentioned in this subsection: functions which
+convert from C objects to PARI objects (with creation of the objects on the stack).
+They are as follows:
+
+{\tt GEN \ref{stoi}(long s);
+
+GEN \ref{dbltor}(double s);}
+
+Their meaning is clear from their names. The converse functions
+
+{\tt long \ref{gtolong}(GEN z);
+
+double \ref{gtodouble}(GEN z);}
+
+also exist, but are seldom used.
+
+\subsec{Destruction of PARI objects and garbage collection}.
+
+If you want to destroy (i.e. give back the memory occupied by) the latest PARI
+object on the
+stack (e.g. the latest one obtained by a cgetg or a function), this is very simple:
+just use the function {\bf \ref{cgiv}} with the syntax:\sref{destruction}
+
+{\tt void cgiv(z);}
+
+where z is the object (which can be a tree), which you want to give back. Unfortunately
+life is not so simple, and in general you are doing a computation and want to
+give back accumulated garbage. A simple example is the following.
+
+Let x and y be two preexisting PARI objects and suppose that we want to
+compute x$*$x$+$y$*$y. This can trivially be done using the following program
+(we skip the necessary declarations):
+
+{\tt p1=gmul(x,x);p2=gmul(y,y);z=gadd(p1,p2);}
+
+The GEN z will indeed point on the PARI object equal to x$*$x$+$y$*$y. However,
+consider the stack. It contains as unnecessary garbage p1 and p2. More
+precisely it contains (in that order) z, p1, p2. We need a way to get rid of
+this garbage (in this case it causes no harm except that it
+occupies memory space,
+but in other cases it could disconnect PARI objects and this is forbidden).
+It would not have been possible to get rid of p1, p2 before since they are
+used in the final operation. It is not possible to use the function {\tt cgiv}
+since p1 and p2 are not at the bottom of the stack. Hence PARI
+provides us with a much more powerful tool whose correct handling is not
+always easy: the function {\bf \ref{gerepile}} (with the macro 
+{\tt \ref{lpile}} as a
+synonym to {\tt (long)gerepile}). This function has the following syntax:
+
+{\tt GEN gerepile(long ltop, long lbot, GEN z);}
+
+The understanding of the behavior of this function is certainly the most
+difficult part of this chapter, hence we will try to go slowly in the
+explanation.
+
+First, the PARI stack has a current stack pointer which is a global variable
+(hence must not be declared in a program) called {\bf \ref{avma}} (which stands for
+{\bf av}ailable {\bf m}emory {\bf a}ddress, which as its name indicates
+points always just after the first free address on the stack (remember
+that the stack grows from high to low addresses). For certain reasons
+this variable is of type long and not of type GEN as would be natural.
+
+Now let us see the effects of the function {\tt gerepile}.
+For this function to work one must have lbot $<$ ltop. As a first 
+approximation, we describe the effects of this function as follows.
+Give back the memory locations between lbot and ltop, and move the object z
+upwards so that no space is lost. Specifically, we rewrite our previous
+example as follows:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+ltop=avma; /* keep in mind the current address of the top of the stack */
+p1=gmul(x,x); p2=gmul(y,y);
+lbot=avma; /* keep the address of the bottom of the garbage pile */
+z=gadd(p1,p2);
+z=gerepile(ltop,lbot,z); /* do the garbage collecting */}
+
+The last two instructions could also have been written more simply:
+
+{\tt z=gerepile(ltop,lbot,gadd(p1,p2));}
+
+As you can see, in simple conditions the use of {\tt gerepile} is not really
+difficult. However it is absolutely necessary to understand what has
+happened. When entering an instruction such as {\tt gerepile(ltop,lbot,z)},
+we must have avma $<=$ lbot $<$ ltop. As we will see, the variable z is in fact
+used very little. The function then considers all the PARI objects between
+avma and lbot (i.e. the ones that we want to keep) and looks at every
+component of such an object which is not a codeword. This component is a
+pointer on an object whose address is either between avma and lbot, in which
+case it will be suitably updated, larger than or equal to ltop, in which case
+it will not change, or between lbot and ltop in which case {\tt gerepile} will
+scream an error message at you. If all goes well, the pointers are suitably
+updated, the chunk of memory from avma to lbot$-$1 is physically copied to
+addresses avma$+$ltop$-$lbot to ltop$-$1, avma is updated (to the value
+avma$+$ltop$-$lbot), and finally the displacement ltop$-$lbot is added to z and
+given as a result of the function. In addition, if z is not 0 (in the sense
+of being address 0), the PARI object pointed to by ltop is checked to see
+whether certain of its pointers need also to be updated. This is a horrible
+hack which should not be used.
+
+{\bf Important remark}: as we will see presently it is often necessary
+to do several {\tt gerepile} in a computation. However, the least the better.
+The only condition for {\tt gerepile} to work is that the garbage be connected.
+If the computation can be arranged so that there is a minimal number of
+connected pieces of garbage then it should be done.
+
+For example suppose we want to write a function of two GEN variables x and y
+which creates the vector [x$*$x$+$y$,$y$*$y$+$x]. Without garbage collecting,
+one would write:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+p1=gmul(x,x);p2=gadd(p1,y);p3=gmul(y,y);p4=gadd(p3,x);
+z=cgetg(3,17);z[1]=(long)p2;z[2]=(long)p4;}
+
+This leaves a dirty stack with (in that order) z,p4,p3,p2,p1 and p1 and p3
+being garbage. But if we compute p3 {\it before \/} p2 then the garbage
+becomes connected and we get the following program with garbage collecting:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+ltop=avma;p1=gmul(x,x);p3=gmul(y,y);lbot=avma;
+z=cgetg(3,17);z[1]=ladd(p1,y);z[2]=ladd(p3,x);
+z=gerepile(ltop,lbot,z);}
+
+We take our next example directly from the implementation of {\tt gmul} in the
+file {\tt gen2.c}, case 6 times case 6. In other words
+we want to write a program to compute the product of two complex numbers
+x and y, using a method which takes only 3 multiplications instead
+of 4. Let z=x$*$y, and set x=xr$+$i$*$xi and similarly for y and z. The well known
+trick is to compute p1=xr$*$yr, p2=xi$*$yi, p3=(xr$+$xi)$*$(yr$+$yi), and then we
+have zr=p1$-$p2, zi=p3$-$p1$-$p2. The program is essentially as follows:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+ltop=avma;p1=gmul(x[1],y[1]);p2=gmul(x[2],y[2]);
+p3=gmul(gadd(x[1],x[2]),gadd(y[1],y[2]));p4=gadd(p1,p2);lbot=avma;
+z=cgetg(3,6);z[1]=lsub(p1,p2);z[2]=lsub(p3,p4);
+z=gerepile(ltop,lbot,z);}
+
+Let us now look at a less trivial example where more than one {\tt gerepile} is
+needed in practice (in theory one can always use only one, see below, but
+generally at the expense of efficiency). Suppose for instance that we want
+to write a function which multiplies a line vector by a matrix (such a
+function is of course already part of {\tt gmul}, but let's ignore this for a
+moment). Then the most natural way is to do a {\tt cgetg} of the result
+immediately, and then for each coefficient of the result vector to do
+a {\tt gerepile} to get rid of the garbage which has accumulated for that
+particular coefficient. We leave the details to the reader, who can
+look at the answer in the file gen2.c, in the function gmul, case 17 times
+case 19. As was said above, it would theoretically be possible to have
+a single connected piece of garbage, but it would be a much less natural
+and unnecessarily complicated program.
+
+Finally, let us take an example which is probably the least trivial way
+of using {\tt gerepile}, but is unfortunately sometimes necessary. Although it
+is not an infrequent occurrence, we will not give a specific example but
+a general one. Suppose that we want to do a computation (usually inside
+a larger function) giving more than one PARI object as a result, say two
+for instance. Then even if we set up the work properly, before cleaning up
+we will have a stack which has the desired results z1, z2 (say),
+and then connected garbage from lbot to ltop. If we write
+
+{\tt z1=gerepile(ltop,lbot,z1);}
+
+then the stack will be cleaned, the pointers OK, but we will have lost the
+address of z2. Hence the best way in this case is to write the following,
+assuming that {\tt dec} has been declared as a long and not as a GEN:
+
+{\tt dec=lpile(ltop,lbot,0)/4;z1+=dec;z2+=dec;}
+
+This works because {\tt gerepile} thinks that 0 is a valid address, hence puts in
+{\tt dec} the displacement in bytes. Since z1 and z2 are pointers, we need to
+divide {\tt dec} by 4 to get a longword displacement.
+
+If you followed us this far, congratulations, and rejoice, the rest is
+much easier.
+
+\subsec{Some tricks and hints}. Even for the authors, the use of {\tt gerepile}
+was not evident at first. Hence we give some indications on how to avoid
+most problems connected with {\tt gerepile}, at the expense of speed.
+
+First, although it looks complicated, {\tt gerepile} has turned out to be a
+very flexible and fast garbage collector, which can compare very favorably
+with much more sophisticated methods used in other systems. A few tests
+that we have made indicate that the price paid for using {\tt gerepile} is never
+more than 10 percent, and usually around 5 or 6 percent of the total time,
+which is quite acceptable.
+
+Second, in many cases, in particular when the tree structure and the size
+of the PARI objects which will appear in a computation are under control,
+one can avoid {\tt gerepile} altogether by creating sufficiently large objects
+at the beginning (using {\tt cgetg}), and then using assignment statements and
+operations ending with z (such as {\tt gaddz}). Coming back to our first example,
+note that if we know that x and y are of type real and of length less than or
+equal to 5, we can program without using {\tt gerepile} at all:
+
+{\tt z=cgetr(5);ltop=avma;p1=gmul(x,x);p2=gmul(y,y);gaddz(p1,p2,z);avma=ltop;}
+
+Here the cleaning up is done using the simple assignment avma=ltop which
+takes essentially no time at all.
+
+Third, the philosophy of {\tt gerepile} is the following: keep the value of the
+stack pointer avma at the beginning, and just {\bf before} the last operation.
+Afterwards, it would be too late since the garbage address would be lost.
+
+Finally, if everything seems hopeless, at the expense of speed you can do the
+following: after keeping in ltop the value of avma, perform your computation
+as you wish, in any order, leaving a messy stack. Let z be your result
+(let's assume you have only one. If you have more than one, you can always create a
+vector which is a single PARI object whose components are your results;
+after all, we are already cheating, we can cheat some more). Then write the following:
+
+{\tt lbot=avma;z=gerepile(ltop,lbot,gcopy(z));}
+
+The trick is to force a copy of z at the bottom of the stack, hence all the
+rest including the initial z becomes connected garbage. Note that this
+may not work in some cases where you have created new universal objects between
+lbot and ltop, for instance moduli for mod $p$ or $p$-adic computations.
+In that case you must also copy these objects on top of the
+stack and modify the components of your results which point to these objects.
+This in fact involves rewriting a simplified version of a part of {\tt gerepile}, hence
+is not recommended. If you are in this situation and still want to use this trick,
+we strongly advise you to create all your new universal objects before starting
+your computation, hence before the instruction {\tt ltop=avma;}. Then you should
+have no problems.
+
+Another solution is to use clones, i.e. the function {\tt gclone} (see 4.2.3),
+which creates a permanent object on the heap, and not on the stack.
+
+\section{A complete program.}
+
+Now that the preliminaries are out of the way, the best way to learn how to use
+the library mode is to work through a detailed nontrivial example of a main
+program. We will write a program which computes the exponential of a square matrix $x$.
+The complete listing is given in Appendix C, but each part of the
+program will be written and commented here. We will use an algorithm which is not
+optimal but is not far from the one used for the PARI function {\tt gexp} (in fact
+in the function {\tt mpexp1}). This consists in calculating the sum of the series:
+$$e^{x/(2^n)}=\sum_{k=0}^\infty \dfrac{(x/(2^n))^k}{k!}$$
+for a suitable positive integer $n$, and then computing $e^x$ by repeated squarings.
+First, we will need to compute the $L^2$-norm of the matrix $x$, i.e. the quantity:
+$$z=\|x\|_2=\sqrt{\sum_{i,j}x_{i,j}^2}.$$
+We will then choose the integer $n$ such that the $L^2$-norm of $x/(2^n)$ is less than
+or equal to 1, i.e. $$n=\left\lceil\dfrac{\ln(z)}{\ln(2)}\right\rceil$$ if $z>=1$. Then the
+convergence of the series will be at least as good as the one for $e^1$,
+and will be easy to estimate. In fact a larger value of $n$ would be preferable,
+but this is slightly machine dependent and more complicated, and will be left
+to the reader.
+
+We will now start writing our program. So as to be able to use it in other
+contexts, we will structure it in the following way: a main program which
+will do the input and output, and a function which we shall call {\bf matexp}
+which does the real work. The main program is easy to write. It can be
+something like this:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+\#include <genpari.h>
+GEN matexp();
+\hbox{}
+main()
+\obr
+\quad GEN x,y;
+\quad long prec,d;
+\quad char s[512];
+\hbox{}
+\quad init(1000000,2); /* take a million bytes of memory for the stack */
+\quad printf("precision of the computation in decimal digits? ");
+\quad scanf("\%d",\&d);if(d<0) prec=3;else prec=(long)(d*K1+3);
+\quad printf("input your matrix in GP format:\bs n");
+\quad s[0]=0;while(!s[0]) gets(s);x=lisexpr(s);
+\quad y=matexp(x,prec);
+\quad sor(y,'g',d,0);
+\cbr 
+}
+
+The variable {\tt prec} represents the length in longwords of the
+real numbers used. K1 is the constant (defined in {\tt gencom.h}) equal to
+$\ln(10)/(32*\ln(2))$, which allows us to convert from a number of decimal digits
+to a number of longwords. The function {\tt lisexpr} was mentioned earlier and
+avoids any trouble in the input. In fact, as was also mentioned, {\tt lisexpr}
+can take any legal GP expression hence can do not only input but also
+computations. Note that we have used the construction {\tt s[0]=0;while(!s[0]) gets(s);}
+to get our string, instead of {\tt scanf} which would make trouble in this case.
+
+Finally, {\tt sor} is the general output routine. We have chosen
+to give d significant digits since this is what was asked. Note that there is
+a trick hidden here: if d was given to be negative, then the computation will
+be done in precision 3 (i.e. about 9.7 decimal digits) and in the function
+{\tt sor}, giving a negative third argument outputs all the significant digits,
+hence nothing is wrong.
+
+Now let us attack the main course, the function matexp:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+GEN matexp(x,prec)
+\qquad GEN x;
+\qquad long prec;
+\hbox{}
+\obr
+\quad GEN y,r,s,p1,p2;
+\quad long tx=typ(x),lx=lg(x),i,k,n,lbot,ltop;
+\hbox{}
+/* check that x is a square matrix */
+\hbox{}
+\quad if(tx!=19) \obr printf("This expression is not a matrix\bs n");return(gzero);\cbr 
+\quad if(lx!=lg((GEN)x[1])) \obr printf("Not a square matrix\bs n");return(gzero);\cbr 
+\hbox{}
+/* compute the L2 norm of x */
+\hbox{}
+\quad ltop=avma;s=gzero;
+\quad for(i=1;i<lx;i++) s=gadd(s,gnorml2((GEN)x[i]));
+\quad if(typ(s)==2) setlg(s,3);
+\quad s=gsqrt(s,3); /* we do not need much precision on s */
+\hbox{}
+/* if s<1, we are happy */
+\hbox{}
+\quad if(expo(s)<0) \obr n=0;p1=x;\cbr 
+\quad else \obr n=expo(s)+1;p1=gmul2n(p1,-n);setexpo(s,-1);\cbr 
+}
+
+Before continuing, a few remarks are in order. First, after printing an error
+message we need to return a GEN value otherwise a fussy compiler will complain.
+Hence we return gzero, which in any case is an impossible result for an
+exponential. We also have at our disposal the GEN gnil, which is also equal
+to zero, but has the peculiarity of not being printed.
+
+Second, to compute the square of the $L^2$-norm of x we just add the
+squares of the $L^2$-norms of the column vectors which we obtain using the
+library function {\tt gnorml2}. Had this function not existed, it would
+of course have been just as easy, but we would have had to make a double loop.
+Then, we take the square root of s, in precision 3. For that we use the function
+{\tt setlg} which tells s to be in such a precision, only if s is of type real.
+Note that the matrix x is allowed to have complex entries, but the function
+{\tt gnorml2} guarantees that s is a nonnegative number of type real.
+If we had not known this fact, we would simply have added
+the instruction {\tt s = greal(s);} just after the {\tt for} loop.
+
+Third, before starting this computation which will produce garbage on the stack,
+we have carefully kept the value of the stack pointer avma in ltop. Note that
+we are going to assume throughout that the garbage does not overflow the
+memory that we allocated on the stack. If it did, we would have two solutions.
+Either allocate more memory in the main program (for instance change 1000000
+into 2000000), or do some {\tt gerepile} along the way.
+
+Fourth, note that we initialized the sum {\tt s} to gzero, which is an exact
+zero. This is logical, but has some disadvantages: if all the entries of the
+matrix are integers (or rational numbers), the computation will be rather
+long, about twice as long as with real numbers of the same length. 
+It would be better to initialize {\tt s} to a real zero, using for instance
+the instructions:
+
+{\tt s=cgetr(prec+1);gaffsg(0,s);}. 
+
+However, this would not make much sense. In fact you should avoid making
+an assignment of an exact zero (essentially the integer zero) into a real
+number: which real zero is it going to give as a result? In fact a choice
+has been made, and it will give you the zero with exponent equal to -32
+times the number of longwords in the mantissa, but this is not really
+satisfactory. Perhaps PARI should give an error message in that case, or
+at least a warning.
+
+Fifth, we will want to look at the approximate size of real numbers, and
+the fastest way to do this is to look at their binary exponents. Hence we
+need to have {\tt s} as a real number, and not as an integer or a rational
+number. This is done automatically when we take the square root.
+
+Finally, note the use of the function {\bf \ref{gmul2n}}. This function has the
+following syntax:
+
+{\tt GEN gmul2n(GEN x,long n);}
+
+The effect is simply to multiply {\tt x} by $2^{\text n}$, where {\tt n} can
+be positive or negative. This is much faster than gmul or gmulgs.
+
+There is another function {\bf \ref{gshift}} with exactly the same syntax.
+When {\tt n} is nonnegative, the effects of these two functions is the same.
+However when {\tt n} is negative, gshift acts like a right shift of {\tt -n},
+hence does not give the same effect on integers. The function gshift is
+the PARI analogue of the C operators {\tt <<} and {\tt >>}.
+
+We now come to the heart of the function. We have now a GEN p1 which points
+to a certain matrix of which we want to take the exponential. We will want
+to transform this matrix into a matrix with real (or complex of real) entries
+before starting the computation. To do this, we simply multiply by the real
+number 1 in precision prec$+$1 (to be safe). Then, to compute the series
+we will keep three variables: a variable p2 which
+at stage k will contain ${\tt p1}^k/k!$, a variable y which will contain
+$\sum_{i=0}^k {\tt p1}^i/i!$, and the variable r which will contain
+${\tt s}^k/k!$. Note that we do not use Horner's rule. This is simply
+because we are lazy and do not want to compute in advance the number of
+terms that we need. We leave this modification (and many other improvements!)
+to the reader. The program continues as follows:
+
+{\tt \obeylines\parskip=0pt plus 1pt
+\hbox{}
+/* initializations before the loop */
+\hbox{}
+\quad r=cgetr(prec+1);gaffsg(1,r);p1=gmul(r,p1);
+\quad y=gscalmat(r,lx-1); /* this creates the scalar matrix r$*{\tt I_{\text {lx-1}}}$ */
+\quad p2=p1;r=s;k=1;
+\quad y=gadd(y,p2);
+\hbox{}
+  /* now the main loop */
+\hbox{}
+\quad while(expo(r) >= -32*(prec-1))
+\qquad \obr k++;p2=gdivgs(gmul(p2,p1),k);r=gdivgs(gmul(s,r),k);y=gadd(y,p2);\cbr 
+\hbox{}
+  /* now square back n times if necessary */
+\hbox{}
+\quad if(!n)\obr lbot=avma;y=gerepile(ltop,lbot,gcopy(y));\cbr 
+\quad else
+\quad \obr 
+\qquad for(i=0;i<n;i++)\obr lbot=avma;y=gmul(y,y);\cbr 
+\qquad y=gerepile(ltop,lbot,y);
+\quad \cbr 
+\quad return(y);
+\cbr 
+}
+
+A few remarks once again. First note the use of the function {\bf \ref{gscalmat}}
+with the following syntax:
+
+{\tt GEN gscalmat(GEN x, long l);}
+
+The effect of this function is to create the ${\tt l}\times{\tt l}$ scalar
+matrix whose diagonal entries is the GEN x. Hence the length of
+the matrix including the codeword will in fact be {\tt l+1}.
+There is a corresponding function
+{\bf \ref{gscalsmat}} which takes a long as a first argument. 
+
+If we refer to what has been said above, the main loop is clear.
+
+When we do the final squarings, according to the fundamental theorem on the
+use of {\tt gerepile} we keep the value of avma in lbot just {\it before} the
+squaring, so that if it is the last one, lbot will indeed be the bottom address
+of the garbage pile, and {\tt gerepile} will work. Note that it takes a completely
+negligible time to do this in each loop compared to a matrix squaring.
+However, when n is initially equal to 0, no squarings have to be done,
+and we have our final result ready but we lost the address of the bottom of
+the garbage pile. Hence we use the trick of copying y again on top of the
+stack. This is inefficient, but does the work. If we wanted to avoid this,
+the best thing to do would be to put the instruction {\tt lbot=avma} just before
+both occurrences of the instruction {\tt y=gadd(p2,y);}.
+
+Remarks on the program: as such, the program should work most of the time if
+x is a square matrix with real or complex entries. Indeed, since essentially
+the first thing that we do is to multiply by the real number 1, the program
+should work for integer, real, rational, complex or quadratic entries. This
+is in accordance with the behavior of transcendental functions.
+
+Furthermore, since this program is intended to be only an illustrative 
+example, it has been written a little sloppily. In particular many error checks
+have been omitted, and the efficiency is far from optimal. An
+evident improvement is to avoid the unnecessary gcopy by inserting a couple
+of extra {\tt lbot=avma;} instructions. Another improvement is to multiply
+the matrix x by the real number 1 right at the beginning, speeding up the
+computation of the $L^2$-norm in many cases. These improvements are included
+in the version given in Appendix C. Still
+another improvement would come from a better choice of n. If the reader takes
+a look at the implementation of the function {\tt \ref{mpexp1}} in the file trans1.c
+he can make himself the necessary changes. Finally, there exist
+other algorithms of a different nature to compute the exponential of a matrix.
+\medskip
+{\bf Remark}: While writing this program, we have seen a few new functions 
+(the complete list of available functions is given by alphabetical order in the index). However, if you care to look at the file {\tt gencom.h}, you will notice that
+many more functions are defined. But in every case these missing functions
+are particular cases of general functions. For example, we have the function
+{\tt gneg}, which takes the negative of a PARI object. However, there also 
+exist functions like {\tt negi} (for type integer), {\tt negr} 
+(for type real), and {\tt mpneg} (for type integer or real).
+
+These functions can of course be called by the
+user but we feel that the few microseconds lost in calling more general
+functions (in this case {\tt gneg}) is compensated by the fact that one needs to
+remember a much smaller number of functions, and also because there is a hidden
+danger here: the type of the objects that you use, if they are themselves results
+of a previous computation, is not completely predetermined. For instance the
+multiplication of a type real by a type integer {\it usually\/} gives a result of
+type real, except when the integer is 0, in which case according to the PARI
+philosophy the result is the exact integer 0. Hence if afterwards you call a
+function which specifically needs a real type argument, you are in trouble.
+
+If you really want to use these functions, their names are self-explanatory once
+you know that {\bf i} stands for a PARI integer, {\bf r} for a PARI real,
+{\bf mp} for i or r, {\bf s} for an ordinary 32-bit signed long, {\bf z} (as a
+suffix) meaning as usual that the result is not created on the PARI stack but
+assigned to a preexisting GEN given as an extra argument.
+
+For completeness, in Chapter 5 we have given a description of all these
+low-level functions.
+
+Please note that in the present version \vers{} the names of the functions are 
+not always consistent. This will be changed. Hence anyone programming
+in PARI must be aware that the names of almost all functions that he uses will
+change eventually. If the need arises (i.e. if there really are people out 
+there who delve into the innards of PARI), updated versions with no name 
+changes will be released.
+
+\section{Adding functions to PARI.}
+
+As already mentioned, modified versions of the PARI package should NOT be 
+spread without our prior approval. If you do modify PARI, however, it is
+certainly for a good reason, hence we would like to know about it, so that
+everyone can benefit from it. There is then a good chance that the 
+modifications that you have made will be incorporated into the next release.
+
+(Recall the e-mail: {\tt pari@alioth.greco-prog.fr}).
+
+Roughly 3 types of modifications can be made. The first type is to modify the
+code, include files and the Makefile so that compilation is possible on a new
+system.
+
+The second type is to modify existing code, either to correct bugs, to
+add new functionalities, or to improve efficiency.
+
+Finally the third type is to add new functions to Pari. We explain here how
+to do this, so that in particular the new function can be called from GP.
+
+First choose the appropriate file where you are going to code your function.
+For example alglin1.c or alglin2.c if it is a function dealing with vectors
+or matrices (linear algebra), trans1.c, trans2.c, trans3.c if it is a
+transcendental function, arith1.c or arith2.c if it is an arithmetic function,
+bibli1.c or bibli2.c for miscellaneous functions, etc... Note that the files
+gp.c, mp.c and versionXXX.c as well as the assembly files have a special role
+and should not be modified. 
+
+Then code your function, using as a guide other functions in the Pari sources.
+One important thing to remember is to always clean the stack before exiting
+your function (usually using the function {\tt gerepile}) otherwise the 
+successive calls to the function will clutter the stack with unnecessary
+garbage and stack overflow will occur sooner.
+
+If error messages are to be generated in your function, use the general
+error handling routine {\tt err}. Initially, use the syntax
+
+{\tt err(talker,\quo error message\quo);}
+
+where {\tt error message} is the message that you want printed. This function
+does not return, but ends with a {\tt longjmp} statement.
+
+Once the program is debugged, you can replace the above line by
+
+{\tt err(errornumber);} 
+
+where {\tt errornumber} must be defined in the file {\tt erreurs.h}, and the
+corresponding error message must be placed at the corresponding spot
+in the file {\tt errmessages.c}. A look at these two files will tell you
+exactly what to do. Note however that to have the correct numbering of errors
+once again, hence the correct error messages, you must recompile the
+complete Pari distribution (for example after {\tt touch *.[chs]}). This is
+not necessary if you use the {\tt talker} syntax.
+
+Finally, find a reasonable place in the file {\tt gencom.h} to declare your
+function so that it is known to all other files and functions.
+
+Your function is now ready to be used in library mode after compilation and
+creation of the library. It is however still inaccessible from GP.
+\smallskip
+To make your function accessible to GP, you must do the following. First, find
+a name for your function under GP, which does not have to be identical to the
+one used in library mode, but must use only lower case alphabetic characters
+and digits, the first character as usual being alphabetic. Then in the file
+{\tt anal.c} place in exact alphabetical order of the name that you want
+to use under GP the following line (note that digits<letters):
+
+{\tt \obr\quo gpname\quo ,V,(void*)libname,secno,0\cbr,}
+
+where {\tt libname} is the name of your function in library mode, {\tt gpname}
+the name that you have chosen to call it under GP, {\tt secno} is the section
+number of chapter 3 in which this function should belong (type {\tt ?} in GP
+to see the list), and V is a number between
+0 and 99, chosen so as to correspond to the type of the function and its 
+arguments. The first digit identifies the number of arguments, not counting
+the variable {\tt prec}.
+
+The most common values for V are the following, expressed as C-function
+prototypes. You can find the others by looking at the function {\tt identifier}
+in the file {\tt anal.c}. Note that the parameter {\tt prec} (which denotes the
+real precision) is included in most of the given prototypes, but can be omitted
+if the function does not use it. Note also that we implicitly identify 
+{\tt int} with {\tt long}.
+
+{\tt 
+\obeylines
+V=0: GEN name(long prec);
+V=1: GEN name(GEN x, long prec);
+V=2: GEN name(GEN x, GEN y, long prec);
+V=3: GEN name(GEN x, GEN y, GEN z, long prec);
+V=10: long name(GEN x);
+V=11: GEN name(long x,long prec);
+V=15: long name(long x);
+V=20: long name(GEN x, GEN y);
+V=23: GEN name(GEN x, long y, long prec);
+V=24: GEN name(long x, GEN y, long prec);
+V=29: long name(GEN x, long y);
+V=30: long name(GEN x, GEN y, GEN z);
+V=32: GEN name(GEN x, GEN y, long z);
+V=33: GEN name(GEN x, long y, long z);
+V=35: GEN name(long x, GEN y, GEN z);
+}
+\smallskip
+If your function does not correspond to any of the above prototypes, or to the
+few others which you can find in the function {\tt identifier}, you can make up
+your own. The best at this point is to read the code for the existing values of
+V, and to modify it according to your needs. One important point must be 
+stressed if you add a value of V to the function {\tt identifier}: you must
+also correspondingly add it to the function {\tt skipidentifier}. Read the code
+for that function to see how to proceed.
+\smallskip
+Once this has been done, in the file {\tt helpmessages.c} write in exact
+alphabetical order a short message describing the effect of your function:
+
+{\tt \quo name(x,y,...)=short descriptive message\quo,}
+
+The message must be a single line (which may have more than 80 characters). 
+If the printed message would be more than one line, insert {\tt \bs n}
+as appropriate (see the other messages for comparative purposes).
+\smallskip
+Finally create (or append to) a file called, say, {\tt Mychanges}, which lists
+the modifications that you have made. Never touch the file {\tt Changes} itself
+otherwise you would corrupt the Pari distribution.
+After compiling and debugging, you now have a new function available under GP
+(and we would very much like to hear about it!).
+
+
+
+
+
+\vfill\eject

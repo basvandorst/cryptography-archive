@@ -1,0 +1,93 @@
+#!/usr/local/extras/bin/perl
+
+# PGPmail (C) Copyright 1993, by Jason L. Steiner
+#
+# Permission is hearby granted to freely modify, use and copy this code.
+# This notice must be retained in all distributions and derivatives.
+
+# version 25.4.93
+
+$|=1;
+$sendmail="/usr/lib/sendmail";
+$tmpfile="/tmp/.pgp.$$.$ENV{'LOGNAME'}";
+umask(077);
+
+if (open(INPUT,"/dev/tty")) {
+	print "PGPmail (C) Copyright 1993, Jason L. Steiner\n";
+	for ($i=0;$i<=$#ARGV;$i++) {
+		if ( $ARGV[$i] =~ /^-/ ) { push(@flags,$ARGV[$i]); }
+		else { push(@names,$ARGV[$i]); }
+	}
+	for ($i=0;$i<=$#names;$i++) {
+		$keyid=$names[$i];
+		do {
+			if ($keyid) {
+				$status=system("pgp -kv +verbose=0 \'$keyid\' >&-")/256; }
+			else { $status='9999'; }
+			if(!$status) {
+				push(@keyids,$names[$i]);
+			}
+			elsif ($status==1) {
+				print "Found more than one key for \'$keyid\'.\n";
+				system("pgp -kv +verbose=0 \'$keyid\'");
+				print "Enter a more specific ID: ";
+				chop($keyid=<INPUT>);
+			}
+			else { $status=0; }
+		} until(!$status);
+	}
+	while (!$q) {
+		print "Sign this message? [N]: ";
+		chop($q=<INPUT>);
+		if (!$q) { $q='N'; }
+		if (($q eq 'Y') || ($q eq 'y')) {
+			push(@opts,'-st','+clearsig=on');
+			}
+		elsif ((($q ne 'N') && ($q ne 'n'))) {
+			$q='';
+		}
+	}
+	$q='';
+	while (!$q && @keyids) {
+		print "Encrypt this message? [Y]: ";
+		chop($q=<INPUT>);
+		if (!$q) { $q='Y'; }
+		if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+			push(@opts,'-e');
+			}
+		elsif (($q ne 'N') && ($q ne 'n')) {
+			$q='';
+		}
+	}
+	if (@opts) {
+		$head=1;
+		open(MESG,">$tmpfile");
+		while ($in=<STDIN>) {
+			print MESG $in; 
+			if ($head && ($in =~ /^$/)) {
+				$head=0;
+				close(MESG);
+				$keyid=join("\' \'",@keyids);
+				$pid=open(MESG,"|pgp -af @opts +verbose=0 \'$keyid\' >>$tmpfile");
+			}
+		}
+		close(MESG);
+		$err=$?;
+		waitpid($pid,0);
+		if (!$err) {
+			open(MESG,"<$tmpfile");
+			open(SENDMAIL,"|$sendmail @flags @names");
+			while (<MESG>) { print SENDMAIL; }
+			close(MESG);
+			close(SENDMAIL);
+			$err=$?;
+		}
+		unlink($tmpfile);
+		exit($err/256);
+	}
+}
+open(SENDMAIL,"|$sendmail @ARGV");
+while (<STDIN>) { print SENDMAIL; }
+close(SENDMAIL);
+$err=$?;
+exit($err/256);

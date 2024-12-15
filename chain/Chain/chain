@@ -1,0 +1,249 @@
+#!/bin/csh
+# Lance Cottrell 09/09/94
+# chain chains messgaes though cypherpunk remailers.
+#
+set location = ~loki/Anon/Chain/remailer.list
+if(-e $location) then
+  set foo = `cat $location`
+else
+  echo "You must change the variable 'location' at the top of the script"
+  echo "to point to your copy of remailer.list"
+  exit
+endif
+
+unset noclobber
+
+@ nr = ($#foo / 11)
+
+# initialize all the variables
+set name
+set address
+set delay
+set reliability
+set type
+set pgp
+set hash
+set subject
+set latent
+set cut
+set special
+
+@ i =1
+while ($i <= $nr)
+  @ j = (($i * 11) - 10)
+  set name = ($name $foo[$j])
+  @ j = ($j + 1)
+  set address = ($address $foo[$j])
+  @ j = ($j + 1)
+  set delay = ($delay $foo[$j])
+  @ j = ($j + 1)
+  set reliability = ($reliability $foo[$j])
+  @ j = ($j + 1)
+  set type = ($type $foo[$j])
+  @ j = ($j + 1)
+  set pgp = ($pgp $foo[$j])
+  @ j = ($j + 1)
+  set hash = ($hash $foo[$j])
+  @ j = ($j + 1)
+  set subject = ($subject $foo[$j])
+  @ j = ($j + 1)
+  set latent = ($latent $foo[$j])
+  @ j = ($j + 1)
+  set cut = ($cut $foo[$j])
+  @ j = ($j + 1)
+  set special = ($special $foo[$j])
+  @ i =($i + 1)
+end
+
+if ($1 == "") then
+  echo "Do you want to:"
+  echo "1. Mail a file through anonymous remailers"
+  echo "2. Create a return address header"
+  echo ""
+  echo -n "Your choice: "
+  @ choice = $<
+  if ($choice == "" || $choice < 1 || $choice > 2) then
+    echo "Invalid selection"
+    exit
+  endif
+else
+  if $1 == remail then
+    @ choice = 1
+  else if $1 == return then
+    @ choice = 2
+  else 
+    echo "Valid arguments are:"
+    echo "remail"
+    echo "return"
+    exit
+  endif
+endif
+
+# temp files
+set t1 = .anon1
+set t2 = .anon2
+set t3 = .anon3
+
+#Remove old files
+\rm ${t1}* >>&! /dev/null
+\rm ${t2}* >>&! /dev/null
+\rm ${t3}* >>&! /dev/null
+
+#blank out .anon*
+cat /dev/null > $t1
+cat /dev/null > $t2
+cat /dev/null > $t3
+
+#set up encrypted headder
+echo "::" >! $t1
+echo "Encrypted: PGP" >> $t1
+echo "" >> $t1
+
+
+#find out file to mail
+if ($choice == 1) then
+  echo -n "File to include? "
+  set msg = $<
+  if (! -e $msg) then
+  echo "Error: $msg not found"
+  exit 1
+  endif
+else
+  echo "" >> $t3
+endif
+
+
+#get final destination
+if ($choice == 1) then
+  echo -n "Final destination (user@host): "
+else
+  echo -n "Your Email address (user@host): "
+endif
+set to = $<
+
+#exit if no final destination
+if ($to == "") then
+  echo "Error.  No destination specified."
+  exit 1
+endif
+
+echo ""
+echo "Mail via:"
+@ i = 1
+while ($i <= $nr)
+  echo -n $i
+  echo -n ") "
+  echo -n "$name[$i] $delay[$i] ${reliability[$i]}"
+  if ($hash[$i] == h) echo -n " hash"
+  if ($cut[$i] == c) echo -n " cut"
+  if ($pgp[$i] == no) then
+    echo ""
+  else
+    echo " PGP"
+  endif
+  @ i = ($i + 1)
+end
+
+set notdone = true
+set firsttime = true
+
+#begin the loop
+while ($notdone == true)
+  echo -n "Remail via (1-"
+  echo -n $nr
+  echo -n " or q)? "
+  set num = $<
+  if ($num == "" || $num == q || $num < 1 || $num > $nr) then
+    set notdone = ""
+  else
+    
+    #convert number to address
+    set rto = $address[$num]
+  
+    #set up remailing request. (only cpunk and eric types supported)
+    echo "::" >! $t2
+    if ($type[$num] == c) then
+      echo -n "Request-Remailing-To: " >> $t2
+    else
+      echo -n "Anon-Send-To: " >> $t2
+    endif
+    echo $to >> $t2
+    set manmarks = ""
+    set marks = "+=+=+=+=-=-=+=+=+=+"
+    if ($firsttime == true && $choice == 1) then
+      if ($cut[$num] == c) then
+        echo -n "Cutmarks (return for auto padding): "
+        set marks = $<
+        if ("$marks" == "") then
+	  set marks = "+=+=+=+=-=-=+=+=+=+"
+	else
+	  set manmarks = true
+        endif
+      endif
+    endif
+    if ($cut[$num] == c && $choice == 1) then
+      echo "Cutmarks: $marks" >> $t2
+      if ($manmarks != true) set manmarks = false
+    endif
+
+    echo "" >> $t2
+  
+    if ($firsttime == true && $choice == 1) then
+      set firsttime = "false"
+      if ($hash[$num] == h) then
+	echo -n "Enter Subject (return for none) "
+	set sub = $<
+	echo "##" >> $t3
+	echo "Subject: $sub" >> $t3
+	echo "" >> $t3
+      endif
+      cat $msg >> $t3
+    endif
+
+    cat $t3 >> $t2		#append previous messge
+    if ($manmarks == false) then
+      echo $marks >> $t2
+      @ tmp = `rnd`
+      @ tmp = ($tmp % 100)
+      echo `rnd $tmp` >> $t2
+    endif
+
+    if ($pgp[$num] == no) then
+      cat $t2 > $t3
+    else
+      if ($pgp[$num] == pg) then
+	pgp -ea +batchmode +force +encrypttoself=off $t2 $rto >&! /dev/null   #do the encryption
+	cat $t1 $t2.asc > $t3                       #prepend headder to message
+      else
+	pgp -ea +batchmode +force +encrypttoself=off $t2 $name[$num] >&! /dev/null    #do the encryption
+	cat $t1 $t2.asc > $t3                       #prepend headder to message
+      endif # short or long
+    endif #encrypt?
+    set to = $rto
+  endif
+end
+
+if ($choice == 1) then
+  echo -n "Mail now (Y,n): "
+  set send = $<
+  if ($send =~ n*) then
+    echo -n "Filename to save to: "
+    set msg = $<
+    cat $t3 > $msg
+  else
+    mail $to < $t3
+    echo "Mail Sent"
+  endif
+else
+  echo -n "Append to file: "
+  set msg = $<
+  echo "--------8<--cut here-->8--------" >> $msg
+  cat $t3 >> $msg
+  echo "" >> $msg
+  echo '<To reply, save everything below the "cut here" marks above' >> $msg
+  echo '<into another file.  Type your reply here, below the blank ' >> $msg
+  echo -n '<line three lines above, and mail to ' >> $msg
+  echo $to >> $msg
+endif
+
+\rm -rf ${t1}* ${t2}* ${t3}*

@@ -1,0 +1,176 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!darkstar.UCSC.EDU!news.hal.COM!olivea!charnel.ecst.csuchico.edu!csusac!csus.edu!netcom.com!deleyd
+From: deleyd@netcom.com
+Subject: BAD random() analyzed
+Message-ID: <deleydCw7D8s.Mvt@netcom.com>
+Organization: NETCOM On-line Communication Services (408 261-4700 guest)
+Date: Fri, 16 Sep 1994 03:19:40 GMT
+Lines: 167
+
+BSD random()
+Part 3 of 3 posts:
+
+        1.  Computer Generated Random Number Sequences
+        2.  Paradoxes of Probability
+        3.  BSD random() analyzed (this post)
+
+{Approx 160 lines}
+
+All of the random number generators I previously tested were linear
+congruential generators of the form  rnd = (A*rnd + C) mod M.  The BSD
+random() generator uses a different technique not discussed in my
+original paper.  It's an additive congruential type random number
+generator.  The theory of primitive polynomials mod 2 is behind this
+type of generator.
+
+I don't present the theory here.  I present the results of testing
+followed by a brief description of the algorithm.  Tests of higher
+dimensions were not performed due to lack of time.  So far the generator
+appears to be comparable to a shuffled linear congruential generator.
+
+          DEFINITION:
+            Generating polynomial: x^31 + x^3 + 1 (primitive polynomial)
+            Initialize circular queue of 31 elements using ANSI C linear
+             congruential generator.
+            Recursion formula: a[i] = a[i] + a[i-3]
+
+          RATING:
+             1-D FAILS above 800,000 bpd      (bins per dimension)
+             2-D FAILS above 3000 bpd
+             3-D FAILS above 210 bpd
+             4-D PASSES at 50 bpd (highest tested so far)
+             5-D not tested
+             6-D not tested
+             7-D not tested
+             8-D not tested
+
+This is an additive congruential type random number generator.  An array
+table[31] is initially filled with random numbers using the ANSI C
+linear congruential random number generator.  Random numbers are then
+generated using the recursion formula:
+
+     table[k] = (table[k-31] + table[k-3]) mod 32
+
+(Note that x**31 + x**3 + 1 is a primitive polynomial mod 2, which is
+being used here as a generator.)  Since we are using the array table[]
+as a circular queue with 31 elements then table[k-31] is just table[k]
+before it gets replaced with the new value.  The recursion formula
+becomes:
+
+     table[k] = table[k] + table[k-3]
+
+
+/***
+   Code to implement random() & srandom() of BSD Unix. It was taken
+   (though coded somewhat differently) from the Gnu BSD implementation.
+ ***/
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#ifdef LONG31  /* x^31 + x^3 + 1 */
+#define SIZE  31
+#define SIZE1 30
+#define P1 3
+#define P2 0
+#else  /* LONG63: x^63 + x + 1 */
+#define SIZE  63
+#define SIZE1 62
+#define P1 1
+#define P2 0
+#endif
+
+#define LONG_MAX  0x7fffffff
+
+
+int p1=P1, p2=P2;  
+long table[SIZE];
+
+/*** return a "random" number in range [0, LONG_MAX] */
+
+long xrand ()
+{
+  int r;
+
+  table[p1] = table[p1] + table[p2]; /* add two table elements */
+  r = (table[p1] >> 1) & LONG_MAX;   /* throw least significant bit away */
+
+  if (p1 == SIZE1) { /* increment the table indexes */
+    p1 = 0; 
+    p2 = p2 + 1; 
+  }
+  else if (p2 == SIZE1) {
+    p1 = p1 + 1;    
+    p2 = 0;
+  }
+  else {
+    p1 = p1 + 1;    
+    p2 = p2 + 1;
+  }
+
+  return (r);
+}
+
+
+/*** use a linear congruential type generator to seed the 
+     state table & cycle the entire table 10 times */
+
+void sxrand (seed)
+long seed;
+{
+  int i;
+
+  table[0] = seed;
+  for (i=1; i<SIZE; ++i)
+    table[i] = (table[i-1] * 1103515145) + 12345;  /* lousy */
+
+  for (i=0; i<10*SIZE; ++i)
+    (void) xrand();
+}
+
+
+/*** a small test program */
+
+void main ()
+{
+  int i;
+
+  sxrand (1);  /* BSD default */
+
+  for (i=1; i<=40; ++i)
+    printf ("%ld", xrand() % 10 ); /* least random bits ? */
+
+  /* 6714066113586447326208220248220881760069 (cc -DLONG63) */
+  /* 9418752338157675324663485137890734831064 (cc -DLONG31) */
+
+  printf ("\n");
+}
+/*---------------------------------------------------------------------*/
+
+According to the SunOS doc's:
+
+"random () uses a non-linear additive feedback random number
+generator employing a default table of size 31 long integers
+to return successive pseudo-random numbers in the range from
+0  to (2**31)-1.  The period of this random number generator
+is very large, approximately 16*((2**31)-1)."
+
+The BSD source code (from glibc) says:
+
+"The random number generation technique is a linear feedback shift
+register approach, employing trinomials (since there are fewer terms
+to sum up that way).  In this approach, the least significant bit of
+all the numbers in the state table will act as a linear feedback shift
+register, and will have period 2^deg - 1 (where deg is the degree of
+the polynomial being used, assuming that the polynomial is irreducible
+and primitive).  The higher order bits will have longer periods, since
+their values are also influenced by pseudo-random carries out of the
+lower bits.  The total period of the generator is approximately
+deg*(2**deg - 1); thus doubling the amount of state information has a
+vast influence on the period of the generator."
+
+For table size of 31 long ints random() use the trinomial: x**31 +
+x**3 + 1. For 63 long ints it uses the trinomial x**63 + x + 1.
+
+--David Deley
+deleyd@netcom.com

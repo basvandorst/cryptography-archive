@@ -1,0 +1,202 @@
+SecureDrive Version 1.3c replaces version 1.3a.  A prototype version
+1.3b was sent to a few people for testing.
+
+Changes for 1.3c have added minimal new function.  Rather I have
+sought to respond to problems brought to my attention.
+
+Problem:
+
+CRYPTDSK messages indicate incorrect compatibility mode.
+
+Solution:
+
+This was a simple bug. Fixed in 1.3c.
+
+
+Problem:
+
+CRYPTDSK & LOGIN can't locate some hard disk partitions, especially in
+configurations with more than two physical hard disks, from the DOS
+drive letter.
+
+Solution:
+
+This has been a problem since Version 1.0.  Mike added a fix in
+version 1.1 which works for most (but apparently not all)
+configurations with two physical disks.
+
+We don't have a fix, but we do have a workaround.  Both LOGIN and
+CRYPTDSK have since version 1.0 allowed you to specify physical drive,
+cylinder and head number -instead of- the DOS drive letter. I have
+added a simple FPART utility in 1.3b to assist you in finding the
+cylinder and head numbers to use.
+
+Note that commas (",") must be used to separate these parameters for
+CRYPTDSK, while blanks are used for LOGIN.
+
+Problem:
+
+After I encrypt my hard disk partition or floppy, MSDOS won't
+recognize it as a DOS disk, giving me an "Invalid Media" or similar
+message.
+
+Solution:
+
+Apparently, some versions of MSDOS, especially those included with
+some laptop PC clones, insist that the SYSTEM ID field of the boot
+sector be ASCII characters. Versions of SecureDrive from versions
+1.0 to 1.3a have used the last four characters of SYSTEM ID to store a
+4-byte checkword used to verify that the correct passphrase had been
+entered.  This checkword is an MD5 digest of the IDEA key and (in
+Version 1.1) the passphrase.  The 128-bit IDEA key is an MD5 digest
+(iterated in Version 1.1) of the passphrase.  The checkword is
+calculated and stored in the boot sector when the disk partition or
+diskette is first encrypted.  Whevever you enter a passphrase to
+decrypt or activate the disk, both the key and the checkword are
+generated.  The checkword is compared against the one stored in the
+boot record as a check that the same passphrase was entered for
+decryption as for encryption.  Note that the boot sector is never
+itself encrypted.  Also note that since MD5 is a "cryptographicly
+strong" one-way digest function, it is not computationally feasible to
+find the IDEA key, much less the original passphrase, from the
+checkword.
+
+Version 1.3c changes the standard location of the checkword to offset
+506 in the boot record. Also the offset of the "CRYP" flag, which
+indicates that a disk is encrypted, has been changed from offset
+3 (the start of SYSTEM ID) to offset 502. All eight bytes from
+offset 502-509 is called the "CryptFlag."
+
+Version 1.3c will place the CryptFlag at offset 502 for all newly
+encrypted partitions and diskettes. It will continue to check
+for both the "CRYP" flag and the checkword in the SYSTEM ID so
+you can still activate or decrypt partitions or diskettes encrypted
+by previous versions of SecureDrive.
+
+You can convert disks encrypted by previous versions of SecureDrive to
+the new standard CryptFlag offset by using the /UCFO [Update CryptFlag
+Offset] function with LOGIN (either for hard disk partitions or
+diskettes).  Note that /UCFO will overlay SYSTEM ID (the old
+CryptFlag) with "MSDOS   ", which means that that disk can no longer
+be activated or decrypted with previous versions of SecureDrive.
+
+/UCFO doesn't work if combined with the /S (safe mode) parameter.
+
+Changing a disk's password with CRYPTDSK will also update the
+CryptFlag offset.
+
+ATTENTION: Version 1.3b users.
+
+Version 1.3b was distributed to a few people for testing. If you
+either SET SDOUTCWO=506 or SDOUTCWO=7 (the default), then Version 1.3c
+will be able to activate or decrypt your disks encrypted by Version
+1.3b CRYPTDSK  or processed by Version 1.3b LOGIN /UCWO. This is
+because Version 1.3c checks for a split CryptFlag.
+
+However, Version 1.3c cannot recognize checkword offsets other than
+7 or 506. So if you set SDOUTCWO to something else, you must convert
+all such disks to one of the standard offsets BEFORE switching to
+Version 1.3c.
+
+You can use Version 1.3b to do this. First
+
+SET SDINCWO=whatever current non-standard offset is
+SET SDOUTCWO=506.
+
+Run Version 1.3b
+
+LOGIN  xxx /UCWO
+
+on all disk partitions and on all diskettes.
+
+Problem:
+
+I used the recently released 2M/2MF diskette TSR/Format program from
+Spain to format a diskette.  I then encrypted it with CRYPTDSK, which
+seemed to run normally, but after that LOGIN /F told me the disk was
+unencrypted and all the disk data is garbled.
+
+Solution:
+
+2M/2MF sets the SYSTEM ID field in the boot record and won't allow any
+other program to change it (if 2M.COM is loaded).  Version 1.3c of
+SecureDrive also solves this problem by moving the offset for the
+CryptFlag out of SYSTEM ID to offset 502.
+
+Problem:
+
+After I used [some disk utility] LOGIN and CRYPTDSK always say I have
+entered an incorrect passphrase for my encrypted disk.  I'm SURE I
+used the right passphrase.
+
+Another possible problem might be that SecureDrive says the disk
+is not encrypted, but it obviously is encrypted since the DOS "DIR"
+command displays garbage.
+
+Solution:
+
+Mike has a report from a user who used some disk utility that re-wrote
+his boot record, overlaying the checkword (but apparently not the
+"CRYP" flag).  This is probably a different manifestation of the
+problem mentioned above.  This disk-fixing utility wants to see an
+all-ASCII SYSTEM ID and will set ASCII where it doesn't find it.
+
+As a way to fix this, I've added the /RCF [Recover CryptFlag]
+parameter to LOGIN.  This will allow you to activate a disk even if
+the checkword doesn't match, or the "CRYP" flag has been destroyed.
+You will be asked to enter the passphrase twice.  The new checkword
+will be written at new standard offset 506 which will hopefully avoid
+a repetition of the problem the next time you use that same utility.
+
+You are not allowed to recover the CheckWord if SD10CMP=X, since
+this setting does now allow LOGIN to compute or check version 1.1
+compatible checkwords.
+
+Also, if after you enter the checkword, you get garbage when trying
+to read the disk, change SD10CMP from Y to N (or vice versa) and try
+LOGIN xxx  /RCF again.
+
+/RCF also doesn't work if combined with the /S (safe mode) parameter.
+
+Note that extreme caution is required when using this parameter. If
+you force activation of a disk with the wrong passphrase, it's
+effectively the same as accessing the disk without SECTSR loaded.  Any
+write to the disk will likely make -all- data on the disk partition or
+diskette unreadable.
+
+Problem:
+
+CRYPTDSK (and FPART) may not work while SECTSR is installed.
+
+Solution:
+
+If this occurs, try re-ordering device drivers & TSR's which might
+effect diskette access.  Note that CRYPTDSK/FPART will reach below
+SECTSR to do sector disk I/O, so any TSR's loaded after SECTSR will
+also be bypassed by CRYPTDSK/FPART.
+
+CRYPTDSK and FPART may be used without SECTSR loaded if necessary.
+
+Problem:
+
+CRYPTDSK, FPART and/or LOGIN don't work in a DOS Window of Windows.
+
+Discussion:
+
+I have been able to get LOGIN to activate disks in a Windows DOS
+window. However LOGIN /PGP and its variants do not set PGPPASS. SET
+doesn't work either.
+
+It's probably better to call LOGIN in your AUTOEXEC for Windows, if
+possible, and get your disk logged in before loading Windows.
+
+I have been able to start CRYPTDSK in the DOS window and it ran fine.
+But if I switched to another window, it crashed in the middle. I don't
+see how this can be anything but a Windows problem.  Since crashing
+CRYPTDSK in the middle essentially destroys all the data on the disk,
+I don't recommend trying to run CRYPTDSK under Windows.
+
+Of course, SECTSR must be loaded before Windows. DON'T load SECTSR in
+a DOS Window.
+
+

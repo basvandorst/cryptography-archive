@@ -1,0 +1,1203 @@
+Path: msuinfo!netnews.upenn.edu!jvnc.net!darwin.sura.net!wupost!usc!elroy.jpl.nasa.gov!ames!agate!stanford.edu!rutgers!igor.rutgers.edu!cadenza.rutgers.edu!masticol
+From: masticol@cadenza.rutgers.edu (Steve Masticola)
+Newsgroups: sci.crypt
+Subject: Re: Anagram generator
+Keywords: huge berserk rebel warthog
+Message-ID: <Nov.11.20.16.21.1992.20673@cadenza.rutgers.edu>
+Date: 12 Nov 92 01:16:22 GMT
+References: <Nov.11.19.44.45.1992.20296@cadenza.rutgers.edu>
+Organization: Rutgers Univ., New Brunswick, N.J.
+Lines: 1192
+
+Never mind; I found one on the games archive. I'm posting it below for
+people's amazement.
+
+- Stephen Price "parenthesis complicate" Masticola.
+
+----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----8<----
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then unpack
+# it by saving it into a file and typing "sh file".  To overwrite existing
+# files, type "sh file -c".  You can also feed this as standard input via
+# unshar, or by typing "sh <file", e.g..  If this archive is complete, you
+# will see the following message at the end:
+#		"End of shell archive."
+# Contents:  README HINTS a386gram.asm anagram.1l anagram.c unproto.pl
+# Wrapped by raymond@sunkist.berkeley.edu on Sun Aug 18 22:05:50 1991
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+if test -f 'README' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'README'\"
+else
+echo shar: Extracting \"'README'\" \(1325 characters\)
+sed "s/^X//" >'README' <<'END_OF_FILE'
+XBefore installing, make sure you have...
+X
+X    1.  The anagram.c source code.
+X    2.  The manual page (anagram.1l)
+X    3.  A word list.  (/usr/dict/words is a good start.)
+X
+XEither...
+X
+X    3a. A compiler that understands ANSI-style prototypes.
+X
+Xor
+X
+X    3b.1. A K&R-style compiler.
+X    3b.2. Larry Wall's `perl' program.
+X
+XInstallation procedure:
+X
+X    0.  If your compiler does not understand prototypes, filter
+X        the program through the unproto.pl perl script.
+X
+X    1.  Go into anagram.c and search for the phrase `Before compiling'.
+X        Read and understand that paragraph.
+X
+X    2.  Compile the program, using the hints in the HINTS file if
+X        necessary.
+X
+X    3.  Optionally install the man page and the executable someplace.
+X
+X    4.  Enjoy.
+X
+XHISTORY
+X
+X    The program was written because I wanted an anagram program.
+X    The existing anagram program in comp.sources.games is, by
+X    its own admission, `Extremely inefficient'.
+X
+X    I thought the bit-field idea was due to some article in the CACM
+X    that I read many years ago, but now that I've gone back to look
+X    for it, it isn't there.  So I don't know where I got it from.
+X
+X    Acknowledgements to Brian Scearce, for sending me a copy of his
+X    anagram program, which I studied before writing this one.
+X
+XAUTHOR
+X
+X    Raymond Chen (rjc@math.princeton.edu)
+END_OF_FILE
+if test 1325 -ne `wc -c <'README'`; then
+    echo shar: \"'README'\" unpacked with wrong size!
+fi
+# end of 'README'
+fi
+if test -f 'HINTS' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'HINTS'\"
+else
+echo shar: Extracting \"'HINTS'\" \(1143 characters\)
+sed "s/^X//" >'HINTS' <<'END_OF_FILE'
+XHints for compiling on various platforms
+X
+X-------------------------------------------------------------------------------
+XUNIX with a K&R compiler
+X
+X    perl unproto.pl anagram.c >anagramkr.c
+X    cc -o anagram anagramkr.c
+X
+X-------------------------------------------------------------------------------
+XUNIX with an ANSIish compiler
+X
+X    cc -o anagram anagram.c
+X
+X-------------------------------------------------------------------------------
+XIBM PC with Turbo C, no 80386 chip
+X
+X    tcc -ms anagram.c
+Xor  tcc -mc anagram.c           (for anagramming larger phrases)
+X
+X-------------------------------------------------------------------------------
+XIBM PC with Turbo C and 80386 chip
+X
+X    masm /mx a386gram;
+X    tcc -ms -DASM_ANAGRAM anagram.c a386gram.obj
+X-------------------------------------------------------------------------------
+XIBM PC with MSC, no 80386 chip
+X
+X    cl -AS -Ox anagram.c
+Xor  cl -AC -Ox anagram.c        (for anagramming larger phrases)
+X-------------------------------------------------------------------------------
+XIBM PC with MSC and 80386 chip
+X
+X    masm /mx a386gram;
+X    cl -AS -Ox -DASM_ANAGRAM anagram.c a386gram.obj
+END_OF_FILE
+if test 1143 -ne `wc -c <'HINTS'`; then
+    echo shar: \"'HINTS'\" unpacked with wrong size!
+fi
+# end of 'HINTS'
+fi
+if test -f 'a386gram.asm' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'a386gram.asm'\"
+else
+echo shar: Extracting \"'a386gram.asm'\" \(4526 characters\)
+sed "s/^X//" >'a386gram.asm' <<'END_OF_FILE'
+X_TEXT	segment	byte public 'CODE'
+XDGROUP	group	_DATA,_BSS
+X	assume	cs:_TEXT,ds:DGROUP,ss:DGROUP
+X	extrn	_kbhit:near
+X	extrn	_longjmp:near
+X	extrn	_DumpWords:near
+X_TEXT   ends
+X
+X_DATA	segment word public 'DATA'
+X_DATA   ends
+X
+X_BSS	segment word public 'BSS'
+X_BSS	ends
+X
+X	extrn	_apwCand:word
+X	extrn	_cpwCand:word
+X	extrn	_apwSol:word
+X	extrn	_cpwLast:word
+X	extrn	_cchPhraseLength:word
+X	extrn	_jbAnagram:word
+X	extrn	_achByFrequency:byte
+X	extrn	_alPhrase:word
+X	extrn	_aqMainSign:dword
+X
+X_TEXT	segment byte public 'CODE'
+X        .386
+X_FindAnagram	proc	near
+X	push	bp
+X	movzx	ebp,sp			; extend to 32 bits
+X	sub	sp,16
+X	push	si
+X	push	di
+X
+X;  PPWord ppwEnd = &apwCand[cpwCand];
+X	mov	ax,word ptr DGROUP:_cpwCand
+X	shl	ax,1
+X	add	ax,offset DGROUP:_apwCand
+X	mov	word ptr [bp-2],ax
+X
+X; if (HaltProcessing) longjmp(jbAnagram, 1);
+X	call	near ptr _kbhit
+X	or	ax,ax
+X	je	@nointerrupt
+X
+X	push	1
+X	push	offset DGROUP:_jbAnagram
+X	call	near ptr _longjmp
+X;	the call never returns
+X
+X; during the letter search, we enregister...
+X;   eax = qMask
+X;    bx = iq
+X;    si = &alPhrase[achByFrequency[iLetter]]
+X;    di = iLetter
+X;    cx = used during shifting
+X
+X@nointerrupt:
+X	movzx	edi, word ptr [bp+8]	; iLetter
+X	dec	di			; will be incremented later
+X	xor	ebx, ebx		; top bytes of ebx stay clear
+X	xor	edx, edx		; top bytes of edx stay clear
+X
+X@nextletter:
+X	inc	di
+X
+X; iq = alPhrase[achByFrequency[iLetter]].iq;
+X	mov	dl,byte ptr DGROUP:_achByFrequency[edi] ; edx = achByFreq[cx]
+X	lea	esi, _alPhrase[8*edx]	; esi = &alPhrase[edx]
+X
+X	mov	bx,[si+6]		; bx = .iq
+X
+X; qMask = alPhrase[achByFrequency[iLetter]].uBits <<
+X;	  alPhrase[achByFrequency[iLetter]].uShift;
+X
+X	movzx	eax, word ptr [si+4]	; .uBits
+X	mov	cl, [si+2]		; .uShift
+X	shl	eax,cl
+X
+X;	if (pqMask[iq] & qMask) break;
+X	movzx	ecx, word ptr [bp+4]	; pqMask
+X	test	eax, [ecx+ebx*4]	;   qMask
+X	je	@nextletter
+X
+X; de-register the register variables
+X	mov	[bp+8], di		; iLetter
+X	mov	word ptr [bp-4], bx	; iq
+X	mov	dword ptr [bp-8], eax	; qMask
+X
+X; enregister edi
+X	movzx	edi, word ptr [bp+6]	; ppwStart
+X	sub	di, 2			; will be incremented later
+X
+X@enregister:
+X; enregister other cool things.  Clear top word of esi and ebx.
+X;	eax = scratch
+X;	ebx  = ppwEnd
+X;	ecx = pqMask[0]
+X;	edx = aqMainSign[0]
+X;	esi = pw
+X;	edi = ppwStart
+X
+X	movzx	ebx, word ptr [bp+4]	; pqMask
+X	mov	ecx, dword ptr [ebx]	; pqMask[0]
+X	mov	edx, dword ptr DGROUP:_aqMainSign ; aqMainSign
+X	movzx	ebx, word ptr [bp-2]	; ppwEnd
+X	xor	esi, esi		; clear top
+X
+X@inc_cont:				; increment and continue
+X	inc	di			; ppwStart++;
+X	inc	di
+X
+X@cont:					; continue, no increment
+X	cmp	di,bx			; while (ppwStart < ppwEnd) ...
+X	jae	@endloop
+X
+X	mov	si,[di] 		; pw = *ppwStart
+X
+X;    if ((aqNext[0] = pqMask[0] - pw->aqMask[0]) & aqMainSign[0]) goto fail;
+X	mov	eax, ecx		; eax = pqMask[0]
+X	sub	eax, [esi]		;		  - pw->aqMask[0]
+X	test	eax, edx		;	    & aqMainSign
+X	jne	@inc_cont
+X	mov	[bp-16], eax		; store into aqNext[0]
+X
+X;    if ((aqNext[1] = pqMask[1] - pw->aqMask[1]) & aqMainSign[1]) goto fail;
+X	movzx	eax, word ptr [bp+4]	; pqMask
+X	mov	eax, [eax+4]		; eax = pqMask[1]
+X	sub	eax, [esi+4]		;		  - pw->aqMask[1]
+X	test	eax, dword ptr DGROUP:_aqMainSign+4 ; & aqMainSign[1]
+X	jne	@inc_cont
+X	mov	[bp-12], eax		; store into aqNext[1]
+X
+X;	if ((pw->aqMask[iq] & qMask) == 0)
+X	movzx	eax, word ptr [bp-4]	; iq
+X	mov	eax, [esi+4*eax]	; pw->aqMask[iq]
+X	and	eax, [bp-8]		; qMask
+X	jne	@try_it
+X
+X; *ppwStart = *--ppwEnd; *ppwEnd = pw; continue;
+X	dec	bx
+X	dec	bx			; --ppwEnd
+X	xchg	si,word ptr [bx]	; *ppwEnd = pw;
+X	mov	word ptr [di],si	; *ppwStart = previous value of *ppwEnd
+X	jmp	short @cont
+X
+X@try_it:
+X;	ALL REGISTER VALUES ARE NOW BOGUS.
+X;	the only ones that must be preserved are edi and esi.
+X
+X; apwSol[cpwLast++] = pw;
+X	mov	bx,word ptr DGROUP:_cpwLast
+X	shl	bx,1
+X	mov	word ptr DGROUP:_apwSol[bx],si	;pw
+X	inc	word ptr DGROUP:_cpwLast
+X
+X; if (cchPhraseLength -= pw->cchLength) {
+X	mov	ax,word ptr [si+12]
+X	sub	word ptr DGROUP:_cchPhraseLength,ax
+X	je	@found_anagram
+X
+X; ppwEnd = &apwCand[cpwCand];
+X	mov	ax,word ptr DGROUP:_cpwCand
+X	shl	ax,1
+X	add	ax,offset DGROUP:_apwCand
+X	mov	word ptr [bp-2],ax
+X
+X; FindAnagram(aqNext, ppwStart, iLetter);
+X	push	word ptr [bp+8]
+X	push	di
+X	lea	ax,word ptr [bp-16]
+X	push	ax
+X	call	near ptr _FindAnagram
+X	add	sp,6
+X
+X; }
+X	jmp	short @resume_search
+X
+X; else DumpWords()
+X@found_anagram:
+X	call	near ptr _DumpWords
+X
+X; cchPhraseLength += pw->cchLength;
+X@resume_search:
+X	mov	ax,word ptr [si+12]
+X	add	word ptr DGROUP:_cchPhraseLength,ax
+X
+X; --cpwLast;
+X	dec	word ptr DGROUP:_cpwLast
+X
+X; }
+X	jmp	@enregister
+X
+X@endloop:
+X	pop	di
+X	pop	si
+X	leave
+X	ret
+X_FindAnagram	endp
+X
+X        public  _FindAnagram
+X
+X_TEXT	ends
+X
+X        end
+END_OF_FILE
+if test 4526 -ne `wc -c <'a386gram.asm'`; then
+    echo shar: \"'a386gram.asm'\" unpacked with wrong size!
+fi
+# end of 'a386gram.asm'
+fi
+if test -f 'anagram.1l' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'anagram.1l'\"
+else
+echo shar: Extracting \"'anagram.1l'\" \(2367 characters\)
+sed "s/^X//" >'anagram.1l' <<'END_OF_FILE'
+X.TH ANAGRAM 1
+X.SH NAME
+Xanagram \- anagram words and phrases
+X.SH SYNOPSIS
+X.B anagram
+Xdictionary [ minlength ]
+X.SH DESCRIPTION
+X.I anagram
+Xreads phrases from
+X.I stdin
+Xand attempts to find anagrams for the phrase using `words' in the specified
+X.IR dictionary .
+XIn the discussion to follow, a `word' is a string of letters that are
+Xtreated as as a unit for the purpose of anagramming.  A `word'
+Xcan contain punctuation marks and embedded spaces.  For example,
+Xthe three-word phrase `cul de sac' appears as a single `word' in
+Xmy dictionary.
+X.PP
+XThe dictionary file must consist of a sequence of lines, one `word' per
+Xline.
+XDuplicate `words' are not weeded out, and lines with more than one word
+Xare treated as multi-word `words'.
+X.PP
+XOnly `words' with at least
+X.I minlength
+Xletters are considered.
+X(Default value is 3.)
+X.PP
+XIf a phrase begins with a digit, it is interpreted to specify a new
+Xvalue of
+X.IR minlength ,
+Xrather than a phrase to be anagrammed.
+XAnd if a phrase begins with a question-mark, then the list of candidates
+Xfor the most recently anagrammed phrase is printed.
+X.SH DIAGNOSTICS
+X.TP
+XCannot stat dictionary / Cannot open dictionary
+XThe
+X.I dictionary
+Xfile specified on the command line could not be accessed.
+XCheck that the file exists and has the appropriate permissions.
+X.TP
+XDictionary too large; increase MAXWORDS
+XThe indicated dictionary file contains more than MAXWORDS `words'.
+XThe value of MAXWORDS is set at compile-time.  The supplied value
+Xof 26000 is large enough to handle
+X.IR /usr/dict/words .
+X.TP
+XMAX_QUADS not large enough
+XYou attempted to anagram a phrase that has too many letters.
+XYou'll need to increase the value of MAX_QUADS and recompile.
+X.TP
+XToo many candidates
+XThere were more than MAXCAND `words' that fit into the phrase.
+XIncrease the compile-time constant MAXCAND and recompile.
+X.SH BUGS
+XThe `?' command does not actually list all of the `words' that fit
+Xinside the phrase.  Some words are pruned out early in the
+Xselection process because their use would leave fewer than
+X.I minlength
+Xletters available in the rest of the phrase.
+X.SH ACKNOWLEDGEMENTS
+XThe author would like to thank Brian Scearce for allowing
+Xhis own anagram program to be studied in preparation for writing
+Xthis one.  No code for this program was taken from his program,
+Xbut much of the spirit shines through.
+X.SH AUTHOR
+XRaymond Chen (raymond@math.berkeley.edu)
+END_OF_FILE
+if test 2367 -ne `wc -c <'anagram.1l'`; then
+    echo shar: \"'anagram.1l'\" unpacked with wrong size!
+fi
+# end of 'anagram.1l'
+fi
+if test -f 'anagram.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'anagram.c'\"
+else
+echo shar: Extracting \"'anagram.c'\" \(20332 characters\)
+sed "s/^X//" >'anagram.c' <<'END_OF_FILE'
+X/*
+X *  Anagram program by Raymond Chen,
+X *  inspired by a similar program by Brian Scearce
+X *
+X *  This program is Copyright 1991 by Raymond Chen.
+X *              (rjc@math.princeton.edu)
+X *
+X *  This program may be freely distributed provided all alterations
+X *  to the original are clearly indicated as such.
+X */
+X
+X/* There are two tricks.  First is the Basic Idea:
+X *
+X * When the user types in a phrase, the phrase is first preprocessed to
+X * determine how many of each letter appears.  A bit field is then constructed
+X * dynamically, such that each field is large enough to hold the next power
+X * of two larger than the number of times the character appears.  For example,
+X * if the phrase is `hello, world', the bit field would be
+X *
+X *   00 00 00 000 000 00 00
+X *    d e   h   l   o  r  w
+X *
+X * The phrase `hello, world', itself would be encoded as
+X *
+X *   01 01 01 011 010 01 01
+X *    d e   h   l   o  r  w
+X *
+X * and the word `hollow' would be encoded as
+X *
+X *   00 00 01 010 010 00 01
+X *    d  e  h   l   o  r  w
+X *
+X * The top bit of each field is set in a special value called the `sign'.
+X * Here, the sign would be
+X *
+X *   10 10 10 100 100 10 10
+X *    d  e  h   l   o  r  w
+X *
+X * The reason for packing the values into a bit field is that the operation
+X * of subtracting out the letters of a word from the current phrase can be
+X * carried out in parallel.  for example, subtracting the word `hello' from
+X * the phrase `hello, world', is merely
+X *
+X *    d e   h   l   o  r  w
+X *   01 01 01 011 010 01 01 (dehllloorw)
+X * - 00 00 01 010 010 00 01 (hlloow)
+X * ========================
+X *   01 01 00 001 000 01 00 (delr)
+X *
+X * Since none of the sign bits is set, the word fits, and we can continue.
+X * Suppose the next word we tried was `hood'.
+X *
+X *    d e   h   l   o  r  w
+X *   01 01 00 001 000 01 00 (delr)
+X * - 01 00 01 000 010 00 00 (hood)
+X * ========================
+X *   00 00 11 000 110 01 00
+X *         ^      ^
+X * A sign bit is set.  (Two, actually.)  This means that `hood' does not
+X * fit in `delr', so we skip it and try another word.  (Observe that
+X * when a sign bit becomes set, it screws up the values for the letters to
+X * the left of that bit, but that's not important.)
+X *
+X * The inner loop of an anagram program is testing to see if a
+X * word fits in the collection of untried letters.  Traditional methods
+X * keep an array of 26 integers, which are then compared in turn.  This
+X * means that there are 26 comparisons per word.
+X *
+X * This method reduces the number of comparisons to MAX_QUAD, typically 2.
+X * Instead of looping through an array, we merely perform the indicated
+X * subtraction and test if any of the sign bits is set.
+X */
+X
+X/* The nuts and bolts:
+X *
+X * The dictionary is loaded and preprocessed.  The preprocessed dictionary
+X * is a concatenation of copies of the structure:
+X *
+X * struct dictword {
+X *     char bStructureSize;             -- size of this structure
+X *     char cLetters;                   -- number of letters in the word
+X *     char achWord[];                  -- the word itself (0-terminated)
+X * }
+X *
+X * Since this is a variable-sized structure, we keep its size in the structure
+X * itself for rapid stepping through the table.
+X *
+X * When a phrase is typed in, it is first preprocessed as described in the
+X * Basic Idea.  We then go through the dictionary, testing each word.  If
+X * the word fits in our phrase, we build the bit field for its frequency
+X * table and add it to the list of candidates.
+X */
+X
+X/*
+X * The Second Trick:
+X *
+X * Before diving into our anagram search, we then tabulate how many times
+X * each letter appears in our list of candidates, and sort the table, with
+X * the rarest letter first.
+X *
+X * We then do our anagram search.
+X *
+X * Like most anagram programs, this program does a depth-first search.
+X * Although most anagram programs do some sort of heuristics to decide what
+X * order to place words in the list_of_candidates, the search itself proceeds
+X * according to a greedy algorithm.  That is, once you find a word that fits,
+X * subtract it and recurse.
+X *
+X * This anagram program exercises some restraint and does not march down
+X * every branch that shows itself.  Instead, it only goes down branches
+X * that use the rarest unused letter.  This helps to find dead ends faster.
+X *
+X * FindAnagram(unused_letters, list_of_candidates) {
+X *  l = the rarest letter as yet unused
+X *  For word in list_of_candidates {
+X *     if word does not fit in unused_letters, go on to the next word.
+X *     if word does not contain l, defer.
+X *      FindAnagram(unused_letters - word, list_of_candidates[word,...])
+X *  }
+X * }
+X *
+X *
+X * The heuristic of the Second Trick can probably be improved.  I invite
+X * anyone willing to improve it to do so.
+X */
+X
+X/* Use the accompanying `unproto' perl script to remove the ANSI-style
+X * prototypes, for those of you who have K&R compilers.
+X */
+X
+X#include <stdio.h>
+X#include <stdlib.h>
+X#include <ctype.h>
+X#include <sys/types.h>
+X#include <sys/stat.h>
+X#include <setjmp.h>
+X
+X/* Before compiling, make sure Quad and MASK_BITS are set properly.  For best
+X * results, make Quad the largest integer size supported on your machine.
+X * So if your machine has long longs, make Quad an unsigned long long.
+X * (I called it `Quad' because on most machines, the largest integer size
+X * supported is a four-byte unsigned long.)
+X *
+X * If you need to be able to anagram larger phrases, increase MAX_QUADS.
+X * If you increase it beyond 4, you'll have to add a few more loop unrolling
+X * steps to FindAnagram.
+X */
+X
+Xtypedef unsigned long Quad;             /* for building our bit mask */
+X#define MASK_BITS 32                    /* number of bits in a Quad */
+X
+X#define MAX_QUADS 2                     /* controls largest phrase */
+X
+X#define MAXWORDS 26000                  /* dictionary length */
+X#define MAXCAND  5000                   /* candidates */
+X#define MAXSOL   51                     /* words in the solution */
+X
+X#define ALPHABET 26                     /* letters in the alphabet */
+X#define ch2i(ch) ((ch)-'a')             /* convert letter to index */
+X#define i2ch(ch) ((ch)+'a')             /* convert index to letter */
+X
+X/* IBM PC's don't like globs of memory larger than 64K without
+X * special gyrations.  That's where the `huge's get stuck in.  And the
+X * two types of allocations on an IBM PC need to be handled differently.
+X *
+X * HaltProcessing is called during the anagram search.	If it returns nonzero,
+X * then the search is aborted.
+X *
+X * Cdecl is a macro expanded before the name of all functions that must
+X * use C-style parameter passing.  This lets you change the default parameter
+X * passing style for the other functions.
+X */
+X
+X#ifdef __MSDOS__
+X#   define MSDOS
+X#endif
+X
+X/* And finally, if you (1) are running an IBM PC with a 386 chip,
+X * (2) define the symbol ASM_ANAGRAM, (3) compile in the small memory model,
+X * (4) assemble the file A386GRAM.ASM separately, and (5) link A386GRAM.OBJ
+X * with this file, then you'll get a hand-optimized anagram finder that
+X * runs about twice as fast as the plain C version.
+X */
+X#ifdef MSDOS
+X#   define HaltProcessing()    kbhit()
+X#   define StringFormat        "%15Fs%c"
+X#   include <io.h>
+X#   include <conio.h>
+X#   ifdef __TURBOC__
+X#       include <alloc.h>
+X#       include <mem.h>
+X#       define bigmalloc       farmalloc
+X#       ifdef __SMALL__                     /* use sbrk instead of malloc */
+X#           define smallmalloc     sbrk
+X#           define smallmallocfail ((char *)-1)
+X#       else
+X#           define smallmalloc     malloc
+X#           define smallmallocfail (char*)0
+X#       endif
+X#       define Cdecl           cdecl
+X#   else
+X#   ifdef _MSC_VER
+X#       include <malloc.h>
+X#       define bigmalloc(n)    halloc(n,1)
+X#       define smallmalloc     malloc
+X#       define smallmallocfail (char*)0
+X#       define Cdecl           cdecl
+X#   else
+X            @@"Unknown IBM PC compiler type"@@
+X#   endif
+X#   endif
+X#else                                   /* UNIXish options */
+X    char *malloc();
+X#   define huge
+X#   define far
+X#   define StringFormat    "%15s%c"
+X#   define bigmalloc       malloc
+X#   define smallmalloc     malloc
+X#   define smallmallocfail (char *)0
+X#   define HaltProcessing() 0           /* no easy way to interrupt on UNIX */
+X#   define Cdecl
+X#endif
+X
+X/* Code to be used only when debugging lives inside Debug().
+X * Code to be used only when collecting statistics lives inside Stat().
+X */
+X#ifdef DEBUG
+X#define Debug(x) x
+X#else
+X#define Debug(x)
+X#endif
+X
+X#ifdef STAT
+X#define Stat(x) x
+X#else
+X#define Stat(x)
+X#endif
+X
+X/* A Word remembers the information about a candidate word. */
+Xtypedef struct {
+X    Quad aqMask[MAX_QUADS];             /* the word's mask */
+X    char huge *pchWord;                 /* the word itself */
+X    unsigned cchLength;                 /* letters in the word */
+X} Word, *PWord, **PPWord;
+X
+XPWord apwCand[MAXCAND];                 /* candidates we've found so far */
+Xunsigned cpwCand;                       /* how many of them? */
+X
+X/* A Letter remembers information about each letter in the phrase to be
+X * anagrammed.
+X */
+X
+Xtypedef struct {
+X    unsigned uFrequency;                /* how many times it appears */
+X    unsigned uShift;                    /* how to mask */
+X    unsigned uBits;                     /* the bit mask itself */
+X    unsigned iq;                        /* which Quad to inspect? */
+X} Letter, *PLetter;
+X
+XLetter alPhrase[ALPHABET];              /* statistics on the current phrase */
+X#define lPhrase(ch) alPhrase[ch2i(ch)]  /* quick access to a letter */
+X
+Xint cchPhraseLength;                    /* number of letters in phrase */
+X
+XQuad aqMainMask[MAX_QUADS];             /* the bit field for the full phrase */
+XQuad aqMainSign[MAX_QUADS];             /* where the sign bits are */
+X
+Xint cchMinLength = 3;
+X
+X/* auGlobalFrequency counts the number of times each letter appears, summed
+X * over all candidate words.  This is used to decide which letter to attack
+X * first.
+X */
+Xunsigned auGlobalFrequency[ALPHABET];
+Xchar achByFrequency[ALPHABET];          /* for sorting */
+X
+Xchar huge *pchDictionary;               /* the dictionary is read here */
+X
+X#define Zero(t) memset(t, 0, sizeof(t)) /* quickly zero out an integer array */
+X
+X/* Fatal -- print a message before expiring */
+Xvoid Fatal(char *pchMsg, unsigned u) {
+X    fprintf(stderr, pchMsg, u);
+X    exit(1);
+X}
+X
+X/* ReadDict -- read the dictionary file into memory and preprocess it
+X *
+X * A word of length cch in the dictionary is encoded as follows:
+X *
+X *    byte 0    = cch + 3
+X *    byte 1    = number of letters in the word
+X *    byte 2... = the word itself, null-terminated
+X *
+X * Observe that cch+3 is the length of the total encoding.  These
+X * byte streams are concatenated, and terminated with a 0.
+X */
+X
+Xvoid ReadDict(char *pchFile) {
+X    FILE *fp;
+X    char huge *pch;
+X    char huge *pchBase;
+X    unsigned long ulLen;
+X    unsigned cWords = 0;
+X    unsigned cLetters;
+X    int ch;
+X    struct stat statBuf;
+X
+X    if (stat(pchFile, &statBuf)) Fatal("Cannot stat dictionary\n", 0);
+X
+X    ulLen = statBuf.st_size + 2 * (unsigned long)MAXWORDS;
+X    pchBase = pchDictionary = bigmalloc(ulLen);
+X
+X    if(!pchDictionary) Fatal("Unable to allocate memory for dictionary\n", 0);
+X
+X    if ((fp = fopen(pchFile, "r")) == NULL) Fatal("Cannot open dictionary\n", 0);
+X
+X    while (!feof(fp)) {
+X        pch = pchBase+2;                /* reserve for length */
+X        cLetters = 0;
+X        while ((ch = fgetc(fp)) != '\n' && ch != EOF) {
+X            if (isalpha(ch)) cLetters++;
+X            *pch++ = ch;
+X        }
+X        *pch++ = '\0';
+X        *pchBase = pch - pchBase;
+X        pchBase[1] = cLetters;
+X        pchBase = pch;
+X        cWords++;
+X    }
+X    fclose(fp);
+X
+X    *pchBase++ = 0;
+X
+X    fprintf(stderr, "main dictionary has %u entries\n", cWords);
+X    if (cWords >= MAXWORDS) Fatal("Dictionary too large; increase MAXWORDS\n", 0);
+X    fprintf(stderr, "%lu bytes wasted\n", ulLen - (pchBase - pchDictionary));
+X}
+X
+Xvoid BuildMask(char *pchPhrase) {
+X    int i;
+X    int ch;
+X    unsigned iq;                        /* which Quad? */
+X    int cbtUsed;                        /* bits used in the current Quad */
+X    int cbtNeed;                        /* bits needed for current letter */
+X    Quad qNeed;                         /* used to build the mask */
+X
+X    Zero(alPhrase);
+X    Zero(aqMainMask);
+X    Zero(aqMainSign);
+X
+X    /* Tabulate letter frequencies in the phrase */
+X    cchPhraseLength = 0;
+X    while ((ch = *pchPhrase++) != '\0') {
+X        if (isalpha(ch)) {
+X            ch = tolower(ch);
+X            lPhrase(ch).uFrequency++;
+X            cchPhraseLength++;
+X        }
+X    }
+X
+X    /* Build shift masks */
+X    iq = 0;                             /* which quad being used */
+X    cbtUsed = 0;                        /* bits used so far */
+X
+X    for (i = 0; i < ALPHABET; i++) {
+X        if (alPhrase[i].uFrequency == 0) {
+X            auGlobalFrequency[i] = ~0;  /* to make it sort last */
+X        } else {
+X            auGlobalFrequency[i] = 0;
+X            for (cbtNeed = 1, qNeed = 1;
+X                 alPhrase[i].uFrequency >= qNeed;
+X                 cbtNeed++, qNeed <<= 1);
+X            if (cbtUsed + cbtNeed > MASK_BITS) {
+X                if (++iq >= MAX_QUADS) Fatal("MAX_QUADS not large enough\n", 0);
+X                cbtUsed = 0;
+X            }
+X            alPhrase[i].uBits = qNeed-1;
+X            if (cbtUsed) qNeed <<= cbtUsed;
+X            aqMainSign[iq] |= qNeed;
+X            aqMainMask[iq] |= (Quad)alPhrase[i].uFrequency << cbtUsed;
+X            alPhrase[i].uShift = cbtUsed;
+X            alPhrase[i].iq = iq;
+X            cbtUsed += cbtNeed;
+X        }
+X    }
+X}
+X
+XPWord NewWord(void) {
+X    PWord pw = smallmalloc(sizeof(Word));
+X    if ((char *)pw == smallmallocfail)
+X        Fatal("Out of memory after %d candidates\n", cpwCand);
+X    return pw;
+X}
+X
+X/* wprint -- print a word, followed by a space
+X *
+X * We would normally just use printf, but the string being printed is
+X * is a huge pointer (on an IBM PC), so special care must be taken.
+X */
+Xvoid wprint(char huge *pch) {
+X    while (*pch) putchar(*pch++);
+X    putchar(' ');
+X}
+X
+X/* NextWord -- get another candidate entry, creating if necessary */
+XPWord NextWord(void) {
+X    PWord pw;
+X    if (cpwCand >= MAXCAND) Fatal("Too many candidates\n", 0);
+X    if ((pw = apwCand[cpwCand++]) != 0) return pw;
+X    return apwCand[cpwCand-1] = NewWord();
+X}
+X
+X/* BuildWord -- build a Word structure from an ASCII word
+X * If the word does not fit, then do nothing.
+X */
+Xvoid BuildWord(char huge *pchWord) {
+X    unsigned char cchFrequency[ALPHABET];
+X    int i;
+X    char huge *pch = pchWord;
+X    PWord pw;
+X    int cchLength = 0;
+X
+X    Zero(cchFrequency);
+X    /* Build frequency table */
+X    while ((i = *pch++) != '\0') {
+X        if (!isalpha(i)) continue;
+X        i = ch2i(tolower(i));
+X        if (++cchFrequency[i] > alPhrase[i].uFrequency) return;
+X        ++cchLength;
+X    }
+X
+X    Debug(wprint(pchWord);)
+X
+X    /* Update global count */
+X    for (i = 0; i < ALPHABET; i++)
+X        auGlobalFrequency[i] += cchFrequency[i];
+X
+X    /* Create a Word structure and fill it in, including building the
+X     * bitfield of frequencies.
+X     */
+X    pw = NextWord();
+X    Zero(pw->aqMask);
+X    pw->pchWord = pchWord;
+X    pw->cchLength = cchLength;
+X    for (i = 0; i < ALPHABET; i++) {
+X        pw->aqMask[alPhrase[i].iq] |=
+X            (Quad)cchFrequency[i] << alPhrase[i].uShift;
+X    }
+X}
+X
+X/* AddWords -- build the list of candidates */
+Xvoid AddWords(void) {
+X    char huge *pch = pchDictionary;     /* walk through the dictionary */
+X
+X    cpwCand = 0;
+X
+X    while (*pch) {
+X        if ((pch[1] >= cchMinLength && pch[1] + cchMinLength <= cchPhraseLength)
+X            || pch[1] == cchPhraseLength) BuildWord(pch+2);
+X        pch += *pch;
+X    }
+X
+X    fprintf(stderr, "%d candidates\n", cpwCand);
+X}
+X
+Xvoid DumpCandidates(void) {
+X    unsigned u;
+X
+X    for (u = 0; u < cpwCand; u++)
+X        printf(StringFormat, apwCand[u]->pchWord, (u % 4 == 3) ? '\n' : ' ');
+X    printf("\n");
+X}
+X
+XPWord apwSol[MAXSOL];                   /* the answers */
+Xint cpwLast;
+X
+XDebug(
+Xvoid DumpWord(Quad *pq) {
+X    int i;
+X    Quad q;
+X    for (i = 0; i < ALPHABET; i++) {
+X        if (alPhrase[i].uFrequency == 0) continue;
+X        q = pq[alPhrase[i].iq];
+X        if (alPhrase[i].uShift) q >>= alPhrase[i].uShift;
+X        q &= alPhrase[i].uBits;
+X        while (q--) putchar('a'+i);
+X    }
+X    putchar(' ');
+X}
+X)                                       /* End of debug code */
+X
+Xvoid DumpWords(void) {
+X    int i;
+X    for (i = 0; i < cpwLast; i++) wprint(apwSol[i]->pchWord);
+X    printf("\n");
+X}
+X
+XStat(unsigned long ulHighCount; unsigned long ulLowCount;)
+X
+Xjmp_buf jbAnagram;
+X
+X#define OneStep(i) \
+X    if ((aqNext[i] = pqMask[i] - pw->aqMask[i]) & aqMainSign[i]) goto fail;
+X
+X#ifndef ASM_ANAGRAM
+Xvoid FindAnagram(Quad *pqMask, register PPWord ppwStart, int iLetter) {
+X    Quad aqNext[MAX_QUADS];
+X    register PWord pw;
+X    Quad qMask;
+X    unsigned iq;
+X    PPWord ppwEnd = &apwCand[cpwCand];
+X
+X    if (HaltProcessing()) longjmp(jbAnagram, 1);
+X
+X    Debug(printf("Trying :"); DumpWord(pqMask); printf(":\n");)
+X
+X    for (;;) {
+X        iq = alPhrase[achByFrequency[iLetter]].iq;
+X        qMask = alPhrase[achByFrequency[iLetter]].uBits <<
+X                alPhrase[achByFrequency[iLetter]].uShift;
+X        if (pqMask[iq] & qMask) break;
+X        iLetter++;
+X    }
+X
+X    Debug(printf("Pivoting on %c\n", i2ch(achByFrequency[iLetter]));)
+X
+X    while (ppwStart < ppwEnd) {          /* Half of the program execution */
+X        pw = *ppwStart;                  /* time is spent in these three */
+X
+X        Stat(if (++ulLowCount == 0) ++ulHighCount;)
+X
+X#if MAX_QUADS > 0
+X        OneStep(0);                     /* lines of code. */
+X#endif
+X
+X#if MAX_QUADS > 1
+X        OneStep(1);
+X#endif
+X
+X#if MAX_QUADS > 2
+X        OneStep(2);
+X#endif
+X
+X#if MAX_QUADS > 3
+X        OneStep(3);
+X#endif
+X
+X#if MAX_QUADS > 4
+X            @@"Add more unrolling steps here, please."@@
+X#endif
+X
+X        /* If the pivot letter isn't present, defer this word until later */
+X        if ((pw->aqMask[iq] & qMask) == 0) {
+X            *ppwStart = *--ppwEnd;
+X            *ppwEnd = pw;
+X            continue;
+X        }
+X
+X        /* If we get here, this means the word fits. */
+X        apwSol[cpwLast++] = pw;
+X        if (cchPhraseLength -= pw->cchLength) { /* recurse */
+X            Debug(DumpWords();)
+X            /* The recursive call scrambles the tail, so we have to be
+X             * pessimistic.
+X             */
+X            ppwEnd = &apwCand[cpwCand];
+X            FindAnagram(aqNext, ppwStart, iLetter);
+X        } else DumpWords();             /* found one */
+X        cchPhraseLength += pw->cchLength;
+X        --cpwLast;
+Xfail:
+X        ppwStart++;
+X        continue;
+X    }
+X}
+X#else
+Xextern void FindAnagram(Quad *pqMask, register PPWord ppwStart, int iLetter);
+X#endif
+X
+Xint Cdecl CompareFrequency(char *pch1, char *pch2) {
+X    return auGlobalFrequency[*pch1] < auGlobalFrequency[*pch2]
+X        ?  -1 :
+X           auGlobalFrequency[*pch1] == auGlobalFrequency[*pch2]
+X        ?   0 : 1;
+X}
+X
+Xvoid SortCandidates(void) {
+X    int i;
+X
+X    /* Sort the letters by frequency */
+X    for (i = 0; i < ALPHABET; i++) achByFrequency[i] = i;
+X    qsort((char *)achByFrequency, ALPHABET, sizeof(achByFrequency[0]),
+X          CompareFrequency);
+X
+X    fprintf(stderr, "Order of search will be ");
+X    for (i = 0; i < ALPHABET; i++) fputc(i2ch(achByFrequency[i]), stderr);
+X    fputc('\n', stderr);
+X}
+X
+Xint fInteractive;
+X
+Xchar *GetPhrase(char *pch) {
+X    if (fInteractive) printf(">");
+X    fflush(stdout);
+X    return gets(pch);
+X}
+X
+Xint Cdecl main(int cpchArgc, char **ppchArgv) {
+X    char achPhrase[255];
+X
+X    if (cpchArgc != 2 && cpchArgc != 3)
+X        Fatal("Usage: anagram dictionary [len]\n", 0);
+X
+X    if (cpchArgc == 3) cchMinLength = atoi(ppchArgv[2]);
+X
+X    fInteractive = isatty(1);
+X
+X    ReadDict(ppchArgv[1]);
+X
+X    while (GetPhrase(achPhrase)) {
+X        if (isdigit(achPhrase[0])) {
+X            cchMinLength = atoi(achPhrase);
+X            printf("New length: %d\n", cchMinLength);
+X        } else if (achPhrase[0] == '?') {
+X            DumpCandidates();
+X        } else {
+X            BuildMask(achPhrase);
+X            AddWords();
+X            if (cpwCand == 0 || cchPhraseLength == 0) continue;
+X
+X            Stat(ulHighCount = ulLowCount = 0;)
+X            cpwLast = 0;
+X            SortCandidates();
+X            if (setjmp(jbAnagram) == 0)
+X                FindAnagram(aqMainMask, &apwCand[0], 0);
+X            Stat(printf("%lu:%lu probes\n", ulHighCount, ulLowCount);)
+X        }
+X    }
+X    return 0;
+X}
+END_OF_FILE
+if test 20332 -ne `wc -c <'anagram.c'`; then
+    echo shar: \"'anagram.c'\" unpacked with wrong size!
+fi
+# end of 'anagram.c'
+fi
+if test -f 'unproto.pl' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'unproto.pl'\"
+else
+echo shar: Extracting \"'unproto.pl'\" \(3182 characters\)
+sed "s/^X//" >'unproto.pl' <<'END_OF_FILE'
+X# [$Id: unproto.pl 1.1 91/08/18 15:57:55 raymond Exp Locker: raymond $]
+X#
+X# This filter converts ANSI-like declarations into K&R-like declarations.
+X# But only if they are written in my style.  Namely...
+X#
+X# Function headers are of the form
+X#
+X#	<type><function>(<prototype>) { /* optional comment */
+X#
+X# Optionally prefixed by the word `Static' and with the word `Cdecl'
+X# optionally inserted before the function name.  For example,
+X#
+X#       Static int Cdecl smpDoSomething(int iWhat, char *pchReason) {
+X#
+X# Declarations are of the form
+X#
+X#	<type> <function>(<prototype>); /* optional comment */
+X#
+X# for example,
+X#
+X#	int smpDoSomething(int iWhat, char *pchReason);
+X#
+X# If a declaration or definition spans more than one line, put the comment
+X# /*#*/ at the end of all nonterminal lines.  For example,
+X#
+X#	int smpDoSomething(int iWhat,		/*#*/
+X#			   char *pchReason) {
+X#
+X# Vararg function definitions must fit on one line.
+X#
+X# SPACES ARE CRUCIAL.  Observe where the spaces are placed in the @types
+X# array.  The spaces must be placed identically in your declaration also.
+X#
+X# To explain how vararg functions are converted would take more time than
+X# giving an example and telling you `just like this'.
+X#
+X# ANSI
+X#
+X# int whatever(int i, char *pch, ...) {
+X#   va_list ap;
+X#   [...]
+X#   va_start(ap, pch);
+X#   [...]
+X# }
+X#
+X# K&R
+X#
+X# int whatever(va_alist) va_dcl { int i; char *pch;
+X#   va_list ap;
+X#   [...]
+X#   va_start(ap); i = va_arg(ap, int); pch = va_arg(ap, char *);
+X#   [...]
+X# }
+X#
+X# IMPORTANT!  Your va_list variable must be named `ap'.
+X#
+X#
+X#
+X# Here are the data types used in the program.
+X
+X@types = ('void ', 'int ', 'unsigned ', 'char ',
+X          'Word ', 'PWord ', 'void *', 'char *', 'char **');
+X
+Xgrep(s/\*/\\*/, @types);		# make them regexps
+X$type_regexp = join('|', @types);
+X
+X$apstart = "BUGBUG";
+X
+Xwhile (<>) {
+X    while (s|\s*/\*#\*/$| @|) { chop; $_ .= <>; }  # collect continuations
+X
+X    print 'Static ' if s/^Static //;
+X    if (/va_start/) {			# convert vararg start
+X	s/va_start\(ap, \w+\);/va_start(ap); $apstart/;
+X    }
+X
+X    unless (s/^($type_regexp)((Cdecl )?\w+)\((.*)\)( {|;)//) { print; next; }
+X
+X    $apstart = "BUGBUG";
+X
+X    # $1 = type, $2 = "Cdecl ",
+X    # $3 = name, $4 = prototype, $5 = declaration or definition
+X
+X    # found a prototype
+X    print $1, $2, "(";
+X
+X    # if a declaration, then emit nothing
+X    if ($5 eq ";") { print "); $_"; next; }
+X
+X    # parse the prototype
+X    $proto = $4;
+X    if ($proto eq "void") {		# no arguments
+X	$post = "";
+X    } elsif ($proto =~ s/\.\.\.$//) {	# varargs!
+X	print "va_alist";		# vararg nonsense
+X	$post = $proto; 		# post-declarations
+X        $post =~ y/,/;/;
+X	$_ = $post . $_;		# these go after the brace
+X	$post = "va_dcl";		# new post
+X
+X	@var = split(/, /, $proto);	# get list of variables
+X	for (@var) {			# for each variable
+X	    s/^(.*\W)//;		# chop off the type specifier
+X	    $_ .= " = va_arg(ap, $1);"; # convert to a va_arg
+X	}
+X	$apstart = join("", @var);
+X    } else {				# build arg list
+X	$post = $proto . ";";		# post-declarations
+X	$post =~ y/,@/;\n/;
+X	@var = split(/, /, $proto);	# get list of variables
+X	grep(s/^.*\W//, @var);		# strip off the gunk
+X	print join(",", @var);
+X    }
+X    print ") $post { $_";
+X}
+END_OF_FILE
+if test 3182 -ne `wc -c <'unproto.pl'`; then
+    echo shar: \"'unproto.pl'\" unpacked with wrong size!
+fi
+# end of 'unproto.pl'
+fi
+echo shar: End of shell archive.
+exit 0

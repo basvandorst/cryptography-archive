@@ -1,0 +1,425 @@
+#! /bin/sh
+######################################################################
+## Filename:      test.sh.in
+## Description:
+## Author:        Tage Stabell-Kulo <tage@acm.org>
+## Modified at:   Thu May 29 14:47:26 1997
+## Modified by:   Ronny H Arild <ronnya@stud.cs.uit.no>
+##
+## 	Copyright (c) University of Tromsø, Norway
+## 	See the file COPYING for details
+######################################################################
+
+# Welcome,
+# Read the source of this script to ensure that it doesn't do anything
+# harmful.
+
+echo
+echo "You didn't read the file PGPlib/README, did you ?"
+echo
+exit 1
+
+# PLEASE NOTE
+# I have included a full environment for PGP in this directory so that
+# this script can run PGP without any fuzz.  Verify that it doesn't
+# do anything harmful.
+
+PATH=/bin:/usr/bin:/usr/local/bin
+
+# Please ensure that PGP points to the pgp program
+PGP=@PGP@
+
+#Test if we found PGP
+if [ $PGP = NO-PGP ]; then
+    echo
+    echo "SORRY - it does not seem as if PGP is installed.  It impossible"
+    echo "to test PGPlib against PGP unless PGP is available."
+    echo "The fix is simple, get PGP (version 2.6.3)"
+    echo
+    exit 1
+fi
+
+#Then, we ensure, for your convinience, that PGP works in this directory only
+PGPPATH=`pwd`
+
+# We need something to work on, get a public keyring
+cp pubring.tage pubring.pgp
+
+#and a secret ring
+cp secring.tage secring.pgp
+
+#and some random data
+cp randseed.tage randseed.bin
+
+# echo on HP-UX doesn't understand "-n", but "\c" on the end of the line is ok
+if [ `uname` = "HP-UX" ] ; then
+  ECHO_PMT=
+  ECHO_NNL="\c"
+else
+  ECHO_PMT="-n"
+  ECHO_NNL=
+fi
+
+
+####################
+echo $ECHO_PMT "Testing armor........		$ECHO_NNL"
+if [ ! -x ./armor ]; then
+    echo armor is missing
+else
+    rm -f foo.pgp foo.asc
+    cp tromso.jpg foo
+    $PGP -c -z Test foo > /dev/null 2>&1
+    ./armor foo.pgp foo.asc
+    rm foo foo.pgp
+    $PGP -z Test foo.asc > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+	echo Definitely broken
+    else
+	echo OK
+    fi
+    rm foo.asc foo
+    #####
+
+    echo $ECHO_PMT "Testing de-armor........	$ECHO_NNL"
+    cp tromso.jpg foo
+    $PGP -ca -z Test foo > /dev/null 2>&1
+    ./armor -d foo.asc foo.pgp
+    if [ $? -ne 0 ]; then
+	echo Definitely broken
+    else
+	rm foo foo.asc
+	$PGP -z Test foo.pgp > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+	    echo broken
+	else
+	    if ! cmp foo tromso.jpg
+	    then
+		echo Definitely broken
+	    else
+		echo OK
+	    fi
+	fi
+    fi
+    rm -f foo foo.pgp foo.asc
+fi
+
+
+####################
+echo $ECHO_PMT "Testing splitring....		$ECHO_NNL"
+if [ ! -x splitring ]; then
+    echo  splitring is missing
+else
+    ./splitring -f pubring.pgp -n 5
+    cat split00* > newring.pgp
+    if cmp -s pubring.pgp newring.pgp;
+    then
+        echo OK
+    else
+	echo not working
+
+    fi
+fi
+rm -f newring.pgp split00*
+
+####################
+echo $ECHO_PMT "Testing literal...... 		$ECHO_NNL"
+if [ ! -x literal ]; then
+    echo  literal is missing
+else
+    cp tromso.jpg foo
+    rm -f foo.pgp
+    ./literal foo
+    rm foo
+    if [ ! -f foo.pgp ]; then
+	echo "literal probably broken  - does not work at all"
+    else
+	$PGP foo > /dev/null 2>&1
+	if [ ! -f foo ]; then
+	    echo literal probably broken
+	else
+	    if ! cmp foo tromso.jpg
+	    then
+		echo literal broken
+	    else
+		# Try literal with compression
+		rm -f foo*
+		cp tromso.jpg foo
+		./literal -c foo
+		if [ ! -f foo.pgp ]; then
+		    echo literal with comp. broken - does not work at all
+		else
+		    rm -f foo
+		    $PGP foo > /dev/null 2>&1
+		    if [ ! -f foo ] ; then
+			echo literal with comp. probably broken
+		    else
+			if cmp foo tromso.jpg
+			then
+			    echo OK
+			else
+			    echo literal with comp. broken
+			fi
+		    fi
+		fi
+	    fi
+	fi
+    fi
+    rm -f foo*
+fi
+
+####################
+echo $ECHO_PMT "Testing parser........		$ECHO_NNL"
+if [ ! -x parser ]; then
+    echo  parser is missing
+else
+    cp tromso.jpg foo
+    rm -f foo.pgp
+    $PGP -z Test -c foo > /dev/null 2>&1
+    rm -f foo
+    ./parser foo.pgp > /dev/null
+    if [ ! -f foo ] ; then
+	echo broken
+    else
+	if cmp -s foo tromso.jpg
+	then
+	    echo OK
+	else
+	    echo parser broken
+	fi
+     fi
+fi
+rm -f foo foo.pgp
+
+####################
+echo $ECHO_PMT "Testing conventional encrypt..	$ECHO_NNL"
+if [ ! -x c_encrypt ]; then
+    echo  c_encrypt is missing
+else
+    rm -f foo foo.pgp
+    cp tromso.jpg foo
+    ./c_encrypt -c -p Test foo
+    rm -f foo
+    $PGP -z Test foo.pgp > /dev/null 2>&1
+    if cmp -s foo tromso.jpg
+    then
+	echo OK
+    else
+	echo probably broken
+    fi
+
+    rm -f foo foo.pgp
+fi
+
+####################
+echo $ECHO_PMT "Testing conventional decrypt..	$ECHO_NNL"
+if [ ! -x c_decrypt ]; then
+    echo  c_decrypt is missing
+else
+    # Decompression is also tested as PGP compresses by default.
+    rm -f foo*
+    cp tromso.jpg foo
+    $PGP -z Test -c foo > /dev/null 2>&1
+    # c_decrypt adds .dec to the filename
+    ./c_decrypt -p Test foo.pgp
+    rm -f foo foo.pgp
+    # recreate foo
+    ./parser foo.pgp.dec > /dev/null
+    if cmp foo tromso.jpg
+    then
+	echo OK
+    else
+	echo broken
+    fi
+    rm -f foo foo.pgp foo.pgp.dec
+fi
+
+####################
+echo Testing shell
+if [ ! -x shell ]; then
+    echo  shell is missing
+else
+    echo $ECHO_PMT "	scan			$ECHO_NNL"
+    echo "scan pubring.pgp" > tmp$$
+    ./shell < tmp$$ > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+	echo can not scan pubring
+    else
+	echo OK
+    fi
+    rm tmp$$
+
+    #------
+    echo $ECHO_PMT "	adding to database	$ECHO_NNL"
+    echo "dbopen keybase$$ force" > tmp$$
+    echo "add pubring.pgp" >> tmp$$
+    echo "quit" >> tmp$$
+    ./shell < tmp$$ > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+	echo adding to database not working
+	rm -f tmp$$ keybase$$.*
+	exit 1
+    fi
+    echo  OK
+    rm tmp$$
+
+    #------
+    echo $ECHO_PMT "	verify a key		$ECHO_NNL"
+    echo "dbopen keybase$$ " > tmp$$
+    echo "verify 0x033367ab71fbd469" >> tmp$$
+    echo "quit" >> tmp$$
+    ./shell < tmp$$ > foo$$ 2>/dev/null
+    if [ $? -ne 0 ]; then
+	echo shell not working properly
+	rm -f foo$$ tmp$$ keybase$$.*
+	exit 1
+    fi
+    # assumes GNU grep (pick some names on random)
+    grep -q Anders foo$$
+    if [ $? -ne 0 ]; then
+	echo Anders gone, shell not working
+	rm -f foo$$ tmp$$ keybase$$.*
+	exit 1
+    fi
+    grep -q Sape foo$$
+    if [ $? -ne 0 ]; then
+	echo Sape gone, shell not working
+	rm -f foo$$ tmp$$ keybase$$.*
+	exit 1
+    fi
+    echo OK
+    rm foo$$ tmp$$
+fi
+
+####################
+echo $ECHO_PMT "Testing sign.....		$ECHO_NNL"
+# You have added the public key of PGPlib to your keyring.  The
+# secret key is in secring.pgp  We use it to generate a signature
+# which we then test against the one on the keyring
+
+if [ ! -x sign ]; then
+    echo  sign is missing
+else
+    rm -f bar foo foo.pgp
+    cp tromso.jpg foo
+    ./sign -f foo -k secring.pgp -p Test
+    $PGP +pubring=pubring.pgp foo.pgp > bar 2>/dev/null
+    if grep -q 'Good signature from user "PGPlib Test".' bar
+    then
+	echo OK
+    else
+	echo  not working
+    fi
+
+    rm -f foo foo.pgp bar
+fi
+
+####################
+echo $ECHO_PMT "Testing pub encrypt...		$ECHO_NNL"
+if [ ! -x p_encrypt ]; then
+    echo  p_encrypt is missing
+else
+    rm -f foo foo.pgp
+    cp tromso.jpg foo
+    ./p_encrypt -d keybase$$ -f foo -p Test -u PGPlib
+    rm -f foo
+    $PGP +secring=secring.pgp -z Test foo.pgp > /dev/null 2>&1
+    if [ $? -ne 0 ]
+    then
+	echo broken
+    else
+	if cmp foo tromso.jpg
+	then
+	    echo OK
+	else
+	    echo not working
+	fi
+    fi
+fi
+
+#######################
+echo $ECHO_PMT "Testing sec decrypt...		$ECHO_NNL"
+
+if [ ! -x p_decrypt ] ; then
+    echo p_decrypt is missing
+else
+    rm -f foo*
+    cp tromso.jpg foo
+    # p_encrypt was verified in the previous test
+    ./p_encrypt -d keybase$$ -f foo -p Test -u PGPlib
+    rm foo
+    ./p_decrypt -f foo.pgp -p Test -k secring.pgp
+    if [ ! -f foo ]
+    then
+	echo not working
+    else
+        if cmp foo tromso.jpg
+        then
+	    echo OK
+	else
+	    echo not working
+	fi
+    fi
+    rm -f foo.pgp foo
+fi
+
+
+####################
+echo $ECHO_PMT "Testing keyserver.....	$ECHO_NNL"
+# You will find a secret keyring in seckey.pgp with the associated
+# public key in the public keyring pubring.pgp
+
+if [ ! -x keyserver ]; then
+    echo  keyserver is missing
+else
+    echo
+    echo
+    echo To test the keyserver I need your cooperation.  You need to
+    echo open a window to talk to it by means of telnet.  If you want
+    echo 'to test it (and are ready to open a window) type Y'
+    echo $ECHO_PMT "Ready  (Y/N) $ECHO_NNL"
+    read A B
+    if [ X$A = XY ]; then
+	echo
+	echo Fine, I will start the keyserver and you talk to it.
+	echo In your new window, give the command
+	echo "	telnet localhost 24163"
+	echo 'When the keyserver replies (text and a >) give it the command'
+	echo "	0x033367ab71fbd469"
+	echo 'And verify that it prints the contents of my public key (most'
+	echo 'signatures are unknown).'
+	echo
+	echo $ECHO_PMT "When you are ready, press return here and I will kill it again.$ECHO_NNL"
+
+	./keyserver -p 24163 -f keybase$$ -l /dev/null > /dev/null &
+	PID=$!
+
+	read C
+	echo $ECHO_PMT "OK, killing keyserver...$ECHO_NNL"
+	kill $PID > /dev/null
+	echo Done
+    else
+	echo OK, not testing keyserver. We will hope for the best
+    fi
+fi
+
+rm keybase$$.*
+
+echo "-----------------------------------"
+echo
+echo Thank you for your attention.  I hope all went well.
+echo
+echo There is a mailing list for PGPlib developers: pgplib-dev@cryp.to
+echo To join, send a message to pgplib-dev-request@cryp.to with the word
+echo SUBSCRIBE in the BODY.
+echo You can also join the very low volume list pgplib-announce.
+echo To join this list, send your mail to pgplib-announce-request@cryp.to
+echo with the word SUBSCRIBE in the BODY.
+echo
+echo An archive of the lists are available at URL:http://www.cryp.to/
+echo
+echo "	Your sincerely"
+echo "	Tage Stabell-Kulø"
+
+exit 0
+
+

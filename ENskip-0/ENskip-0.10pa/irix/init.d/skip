@@ -1,0 +1,92 @@
+#!/bin/sh
+
+# Start/stop SKIP for Solaris 2.4
+
+INSTALLDIR=/opt/skip
+SKIPMOD=$INSTALLDIR/skip
+SKIPD=$INSTALLDIR/skipd
+SKIP_ATTACH=$INSTALLDIR/skip_attach
+SKIP_DETACH=$INSTALLDIR/skip_detach
+
+CONFIG=/etc/config
+IS_ON=/sbin/chkconfig
+
+if $IS_ON verbose ; then
+	ECHO=/bin/echo
+	LOGGER='lfmt -l skip -s warn'
+else		# For a quiet startup and shutdown
+	ECHO=:
+	LOGGER='lfmt -l skip -s warn -G 3'
+fi
+
+killproc() {		# kill the named process(es)
+	pid=`/usr/bin/ps -e |
+	     /usr/bin/grep $1 | /usr/bin/grep -v grep |
+	     /usr/bin/sed -e 's/^  *//' -e 's/ .*//'`
+	[ "$pid" != "" ] && kill $pid
+}
+
+attach_interfaces() {	# Attach to all interfaces we find
+	interfaces=`/usr/etc/netstat -ni | /usr/bin/grep '\.' | /usr/bin/grep -v lo | /usr/bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		$ECHO "attaching skip to interfaces:\c"
+		for i in $interfaces; do
+			$ECHO " $i\c"
+			$SKIP_ATTACH >/dev/null $i
+		done
+		$ECHO "."
+	else
+		$LOGGER "No interfaces for skip found.\n"
+	fi
+}
+
+detach_interfaces() {	# Detach from all interfaces we find
+	interfaces=`/usr/etc/netstat -ni | /usr/bin/grep '\.' | /usr/bin/grep -v lo | /usr/bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		$ECHO "detaching skip from interfaces:\c"
+		for i in $interfaces; do
+			$ECHO " $i\c"
+			$SKIP_DETACH >/dev/null $i
+		done
+		$ECHO "."
+	else
+		$LOGGER "No interfaces for skip found.\n"
+	fi
+}
+
+case "$1" in
+
+'start')
+	if $IS_ON skip; then
+		if [ -x $SKIPMOD ]; then
+			$ECHO "loading skip module\c"
+			/sbin/ml ld -v -f $SKIPMOD -p skip -s 79 >/dev/null
+			$ECHO "."
+			if [ -x $SKIPD ]; then
+				$ECHO "starting skip daemon\c"
+				$SKIPD > /dev/console 2>&1 &
+				$ECHO "[$!]."
+	
+				attach_interfaces
+			else
+				$LOGGER "skip daemon '$SKIPD' not found.\n"
+			fi
+		else
+			$LOGGER "skip module '$SKIPMOD' not found.\n"
+		fi
+	fi
+	;;
+
+'stop')
+	detach_interfaces
+	killproc skipd
+	/sbin/ml unld -v `ml list | grep skip | awk '{ print $2 }'` >/dev/null
+	;;
+
+*)
+	/bin/echo "Usage: $0 { start | stop }"
+	;;
+
+esac

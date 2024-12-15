@@ -1,0 +1,117 @@
+IMPORTS Version, ContentInfo, DigestInfo FROM pkcs7;
+IMPORTS Attribute, Attributes FROM x501;
+IMPORTS PrivateKeyInfo, EncryptedPrivateKeyInfo FROM pkcs8;
+
+PFX ::= SEQUENCE {
+            version         Version,    -- V3(3) for this version.  This field is not optional.
+            authSafes       ContentInfo,    -- from PKCS #7 v1.5
+                            -- SignedData in public-key integrity mode
+                            -- Data in password integrity mode
+            macData         MacData OPTIONAL }
+
+MacData ::= SEQUENCE {
+            mac      DigestInfo,    -- from PKCS #7 v1.5
+            macSalt  OCTET STRING,
+            macIterationCount  INTEGER DEFAULT 1 }
+            -- if you want to be compatible with a certain release from
+            -- Microsoft, you should use the value 1 and not place the
+            -- macIterationCount field's encoding in the PDU's
+            -- BER-encoding.  Unfortunately, using a value of 1 here
+            -- means that there's no point in having a value other
+            -- than 1 for any password-based encryption in the PDU that
+            -- uses the same password as is used for password-based
+            -- authentication
+
+AuthenticatedSafes ::= 	SEQUENCE OF ContentInfo    -- from PKCS #7 v1.5
+			-- Data if unencrypted
+			-- EncryptedData if password-encrypted
+			-- EnvelopedData if public-key-encrypted
+
+pkcs-12PbeParams ::= SEQUENCE {
+            salt           OCTET STRING,
+            iterationCount INTEGER }
+
+pkcs-12 OBJECT IDENTIFIER ::= { iso(1) member-body(2)  US(840) rsa(113549) pkcs(1) 12 }
+PKCS-9 OBJECT IDENTIFIER ::= { iso(1) member-body(2)  US(840) rsa(113549) pkcs(1) 9 }
+
+pkcs-12PbeIds OBJECT IDENTIFIER ::= { pkcs-12 1 }
+pbeWithSHA1And128BitRC4 OBJECT IDENTIFIER ::= { pkcs-12PbeIds 1 }
+pbeWithSHA1And40BitRC4 OBJECT IDENTIFIER ::= { pkcs-12PbeIds 2 }
+-- both triple-DES pbe OIDs do EDE (encrypt-decrypt-encrypt)
+pbeWithSHA1And3-KeyTripleDES-CBC OBJECT IDENTIFIER ::=
+  { pkcs-12PbeIds 3 }
+pbeWithSHA1And2-KeyTripleDES-CBC OBJECT IDENTIFIER ::=
+  { pkcs-12PbeIds 4 }
+-- pbeWithSHA1And128BitRC2-CBC uses an effective keyspace search
+-- size of 128 bits, as well as a 128-bit key
+pbeWithSHA1And128BitRC2-CBC OBJECT IDENTIFIER ::=
+  { pkcs-12PbeIds 5 }
+-- pbeWithSHA1And40BitRC2-CBC uses an effective keyspace search
+-- size of 40 bits, as well as a 40-bit key
+pbeWithSHA1And40BitRC2-CBC OBJECT IDENTIFIER ::=
+  { pkcs-12PbeIds 6 }
+
+
+SafeContents ::= SEQUENCE OF SafeBag
+
+SafeBag ::= SEQUENCE {
+            bagType       OBJECT IDENTIFIER,
+            bagContent    [0] EXPLICIT ANY DEFINED BY bagType,
+            bagAttributes Attributes OPTIONAL }
+
+
+-- ME 11/5/98 this is already in PKCS#7
+-- Attributes ::= SET OF Attribute    - - from X.501
+-- in pre-1994 ASN.1, Attribute looks like:
+-- Attribute ::= SEQUENCE {
+--      type OBJECT IDENTIFIER,
+--      values SET OF ANY DEFINED BY type }
+
+
+-- FriendlyName ::= BMPString    - - a friendlyName has a single attr. value
+LocalKeyID   ::= OCTET STRING    -- a localKeyID has a single attr.  value
+
+
+-- friendlyName OBJECT IDENTIFIER ::= { PKCS-9 20 }
+-- localKeyID   OBJECT IDENTIFIER ::= { PKCS-9 21 }
+
+
+KeyBag ::= PrivateKeyInfo    -- from PKCS #8 v1.2
+
+PKCS-8ShroudedKeyBag ::= EncryptedPrivateKeyInfo    -- from PKCS #8 v1.2
+
+CertBag   ::= SEQUENCE {
+          certType    OBJECT IDENTIFIER,
+          cert        [0] EXPLICIT ANY DEFINED BY certType }
+
+CRLBag    ::= SEQUENCE {
+          crlType     OBJECT IDENTIFIER,
+          crl         [0] EXPLICIT ANY DEFINED BY crlType }
+
+SecretBag ::= SEQUENCE {
+          secretType  OBJECT IDENTIFIER,
+          secret      [0] EXPLICIT ANY DEFINED BY secretType }
+
+SafeContentsBag ::= SafeContents
+
+
+pkcs-12Version1      OBJECT IDENTIFIER ::= { pkcs-12 10 }
+pkcs-12BagIds        OBJECT IDENTIFIER ::= { pkcs-12Version1 1}
+keyBag               OBJECT IDENTIFIER ::= { pkcs-12BagIds 1 }
+pkcs-8ShroudedKeyBag OBJECT IDENTIFIER ::= { pkcs-12BagIds 2 }
+certBag              OBJECT IDENTIFIER ::= { pkcs-12BagIds 3 }
+crlBag               OBJECT IDENTIFIER ::= { pkcs-12BagIds 4 }
+secretBag            OBJECT IDENTIFIER ::= { pkcs-12BagIds 5 }
+safeContentsBag      OBJECT IDENTIFIER ::= { pkcs-12BagIds 6 }
+
+
+certTypes       OBJECT IDENTIFIER ::= { PKCS-9 22 }
+X509Certificate                   ::= OCTET STRING
+SDSICertificate                   ::= IA5String
+x509Certificate OBJECT IDENTIFIER ::= { certTypes 1 }
+sdsiCertificate OBJECT IDENTIFIER ::= { certTypes 2 }
+
+
+crlTypes OBJECT IDENTIFIER ::= { PKCS-9 23 }
+X509Crl                    ::= OCTET STRING
+x509Crl  OBJECT IDENTIFIER ::= { crlTypes 1 }

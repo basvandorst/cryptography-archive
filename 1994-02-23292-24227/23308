@@ -1,0 +1,77 @@
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!cs.utexas.edu!swrinde!sgiblab!gatekeeper.us.oracle.com!oracle!unrepliable!bounce
+Newsgroups: sci.crypt
+From: rjenkins@us.oracle.com (Robert Jenkins)
+Subject: another secure PRNG
+Message-ID: <1994Jan29.061539.8870@oracle.us.oracle.com>
+Originator: rjenkins@kr2seq.us.oracle.com
+Sender: usenet@oracle.us.oracle.com (Oracle News Poster)
+Nntp-Posting-Host: kr2seq.us.oracle.com
+Organization: Oracle Corp., Redwood Shores CA
+Date: Sat, 29 Jan 1994 06:15:39 GMT
+X-Disclaimer: This message was written by an unauthenticated user
+              at Oracle Corporation.  The opinions expressed are those
+              of the user and not necessarily those of Oracle.
+Lines: 62
+
+How fast can secure pseudorandom number generators be?  Is there a 
+nontrivial lower bound on their complexity?  I bet there isn't ...
+
+
+#define ALPHA 7
+typedef  unsigned int  u4;         /* unsigned four bytes, 32 bits */
+
+void prng(m,r,a,b)      /* stuff (1<<ALPHA) random values into r[] */
+u4 *m; u4 *r; u4 a; u4 b;
+{
+  register u4 i,x,y,z;
+  for (i=0; i<(1<<ALPHA); ++i)
+  {
+    x = m[i];                               /* recycle every value */
+    y = m[z = a >> (32-ALPHA)];         /* choose y pseudorandomly */
+    a = (a << ALPHA) ^ z;             /* barrelshift  a  by  ALPHA */
+    m[i] = a + b;                                 /* secret memory */
+    a    = a + y;                                   /* accumulator */
+    r[i] = b + y;                     /* results given to the user */
+    b = x;  /* b will be the old m[i-1], which is no longer in m[] */
+  }
+}
+
+int main()                        /* produce a billion random bits */
+{
+  u4 i, a, b, m[1<<ALPHA], r[1<<ALPHA];
+  a = b = 1;   for (i=0; i<(1<<ALPHA); ++i) m[i] = 0;      /* seed */
+  for (i=0; i<(1000000000/(32*(1<<ALPHA))); ++i) prng(m,r,a,b);
+}
+
+* Fast!
+Unrolled 4x, this takes 7 seconds on a Sparc 10, producing a 32 bit
+result every 15 machine instructions.  That's 2 bits per instruction.
+
+* Secure?  
+This is secure only in the sense that nobody knows how to break it.  
+My best method is to notice that
+  r[i] = m[i-1-128] + m[i-x];     /* x in 1..64 */
+then guess the x's for 256 such equations, then solve for m[].  That
+means guessing 1792 bits correctly, which is kind of hard.
+
+* Random!
+With ALPHA=3 and a word size of 16, this passed all my statistical
+tests for at least 100,000,000 calls to prng().  Distribution of 
+values, the length of gaps between values, and the lengths of 
+strictly increasing runs were tested.  ALPHA=7 and 32 bit words
+should do exponentially better, if trends continue.
+
+* Long cycle!
+The generator is not reversible, implying a cycle length near the 
+square root of the number of possible states.  There are 2^(32*130)
+possible states between calls, so the cycle length is about 2^2080.
+
+* New and improved
+For those who remember my last algorithm, this one works on the same
+principles.  I managed to eliminate a memory access and a shift.  If
+you are interested in how this was found or what was learned in the 
+process, send me mail.  I'm trying to publish, but it's slow.  Many
+thanks to Colin Plumb, whose rephrasing of the old algorithm showed
+me ways it could be shortened!
+
+                                        - Bob Jenkins

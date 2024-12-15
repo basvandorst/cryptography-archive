@@ -1,0 +1,158 @@
+diff -c xterm.secure.X11R5/Imakefile xterm.secure.X11R5.old/Imakefile
+*** xterm.secure.X11R5/Imakefile	Wed Nov 10 15:32:44 1993
+--- xterm.secure.X11R5.old/Imakefile	Sat Nov  6 01:45:53 1993
+***************
+*** 23,34 ****
+   OSMAJORVERSION = OSMajorVersion
+   OSMINORVERSION = OSMinorVersion
+  
+!    MAIN_DEFINES = -DUTMP $(TTYGROUPDEF) $(PUCCPTYDDEF)	\
+! 		  -DOSMAJORVERSION=$(OSMAJORVERSION)	\
+! 		  -DOSMINORVERSION=$(OSMINORVERSION)	\
+! 		  -DWTMP				\
+! 		  -DLASTLOG /* remove this for HPUX */	\
+! 		  /*-DHAS_UTMP_UT_HOST -DUSE_SYSV_UTMP /* add these for HPUX */
+     MISC_DEFINES = -DALLOWLOGFILEEXEC
+  
+            SRCS1 = button.c charproc.c cursor.c data.c input.c \
+--- 23,32 ----
+   OSMAJORVERSION = OSMajorVersion
+   OSMINORVERSION = OSMinorVersion
+  
+!    MAIN_DEFINES = -DUTMP $(TTYGROUPDEF) $(PUCCPTYDDEF) \
+! 		  -DOSMAJORVERSION=$(OSMAJORVERSION) \
+! 		  -DOSMINORVERSION=$(OSMINORVERSION) \
+! 		  -DWTMP -DLASTLOG
+     MISC_DEFINES = -DALLOWLOGFILEEXEC
+  
+            SRCS1 = button.c charproc.c cursor.c data.c input.c \
+Only in xterm.secure.X11R5: Makefile
+diff -c xterm.secure.X11R5/README.PATCHES xterm.secure.X11R5.old/README.PATCHES
+*** xterm.secure.X11R5/README.PATCHES	Wed Nov 10 14:53:10 1993
+--- xterm.secure.X11R5.old/README.PATCHES	Sat Nov  6 04:02:52 1993
+***************
+*** 43,46 ****
+  It's still possible to undefine ALLOWLOGFILEEXEC
+  to disable logfiles completely.
+  
+- Small minor fixes for HPUX added by David Vincenzetti Nov 10 1993
+--- 43,45 ----
+Only in xterm.secure.X11R5: diff.out
+diff -c xterm.secure.X11R5/main.c xterm.secure.X11R5.old/main.c
+*** xterm.secure.X11R5/main.c	Wed Nov 10 13:12:25 1993
+--- xterm.secure.X11R5.old/main.c	Fri Jun 12 10:05:24 1992
+***************
+*** 144,150 ****
+  #ifdef hpux
+  #define HAS_BSD_GROUPS
+  #include <sys/ptyio.h>
+- #include <netdb.h> /* DV */
+  #endif /* hpux */
+  #ifdef sgi
+  #include <sys/sysmacros.h>
+--- 144,149 ----
+***************
+*** 2246,2279 ****
+  		    if (disfin)
+  			*disfin = '\0';
+  		}
+- #ifndef hpux
+  		(void) strncpy(utmp.ut_host, buf, sizeof(utmp.ut_host));
+- #else /* hpux */
+- 		/* >> DV */
+- 		if (!buf[0]) {
+- 			char	hn[16];
+- 			extern char	*strtok();
+- 
+- 			if (gethostname(hn, sizeof(hn)) == -1)
+- 				(void) strcpy(utmp.ut_host, ":0.0");
+- 			else
+- 				(void) strcpy(utmp.ut_host, strtok(hn, "."));
+- 			utmp.ut_addr = (unsigned) 0L;
+- 		}
+- 		else {
+- 			struct hostent  *h;
+- 			unsigned long   i;
+- 
+- 			(void) strncpy(utmp.ut_host, buf, sizeof(utmp.ut_host));
+- 			h = gethostbyname(buf);
+- 			if (h)
+- 				(void) memcpy(&utmp.ut_addr, h->h_addr,
+- 							h->h_length);
+- 			else
+- 				utmp.ut_addr = (unsigned) 0L;
+- 		}
+- 		/* << DV */
+- #endif /* hpux */
+  #endif
+  		(void) strncpy(utmp.ut_name, pw->pw_name, 
+  			       sizeof(utmp.ut_name));
+--- 2245,2251 ----
+diff -c xterm.secure.X11R5/misc.c xterm.secure.X11R5.old/misc.c
+*** xterm.secure.X11R5/misc.c	Wed Nov 10 14:21:36 1993
+--- xterm.secure.X11R5.old/misc.c	Sat Nov  6 00:00:25 1993
+***************
+*** 454,461 ****
+  	char buf[256];
+  	int nread;
+  	static char *log_default;
+- 	void logpipe(); /* DV */
+  #ifdef ALLOWLOGFILEEXEC
+  #ifdef SYSV
+  	/* SYSV has another pointer which should be part of the
+  	** FILE structure but is actually a separate array.
+--- 454,461 ----
+  	char buf[256];
+  	int nread;
+  	static char *log_default;
+  #ifdef ALLOWLOGFILEEXEC
++ 	void logpipe();
+  #ifdef SYSV
+  	/* SYSV has another pointer which should be part of the
+  	** FILE structure but is actually a separate array.
+***************
+*** 498,510 ****
+  			old_bufend = _bufend(stderr);
+  #endif	/* SYSV */
+  			close(fileno(stderr));
+- #ifndef hpux
+  			stderr->_file = 2;
+- #else /* hpux */
+- 			/* DV */
+- 			stderr->__fileH = 0;
+- 			stderr->__fileL = 2;
+- #endif /* hpux */
+  #ifdef SYSV
+  			_bufend(stderr) = old_bufend;
+  #endif	/* SYSV */
+--- 498,504 ----
+***************
+*** 601,609 ****
+  	screen->logstart = screen->TekEmu ? Tbuffer : buffer;
+  }
+  
+- /* DV -- this is used anyway due the patch by James Michael Chacon
+  #ifdef ALLOWLOGFILEEXEC
+- */
+  void logpipe()
+  {
+  	register TScreen *screen = &term->screen;
+--- 595,601 ----
+***************
+*** 614,620 ****
+  	if(screen->logging)
+  		CloseLog(screen);
+  }
+! /* #endif /* ALLOWLOGFILEEXEC */
+  
+  
+  do_osc(func)
+--- 606,612 ----
+  	if(screen->logging)
+  		CloseLog(screen);
+  }
+! #endif /* ALLOWLOGFILEEXEC */
+  
+  
+  do_osc(func)
+Common subdirectories: xterm.secure.X11R5/tektests and xterm.secure.X11R5.old/tektests

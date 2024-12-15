@@ -1,0 +1,112 @@
+#!/bin/sh
+cd /usr/local/ssl/private
+PATH=/usr/local/ssl/bin:$PATH
+export PATH
+
+if [ ! -n "$1" ]
+then
+  echo "Usage: $0 servername"
+  exit 1
+fi
+
+echo "The key will be called $1.key. The certificate will be called $1.cert"
+echo "They will be stored in /usr/local/ssl"
+echo
+
+cat <<EOF
+Now we will generate some random data, using the truerand library
+developed by Matt Blaze, Jim Reeds, and Jack Lacy at AT&T.
+This may take some time.
+EOF
+makerand > /tmp/rand.$$
+
+RAND=/tmp/rand.$$
+cat <<EOF
+Now you are going to generate a key. Choose some files with lots of
+random bits. Your pgp randseed.bin might work well, as might the utmp,
+the wtmp, maybe some log files.. Put in as many bits as possible.
+The more randomness the better. (The randomness generated previously
+will also be used)
+EOF
+
+echo -n "Enter colon-seperated list of files: "
+read FILES
+FILES=$RAND:$FILES
+BITS=0
+MIN=384
+
+cat <<EOF
+Choose the size of your key. The smaller the key you choose the faster your 
+server response will be, but you'll have less security. Keys of less than 512
+bits are trivially cracked, while for high security applications you
+probably don't want a key of less than 1024 bits. Choosing an appropriate
+keysize is your responsibility.
+
+EOF
+
+while [ "$BITS" -lt "$MIN" ]
+do
+  echo -n "How many bits of key ($MIN minimum): "
+  read BITS
+done
+
+genrsa -rand $FILES $BITS > $1.key
+rm $RAND
+
+echo "Key generated"
+
+cat <<EOF
+Now we will generate a certificate request. After that we will
+create a temporary certificate for testing until you receive
+the certificate from your CA. Enter the following information:
+EOF
+
+req -config /usr/local/ssl/lib/ssleay.conf -new -key $1.key -out /tmp/req-$$
+req -in /tmp/req-$$ -text -noout
+
+echo -n "Webmaster email: "
+read WEBMASTER
+
+echo -n "Webmaster phone: "
+read WEBPHONE
+
+CA=netscape-cert@verisign.com
+echo -n "Send certification request to [$CA]: "
+
+read NEWCA
+if [ -n "$NEWCA" ]
+then
+  CA=$NEWCA
+fi
+
+/usr/lib/sendmail -t <<EOF
+To: $CA
+Subject: Key certification request
+
+Webmaster: $WEBMASTER
+Phone: $WEBPHONE
+
+`cat /tmp/req-$$`
+EOF
+
+
+cat <<EOF
+Your certificate request was sent to your $CA.  Make sure you send
+them the appropriate paperwork and money. See
+http://www.verisign.com/netscape/index.html for more information about
+the Verisign CA process.
+
+Now we will create a test certificate for use until the CA of your
+choice signs your certificate.
+EOF
+
+ca -in /tmp/req-$$ -out /usr/local/ssl/certs/$1.cert
+getcert $1 
+
+cat <<EOF
+--COMPLETE--
+Your key has been generated and a test certificate has been installed
+--COMPLETE--
+EOF
+
+rm /tmp/req-$$

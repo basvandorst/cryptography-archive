@@ -1,0 +1,171 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!zaphod.mps.ohio-state.edu!ub!newserve!sarah!cscnews!rm9681
+From: rm9681@csc.albany.edu (robert m. marion)
+Subject: Re: Cryptography Bibliography
+In-Reply-To: lairdt@leela.CSOS.ORST.EDU's message of 3 May 93 08:24:57 GMT
+Message-ID: <RM9681.93May3204600@hannah.albany.edu>
+Sender: news@sarah.albany.edu (News Administrator)
+Organization: State University of New York at Albany
+References: <1993Apr28.101708.21393dave@tygra.Michigan.COM>
+	<1s463p$bqt@leela.CSOS.ORST.EDU>
+Date: 3 May 93 20:46:00
+Lines: 158
+
+In article <1s463p$bqt@leela.CSOS.ORST.EDU> lairdt@leela.CSOS.ORST.EDU (Tom Laird) writes:
+
+   Path: sarah!newserve!ub!zaphod.mps.ohio-state.edu!howland.reston.ans.net!darwin.sura.net!emory!ogicse!flop.ENGR.ORST.EDU!leela.CSOS.ORST.EDU!leela.CSOS.ORST.EDU!usenet
+   From: lairdt@leela.CSOS.ORST.EDU (Tom Laird)
+   Newsgroups: sci.crypt
+   Date: 3 May 93 08:24:57 GMT
+   Article-I.D.: leela.1s463p$bqt
+   References: <1993Apr28.101708.21393dave@tygra.Michigan.COM>
+   Organization: OSU CS Outreach Services, Corvallis, Oregon
+   Lines: 13
+   NNTP-Posting-Host: leela.csos.orst.edu
+
+   dave@tygra.Michigan.COM (David Conrad) writes:
+
+:   I've been looking for a site or other source which will explain just
+:   exactly the Unix crypt does. I have code to look at, however I need a
+:   more detailed description of how each character of a Unix password is
+:   encrypted, based upon the given seed characters. Does anyone have this
+:   information or know where I can get it from?
+:   lairdt@leela.csos.orst.edu
+
+	Here is the crypt code (if this is what you are interested in).
+	R.M...............
+
+static char *sccsid = "@(#)crypt.c	4.3 (Berkeley) 1/25/85";
+
+/*
+ *	A one-rotor machine designed along the lines of Enigma
+ *	but considerably trivialized.
+ */
+
+#define ECHO 010
+#include <stdio.h>
+#define ROTORSZ 256
+#define MASK 0377
+char	t1[ROTORSZ];
+char	t2[ROTORSZ];
+char	t3[ROTORSZ];
+char	deck[ROTORSZ];
+char	*getpass();
+char	buf[13];
+
+setup(pw)
+char *pw;
+{
+	int ic, i, k, temp, pf[2];
+	int pid, wpid;
+	unsigned random;
+	long seed;
+
+	strncpy(buf, pw, 8);
+	while (*pw)
+		*pw++ = '\0';
+	buf[8] = buf[0];
+	buf[9] = buf[1];
+	pipe(pf);
+	if ((pid=fork())==0) {
+		close(0);
+		close(1);
+		dup(pf[0]);
+		dup(pf[1]);
+		execl("/usr/lib/makekey", "-", 0);
+		execl("/lib/makekey", "-", 0);
+		exit(1);
+	}
+	write(pf[1], buf, 10);
+	while ((wpid = wait((int *)NULL)) != -1 && wpid != pid)
+	    ;
+	if (read(pf[0], buf, 13) != 13) {
+		fprintf(stderr, "crypt: cannot generate key\n");
+		exit(1);
+	}
+	seed = 123;
+	for (i=0; i<13; i++)
+		seed = seed*buf[i] + i;
+	for(i=0;i<ROTORSZ;i++) {
+		t1[i] = i;
+		deck[i] = i;
+	}
+	for(i=0;i<ROTORSZ;i++) {
+		seed = 5*seed + buf[i%13];
+		random = seed % 65521;
+		k = ROTORSZ-1 - i;
+		ic = (random&MASK)%(k+1);
+		random >>= 8;
+		temp = t1[k];
+		t1[k] = t1[ic];
+		t1[ic] = temp;
+		if(t3[k]!=0) continue;
+		ic = (random&MASK) % k;
+		while(t3[ic]!=0) ic = (ic+1) % k;
+		t3[k] = ic;
+		t3[ic] = k;
+	}
+	for(i=0;i<ROTORSZ;i++)
+		t2[t1[i]&MASK] = i;
+}
+
+main(argc, argv)
+char *argv[];
+{
+	register i, n1, n2, nr1, nr2;
+	int secureflg = 0;
+
+	if (argc > 1 && argv[1][0] == '-' && argv[1][1] == 's') {
+		argc--;
+		argv++;
+		secureflg = 1;
+	}
+	if (argc != 2){
+		setup(getpass("Enter key:"));
+	}
+	else
+		setup(argv[1]);
+	n1 = 0;
+	n2 = 0;
+	nr2 = 0;
+
+	while((i=getchar()) >=0) {
+		if (secureflg) {
+			nr1 = deck[n1]&MASK;
+			nr2 = deck[nr1]&MASK;
+		} else {
+			nr1 = n1;
+		}
+		i = t2[(t3[(t1[(i+nr1)&MASK]+nr2)&MASK]-nr2)&MASK]-nr1;
+		putchar(i);
+		n1++;
+		if(n1==ROTORSZ) {
+			n1 = 0;
+			n2++;
+			if(n2==ROTORSZ) n2 = 0;
+			if (secureflg) {
+				shuffle(deck);
+			} else {
+				nr2 = n2;
+			}
+		}
+	}
+}
+
+shuffle(deck)
+	char deck[];
+{
+	int i, ic, k, temp;
+	unsigned random;
+	static long seed = 123;
+
+	for(i=0;i<ROTORSZ;i++) {
+		seed = 5*seed + buf[i%13];
+		random = seed % 65521;
+		k = ROTORSZ-1 - i;
+		ic = (random&MASK)%(k+1);
+		temp = deck[k];
+		deck[k] = deck[ic];
+		deck[ic] = temp;
+	}
+}

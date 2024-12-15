@@ -1,0 +1,1 @@
+/*____________________________________________________________________________	PGPPlugTypes.h		Copyright (C) 1997 Network Associates, Inc. and its affiliates.	All rights reserved.			$Id: PGPPlugTypes.h,v 1.1.18.1 1998/11/12 03:06:42 heller Exp $____________________________________________________________________________*/#pragma oncetypedef long	PluginError;

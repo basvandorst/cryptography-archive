@@ -1,0 +1,96 @@
+#
+# unix/config/post.in
+#
+# Copyright (C) 1996,1997 Network Associates Inc. and affiliated companies.
+# All rights reserved.
+#
+# $Id: post.in,v 1.9 1999/05/17 20:09:24 heller Exp $
+#
+
+# Recursively perform operations on all POSTSUBDIRS
+all check clean depend headers install very-clean testapp::
+	@if test 'x$(POSTSUBDIRS)' != x; then \
+		for i in $(POSTSUBDIRS)''; do \
+			echo Making $@ in $(SUB)$$i ; \
+			(cd $$i; $(MAKE) $(MFLAGS) SUB=$(SUB)$$i/ $@) \
+					|| exit 1; \
+		done ; \
+	else :; \
+	fi
+
+# Install all PRIVHDRS into the private interface directory
+headers::
+	@if test 'x$(PRIVHDRS)' != x; then \
+		echo Linking $(PRIVHDRS) to private include ; \
+		for i in $(PRIVHDRS)''; do \
+			if $(TEST_L) $(privinc)/$$i; then \
+				$(RM) $(privinc)/$$i ; \
+			else :; \
+			fi ; \
+			if test ! -f $(privinc)/$$i; then \
+				$(LN_S) $(privincback)$(dir_suffix)/$$i $(privinc) ; \
+			else :; \
+			fi ; \
+		done ; \
+	else :; \
+	fi
+
+# Remove appropriate things
+clean do-clean::
+	$(RM) *.o *~ *.bak core DONE LIBDONE
+
+# Remove clean and PROG  as well
+very-clean:: do-clean
+	$(RM) $(PROG)
+
+depend::
+	@if test 'x$(SRCS)' != x; then \
+		sed -e '/^#### DO NOT DELETE this line$$/,$$d' Makefile > \
+				Makefile.new ; \
+		echo "#### DO NOT DELETE this line" >> Makefile.new ; \
+		$(DEPEND) $(CFLAGS) $(SRCS) >> Makefile.new ; \
+		$(MV) Makefile.new Makefile ; \
+	else :; \
+	fi
+
+# Compile library objects, OBJS.  Requires OBJS and "all:: DONE"
+DONE:: $(OBJS)
+	@if test x'$(OBJS)' = x && test -r $@; then :; \
+	else \
+		(set -x; echo $(OBJS) > $@) \
+	fi
+
+# Compile subdirectories files, $(LIBDONE) into LIBDONE.  Requires
+# LIBDONE and "all:: LIBDONE"
+LIBDONE: $(LIBDONE)
+	@$(RM) $@
+	@for i in $(LIBDONE); do \
+		j=`echo $$i | sed -e 's;^[^/]*$$;.;' -e 's;/[^/]*$$;;'` ; \
+		sed -e "s;^\([^ ]\);$$j/\1;" -e "s; \([^ ]\); $$j/\1;g" \
+		< $$i >> $@; \
+	done
+
+# Compile program, PROG
+$(PROG): $(OBJS) $(DEPLIBS) $(LOCALDEPLIBS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LIBS) $(LOCALLIBS)
+
+# Build a library, LIBTARGET, based on LIBTDEPS.  Requires LIBTDEPS be
+# Build a library, LIBTARGET, based on LIBTDEPS.  Requires LIBTDEPS be
+# either DONE or LIBDONE
+$(LIBTARGET):	$(LIBTDEPS)
+	$(RM) $@
+	$(AR) $(ARFLAGS) $@ `cat $(LIBTDEPS)`
+	$(RANLIB) $@
+
+# GNU make feature: If there's an error building a target, remove it
+.DELETE_ON_ERROR: 
+
+#
+# Editor settings
+#
+# Local Variables:
+# tab-width: 4
+# End:
+# vi: ts=4 sw=4
+# vim: si
+#

@@ -1,0 +1,60 @@
+##
+##  Makefile for constructing the PGP command line package
+##
+##
+##  PKGMK     - command string for making the package
+##  PKG{NAME} - nominal name of the package
+##  PSTAMP    - date of product creation
+##
+
+# This version is the actual version of the package, 
+# it goes in the pkginfo file
+PKGVERSION = 6.5.1i
+
+DEST    := $(shell /bin/pwd)
+PSTAMP  := $(shell /bin/date)
+
+#
+# Packages to build
+# Add variables here if more packages are to be
+# built.
+#
+PKGNAME=       PGPcmdln
+
+#
+# These are the prototype files used to build
+# each package listed above.  The pkginfo files
+# are also included in each prototype file.
+#
+PROTOFILE=     pgpcmdln.proto
+
+#
+# Assign proper arguments to pkgmk and pgktrans.
+#
+PKGMK   = /bin/pkgmk -o -d $(DEST) -p "$(PSTAMP)"
+PKGTR   = /bin/pkgtrans -s $(DEST)
+
+#
+#  Works start here...
+#
+
+all: packages
+
+packages:	FORCE
+		$(PKGMK) -f $(PROTOFILE) PKG=$(PKGNAME) $(PKGNAME)
+
+		$(PKGTR) pgpcmdln-sol-$(PKGVERSION) $(PKGNAME)
+
+#
+# Wipe out the packages only
+#
+clean:
+		$(RM) -rf $(DEST)/$(PKGNAME)
+
+
+FORCE:
+#------------------------------------------------------
+#
+#  End of Makefile file for PGP 6.5.1i Solaris
+#
+#------------------------------------------------------

@@ -1,0 +1,73 @@
+All the files in these directories are for Watcom C.
+
+To rebuild these DLLs using Microsoft VC++, rewrite the Makefile and ignore
+the local.h file.
+
+If you do not have Perl, examine the description in the .pl file that explains
+how to use non-microsoft compilers to create the DLLs as required by Java.
+
+
+
+An example using the DES module
+===============================
+
+In the DES.java file, there are two native functions:
+
+   private native void set_ks( byte userKey[] );
+   private native void do_des( byte in[], int in_offset, byte out[], int out_offset, boolean encrypt );
+
+The command
+
+	javah -stubs java.crypt.DES
+
+will create a file called java_crypt_DES.c with two stub functions:
+
+   stack_item * Java_java_crypt_DES_set_0005fks_stub( stack_item *_P_,struct execenv *_EE_ );
+   stack_item * Java_java_crypt_DES_do_0005fdes_stub( stack_item *_P_,struct execenv *_EE_ );
+
+These two function are the only two that must be exported from the DLL,
+and they must be exported as:
+
+   Java_java_crypt_DES_set_0005fks_stub
+and
+   Java_java_crypt_DES_do_0005fdes_stub
+
+
+The command
+
+	javah java.crypt.DES
+
+will create a file called java_crypt_DES.h with two functions:
+
+	void java_crypt_DES_set_ks( struct Hjava_crypt_DES *, HArrayOfByte * );
+	void java_crypt_DES_do_des( struct Hjava_crypt_DES *, HArrayOfByte *, long, HArrayOfByte *, long, long);
+
+These do not require exporting, since only java_crypt_DES.c references them.
+These are the two functions that implement the DES algorithm.  The previous
+stub functions simply convert the java structures and pointers to and from
+ones useable by this C code.
+
+
+Some notes on compiling native code
+===================================
+
+Only the functions in the <classname>.c file are exported, and must not
+contain underscores.
+
+
+Under GNU gcc, there seems to be a problem exporting the symbols without
+a leading underscore, preventing Java from linking with the Dlls.
+
+For example, GNU gcc always exports
+
+		 Java_java_crypt_DES_do_0005fdes_stub 
+	 as 
+		 _Java_java_crypt_DES_do_0005fdes_stub
+
+(whereas with Watcom, that statement:
+		 #pragma aux default "*"
+sets the export names to be the name without any alteration).
+
+lf anyone has had any success using GNU gcc to develop Java DLLs under
+Windows NT, then please drop me a line (Mike.Wynn@systemics.com) explaing
+how it is done - thanks!

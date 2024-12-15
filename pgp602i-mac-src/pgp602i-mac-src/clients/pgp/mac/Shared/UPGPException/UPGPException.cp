@@ -1,0 +1,1 @@
+/*____________________________________________________________________________	Copyright (C) 1997 Network Associates, Inc. and its affiliates.	All rights reserved.				$Id: UPGPException.cp,v 1.1.20.1 1998/11/12 03:10:56 heller Exp $____________________________________________________________________________*/#ifdef Debug_ThrowStr15	gErrorString;#endif

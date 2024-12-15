@@ -1,0 +1,1308 @@
+
+       DDDDDDDDDDDDD        EEEEEEEEEEEEEEEEE           AAAAAAA
+       DDD        DDD       EE                         AA     AA
+       DDD         DDD      EE                        AA       AA
+       DDD          DDD     EE                       AA         AA
+       DDD           DDD    EE                      AA           AA
+       DDD             DD   EE                     AA             AA
+       DDD             DD   EE                    AA               AA
+       DDD             DD   EEEEEEEEEEE          AAAAAAAAAAAAAAAAAAAAA
+       DDD             DD   EE                   AA                 AA
+       DDD           DDD    EE                   AA                 AA
+       DDD          DDD     EE                   AA                 AA
+       DDD         DDD      EE                   AA                 AA
+       DDD        DDD       EE                   AA                 AA
+       DDDDDDDDDDDDD        EEEEEEEEEEEEEEEEE    AA                 AA
+
+ ---------------------------------------------------------------------------
+		Technical Summary and Design Specifications
+	       of the Data Encryption Algorithm Version 2.0x
+				   AND
+			  Peer Review Package
+
+
+     Copyright (c) by Nellis du Maurier Information Security, 1993, 1994
+			     All Rights Reserved
+
+	    Published and printed in Canada, February 14th, 1994
+
+
+
+
+
+			      LEGAL NOTICE
+
+       Permission is hereby granted to distribute this electronic
+       publication free-of-charge either as a Bulletin Board
+       archive file to be represented as (DEA2TECH.ZIP) or
+       posted as a message on any Information Service Network such
+       as the INTERNET, USENET and others provided that no alterations, 
+       additions, deletions, or modifications of any kind are made.
+
+       This electronic publication and the technical design specifications
+       contained herein are the rightful property of the publisher:
+
+		  Nellis du Maurier Information Security
+		  33 Isabella St., Ste. 1005
+		  Toronto, Ontario M4Y 2P7
+		  Canada
+
+	USE OF THE INFORMATION PROVIDED HEREIN FOR ANY PURPOSE OTHER
+	THAN EVALUATION OF THE DATA ENCRYPTION ALGORITHM (DEA 2.0x)
+	AND / OR UNAUTHORIZED DUPLICATION / PUBLICATION STRICTLY PROHIBITED.
+
+
+
+				   PURPOSE
+
+	This document is provided by Nellis du Maurier Information Security
+	to facilitate peer review and critique of the DEA Release v.2.00.
+	In this manner, present registered DEA licensees and future customers
+	of the DEA can gain access to the internal design specifications of
+	the algorithm, and can have access to an open forum of discussion by
+	a large group of professional cryptographers around the globe.
+	This document describes in detail the various components and
+	operations of the DEA v.2.00 cryptographic design.  Also provided
+	are several programs which allow the DEA one-time-pads to created,
+	studied, and statistically analyzed in 'vitro'.  The DEA program
+	shipped in this archive is 100% compatible with the current Share-
+	ware release versions 2.00 and 2.01.  The files within this archive
+	are to be known collectively as THE DEA PEER REVIEW PACKAGE (PRP).
+
+
+			     PROGRAM AVAILABILITY
+
+	The DEA Release v.2.00 was made available through the Shareware
+	marketing principles in November 1993.  It is available from many
+	Bulletin Board Systems (BBS's) under the archive identified as:
+	DEA201.ZIP.  The latest version may also be obtained directly from
+	Nellis du Maurier Information Security.  Please refer to the archive
+	for pricing information, or contact the publisher in writing,
+	directly.  The current version of the DEA is 2.01 (Shareware), and
+	version 2.02 for registered licensees.
+
+	If you would like to evaluate the DEA, but find it difficult to
+	locate the archive, Nellis du Maurier will ship the current Share-
+	ware version free of charge upon written request.
+
+
+
+			   PROGRAMS IN THIS PACKAGE
+
+	This package provides four (4) executable programs named LDIV.EXE,
+	LDIV-S.EXE, ADNGRAMC.EXE, and DEA-STAT.EXE along with their 'C'
+	language source codes for Microsoft QuickC 2.5.  These programs
+	are provided so that the random one-time-pads can be statistically
+	analyzed, and to allow the DEA's operation to be studied in detail.
+
+
+			     ELECTRONIC MAIL
+
+	To be implemented soon.  In the United States of America, please
+	contact via the Internet E-Mail service:
+
+		 Mr. Philip B. Latimer
+
+	Internet address: latimer@halcyon.com
+
+____________________________________________________________________________
+
+
+			 DEA 2.0x TECHNICAL SUMMARY
+			 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+			    Table of Contents
+			    -----------------
+
+
+  1   The Key Data Structure and Definition
+
+  2   The Seven Individual Key Components
+
+  3   The One-Time-Pads and Functions
+
+  4   The Cipher Function Definition, Oscillation Controls, and Ciphertext
+
+  5   The DEA Data Size
+
+  6   Two Important Considerations
+
+  7   A Clever Way of Attacking the DEA?
+
+  8   DEA Glossary of Terms
+
+  9   Simulating The DEA 2.0x One-Time-Pads and Collecting Statistics
+
+ 10   Programs in The DEA Peer Review Package and Their Purpose
+
+
+
+
+
+
+				    1
+		   -------------------------------------
+	       *** The Key Data Structure and Definition ***
+		   -------------------------------------
+
+
+The DEA defines 10 file blocks, each with its own 18-byte semi-interdependent
+key.
+
+The DEA defines ten (10) semi-interdependent keys, which collectively 
+are known as 'the key'.  Further, each file block defines an associated 
+eighteen (18) byte key.  Thus, the entire key is one hundred and eighty 
+(180) bytes in length.  Below is the 'C' language key structure template
+defining the key elements per file block, the asterisks indicate actual
+key data.
+
+static struct file_block_key    /*  THE DEA KEY STRUCTURE PER FILE BLOCK  */
+{
+  unsigned long int file_block,
+                    prime_divisor,   *  4 bytes
+                    numerator,       *  4 bytes
+                    IF_divisor,      *  4 bytes
+                    IF_numerator;    *  4 bytes
+  unsigned char     SABV,            *  1 byte
+                    select_digit,    *  1 byte
+		    start_vector;    - reserved for DEA ACV 2.00, presently 0
+};
+
+
+Note that certain data fields in the structure below are constant, while
+some are variable, as shown next:
+
+static struct file_block_key    /*  THE DEA KEY STRUCTURE PER FILE BLOCK  */
+{
+	unsigned long int file_block,      V ariable   /* file size / 10  */
+	prime_divisor,                     C onstant
+	numerator,                         C onstant
+	IF_divisor,                        V ariable
+	IF_numerator;                      V ariable
+	unsigned char SABV,                C onstant
+	select_digit,                      C onstant
+	start_vector;                      V ariable
+};
+
+
+In ASCII text, the DEA key may look as follows:
+
+
+           Numerator  /  Divisor 
+0) Real = [     23637 /     78691 ]     /* File block 1 key  */
+    SDF = [     34247 /    345713 ]
+    SABV = 200    SD = 3
+
+1) Real = [     53977 /    123373 ]     /* File block 2 key  */
+    SDF = [     45362 /     98753 ]
+    SABV =  97    SD = 8
+
+2) Real = [      4137 /     99523 ]     /* File block 3 key  */
+    SDF = [    234841 /    675674 ]
+    SABV =   0    SD = 1
+
+3) Real = [     10100 /     34543 ]     /* File block 4 key  */
+    SDF = [      5843 /     15235 ]
+    SABV =  31    SD = 7
+
+4) Real = [    523177 /    769259 ]
+    SDF = [     72801 /    856794 ]     /* File block 5 key  */
+    SABV = 251    SD = 4
+
+5) Real = [     38821 /    117809 ]
+    SDF = [      1009 /     86726 ]     /* File block 6 key  */
+    SABV = 117    SD = 2
+
+6) Real = [      4215 /    415627 ]
+    SDF = [    339117 /   2345594 ]     /* File block 7 key  */
+    SABV = 179    SD = 0
+
+7) Real = [    178640 /   7456289 ]
+    SDF = [     11127 /    534007 ]     /* File block 8 key  */
+    SABV =  71    SD = 5
+
+8) Real = [      7117 /     23833 ]
+    SDF = [    590162 /    724913 ]     /* File block 9 key  */
+    SABV =  17    SD = 6
+
+9) Real = [     10994 /    257053 ]
+    SDF = [    111331 /   7046927 ]     /* File block 10 key  */
+    SABV = 113    SD = 9
+
+
+The DEA divides the input file into ten (10) equal segments, the last 
+segment is adjusted, if necessary.  For example, a file of 1,009 bytes 
+is divided as follows:
+                       file block # 1 size: 100 bytes
+                                    2       100
+                                    3       100
+                                    4       100
+                                    5       100
+                                    6       100
+                                    7       100
+                                    8       100
+                                    9       100
+                                   10       109
+
+There is no padding as with the DES.  Therefore, for each of the ten 
+file blocks shown above, there is an associated 18 byte key, and 
+altogether we must have a key defined for each of the ten file blocks as 
+in the 'C' statement:
+
+	      struct file_block_key DEA_KEYS[10];
+
+The decision to have ten interdependent keys was arbitrary; one could also
+have twenty interdependent keys, and therefore, there would be twenty file
+blocks, each with a structure as above and forming one unique key structure.
+This is also the primary manner in which the DEA's keys are extended to meet
+future brute-force attack threats.  If the above 'C' statement were to
+become:
+	      struct file_block_key DEA_KEYS[20];
+
+then we have a DEA key of length 360 bytes, or 2,880 bits, with twenty file
+blocks.  Note that such key modification results in incompatibilities across
+different DEA versions as as result of different Cascade Synchronizations.
+
+
+
+
+				     2
+		     -----------------------------------
+		 *** The Seven Individual Key Components ***
+		     -----------------------------------
+
+
+Now, let us explain the seven (7) individual key components:
+
+			    file_block,
+			    prime_divisor,
+			    numerator,
+			    IF_divisor,
+			    IF_numerator;
+			    SABV,
+			    select_digit
+
+
+
+
+
+1.    file_block
+      ----------
+
+If the given file to be operated upon is 1,000 bytes, then each of the ten
+file blocks will be of size: 1,000 / 10 = 100 bytes.  This is done for all
+files the algorithm processes.  If the file size is not a multiple of 
+ten, then the last file block is adjusted.  File block size is very important
+to the DEA in that it maintains the correct Cascade Synchronization for the
+algorithm; that is, the key must be correctly synchronized to the file size,
+if decryption is to be successful.  The term 'file block' is not to be
+confused with a general class of ciphers operating on a 'block' basis.
+
+
+
+2.    prime_divisor
+      -------------
+
+This is currently defined as a 4-byte value which must be larger than 20,000.
+The value must be a prime number.  The reasoning behind this is to allow for
+the selection of rational fractions which generate a non-reflexive decimal
+period larger than the maximum one-time-pad size of 20,000 digits.  This
+prime number is one in which the resulting decimal period from the fraction
+1 / prime_divisor is equal to (prime_divisor - 1) AND larger than 20,000.
+Note that all fractions are not used directly; they are first translated into
+their corresponding decimal period.  In the DEA ASCII textual key shown
+above, the 'Real' fraction is the one using the prime_divisor.
+
+While 32 bits (4 bytes) are reserved for the prime divisors, and IF divisors,
+their size is not rigorously enforced.  Thus, the user my choose 20,047 or
+10,006,721 as the prime divisor.  The former will require 2 bytes of storage,
+and the latter will require 4 bytes.  Smaller prime divisors and IF divisors
+will result in a key having more zero bits.  In the case of 20,047, there
+will be 16 off bits.  However, in either case, the DEA key will be 180 bytes
+or 1,440 bits in total valid length.
+
+
+
+3.    numerator
+      ---------
+
+The numerator, in all further discussions here, is used in the traditional
+sense.  It must be any positive value less than the divisor.  It is also
+represented as a maximum 4-byte or 32 bit value.
+
+
+4.    IF_divisor, IF_numerator
+      ------------------------
+
+These entities are both scaled to 32 bits each, and correspond to NORMAL
+fractions, with the same proviso as above, except that the IF_divisor can be
+classified as ANY type of whole number; even, odd, or prime.  These fractions
+are to be understood in the standard manner.  The usage of these fractions
+will be described later.  They do however, have an integral role in the DEA
+Cascade Synchronization.  It is these two values which are altered during
+the course of the algorithm.  They are also responsible for the
+semi-interdependence of all the file block keys.
+
+
+
+5.    SABV
+      ----
+
+This stands for Stop Address Byte Value, and represents a directed
+transformation of the plaintext byte to the SABV via the agency of the Cipher
+Function.  This is not to be confused with ciphertext; the SABV is a type of
+marker - it indicates to the DEA Cipher Function when the Data Input Set has
+been satisfied.  This is a 1-byte, or 8 bit value and oscillates on a byte
+by byte basis as defined in the DEA key.  For example, in the ASCII key given
+above, the SABV values would oscillate as follows:
+
+ 200, 97, 0, 31, 251, 117, 179, 71, 17, 113... 200, 97, 0, 31, 251, 117, 179,
+ 71, 17, 113...
+
+Thus all byte multiples of [1], 11, 21, 31, 41... will use SABV 200.
+The SABV values are constants; they do not change during algorithm execution.
+
+
+
+
+6.    select_digit
+      ------------
+
+The select digit, or SD, is also a 1 byte value which used by the Cipher
+Function to maintain Cascade Synchronization 'tracking'.  There can be ten
+(10) distinct select digits: zero through nine corresponding to the number
+of distinct digits composing the decimal period.  The Select Digit Frame
+Summations used in the Cipher Function derive from a particular select digit.
+Obviously, other select digits will generate different SDFS values with the
+same one-time-pad.
+
+
+
+7.    start_vector
+      ------------
+
+This value defines which of the ten (10) file block sub-keys initializes the
+DEA Cascade Synchronization.  It is a 1-byte value and is defined as zero
+for the DEA Release v.2.0x.  The DEA ACV 2.00 will allow this value to be
+selected by the user.  There are ten different values which can be chosen,
+zero through nine.  If the DEA key was composed of twenty (20) inter-
+dependent file blocks, then this would allow for twenty different start
+vectors to be selected, 0-19.
+
+
+
+
+
+				       3
+			-------------------------------
+		    *** The One-Time-Pads and Functions ***
+			-------------------------------
+
+
+The one-time-pads of the DEA are fixed at a maximum length of 20,000 
+digits.  This is sufficient to allow the Cipher Function to satisfy the 
+plaintext-to-SABV directed conversion in 99% of cases.  As noted elsewhere,
+there is nothing to be gained by expanding the one-time-pad size.
+
+The one-time-pads are composed of the digits zero through nine, as in a 
+normal decimal period resulting from the decimal expansion of a rational 
+fraction [n] with a prime divisor [d].  Example: 1/7, 1/13, 4/19, 6/31, etc.
+
+The digits of the one-time-pad can be thought of as a permutation (P) of
+n-number of digits, the actual total permutations possible in these
+one-time-pads is defined as:
+
+			    P = 10^otp_size
+
+where 'otp size' is the size (in digits) of the one-time-pad
+
+Thus, a one-time-pad size of 6,500 digits will yield:
+
+			    P = 10^6,500
+
+The DEA's maximum one-time-pad 'permutation space' is therefore:
+
+			    10^20,000
+
+Note that the /OTP value (16-bits) defining the user selected one-time-pad
+length also serves as key information.
+
+The one-time-pads serve to provide the DEA Cipher Function with a source of
+entropy.  If the average /OTP setting is, for example, 6,500 then the total
+permutation space is 10^6,500 which can provide an enormous amount of Select
+Digit Frame Summation value diversity.
+
+
+The DEA defines two functions which create the one-time-pads.  They are:
+
+		      1  void write_decimal_period(  )
+		      2  void write_random_decimal_period(  )
+
+The first function, write_decimal_period always writes a 'natural' decimal
+period.  That is, it converts the 'prime_divisor' and 'numerator' pair
+(the rational fraction) defined for file block [n] into its corresponding
+decimal period.  Observe that the rational fraction may generate a decimal
+period of far more than 20,000 digits, in which case, only the first 20,000
+are used by the DEA, if the one-time-pad is set to 20,000.  This function is
+called only once at the beginning of processing for each file block.  Thus,
+in total, this function is called a maximum of ten (10) times for an entire
+DEA process.  Below is shown the 'C' language code which writes the
+'natural' decimal period.
+
+   XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+void write_decimal_period( unsigned long int numer,
+			   unsigned long int divisor,
+			   unsigned long int length  )
+{
+			auto unsigned long int residue;
+			register unsigned char Q;  /* the Quotient       */
+			register unsigned int j;   /* length of the OTP  */
+
+
+      residue = ( numer % divisor ) * 10;
+			      /* necessary as numer is less than divisor  */
+
+      for ( j = 0; j < otp; j++ )
+      {
+	 Q = residue / divisor; /*  'Q' is the Quotient, zero to, nine     */
+	 (*W) = Q;              /* write 'Q' into array via pointer 'W'    */
+	 residue %= divisor;    /* compute residue after division, modulus */
+	 residue *= 10;         /* multiply residue by ten                 */
+	 W++;                   /* increment the Write pointer             */
+      }
+
+      W -= j;      /*  reset pointer to beginning of array so that what    */
+		   /*  has just been written, will become read later       */
+
+}
+
+       Note: the above code fragment can be compiled and used like a long
+	     manual division algorithm.
+	     This is the algorithm contained in the executable file
+	     LDIV.EXE.
+   XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+The DEA now calls the function write_random_decimal_period.  This is
+actually best thought of as a mod-mult-random-feed algorithm.  The function
+is called with the IF_divisor and IF_numerator pairs for the current file
+block.  Before the IF_divisor and IF_numerator pairs are used in this
+function, they are to be considered as an ordinary fraction, the only
+condition being that the IF_divisor is greater than the IF_numerator.  The
+IF_divisor need not be prime, even, or odd, but it must be one of these
+three number types.
+
+The long division of IF_numerator by IF_divisor now proceeds, but every time
+a residue is computed, a corresponding Quotient is added from the previously
+computed decimal period.  By 'corresponding', we mean that, for example, the
+twentieth residue computed by the function write_random_decimal_period is
+aligned with the twentieth Quotient produced by the function
+write_decimal_period.  This is only for strict alignment purposes, as the
+length of the previous decimal period defines how long the random, or
+'unnatural' decimal period can be.  There is no relationship between the
+residue-Quotient alignment.  The addition of the Quotient digit affects
+both the residue and the divisor.
+
+As mentioned, the function write_decimal_period is called only once per
+file block.  During file block processing, the previous decimal period, or
+one-time-pad, is used as the supply of Quotients into a IF_numerator and
+IF_divisor pair of the next file block key even though processing continues
+with the current file block.
+
+Below we show the function write_random_decimal_period in 'C':
+
+   XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+void write_random_decimal_period( unsigned long int numer,
+				  unsigned long int divisor )
+{
+		    auto unsigned long int residue;
+		    register unsigned int j;
+		    register unsigned char Q;
+
+
+	residue = ( numer % divisor ) * 10;
+			       /* necessary as numer is less than divisor  */
+
+	for ( j = 0; j < otp; j++ ) /* length of the desired one-time-pad  */
+	{
+	   Q = residue / divisor; /*  'Q' is the Quotient, zero to, nine   */
+	   *W = Q;                /* write 'Q' into array via pointer 'W'  */
+
+	   residue %= divisor;  /* compute residue after division, modulus */
+	   residue += (*R);     /* ADD RANDOM FEED DIGIT via pointer 'R'   */
+	   residue *= 10;       /* multiply residue by ten                 */
+	   divisor += (*R);     /* ADD RANDOM FEED TO DIVISOR ALSO         */
+
+	   W++;                 /* increment both write & read pointers    */
+	   R++;
+
+	}
+
+	W -= j;      /*  reset pointers to BASE (beginning) addresses  */
+	R -= j;      /*  so that Cipher Function can use the new OTP   */
+
+}
+
+    Notes:
+	   W and R are char pointers to a char array of 20,000 digits
+	   the expression (*R) evaluates to a value between 0 and 9
+
+       *** this function is called as many times as there are bytes remaining
+	   for the file block.
+	   This algorithm is contained in the executable file LDIV-S.EXE.
+
+   XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+It is important to observe that decimal periods created by this function
+have very many moduli, in contrast to the single modulus of the function
+write_decimal_period, therefore, such 'unnatural' decimal periods cannot
+exist in the real mathematical world as distinct entities represented by
+a rational fraction [n]/[d].
+
+Let's now review the production of decimal periods with some concrete
+numbers.
+
+Given the following key data for file block number one (1):
+
+		Numerator  /  Divisor
+		---------------------
+   Real =      [     23637 /     78691 ]
+   Imaginary = [     34247 /    345713 ]
+
+
+The function write_decimal_period( ) is called to create the decimal period
+for the 'real' fraction [ 23637 /  78691 ].  Following this, the function
+write_random_decimal_period( ) is called with the paramaters:
+
+			 [ 34247 / 345713 ]
+
+The decimal period for this fraction begins its life just as it would in
+normal arithmetic.  However, random digits resulting from the call to
+write_decimal_period( )  (digits now stored in array), are ADDED to the
+residues for the fraction [ 34247 / 345713 ] and the divisor 345713 in this
+function.  The resulting decimal period now no longer corresponds to the
+modulus 345713, but to [n] number of moduli, depending on the length of the
+decimal period derived from the call to write_decimal_period( ).
+Note that all residues have a random 'addend' of 0 to 9, and the divisor
+(the modulus) is simultaneously affected by such random addition.
+The 'unnatural' decimal period just created is actually composed of [n]
+number of fractions ([n] being the length of the OTP).  Note that the
+random addend need not be strictly limited to only ten (10) possible
+variations.  It is possible to modify the mod-mult-random-feed (MMRF) to
+accept values that range from 0 to 255.  Thus, the MMRF could be chained
+to [n] number of pseudorandom number generators (PRNG's) and controlled by
+another PRNG selector.  Negative numbers could also be employed; currently,
+the MMRF of the DEA employs only positive numbers, and as such, the
+IF_divisor continually 'grows' in magnitude with each completed round.
+
+
+
+
+
+				    4
+    --------------------------------------------------------------------
+*** The Cipher Function Definition, Oscillation Controls, and Ciphertext ***
+    --------------------------------------------------------------------
+
+
+
+The design criteria of the Cipher Function were the following:
+
+ 1  no relationships between input and output of any kind
+ 2  do not output eight scrambled bits per eight input bits
+ 3  structure the ciphertext such that it represents information
+     useful only to the DEA algorithm
+ 4  output algorithm dependent information which is completely
+     unsuitable for traditional cryptanalysis
+ 5  allow for no methods of short-cut attacks
+ 6  do not use the key directly
+
+
+
+
+The DEA v.2.00 Cipher Function's operational task is fairly simple to
+describe.  A DEA Cipher Function Data Input Set consists of the following:
+
+	    1. 8-bit plaintext byte
+	 *  2. 8-bit Select Digit (one of the digits 0-9)
+	 *  3. 8-bit Stop Address Byte Value (one of the values 0-255)
+	    4. permutation (P): P = 10^otp_size
+
+    * = C.F. control variables
+
+The Cipher Function output is, typically, a 16-bit integer ranging from
+1,301 to 20,000.  Ciphertext may also be represented as a valid 8-bit
+(0-255) value in the form of a 16-bit integer, where no less than eight (8)
+bits are guaranteed to be zero (a bulk byte).
+
+	 .......................................................
+	 .        DEA v.2.00 Cipher Function Definition        .
+	 .     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^     .
+	 .                                                     .
+	 .    Given a plaintext 8 bit value, perform an        .
+	 .    unknown number of XOR operations upon this       .
+	 .    value by using the Select Digit Frame Summation  .
+	 .    values derived from the one-time-pad, and        .
+	 .    [attempt], via random XORing, to convert the     .
+	 .    plaintext byte into the Stop Address Byte Value. .
+	 .                                                     .
+	 .    When this directed conversion has been           .
+	 .    successful, record the current position of the   .
+	 .    last Select Digit read by the Cipher Function    .
+	 .    represented as a linear address from the         .
+	 .    beginning of the current one-time-pad and write  .
+	 .    this value in 16-bit format as ciphertext.       .
+	 .    We say the Data Input set has been satisfied.    .
+	 .......................................................
+
+
+The Cipher Function has five (5) operational tasks to perform.  They are:
+
+  1. maintain correct value of the 'oscillator' variable to reference
+     the proper file block key data fields, and coordinate all other
+     required algorithm procedures and functions
+
+  2. gather the select digit frame summation values with the current
+     file block key fields from the current one-time-pad
+
+  3. 'join' the 8-bit plaintext byte with the SDFS's extracted from the
+     current one-time-pad via exclusive ORing (XOR)
+
+  4. check if the CF-DIS has been satisfied when the plaintext byte equals
+     the SABV of the current file block SABV data field
+
+  5. write the ciphertext: OTP address of the satisfied CF-DIS
+
+
+The DEA Cipher Function does not always succeed in transforming the plaintext
+into the SABV as in the design criteria.  In these cases, the ciphertext is
+a scrambled 8-bit byte which has undergone an unknown number of XOR's with
+Select Digit Frame Summation values derived from the one-time-pad, and
+controlled by the current value of the oscillator and, therefore,
+DEA_KEYS[oscillator].select_digit, and DEA_KEYS[oscillator].SABV.  In this
+scenario, the DEA behaves like a Vernam cipher, except that the number of
+exclusive OR's (XOR's) is not known, and the SDFS values are not known.
+Any DEA Stop Address less than 257 represents an 8-bit ASCII value, and
+stored as a 16-bit integer.
+
+There is nothing mysterious with regard to how the DEA Cipher Function
+operates, in stark contrast to the DES, or other one-way function block
+ciphers of IBM.  Stated simply, accurately, and precisely, the DEA Cipher
+Function is responsible for procuring its source of entropy (randomness)
+from the current one-time-pad and using these random values to conduct a
+series of random XOR's upon the plaintext byte in the hope of producing the
+8-bit SABV defined in the current file block key.  The SDFS values so
+derived are controlled by the Select Digit (SD) specified in the current
+file block key.  Thus, the C.F. obtains the SDFS values and XOR's them
+with the plaintext byte leading to a series of XOR operations which are
+terminated when the XOR'ed result is equivalent to that specified by the
+SABV field of the current file block key, or when no further SDFS values
+can be obtained because of an end-of-tape condition.
+
+
+Here, now, is the English pseudocode for the DEA encryption function.  First,
+we define a few variables to assist us with the explanation:
+
+file_block_count;        /* responsible for processing all ten
+			    (10) file blocks
+			 */
+
+plaintext                /* the plaintext byte, also stores the XOR results */
+stop_address             /* the ciphertext  */
+sdfs                     /* for select digit frame summation  */
+total_sum                /* sums up all sdfs values  */
+oscillator               /* 0,1,2,3,4,5,6,7,8,9,0,1,2,3...    */
+
+
+1.
+   We define the loop counter to process all ten (10) file blocks such as:
+
+   for ( file_block_count = 0; file_block_count < 10; file_block_count++ )
+
+2.
+   For each of the ten file blocks, we call the function:
+
+	write_decimal_period(  ) only once.
+
+   The paramaters to this function are:
+
+		 DEA_KEYS[file_block_count].numerator
+		 DEA_KEYS[file_block_count].prime_divisor
+		 length
+
+   The variable 'length' is equal to the one-time-pad setting.
+   Now, the actual numerical values, to make the example more explicit, are
+   from the ASCII DEA key equivalent given above, so that we have:
+
+		 DEA_KEYS[file_block_count].23637
+		 DEA_KEYS[file_block_count].78691
+		 length
+
+   'length' is still not defined, so we shall arbitrarily define it at 3,000.
+
+   Now, the function write_decimal_period(  ) will be called with the
+   paramaters:
+
+	     write_decimal_period( 23637, 78691, 3000 );
+
+   And it will create a true decimal expansion of the prime divisor 78691
+   with the numerator 23637.  Only 3,000 digits of the decimal expansion
+   will be created.  These 3,000 digits will serve as the random feed to the
+   function write_random_decimal_period(  ).
+
+   For a DEA process using the above ASCII key, there will be ten (10) calls
+   in total to the function write_decimal_period(  ), so that we have:
+
+
+		 DEA_KEYS[0].23637
+		 DEA_KEYS[0].78691      /* File block 0 key  */
+
+		 DEA_KEYS[1].53977
+		 DEA_KEYS[1].123373
+
+		 DEA_KEYS[2].4137
+		 DEA_KEYS[2].99523
+
+		 DEA_KEYS[3].10100
+		 DEA_KEYS[3].34543      /* File block 3 key  */
+
+		 DEA_KEYS[4].523177
+		 DEA_KEYS[4].769259
+
+		 DEA_KEYS[5].38821
+		 DEA_KEYS[5].117809
+
+		 DEA_KEYS[6].4215
+		 DEA_KEYS[6].415627
+
+		 DEA_KEYS[7].178640
+		 DEA_KEYS[7].7456289    /* File block 7 key  */
+
+		 DEA_KEYS[8].7117
+		 DEA_KEYS[8].23883
+
+		 DEA_KEYS[9].10994
+		 DEA_KEYS[9].257053
+
+
+3.
+   Now that we have a 'real' decimal period, we want to use it to create a
+   random decimal period which the Cipher Function can use.  We now call
+   the function:
+
+		 write_random_decimal_period(  )
+
+   Before we examine the formal function call, we must have a look at the
+   variable named 'oscillator'.  This variable is set to zero (0) at the
+   start of any DEA cipher operation.  It oscillates on a very predictable
+   basis of 0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0...
+   The function write_random_decimal_period(  ) is always called in this
+   particular sequence.  Since there are ten file blocks, we allow the
+   variable 'oscillator' to oscillate from zero to nine.  In this manner,
+   there can never be two consequitive calls to
+   write_random_decimal_period(  ) with exactly the same key information.
+   The next byte will always use the next file block key data, which is
+   controlled by the variable 'oscillator' as shown below:
+
+	 write_random_decimal_period(
+				      DEA_KEYS[oscillator].IF_numerator,
+				      DEA_KEYS[oscillator].IF_divisor
+				    );
+
+   If we now look at the above ASCII key equivalent for file block zero (0),
+   we have the following data:
+
+										Numerator  /  Divisor
+   0) Real = [     23637 /     78691 ]
+       SDF = [     34247 /    345713 ]
+      SABV = 200    SD = 3
+
+     write_random_decimal_period(  ) is now called with the paramaters:
+
+     write_random_decimal_period( 34247, 345713 );
+
+     We use the data: SDF = [     34247 /    345713 ].
+
+   The result of this call will be a 3,000 digit random decimal period which
+   the DEA Cipher Function will use to compute SDFS values.
+
+
+4.
+    To avoid any possible early decimal period similarity between the
+    'natural' and the random decimal period, we move to the 300th quotient of
+    the new random decimal period.  This implies that there are 3000 - 300 =
+    2,700 digits useable for the Cipher Function.  Three hundred digits of
+    any decimal period are always skipped in this manner by the Cipher
+    Function.
+
+
+5.
+    Before The Cipher Function begins its work, it sets the following
+    control variables to zero:
+
+    sdfs = 0            /* the Select Digit Frame Summation  */
+    total_sum = 0       /* Total sum of all valid sdfs values up until
+			   the Cipher Function Data Input Set was
+			   satisfied                         */
+
+
+6.
+    Read the plaintext byte from disk and store it in the variable named
+    'plaintext'.
+
+
+7.
+    The variable 'oscillator' changes to (oscillator + 1) only after the
+    conversion of plaintext byte to Stop Address, or scarambled byte.  The
+    Cipher Function now uses the following data from DEA file block key zero:
+
+	    SABV = 200
+	      SD = 3
+
+    'oscillator' = 0;
+
+    Beginning from position 300 of the random decimal period, the Cipher
+    Function scans for the Select Digit '3' in the one-time-pad.  The C.F.
+    reads every quotient digit (0 - 9) from the start position and adds it to
+    the variable 'sdfs'.  'sdfs' is the Select Digit Frame Summation values
+    derived from the OTP by adding together the quotient digits.  The SDFS
+    is defined when the last quotient digit added to 'sdfs' satisfies the
+    'C' language statement:
+
+    if ( (scan_digit == DEA_KEYS[oscillator].select_digit )  AND
+	   ( select_digit_frame_summation > 10 ) )
+
+    If the above statement yields true, then the variable 'sdfs' can be used
+    to XOR sdfs with the variable 'plaintext'.  If 'plaintext' represents
+    the ASCII letter 'A' (ASCII 65), then 65 is XOR'ed with the variable
+    'sdfs' in the hope of producing the desired transformation to the SABV,
+    which file block zero (0) (DEA_KEYS[0].SABV) defines as 200.  The XOR'ed
+    result is stored in the variable 'plaintext', although 'plaintext' does
+    not now store the original byte.
+
+    After any such XOR operation, the variable quantity defined by 'sdfs' is
+    added to the variable 'total_sum', and 'sdfs' is reset to zero (0).
+
+    If, after the XOR operation, variable 'plaintext' is indeed transformed
+    into the SABV, then the variable 'stop_address' is loaded with the current
+    address of the for loop counter responsible for reading the 3,000 digits
+    of the one-time-pad in our example.  'stop_address' now contains just
+    enough information to allow the original plaintext byte to be recovered,
+    with the help of the key.  We have now enciphered one (1) plaintext byte
+    by transforming it to a 16-bit data entity known as a Stop Address.
+
+    Note that very many such select digit frame summation values are
+    necessary to make the conversion from plaintext to SABV.  With shorter
+    one-time-pads the conversion is not always successful, resulting in
+    eight (8) scrambled bits written as 16 bits of ciphertext, eight of
+    which are bulk.
+
+
+
+8.
+    After a successful plaintext conversion, or when the Cipher Function reads
+    all possible SDFS values without converting the plaintext to the SABV,
+    the following will take place:
+
+     DEA_KEYS[oscillator].IF_numerator += total_sum;
+     DEA_KEYS[oscillator].IF_divisor += total_sum;
+     total_sum = 0;
+
+    Remember that the oscillator variable oscillates on a very predictable
+    basis, but because the above two (2) structure fields are variable, we
+    never need to worry about using the same piece of key information twice.
+    That is to say, the data transmitted to write_random_decimal_period(  )
+    when 'oscillator' is 0, and when 'oscillator' is around-and-back again
+    to zero will be guaranteed to be different.
+
+	 write_random_decimal_period(
+				      DEA_KEYS[oscillator].IF_numerator,
+				      DEA_KEYS[oscillator].IF_divisor
+				    );
+
+    Here, the IF_numerator, and IF_divisor derive from the key, but the
+    second time that 'oscillator' reaches zero, these values will be
+    different, resulting from the Cascade Synchronization, which results
+    from the Cipher Function's Select Digit Frame Summation values, which
+    can finally be traced back to the Select Digit which the Cipher Function
+    was actively 'tracking' at that time.
+
+
+9.
+    After a DEA 16-bit cipher word is written, the variable 'oscillator' is
+    incremented, unless (oscillator + 1 > 9), in which case it is reset to
+    zero (0).
+
+
+10.
+    We now come to the task of processing the remaining bytes of file block
+    zero (0).  Here, the DEA employs a nested loop, and the overall process
+    given above is repeated.  The reader can continue from paragraph # 3.
+    The 'oscillator' variable is now one (1), and the call to the function
+
+	    void write_random_decimal_period(  )
+
+    will obtain its IF_ data from DEA_KEYS[1], instead of DEA_KEYS[0], which
+    it had up to here.  Note that the function write_decimal_period(  )  is
+    not called until all bytes of the current file block have been processed.
+    The random quotient feed is now obtained from the last call to function
+    write_random_decimal_period(  ) which is stored in an array.  Thus, the
+    previous random decimal period is used as the Quotient feed for the next
+    call to the function write_random_decimal_period(  ).
+
+
+
+
+
+    To illustrate more clearly what File Block key information is used with
+    what plaintext byte, we make a list as follows:
+
+    plaintext byte     'oscillator' value     File Block Key   Struct. Ref.
+    --------------     ------------------     --------------   ------------
+  .-->     0                     0                   0         DEA_KEYS[0].->
+ +.   .--> 1                     1                   1         DEA_KEYS[1].->
+10. + .    2 <--.                2                   2         DEA_KEYS[2].->
+  . 10.  ....   .  ---                  ---                 ---
+  .   .    9    . +              9                   9         DEA_KEYS[9].->
+  .-->.   10    .10              0                   0         DEA_KEYS[0].->
+      .-->11    .                1                   1         DEA_KEYS[1].->
+	  12 <---                2                   2         DEA_KEYS[2].->
+	  .                      .                   .
+	  .                      .                   .
+	  .                      .                   .
+
+    The 'oscillator' value is not reset in any manner when we process the
+    next File Block; if oscillator + 1 > 9, it is reset to zero, otherwise,
+    one (1) is added; 'oscillator' is independent of file blocks.
+
+ If we assign the stream of plaintext bytes a numerical tag, then we can
+ quickly determine which file block key data was used with a particular
+ plaintext byte (or Stop Address).  If there are 4,651 bytes to process,
+ then we number all bytes from 1 to 4651.  If we now want to know which
+ file block key was used with byte number 2077, we invoke the formula below:
+
+	    logical byte number  MOD 10  = File Block key - 1
+
+    substituting,
+			2077 MODulo 10 = 7  (bytes numbered 0 to ... 4650)
+			7 - 1 = 6   (bytes numbered 1 to ... 4651)
+
+    therefore, the 2077th plaintext byte referenced File Block key number
+	       six (6), and thus the variable 'oscillator' was 6.  And,
+	       from the DEA ASCII key, we can see a part of the CF-DIS:
+
+	       6) Real = [      4215 /    415627 ]
+		  SABV = 179    SD = 0
+
+ If the bytes are numbered 1 to ?, subtract 1; if numbered 0 to ?, just
+ accept the MOD result as is.
+
+
+
+
+
+				     5
+			     -----------------
+			 *** The DEA Data Size ***
+			     -----------------
+
+
+Currently, the data sizes for the DEA's fractions are limited to 32 bits
+(4 bytes), and this is somewhat limiting in terms of numerical range.  For
+the standard PC computing platform, 32 bits are adequate.  However, for
+large mainframe systems, 64 bit integer data sizes may be possible, thus
+greatly expanding numerical range, and key size.  Thus, apart from expanding
+the file block keys, larger logical machine words represent another way in
+which the DEA can be modified and improved.
+
+
+
+
+
+				      6
+			----------------------------
+		    *** Two Important Considerations ***
+			----------------------------
+
+
+In evaluating the DEA, two very critical questions arise:
+
+  1. what is / are the relationship(s) between the last random decimal
+     period and the next random decimal period?
+
+  2. how random are the Select Digit Frame Summation values?
+
+Note that effective evaluation of the DEA's source of entropy is best
+focused upon the Select Digit Frame Summation values; any conclusions
+drawn here will also reflect upon the decimal periods themselves, and by
+implication, to the Sadowsky Series which generated the decimal expansion.
+
+We shall not attempt to answer these question here, as this document is
+intended to document the DEA and allow others to settle these issues.
+
+
+
+
+
+				    7
+		    ----------------------------------
+		*** A Clever Way of Attacking the DEA? ***
+		    ----------------------------------
+
+
+The file block key interdependance of the DEA takes hold after the initial
+ten (10) bytes have been processed; there is no Cascade Synchronization
+during this 10-byte 'latency period' even though the Cascade Synchronization
+is taking effect (building up).  The term "round" in the DEA refers to
+ten (10) bytes -- the number of file block keys.  After a round, we are
+back again to the same file block key, regardless of where we started.
+
+Taking advantage of the above fact, we know that the first DEA ciphertext
+Stop Address [n] resulted from the eighteen (18) byte key shown below:
+
+	   Numerator  /  Divisor
+   Real = [     23637 /     78691 ]                File block key 1
+    SDF = [     34247 /    345713 ]
+    SABV = 200    SD = 3
+
+Further, the Stop Address [n] will resolve to any of 255 possible values,
+only one (1) of which will be the correct plaintext byte.  Since the key
+for file block 1 is 18 bytes long, we have 255^18 which is 2.5714 times
+larger than one (1) full DES key.  Apart from the task of determining with
+certainty the true identity of File Block 1, there is no method available
+to allow an attacker to VERIFY the correctness of one (1) byte.  If the
+same file block key was used for the entire data file, there would, of
+course, be only 255^18 key possibilities.  But, the second plaintext byte
+is enciphered with:
+
+   Real = [     53977 /    123373 ]                File block key 2
+    SDF = [     45362 /     98753 ]
+    SABV =  97    SD = 8
+
+which represents another 18 byte independent key.  Observe that either
+forward analysis (plaintext + H_key -> SA), or backward analysis
+(SA + H_key -> plaintext) will fail as a result of Multiple Solutions.
+
+Thus, because of the verification problems, an attacker may not lead a
+successful fil block key bootstrap attack against the DEA.  If such a
+strategy is pursued, it actually becomes a full brute-force attack.
+
+The single most critical element in the DEA design is synchronicity, and
+this fact expresses itself profoundly in the Stop Address ciphertext,
+without which all DEA ciphertext becomes completely meaningless.
+
+
+
+					8
+			      ---------------------
+			  *** DEA Glossary of Terms ***
+			      ---------------------
+
+Select Digit (SD)
+
+		 One of the digits zero through nine (0-9) used by the DEA
+		 Cipher Function to gather Frame Summation Values used by
+		 the Cipher Function to XOR with the plaintext.
+
+Select Digit Frame Summation (SDFS)
+
+		 The additive sum of [n] number of digits of the decimal
+		 expansion from position A to position B of the next
+		 occurrance of the same Select Digit.  For example, given
+		 the decimal expansion:
+		 12345678901234567890..., the Select Digit Frame Summation
+		 for Select Digit 4 is: 1+2+3+4 = 10, starting from position
+		 one (1).  Starting from position five (5), we have:
+		 5+6+7+8+9+0+1+2+3+4 = 45.  Both SDFS's are valid for the
+		 purpose of definition.  Note that we must have a Select
+		 Digit, and a starting address to properly define a SDFS
+		 with a given decimal expansion.  The source of entropy
+		 in the DEA system.
+
+Imaginary Fraction (IF), (SDF)
+
+		 Simply a notationally defined fraction of the form N/D,
+		 where N is less than D.  An example is: 175/1033.  Defined
+		 as a variable entity in the DEA key structure, and used
+		 by the function write_random_decimal_period(  ).  Also
+		 provides the DEA Cascade Synchronization.  The IF
+		 initializes the Sadowsky Fractional Series, and is mainly
+		 responsible for the Cascade Synchronization.  The original
+		 defined fraction, for example 175/1033, 'grows' during
+		 execution of the algorithm.
+
+Stop Address
+
+		 The one-time-pad marker employed by the DEA to indicate
+		 where the Cipher Function Data Input Set was satisfied.
+		 More specifically, the address where the last quotient
+		 digit was read by the Cipher Function which allowed the
+		 Cipher Function to satisfy the directed conversion of
+		 plaintext byte to the Stop Address Byte Value.
+		 Valid Stop Addresses can range from 1,300 to 20,000 and
+		 represent DEA ciphertext in 16-bit format.
+
+Stop Address Byte Value (SABV)
+
+		 The values defined in the key, and used by the Cipher
+		 Function to control the random XORing of SDFS values
+		 with the plaintext.  Indicates when the Data Input Set
+		 has been satisfied.  The plaintext value must be converted
+		 to the SABV via random SDFS XORing.  Not to be confused
+		 with ciphertext.
+
+One-Time-Pad (OTP)
+
+		 Referring to a series of quotients derived from any means
+		 of a specific length.  For example, an OTP fragment of PI,
+		 SQR(2), etc.  Generally, a series of numbers of minimum
+		 and maximum magnitude where the length is defined at some
+		 specific value.  In the DEA, the terms OTP, decimal
+		 period(s), and decimal expansion are used interchangeably.
+
+Cascade Synchronization
+
+		 Referring to the continous synchronization between the
+		 ten (10) file block keys and the one-time-pad used by
+		 the Cipher Function.  Can be severly disrupted by
+		 corrupt ciphertext, bad SD frame summation, invalid
+		 key, or altered file size.  A single C.S. failure
+		 anywhere is sufficient to render all remaining
+		 ciphertext untranslational.  This term is to be
+		 understood in a dynamic sense; it is not a static
+		 entity.  The most important element here is the
+		 correct mapping of the 10^OTP_size one-time-pad
+		 to the correct Stop Address, which is provided by all
+		 ten (10) semi-interdependent file block keys.
+
+
+
+
+
+				    9
+		  -------------------------------------
+	      *** Simulating The DEA 2.0x One-Time-Pads ***
+		  -------------------------------------
+
+
+This text describes how the programs LDIV.EXE and LDIV-S.EXE can be used to
+gain the following information:
+
+  1. construct one-time-pads exactly like the DEA 2.0x program
+  2. simulate the one-time-pad operation of the DEA 2.0x
+  3. collect statistical data for analysis of OTP randomness
+  4. study the Sadowsky Fraction Series, which is the backbone of the DEA
+  5. examine the Select Digit Frame Summation Values for randomness
+  6. look for any recognizable Select Digit patterns in Visual Watch Mode
+
+The program LDIV.EXE performs a long manual division of numerator divided
+by PRIME denominator.  The numerator is the smaller of the two values.  This
+program generates a true (natural) decimal period, just as that produced by
+a calculator, except that LDIV.EXE can generate the complete decimal
+expansion.  Since all natural decimal periods are cyclical (some, in more
+ways than one!), this program checks for this repeat.  If the numerator
+was 'X' when the program was started, then after generating 'Y' digits of the
+decimal period, there will be (without fail for PRIME denominators) a
+remainder 'X' (the numerator), which signals that the entire decimal
+expansion has been generated and is about to recycle.  We use the terms
+'decimal period' and 'decimal expansion' to relate to them being derived
+from Rational Fractions.  We shall not concern ourselves here with
+irrationals, or transendentals.
+
+LDIV.EXE can be used to mask off all other digits of the decimal period,
+except the Select Digit (or, Watch Digit), so that you may be able to
+observe any patterns which may display themselves.  This is called the
+Visual Watch Mode.  You may also view all the decimal digits as they are
+computed, if you wish; to do this, enter a minus '-' in front of the Select
+Digit, for example, enter -5 to view the decimal expansion without any
+replacement symbols.
+
+The output file of program LDIV.EXE is the file DIGITS.RF.  The file is
+important to the program LDIV-S.EXE.  DIGITS.RF contains the entire
+decimal expansion of N/PD.  The statistics shown by LDIV.EXE are only for
+the file DIGITS.RF.  The program LDIV-S.EXE always generates the file
+DIGITS.RFR, and the statistics it generates only apply to the data in the
+file DIGITS.RFR.
+
+
+The program LDIV-S.EXE performs a long manual division of numerator divided
+by denominator, except that random quotient digits (noise) is added to
+both the residue and the divisor.  The divisor can 'grow' to large sums,
+but if all quotient digits in the file DIGITS.RF add up to, say, 50,000,
+then the last denominator will be:
+
+		  last_residue / (initial divisor + 50000)
+
+There is no one modulus for the imaginary decimal expansion of the defined
+fraction IN/ID, but a large number of moduli, defined by the length of the
+file DIGITS.RF which contains the 'random noise addends'.
+
+LDIV-S.EXE opens a number of statistics files making execution much slower
+than LDIV.EXE.  These file are:
+
+   DIGITS.RFR       - contains the random (unnatural) decimal, or OTP
+  ADDRESS.DGT       - contains the logical addresses for the Select
+		      Digit [n], if selected
+ FRACTION.RFR       - the Sadowsky Fraction Series which led to the
+		      random decimal period in file DIGITS.RFR
+
+
+As stated, a 'real' decimal period is used as the random Quotient feed for
+the function write_random_decimal_period(  ) for each of the ten (10) file
+blocks.  For the remainder of bytes of the file block, the last decimal
+period (unnatural) is used as the feed to the next call to the function
+write_random_decimal_period(  ).  Thus, to simulate the DEA's OTP, we need
+to run the LDIV.EXE program to first create the real decimal period.  Next,
+we run LDIV-S.EXE to create a random decimal period from the real one
+resulting in the file DIGITS.RFR.  Now, we must rename DIGITS.RFR to
+DIGITS.RF and run LDIV-S.EXE again with a different IF fraction to obtain
+the next unnatural decimal period.
+
+The ADNGRAMC.EXE program is specifically designed to work with decimal
+period files.  The input file must be named DIGITS.RF, and although the
+LDIV-S.EXE program's output file is named DIGITS.RFR, you will need to
+rename it to DIGITS.RF to allow ADNGRAMC to compile a list of select digit
+address distance n-grams.  For each select digit, this program computes
+the frequency of a specific SD..........SD address gap.
+You must enter valid information from the DDDDDDDDD page 2 statistics
+column of either the LDIV, or LDIV-S program.
+
+
+
+
+				     10
+	 ---------------------------------------------------------
+     *** Programs in The DEA Peer Review Package and Their Purpose ***
+	 ---------------------------------------------------------
+
+
+
+DEA-STAT.EXE
+		 - encrypt and decrypt files with the DEA 2.00 algorithm
+		   and generate the file STAT.LOG during encryption for
+		   statistical analysis and study
+
+LDIV.EXE         - generate a natural decimal expansion of the rational
+		   fraction [n]/[pd] where pd is both prime and larger
+		   than [n]
+		   * Microsoft QuickC 2.5 'C' source code included
+
+LDIV-S.EXE       - generate an artifical decimal period via the Sadowsky
+		   Defined Fraction [n]/[d] where [d] is larger than [n]
+		   * Microsoft QuickC 2.5 'C' source code included
+
+ADNGRAMC.EXE     - generate address-distance n-grams for all Select Digits
+		   Select_Digit [0-9] ... Address_Gap [0-MAD] ... <Frequency>
+		 * please make a note of the ten (10) numbers given in
+		   the DDDDDDDDD column of either the LDIV, or LDIV-S
+		   program
+		   MAD represents Maximum Address Differential -- the
+		   maximum address difference between two (2) same
+		   consequitive Select Digits
+
+............................................................................
+..............................END DOCUMENT..................................
+............................................................................
+

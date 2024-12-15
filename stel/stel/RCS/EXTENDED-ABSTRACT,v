@@ -1,0 +1,528 @@
+head	1.1;
+access;
+symbols;
+locks
+	vince:1.1; strict;
+comment	@# @;
+
+
+1.1
+date	95.05.01.10.47.31;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@safety
+@
+text
+@EXTENDED ABSTRACT
+
+
+
+
+
+		 	STEL: Secure TELnet
+
+
+
+		 	 David Vincenzetti
+
+			   Stefano Taino
+
+			  Fabio Bolognesi
+
+
+                {vince | taino | bolo}@@dsi.unimi.it
+
+
+
+		             CERT-IT
+	     Computer Emergency Response Team ITaliano
+		  Department of Computer Science
+		        University of Milan
+		              ITALY
+
+
+INTRODUCTION
+
+Stel stands for Secure TELnet. We started developing Stel,
+at the University of Milan, when we realized that eavesdropping
+was a very serious problem and we did not like the freeware solutions
+that were available at that time. It was about three years ago.
+Still, as far as we know, there are no really satisfying packages
+able to solve the line active and passing tapping problem, and to be
+simple enough to use and to maintain by the average system administrator.
+In fact, in our honest opinion, we believe that the actual security
+packages available on the Internet suffer from at least one of the
+following drawbacks:
+
+	- Not secure enough
+
+	- Too large and complicated to install
+
+	- Too complex to use and maintain
+
+	- Unable to scale well in a distributed environment
+
+	- Subject to severe export regulations, so not
+	  suitable for users outside the United States
+
+Stel is a simple package, and it is intended to act as a ``secure
+surrogate replacement'' for telnetd, rlogind, rcmd or rshd.
+
+Stel is not intended to be a de-facto standard to solve all problems
+about the insecurity of telnet and rlogin sessions; it is just a quick
+and agile tool to permit remote sessions in a pretty secure way, to
+make hacker's life harder.
+
+Stel is able to provide secure communications between the client and
+the server, and supports different authentications methods, in order
+to be as simple, flexible and convenient as possibile.
+
+Stel has several advantages in respect to other systems:
+
+	- It is very simple to install, use and maintain. There are
+	  very few configuration files and two executables only
+
+	- All data transmissions, any kind, are sent encrypted
+	  with a ``random'' session key
+	  
+	- There are three encryption algorithms available: DES,
+	  Triple DES and IDEA
+
+	- The method uses the Diffie Hellman algorithm to exchange
+	  session keys, and the DH modulus is reasonably sized
+	  compared with other packages (see [4])
+  
+	- Since the Diffie Hellman system is vulnerable to ``Man In
+	  The Middle'' attacks, the protocol has been strenghtened
+	  in order to make such an attack unfeasible (as described
+	  in [1])
+
+	- The method is able to provide mutual authentication
+
+	- The method is reasonably fast (it adds about a couple
+	  of seconds to a connection on a Sparcstation II class machine)
+	
+	- Upon establishing a secure channel, a variety of authentication
+	  methods are available: standard Unix passwords, S/Key and
+	  SecurID.  Even standard Unix passwords, being the communication
+	  channel encrypted, provide a reasonable level of security in
+	  respect to telnet and rlogin
+
+	- An optional skey daemon is included in the package. Skeyd
+	  makes it possible to centralize skey passwords in order to
+	  administer passwords in a single point
+	
+	- It is possible to control logins by checking IP address,
+	  authentication type, terminal name, user name,
+	  as described in [2]
+	
+	- Automatic killing of IP-OPTIONS is an option
+
+	- A built-in skey calculator is included in the escape (^]) menu.
+	  As a feature, skey can make use of a keypad file to make
+	  dictionary attacks unfeasible, an idea described in [3]
+	
+	- The software is freeware, and sources are freely available
+
+
+
+
+PRACTICAL EXAMPLES
+
+Stel is client / server based. The client is named
+``stel'', and it is intended to be directly run by users; the
+server is named ``steld'' and can be run as a standalone
+daemon by the superuser or be invoked by inetd.
+
+The purpose of stel is to provide the user a remote terminal
+session, very similar to a telnet or rlogin remote terminal
+session. The difference is, of course, that all the traffic
+between client and server is encrypted and that the resulting
+authentication is much stronger in respect to telnet or rlogin.
+
+In the following example the user connects with stel to
+idea.sec.dsi.unimi.it as root.  The authentication is performed
+using SecurID smart card, being root a registered SecurID user on idea.
+
+$ stel idea.sec.dsi.unimi.it -l root
+Connected to idea.sec.dsi.unimi.it.
+This session is using DES encryption for all data transmissions.
+Escape character is '^]'.
+SECURID authentication required
+Enter PASSCODE for root:
+Passcode accepted.
+******************
+ Welcome to idea!
+******************
+idea# hostname
+idea
+idea# date
+Fri Feb 10 17:33:27 MET 1995
+idea# exit
+Connection with idea.sec.dsi.unimi.it closed.
+$
+$
+
+So, the user has stel-connected to idea.sec.dsi.unimi.it and he/she
+has authenticated his/herself using SecurID. All data transmission
+are DES (optionally 3DES or IDEA) encrypted with a session key that
+is generated with the DH algorithm.
+
+When the user is authenticated he/she is provided with a very
+comprehensive set of environment variables that are inherited from the
+client, and all the terminal settings are inherited from the client as
+well.  For instance, since the DISPLAY, LINES and COLUMNS environment
+variables are inherited in the remote session, it is possible to
+remotely execute commands like these:
+
+	$ stel bar xterm -fn 10x20 -bg black -fg white
+
+	$ stel foo -l root vi /etc/rc
+
+	$ stel somesite -l joe "ps aux > /tmp/xx; vi /tmp/xx"
+
+In the following example the user ``verbosely'' connects to ghost as
+vince and specifies /bin/csh as the command to be executed. The
+authentication is performed using S/Key.
+
+$
+$ stel ghost -l vince -v /bin/csh
+Connected to ghost on port 10004.
+Diffie-Hellman modulo is 512 bits, secret exponent is 510 bits
+Exchanging keys with DH scheme (can be a lengthy process)...
+Shared encryption key: CAA90477A9CEA71D
+This session is using DES encryption for all data transmissions.
+Escape character is '^]'.
+S/KEY authentication required
+[s/key 93 cr520201]
+Response: drub barb nod ret coco outs
+SunOS Release 4.1.3_U1 (GENERIC) #1: Wed Oct 13 17:48:35 PDT 1993
+1 @@ghost ~ > hostname
+ghost
+2 @@ghost ~ > exit
+Connection with ghost closed.
+$
+$
+$
+
+In the last example, the user connects to idea again, and makes use of
+some features in the escape menu. In particular, he/she takes advantage
+of the built-int skey calculator to locally (and thus safely) generate
+the required skey response.
+
+$ stel idea
+Connected to idea.
+This session is using DES encryption for all data transmissions.
+Escape character is '^]'.
+S/KEY authentication required
+[s/key 92 cr520201]
+Response:   
+stel> ?
+Commands may be abbreviated. Commands are:
+
+close           close current connection
+skey            generate skey response
+status          display operating parameters
+escape          set escape character
+!               shell escape
+z               suspend telnet
+?               print help information
+stel> stat
+Connected to idea.
+Connection time: Fri Feb 10 19:07:42 1995
+Elapsed time: 0 hours, 0 minutes, 47 seconds
+User keystrokes: 1
+Session output is 62 bytes
+Escape character is '^]'
+DES data encryption is on
+stel> skey
+Reminder - Do not use this while logged in via telnet or dial-in.
+Enter seed: cr520201
+enter sequence number: 92
+enter secret password:
+use mjr DES mode [n] ? y
+CORD AD FLY FEAR NAY ARAB
+stel>
+CORD AD FLY FEAR NAY ARAB
+******************
+ Welcome to idea!
+******************
+idea% date
+Fri Feb 10 19:11:16 MET 1995
+idea% hostname
+idea
+idea%
+idea% exit
+Connection with idea closed.
+$
+
+
+
+
+THE PROTOCOL
+
+The protocol can be divided in different modules:
+
+1. Key exchange
+
+	Stel uses the Diffie Hellman exponential based method to
+	determine a common DES (or 3DES, IDEA) key. This completely
+	eliminates the need of keyservers to store and manage user keys,
+	and it greatly simplifies the overall system design.
+
+	The principles of the method are shown in figure 1.
+
+	Initially, client and server, whom we call X and Y being
+	the system symmetric, share a large prime number, P, and
+	a generator, that is 3. Then both parties choose a secret value,
+	making the choice at random among the set of values in modulo
+	P arithmetic. The length of the modulo can be 512 or 1024
+	bits. Moduli whose length is 192 bits (see [4]), or, in general,
+	smaller than 512 bits, are not secure.
+
+	In the next stage, X and Y form the exponentials 3**x and
+	3**y respectively, and they exchange the exponentials.
+	A malicious hacker could intercept  3**x and  3**y by
+	reading the network but, due the difficulty of computing
+	logarithms in finite fields (see [1], [4]), he/she can not
+	calculate the x, y values.
+
+	In the final stage, X and Y compute a further exponential.
+	In the case of X the received value 3**y is raised to
+	the power x. In the case of Y, the received value 3**x
+	is raised to the power y. As a consequence, both partecipants
+	now share the same secret, thus a session key is generated
+	by digesting the shared value through MD5.
+
+
+
+        |-----------|-------------|---------------|--------------|
+        |           | Known to X  |    Public     |  Known to Y  |
+        |           |             |               |              |
+        |-----------|-------------|---------------|--------------|
+        | Initially |      x      |     3, P      |     y        |
+        |           |             |               |              |
+        |-----------|-------------|---------------|--------------|
+        | Exchange  |    3**x  ------->------->------> 3**x      |
+        |           |             |               |              |
+        |           |    3**y  <------<-------<------- 3**y      |
+        |           |             |               |              |
+        |           |             |   3**x, 3**y  |              |
+        |-----------|-------------|---------------|--------------|
+        | Calculate |  (3**y)**x  |               |  (3**x)**y   |
+        |-----------|-------------|---------------|--------------|
+
+				Figure 1.
+
+
+2. Mutual authentication
+
+	The basic DH method is very clever, but it provides no
+	authentication between the two parties. A malicious hacker Z using
+	an active line tap could intercept and change all messages,
+	impersonating X to Y and Y to X. X and Y would not realize that;
+	for example, all messages sent by X to Y would be received by Z,
+	the Man In The Middle, decrypted by Z using X's session key,
+	encrypted again using Y's session key and sent to Y. X and Y
+	would share different session keys, yet not realizing
+	that because they have exchanged no information before
+	key exchange.
+
+	This is why we added a further step to the protocol in order to
+	make this attack ineffective.
+
+	If the user wishing to login on the remote system owns
+	a file named ``.stelsecret'' in his/her remote home directory
+	then the information K contained in the file is exploited to
+	perform mutual authentication between the parties. This is
+	an idea by Shamir and Rivest (see [1]).
+
+	X and Y construct authenticators AX and AY respectively.
+
+	Let AX be equal to E_K(X's session key) that is, X's session
+	key DES encrypted using K as encryption key.
+
+	Let AY be equal to E_K(E_K(Y's session key)), that is, Y's session
+	key encrypted twice using K as encryption key.
+
+	In case Z is actively tapping the communication line, the
+	sessions keys used by the parties are different. What is
+	more, Z does not know K.  The goal of this authentication step
+	is, in fact, to verify that the sessions keys are the same at
+	both sides.
+
+	AX and AY are divided in two halves. Let AX be equal
+	to AX1 followed by AX2 and AY be equal to AY1 followed
+	by AY2.
+
+	The exchange is by alternating messages: X sends its
+	first half AX1, Y replies with AY1, then X sends AX2
+	and Y sends AY2. It is not possible for Z to translate
+	AX1, knowing only half of the cipher block, yet Y will
+	not reply until he/she receives something, so Z is forced
+	to concoct a value AX in order to receive AY.
+	Y's reply cannot be traslated by Z and passed on at the
+	correct time to X, since Z only receives one half of AY
+	at a time. After the exchange is complete X and Y
+	can decrypt the authenticators AY and AX respectively and
+	find out if they are really sharing the same session key.
+	If not, they are being impersonated by Z.
+
+
+3. Encryption
+
+	All data transmitted from the client to the server
+	and vice versa is encrypted using the specified encryption
+	algorithm. The default algorithm is single DES, since it is
+	faster, but triple DES and IDEA are available as well.
+
+	DES is used in CBC mode when transmitting environment
+	variables or exchanging ``large numbers'' in the DH scheme.
+	CFB mode is used when making terminal I/O between client and
+	server. A ``random'' Initialization Variable is used, and the
+	source of randomness is, optionally, a garbage random string
+	which the user is required to type in.
+
+
+4. Environment settings
+	
+	A pseudo terminal is usually allocated by the server and
+	attached to the remote process; it is possible, however,
+	to specify that no pseudo terminal should be used in the
+	remote session, a la rshd.
+
+	Terminal settings are transmitted encrypted from the
+	client to the server, so it is not usually needed to
+	``stty'' parameters at all.
+	
+	Also, the following environment variables are sent to
+	the server, in order to make the session as friendly as
+	possibile.
+
+		TERM
+		DISPLAY
+		LINES
+		COLUMNS
+		WINDOWID
+		PATH
+
+	Prior to executing the user's shell or, eventually, the
+	commands specified by the remote user, the server sets the
+	following environment variables:
+
+		LOGNAME
+		USER
+		USERNAME
+		SHELL
+		MAIL
+
+
+5. User authentication
+
+	It has been said already that there are three authentication
+	methods available. These methods can be listed according
+	to their security, in decreasing order:
+
+		1. SecurID
+
+		2. S/Key
+
+		3. Unix passwords
+
+	The first method is very strong, since SecurID cards
+	are hardware one time password generators.
+	SecurID cards basically contains a DES chip and a clock.
+	The clock is synchronized with the computer's clock and 
+	all the user should do to authenticate him/herself is to read
+	the password on the LCD card's display and type it in
+	at the ``Enter PASSCODE'' prompt. The card, of course, cannot
+	be copied, analyzed or tampered with. This is probably the
+	strongest point in favour of SecurID cards and similar
+	authentication devices such as those marketed by Enigma Logic
+	or Digital Pathways.
+	It must be said that, despite stel considers SecurID the
+	preferred authentication method, it is understood that SecurID
+	cards are not largely widespread among the Internet community.
+	So using SecurID is not mandatory, and SecurID's support code
+	can be compiled out from stel completely.
+
+	S/Key is a very popular authentication system. It is able
+	to generate one time passwords based upon a seed. More 
+	details in [3]. S/Key is vulnerable to dictionary attacks,
+	so stel uses a modification of the S/Key system as proposed
+	by M. J. Ranum (see [3]). S/Key system is cheap and convenient,
+	yet it is not as secure as SecurID since one time passwords,
+	when printed on paper, can be stolen and xerox copied.
+
+	An optional skey daemon has been introduced, to administer
+	all skey passwords on a single host. We consider the
+	unability to centralize skey passwords as a major
+	need in the skey system. Skeyd severely simplifies skey
+	passwords management, since passwords are stored in a single
+	file and thus the passwords synchronization problem is
+	solved.
+	Data transmission between skey clients and the skey server
+	is DES-CBC encrypted. The encryption key is stored in
+	/etc/skeydconf, for all the clients and the server
+	(this is an approach common to other security systems,
+	i.e., Kerberos's kdb5_stash). 
+
+	Unix passwords are insecure, and are used by stel as the
+	last resort authentication method. Conventional passwords
+	can be stolen by reading the network and are vulnerable
+	to dictionary, cracking and replay attacks. However, stel never
+	sends Unix passwords unencrypted, so sniffing the
+	network is useless even if Unix password authentication is
+	used.
+
+	The three methods are checked in order. If the
+	user is SecurID registered, then SecurID authentication
+	is required. Else, if the user is S/Key registered he/she
+	is prompted with an S/Key challenge. If the user is not
+	S/Key registered, Unix passwords are used but, before that,
+	username is checked against a set of rules as defined in
+	/etc/skey.access.  It is possible, in fact, to permit /
+	deny Unix passwords using a wide range of criteria, as
+	described in [2]. Finally, when the user is authenticated,
+	his/her username is checked against /etc/login.access to
+	control login using similar criteria.
+
+	Stel verbosely reports errors and login failures via syslog.
+
+
+
+
+AVAILABILITY
+
+	Stel han been extensively tested on HPUX, SunOS and IRIX.
+
+	It is freely available as:
+
+	    ftp://ftp.dsi.unimi.it/pub/security/cert-it/stel.tar.gz
+
+
+
+	
+REFERENCES
+
+[1] ``Security for Computer Networks'', D.W. Davies and L. Price
+
+[2] The logdaemon package, by Wietse Venema <wietse@@wzv.win.tue.nl>,
+available as ftp://ftp.win.tue.nl/security/logdaemon-4.6.tar.gz
+
+[3] A modification of the S/key client program by Marcus J. Ranum
+<mjr@@tis.com> to make dictionary attacks infeasible. Available
+as ftp://ftp.tis.com/pub/firewalls/toolkit/patches/skey.tar.Z
+
+[4] ``Computation of Discrete Logarithms in Prime Fields'',
+Brian A. La Macchia and Adrew M. Odlyzko, available as
+ftp://ftp.dsi.unimi.it/pub/security/crypt/docs/field.ps
+@

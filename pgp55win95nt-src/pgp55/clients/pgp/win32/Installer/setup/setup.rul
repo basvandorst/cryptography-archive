@@ -1,0 +1,1648 @@
+// $Id: setup.rul,v 1.85.4.32.2.1 1997/12/10 21:46:04 colin Exp $
+//____________________________________________________________________________
+//	Copyright (C) 1997 Pretty Good Privacy, Inc.
+//	All rights reserved.
+//
+//
+//____________________________________________________________________________
+
+declare
+
+// Remember to do the following prior to compilation
+// SET INSTRC=C:\Progra~1\Instal~1\Instal~1\Dialogs\Include 
+
+#include "SDDIALOG.H"			
+#include "browse.h"
+	
+// Constant declarations.
+//***********
+#define TITLE		 				"PGP for Business Security, version 5.5.2"
+//no newline title
+#define TITLE2		 				"PGP for Business Security, version 5.5.2"
+#define ISADMIN                     "NULL"//TRUE or FALSE or NULL(for PP)
+#define PGP_FREEWARE		 		"FALSE"//TRUE or FALSE(now does nothing)
+#define IS_QUALCOMM_BUILD	 		"FALSE"//TRUE or FALSE
+#define PGP_NO_LICENSE_NUMBER		"FALSE"//TRUE or FALSE
+#define HAVE_MANUAL                 "FALSE"
+//***********
+
+
+#define SPACE_REQUIRED				104000        // Disk space in bytes.
+#define APP_NAME					"PGP 5.5"
+//REGAPP_NAME is need for registry entries APP_NAME messed things up
+#define REGAPP_NAME					"PGP55"
+#define PROGRAM_FOLDER_NAME			"PGP"
+#define COMPANY_FOLDER_NAME			"PGP"
+#define ADMIN_COMPANY_FOLDER_NAME   "PGP55Admin"
+#define APPBASE_PATH				"Program Files\\PGP\\PGP55"
+#define APPBASE_PATH_WIN32S			"Program Files\\PGP\\PGP55"
+#define COMPANY_NAME				"Pretty Good Privacy,Inc."
+#define PRODUCT_NAME				"PGP 5.5"
+#define PRODUCT_VERSION				"for Business Security ver. 5.5.2"
+#define DEINSTALL_KEY				"PGP55DeinstKey"
+#define UNINSTALL_NAME				"PGP 5.5"
+#define PRODUCT_KEY					"PGPKEYS.EXE"
+#define MB_OKCANCEL					1
+#define IDCANCEL					2
+#define MB_YESNO					4
+#define IDYES						6
+#define WM_CLOSE					0x0010 // defines the WM_CLOSE message.
+#define PGP_HIDDEN_WINDOW			"PGPtray_Hidden_Window"
+#define ALTBMP						"sidebar.bmp"
+#define ALTBMPB						"sidebarx.bmp"
+
+
+
+// Global variable declarations.
+
+STRING  szString, szDelimiterSet, svString, RegString, KeyVal, szPath;
+STRING  szPubKeyPath,szSecKeyPath,svReturnString;
+STRING  svDir,szMsg,szFileSet;
+STRING  svTarget,szProgram,szTemp,szAppPath;
+STRING  szQuestion,szLicenseFile,szLocalDB,szName,szCompany;
+STRING  szSerial,szEudoraPath,szEudoraFile,svResult,svEudoraVersion;
+STRING  szComponents;
+STRING  szTitle,svUninstLogFile,szFormat,szBmpPath;
+STRING  szVerBuffer[1536],szResultBuffer,szData;
+STRING  szFileName;
+STRING  szBmpName,EudoraPluginPath,svPubLoc,svPrivLoc;
+STRING	WhichPlugin, WhichEudoraPath;
+STRING	szPubRingPath[512];
+STRING	szPrivRingPath[512];
+STRING	szRandSeedPath[512];
+
+BOOL    bSpaceOk,bWinNT,bWin32s,bIsShellExplorer,bvOpt1,bvOpt2;
+BOOL    bFoundEudora,bPrvKeysFound,bPubKeysFound;
+BOOL    bVerValue,bVerInfo,KeyOnDiskOne,bCopyKeys, bUpdateNeeded;
+BOOL    bHaveManual;
+
+NUMBER  nResult,nvResult;
+NUMBER	nvPathLen,nSize,nHandle;
+NUMBER  nvType,nID_BITMAP,nDx,nDy, LockedFiles;
+
+HWND	hWnd;
+HWND	hwndIS3;
+HWND	hWnd1,hWnd2,hWnd3,hWnd4,hWnd5,hWnd6,hWnd7,hWnd8,hWnd9;
+LIST    listData, listID;
+
+LONG lSize,lData;
+
+POINTER ptr1,ptr2;
+
+typedef MYTYPE_PSZ
+begin
+STRING szString[24];
+end;
+
+//Function prototypes
+prototype	SetupScreen
+			();
+
+prototype	CheckRequirements
+			();
+
+prototype	BOOL pgpesrt32.pgpesrt
+			(HWND,STRING,STRING,STRING,STRING);
+
+prototype	LONG VERSION.GetFileVersionInfoSizeA
+			(STRING,BYREF LONG);
+
+prototype	BOOL VERSION.GetFileVersionInfoA
+			(STRING,LONG,LONG,BYREF STRING);
+
+prototype	BOOL VERSION.VerQueryValueA
+			(BYREF STRING,STRING,BYREF POINTER,BYREF NUMBER);
+
+prototype	INT PGP55cd.PGPcomdlgPreferences
+			(POINTER,HWND,INT);
+
+prototype	INT PGP55cd.PGPcomdlgSetUserInfo
+			(STRING,STRING,STRING);
+
+prototype	INT PGP55cd.PGPcomdlgGetSDKFilePaths
+			(STRING, INT, STRING, INT, STRING, INT);
+
+prototype	INT PGP55cd.PGPcomdlgSetSDKFilePaths
+			(STRING, STRING, STRING, INT);
+
+prototype   IsValidVersion ();
+
+//Declarations for Qualcomm code snippets
+prototype BOOL USER.PostWindowMessageA( HWND, NUMBER, NUMBER, NUMBER) ; // WIN API functions
+prototype NUMBER USER.RegisterWindowMessageA( BYREF STRING) ; // WIN API functions
+
+NUMBER WM_MAHAVISHNU ;
+STRING lpMahaVishnu ; 
+
+
+
+program
+
+StartHere:
+if (IS_QUALCOMM_BUILD = "TRUE") then
+	lpMahaVishnu = "mahavishnu"; 
+UseDLL("User.dll");
+	if (( WM_MAHAVISHNU = RegisterWindowMessageA( lpMahaVishnu)) = 0) then
+		// RegisterWindowMessage failed.......
+	endif ;
+UnUseDLL("User.dll");
+	// define custom exit handler
+	Handler ( EXIT, Exit_Handler) ;
+endif;
+
+
+	if (ISADMIN = "FALSE") then
+		szPath = SRCDIR;
+		szFileName = "PGPadmin.prf";
+		if (FindFile (szPath, szFileName, svResult) < 0 ) then
+			MessageBox ("This installation has not been configured by your"  +
+						" administrator.\n Please contact your administrator" +
+						" for more information.", INFORMATION);
+			if (IS_QUALCOMM_BUILD = "TRUE") then
+				PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+			endif;
+			exit;
+		endif;
+
+		szFileName = "pubring.pkr";
+		if (FindFile (szPath, szFileName, svResult) = 0 ) then
+			KeyOnDiskOne = TRUE;
+		endif;
+	endif;
+
+	GetSystemInfo(COLORS,nvResult,svResult);
+
+
+	// Define strings to build an alternate bitmap expression.
+	szFormat  = ";1;1;0,128,128;0,128,128";
+
+	if (nvResult < 257) then
+		szBmpPath = "@" + SUPPORTDIR ^ ALTBMP + szFormat;
+	else
+		szBmpPath = "@" + SUPPORTDIR ^ ALTBMPB + szFormat;
+	endif;
+
+	//Set the alternate bitmap for the AskText dialog box.
+ 
+ 	DialogSetInfo
+	(DLG_INFO_ALTIMAGE,szBmpPath,TRUE);
+
+
+	// Set installation info.,which is required for registry entries.
+	InstallationInfo
+	(COMPANY_NAME,PRODUCT_NAME,PRODUCT_VERSION,PRODUCT_KEY);
+
+	// Set up the installation screen.
+	SetupScreen
+	();
+
+	Enable
+	(DIALOGCACHE);
+
+ 
+// Create a Welcome dialog.
+WelcomeDlg:
+
+	Disable
+	(BACKBUTTON);
+
+	Welcome
+	(APP_NAME + " Installation Program",0);
+
+	Enable
+	(BACKBUTTON);
+
+	// Test target system for proper configuration.
+	CheckRequirements
+	();
+
+// Display the License Agreement     
+DispAgree:
+
+	szTitle = APP_NAME + " Software License Agreement";
+	szMsg = "Please read the following license agreement. Use " +
+			"the scroll bar to view\nthe rest of this agreement.";
+	szQuestion = "Do you accept all the terms of the preceding license " +
+				 "agreement?  If so,\npress the Yes push button. " +
+				 "If you select No, Setup will close.";
+
+   	szLicenseFile = SUPPORTDIR ^ "LICENSE.TXT";
+
+	if (SdLicense(szTitle,szMsg,szQuestion,szLicenseFile) = BACK) then
+
+		goto WelcomeDlg;
+
+	endif;
+
+
+	//Before we go any further we need to ensure  
+	//that the user does not have Eudora running.
+
+SdShowMsg ("Searching for running applications.", TRUE);
+
+// kill pgptray.exe if possible
+hWnd = FindWindow(PGP_HIDDEN_WINDOW,"");
+if (hWnd > 0) then
+	SendMessage(hWnd,WM_CLOSE,0,0);
+endif;
+Delay(5);
+
+hWnd1 = FindWindow(PGP_HIDDEN_WINDOW,"");
+if (hWnd1 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPtray Running");
+	MessageBox ("For install to continue PGPtray must not be running.\n"+
+	"Please shut down PGPtray and start install again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+//ENSURE NO PLUGINS\DLL's ARE IN USE
+if (IS_QUALCOMM_BUILD = "FALSE") then
+	hWnd2 = FindWindow("Microsoft Exchange 4.0 Viewer","");
+	if (hWnd2 != NULL) then
+		SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Exchange Running");
+		MessageBox ("For install to continue Microsoft Exchange must not be" +
+		" running.\nPlease shut down Microsoft Exchange and start install" +
+		" again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+	endif;
+endif;
+
+//No exchange or outlook  in FREEWARE so these apps. can be running
+if (IS_QUALCOMM_BUILD = "FALSE") then
+	hWnd3 = FindWindow("Microsoft Exchange 5.0 Viewer","");
+	if (hWnd3 != NULL) then
+		SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Exchange Running");
+		MessageBox ("For install to continue Microsoft Exchange must not be" +
+		" running.\nPlease shut down Microsoft Exchange and start install" +
+		" again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+	exit;
+endif;
+
+hWnd4 = FindWindow("rctrl_renwnd32","");
+if (hWnd4!= NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Microsoft Outlook Running");
+	MessageBox ("For install to continue Microsoft Outlook must not be" +
+	" running.\nPlease shut down Microsoft Outlook and start install" +
+	" again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+endif;
+
+hWnd5 = FindWindow("EudoraMainWindow","");
+if (hWnd5 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Eudora Running");
+	MessageBox ("For install to continue Eudora must not be running.\n"+
+	"Please shut down Eudora and start install again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+hWnd6 = FindWindow("PGPAdminWizardClass","");
+if (hWnd6 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"Admin. Wizard Running");
+	MessageBox ("For install to continue the admin wizard must not be" +
+	" running.\nPlease shut down the admin. wizard and start install" +
+	" again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+hWnd7 = FindWindow("PGPkeysMainWinClass","");
+if (hWnd7 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPkeys Running");
+	MessageBox ("For install to continue PGPkeys must not be running.\n"+
+	"Please shut down PGPkeys and start install again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+hWnd8 = FindWindow("PGPtools","");
+if (hWnd8 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPtools Running");
+	MessageBox ("For install to continue PGPtools must not be running.\n"+
+	"Please shut down PGPtools and start install again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+hWnd9 = FindWindow("PGPlog","");
+if (hWnd9 != NULL) then
+	SetDialogTitle (DLG_MSG_INFORMATION,"PGPLog Running");
+	MessageBox ("For install to continue PGPLog must not be running.\n"+
+	"Please shut down PGPLog and start install again.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+    exit;
+endif;
+
+
+//AT THIS POINT ALL FILES SHOULD BE FREE
+SdShowMsg ("Searching for running applications.", FALSE);
+
+LockedFiles = 0;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGPsdk.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGPsdkKS.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGPsdkKeyServer.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGP55km.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGP55cd.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGP55rd.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGP55sc.dll") = TRUE) then
+	LockedFiles = 1;
+endif;	
+if (Is (FILE_LOCKED, WINSYSDIR ^ "PGP55mn.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (Is (FILE_LOCKED, WINSYSDIR ^ "pgpExch.dll") = TRUE) then
+	LockedFiles = 1;
+endif;
+if (LockedFiles = 1) then
+	MessageBox ("Setup has found existing locked PGP files on your system." +
+				" Please\nuninstall previous PGP versions and reboot your" +
+				" machine before\nrunning this setup.",INFORMATION);
+	if (IS_QUALCOMM_BUILD = "TRUE") then
+		PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+	endif;
+	exit;
+endif;
+
+//Register the user
+RegUser:
+
+	szTitle   = "User Information";
+	szMsg     = "Please Register your product now by " +
+				"typing your name and your company's name below.";
+
+	GetProfString (SRCDIR + "\\setup.ini", "STARTUP", "LICNUM", svResult);
+
+	if (PGP_NO_LICENSE_NUMBER = "TRUE") then
+		if (SdRegisterUser (szTitle, szMsg, szName, szCompany)= BACK) then
+		goto DispAgree;
+		endif;
+	else
+		if (SdRegisterUserEx
+	   (szTitle,szMsg,szName,szCompany,szSerial)=BACK) then
+		goto DispAgree;
+		endif;
+	endif;
+
+
+	RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+	szLocalDB = "\\Software" ^ COMPANY_FOLDER_NAME;
+
+	RegDBCreateKeyEx
+	( szLocalDB ^ REGAPP_NAME,"");
+
+	RegDBSetKeyValueEx
+	(szLocalDB ^ REGAPP_NAME ,"User",REGDB_STRING,szName,-1);
+
+	RegDBSetKeyValueEx
+	(szLocalDB ^ REGAPP_NAME ,"Company Name",REGDB_STRING,szCompany,-1);
+
+	RegDBSetKeyValueEx
+	(szLocalDB ^ REGAPP_NAME ,"Version",REGDB_STRING,PRODUCT_VERSION,-1);
+
+	if (PGP_NO_LICENSE_NUMBER = "FALSE") then
+		RegDBSetKeyValueEx
+		(szLocalDB ^ REGAPP_NAME ,"Serial Number",REGDB_STRING,szSerial,-1);
+	endif;
+// Ask user for a destination location for the installation.--
+GetTargetDirectory:
+
+	szMsg =
+	"Setup will install " +APP_NAME+" in the following directory.\n\nTo " +
+	"install to this directory, click Next.\n\nTo install to a different " +
+	"directory, click Browse and select another directory.\n\nYou can " +
+	"choose not to install " +APP_NAME+", by clicking Cancel to exit Setup.";
+	
+		if (bWin32s) then
+			svTarget = TARGETDISK ^ APPBASE_PATH_WIN32S;
+		else
+			svTarget = TARGETDISK ^ APPBASE_PATH;
+		endif;
+
+
+	if (AskDestPath
+	(APP_NAME + " Setup: Choose Destination Directory"
+	,szMsg,svTarget,0) = BACK) then
+
+		goto RegUser;
+
+	endif;
+
+	if(svTarget % COMPANY_FOLDER_NAME) then
+		if (ISADMIN = "TRUE") then
+			svTarget  =  svTarget  ^ ADMIN_COMPANY_FOLDER_NAME;
+		endif;
+	else
+		if (ISADMIN != "TRUE") then
+			svTarget  =  svTarget  ^  COMPANY_FOLDER_NAME;
+		else
+			svTarget  =  svTarget  ^  COMPANY_FOLDER_NAME;       
+		endif;
+	endif;
+
+	//Delete existing .prf files
+	VarSave (SRCTARGETDIR);
+	TARGETDIR  = svTarget;
+	DeleteFile ("PGPclient.prf");
+	DeleteFile ("PGPadmin.prf");
+	VarRestore (SRCTARGETDIR);
+
+
+	// Perform space check of target drive.
+	bSpaceOk = TRUE;
+	if (GetDiskSpace(svTarget) < SPACE_REQUIRED) then
+		szMsg = "There is not enough space available on the disk\n" +
+				"'" + svTarget + "' \n" +
+				"Please free up some space or change the target location\n" +
+				"to a different disk";
+
+		MessageBox(szMsg,WARNING);
+		bSpaceOk = FALSE;
+	endif;
+
+	 // If not enough space,ask user to try again.
+	if (bSpaceOk = FALSE) then 
+		goto GetTargetDirectory;
+	endif;
+
+PickItems:
+
+	szComponents = "PGP 5.5";
+	ComponentAddItem
+	(szComponents,"PGP 5.5 Program Files (Required)",3000000,TRUE);
+	ComponentAddItem
+	(szComponents,"PGP 5.5 Eudora Plugin",150000,TRUE);
+if (IS_QUALCOMM_BUILD = "FALSE") then
+		ComponentAddItem
+		(szComponents,"PGP 5.5 Microsoft Exchange/Outlook Plugin",42000,TRUE);
+endif;
+
+    bHaveManual = (CompressInfo("DATA.Z","Manual\\*.*",
+        COMP_INFO_DATE | INCLUDE_SUBDIR, nvResult, svResult) >= 0);
+
+if (bHaveManual = TRUE) then
+	ComponentAddItem
+	(szComponents,"PGP 5.5 User's Manual (Adobe Acrobat format)",864076,TRUE);
+endif;
+	if (ISADMIN = "TRUE") then
+		ComponentAddItem
+		(szComponents,"Unconfigured PGP 5.5 Client Install",3120000,TRUE);
+	endif;
+
+
+	if (SdComponentDialog
+	("Select Components",
+	 "Select the components you want to install, clear the " +
+	 "components you do not want to install.",svTarget,
+	 szComponents) = BACK) then
+
+		goto GetTargetDirectory;
+
+	endif;
+
+
+	// Set the App Paths key for the main program.
+	szAppPath = svTarget;
+	RegDBSetItem(REGDB_APPPATH,szAppPath);
+	szProgram = svTarget ^ PRODUCT_KEY;
+	RegDBSetItem(REGDB_APPPATH_DEFAULT,szProgram);
+
+
+	//Here is where we show the user his/her selections and verify
+	//things are ok before file copy Store retrieved information in list.
+
+	// Create the list.
+	listData = ListCreate (STRINGLIST);
+	ListAddString(listData,"Name:",AFTER);
+	ListAddString(listData,"           " + szName,AFTER);
+	ListAddString(listData,"Company:",AFTER);
+	ListAddString(listData,"           " + szCompany,AFTER);
+	ListAddString(listData,"Serial #:",AFTER);
+	if (PGP_NO_LICENSE_NUMBER = "FALSE") then
+		ListAddString(listData,"           " + szSerial,AFTER);
+	endif;
+	ListAddString(listData,"PGP 5.5 Components Selected:",AFTER);
+
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Program Files (Required)") = TRUE) then
+		ListAddString
+		(listData,"           " + "PGP 5.5 Program Files (Required) ",AFTER);
+	endif;
+
+	if (ComponentIsItemSelected
+	(szComponents,"PGP 5.5 Eudora Plugin") = TRUE) then
+
+		ListAddString
+		(listData,"           " + "PGP 5.5 Eudora Plugin",AFTER);
+
+	endif;
+if (IS_QUALCOMM_BUILD = "FALSE") then
+	if (ComponentIsItemSelected
+	(szComponents,"PGP 5.5 Microsoft Exchange/Outlook Plugin") = TRUE) then
+
+		ListAddString
+		(listData,"           " +
+		 "PGP 5.5 Microsoft Exchange/Outlook Plugin",AFTER);
+
+	endif;
+endif;
+
+    if (bHaveManual && ComponentIsItemSelected
+	(szComponents,"PGP 5.5 User's Manual (Adobe Acrobat format)") = TRUE) then
+
+		ListAddString(listData,"           " + "PGP 5.5 User's Manual " +
+					"(Adobe Acrobat format)",AFTER);
+	endif;
+
+
+	if (ComponentIsItemSelected
+	(szComponents,"Unconfigured PGP 5.5 Client Install") = TRUE) then
+
+		ListAddString(listData,"           " + "Unconfigured PGP 5.5 Client" + 
+				" Install",AFTER);
+
+	endif;
+
+
+	if ((ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Program Files (Required)") = FALSE) &&
+	   (ComponentIsItemSelected(szComponents,"Unconfigured PGP 5.5 Client"+
+	   " Install") = FALSE)) then
+		SdShowMsg 
+		("PGP 5.5 Program Files are required, please select" +
+		" items again", TRUE);
+		Delay (4);
+		SdShowMsg
+		("PGP 5.5 Program Files are required, please select" +
+		" items again", FALSE);
+		goto PickItems;
+	endif;
+
+	if ((ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Program Files (Required)") = FALSE) &&
+	   (ComponentIsItemSelected
+	   (szComponents,"Unconfigured PGP 5.5 Client Install") = TRUE)) then
+
+		SetDialogTitle (DLG_ASK_YESNO,"Are you sure?");
+		if (AskYesNo("You have selected to install the Unconfigured PGP 5.5" +
+			" Client Install and have not selected\nPGP 5.5 Program Files." +
+			" This type of install should only be done if you have PGP 5.5" +
+			" already\ninstalled. Do you?",YES) = NO) then
+			SdShowMsg 
+			("PGP 5.5 Program Files are required, please select items again",
+			 TRUE);
+			Delay (4);
+			SdShowMsg 
+			("PGP 5.5 Program Files are required, please select items again",
+			 FALSE);
+			goto PickItems;
+		endif;
+	endif;
+
+
+
+	ListAddString(listData,"",AFTER);
+	ListAddString(listData,"Destination Directory:",AFTER);
+	ListAddString(listData,"           " + szAppPath,AFTER);
+
+	// Set title and static text for SdStartCopy.
+	szTitle = "Check Setup Information";
+	szMsg = "Setup has enough information to begin copying the\n" +
+			"program files.  If you want to review or change any of the\n" +
+            "settings, click Back.  If you are satisfied with the\n" +
+            "settings, click Next to begin copying files.";
+
+	// Call SdStartCopy to display user selections.
+	nvResult = SdStartCopy (szTitle,szMsg,listData);
+
+	switch(nvResult)
+
+		case NEXT:
+
+			goto SetupFilesToTransfer;
+
+		case BACK:
+
+			goto PickItems;
+		 
+		default:
+
+		MessageBox("SdStartCopy failed.",SEVERE);
+	endswitch;
+
+
+//Begin Copying Files
+
+
+SetupFilesToTransfer:
+		
+	//Enable (INDVFILESTATUS);
+
+	szFileSet = "General";
+	// Define the file set.
+	FileSetBeginDefine(szFileSet);
+
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Program Files (Required)") = TRUE) then
+
+		SetStatusWindow(-1,"Copying PGP 5.5 Program Files...");
+		TARGETDIR = svTarget;
+
+		if (CompressGet
+			("DATA.Z","PGP55\\*.*",
+			COMP_NORMAL | INCLUDE_SUBDIR) < 0) then
+
+			MessageBox("CompressGet failed PGP",WARNING);
+
+		endif;
+	endif;
+
+
+    if (bHaveManual && ComponentIsItemSelected
+		(szComponents,"PGP 5.5 User's Manual (Adobe Acrobat format)")
+		 = TRUE) then
+
+		SetStatusWindow(-1,"Copying PGP 5.5 User's Manual...");
+		TARGETDIR = svTarget;
+
+		if (CompressGet
+			("DATA.Z","Manual\\*.*",
+			COMP_NORMAL | INCLUDE_SUBDIR) < 0) then
+
+			MessageBox("CompressGet failed PGP",WARNING);
+
+		endif;
+	endif;
+
+ //Unconfigured PGP 5.5 Client Install
+
+	if (ComponentIsItemSelected
+		(szComponents,"Unconfigured PGP 5.5 Client Install")
+		 = TRUE) then
+
+		SetStatusWindow(-1,"Copying Unconfigured PGP 5.5 Client Install...");
+		TARGETDIR = svTarget;
+
+		if (CompressGet
+			("DATA.Z","Admin\\*.*",
+			COMP_NORMAL | INCLUDE_SUBDIR) < 0) then
+
+			MessageBox("CompressGet failed PGP",WARNING);
+
+		endif;
+	endif;
+
+
+Exchange:
+if (IS_QUALCOMM_BUILD = "FALSE") then
+
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Microsoft Exchange/Outlook Plugin") = TRUE) then
+
+		SetStatusWindow(-1,"Copying PGP 5.5 Exchange/Outlook Plugin");
+
+		TARGETDIR = WINSYSDIR;
+		if (CompressGet
+			("DATA.Z","Exchange\\*.*",
+			COMP_NORMAL | INCLUDE_SUBDIR) < 0) then
+
+			MessageBox("CompressGet failed PGP",WARNING);
+		endif;
+	endif;
+endif;
+
+FindEudora:
+
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Eudora Plugin") = TRUE) then
+
+		// add the eudora plugin to the plugins dir
+		bFoundEudora = FALSE;
+		nvType       = REGDB_STRING;
+
+	
+
+	if (IS_QUALCOMM_BUILD = "FALSE") then
+		RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+		RegString = "\\Software\\Qualcomm\\Eudora\\CommandLine";
+		KeyVal = "Current";
+	else
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		RegString = "\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\Eudora.exe";
+		KeyVal = "Path";
+	endif;
+
+		if (RegDBGetKeyValueEx
+			(RegString,KeyVal,nvType,szEudoraPath,nvPathLen) < 0) then
+			bFoundEudora = FALSE;
+		else
+		if (IS_QUALCOMM_BUILD = "FALSE") then
+			// Set necessary variables.
+			listID         = ListCreate(STRINGLIST);
+			szDelimiterSet = " ";
+	
+			StrGetTokens(listID, szEudoraPath, szDelimiterSet);
+			ListGetFirstString(listID, svString);
+			ParsePath(szEudoraPath, svString, PATH);
+		endif;
+		
+			if (ExistsDir(szEudoraPath) = NOTEXISTS) then
+				bFoundEudora = FALSE;
+			else
+				bFoundEudora = TRUE;
+			endif;
+
+		endif;
+
+		if (bFoundEudora = FALSE) then
+			// we must ask the user where Eudora is
+			szEudoraPath = "";
+			
+			SetDialogTitle 
+			(DLG_ASK_PATH,"Please enter the path to your Eudora install" +
+			" directory.");
+			szMsg = "Please enter the path to Eudora.exe or leave\nit empty" +
+			" to skip the Eudora Plugin.";
+			if (AskPath(szMsg,"",szEudoraPath) = NEXT) then
+				if ((szEudoraPath != "")) then
+					if (ExistsDir(szEudoraPath)=EXISTS &&
+						FindFile(szEudoraPath,"Eudora.exe",szEudoraFile)=0)
+						then
+						bFoundEudora = TRUE;
+					else
+						//They did not enter a path for Eudora
+						// & it cannot be found 
+						//so we do not install the plugin.
+						ComponentSelectItem
+						(szComponents,"PGP 5.5 Eudora Plugin",FALSE);
+					endif;
+				endif;
+			else
+				goto PickItems;
+			endif;
+		endif;
+			
+		if (bFoundEudora = TRUE) then
+			EudoraPluginPath = szEudoraPath + "\\Plugins";
+
+			//find out if they are running PRO or LITE
+			UseDLL("Version.dll");
+											
+			lSize     = GetFileVersionInfoSizeA
+						(szEudoraPath^"Eudora.exe",nHandle);
+
+			bVerInfo  = GetFileVersionInfoA
+						(szEudoraPath^"Eudora.exe",nHandle,lSize,szVerBuffer);
+
+			ptr1      = AddressString
+						(szResultBuffer);
+			ptr2      = AddressNumber
+						(ptr1);
+			bVerValue = VerQueryValueA
+						(szVerBuffer,"\\StringFileInfo\\040904E4\\ProductName"
+						,ptr2,nSize);
+
+			// pszResultBuffer is a pointer to a pointer which is the starting
+			// point for the product name. How do you actually get the string?
+			StructGetP(ptr2,"MYTYPE_PSZ","szString",lData,szData);
+			UnUseDLL("Version.dll");
+			//szData will now equal Lite or Pro
+
+			// check to see if we need to migrate 3.0.1 to 3.0.2
+			WhichPlugin = "REGULAR";
+			if (VerGetFileVersion
+				(szEudoraPath^"Eudora.exe",svEudoraVersion) = 0) then
+				
+              if (ComponentIsItemSelected 
+                  (szComponents,"PGP 5.5 Eudora Plugin") = TRUE) then
+                bUpdateNeeded = FALSE;
+				if (VerCompare
+					(svEudoraVersion,"3.0.2.0",VERSION) = LESS_THAN) then
+                    bUpdateNeeded = TRUE;
+					MessageBox
+					("Setup has detected that Eudora needs to be updated.\n" +
+                    "The necessary updates can be found at :\n\n"         +
+                    "http://www.eudora.com\n\n" +
+					"You will be reminded to do to this at the end of the\n" +
+					"install, and a shortcut to this site will be put in" +
+					" the\nPretty Good Privacy folder located in the" +
+					" startbar.\nInstall update overtop of your current" +
+					" version to maintain\nsettings and plugins, otherwise" +
+					" PGP will need to be reinstalled)", INFORMATION);
+				endif;
+
+		
+				if ((VerCompare
+					(svEudoraVersion,"4.0.0.0",VERSION) = EQUALS) ||
+					(VerCompare
+					(svEudoraVersion,"4.0.0.0",VERSION) = GREATER_THAN)) then
+				WhichPlugin = "FOURDOTO";
+					
+				endif;
+
+              endif;
+			endif; // no version info for file
+
+			if (ComponentIsItemSelected
+			(szComponents,"PGP 5.5 Eudora Plugin") = TRUE) then
+
+			TARGETDIR = szEudoraPath ^ "Plugins";
+
+			if (WhichPlugin = "FOURDOTO") then 
+				WhichEudoraPath = "Eudora\\FOURDOTO\\*.*";
+			else
+				WhichEudoraPath = "Eudora\\REGULAR\\*.*";
+			endif;
+
+       		if (CompressGet
+				("DATA.Z",WhichEudoraPath,COMP_NORMAL | INCLUDE_SUBDIR) < 0) then
+				MessageBox("CompressGet failed Eudora",WARNING);
+			endif;
+			endif;
+		endif;
+	endif;
+
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Program Files (Required)") = TRUE) then
+		TARGETDIR = WINSYSDIR;
+		SetStatusWindow
+		(-1,"Copying Explorer Extensions...");
+		if (CompressGet
+			("DATA.Z","WinSysDir\\*.*",COMP_NORMAL | SHAREDFILE) < 0) then
+			MessageBox
+			("CompressGet failed WinSysDir",WARNING);
+		endif;
+	endif;
+
+	FileSetEndDefine(szFileSet);
+
+	
+TARGETDIR = svTarget;
+TransferFiles:
+
+	//copy the pref. files from disk 1 (if there)
+	VarSave (SRCTARGETDIR);
+	SRCDIR     = SRCDIR;
+	TARGETDIR  = TARGETDIR;
+	CopyFile ("PGPadmin.prf","PGPadmin.prf");
+	CopyFile ("PGPclient.prf","PGPclient.prf");
+	CopyFile ("pubring.pkr","pubring.pkr");
+	VarRestore (SRCTARGETDIR);
+
+
+	Enable (BITMAPFADE);
+	//Place BMP Splash up onto the screen
+	szBmpName = SUPPORTDIR ^ "setup.bmp";
+	PlaceBitmap (szBmpName, nID_BITMAP, CENTERED, CENTERED, CENTERED);
+	Disable (BITMAPFADE);
+	Delay (2);
+		
+	// Prepare InstallShield to record deinstallation information.
+    DeinstallStart(svTarget, svUninstLogFile,DEINSTALL_KEY,0);
+	RegDBSetItem(REGDB_UNINSTALL_NAME,UNINSTALL_NAME);
+
+	// Set up progress indicator and information gauge.
+	Disable(DIALOGCACHE);
+	Enable(STATUSDLG);
+	PlaceWindow (STATUSDLG, LOWER_LEFT, LOWER_LEFT, LOWER_LEFT);
+
+	// Perform the file set.
+	StatusUpdate(ON,90); // this is the final percentage after file copies
+
+
+	SetStatusWindow(0,"Copying PGP 5.5 Program Files...");
+	nResult = FileSetPerformEz(szFileSet,0);
+
+	switch (nResult)
+
+	case FS_DONE: // Successful completion.
+
+	case FS_CREATEDIR: // Create directory error.
+		MessageBox("Unable to create a directory under " + TARGETDIR + "."+
+					"Please check write access to this directory.",SEVERE);
+		if (IS_QUALCOMM_BUILD = "TRUE") then
+			PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+		endif;
+	    exit;
+
+	default: // Group all other errors under default label.
+		NumToStr(szTemp,nResult);
+		MessageBox("General file transfer error."+
+					 "Please check your target location and try again."+
+					 "\n\n Error Number:"+szTemp +
+					 "\n Related File: "+ERRORFILENAME,
+					 SEVERE);
+		if (IS_QUALCOMM_BUILD = "TRUE") then
+			PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+		endif;
+		exit;
+	endswitch;
+
+
+//Install Icons
+
+	ProgDefGroupType(PERSONAL);
+
+	//Add PGP (TED) to their startup group.
+		
+	szProgram = TARGETDIR ^ "PGPtray.exe";
+	LongPathToQuote (szProgram,TRUE);
+	szAppPath = TARGETDIR;
+
+	AddFolderIcon
+	(FOLDER_STARTUP,"PGPtray",szProgram,szAppPath,"",0,"",REPLACE);
+
+
+	CreateProgramFolder ("Pretty Good Privacy");
+
+    if (bHaveManual && ComponentIsItemSelected
+	(szComponents,"PGP 5.5 User's Manual (Adobe Acrobat format)") = TRUE) then
+		szProgram = TARGETDIR ^ "PGP55win.pdf";
+		LongPathToQuote (szProgram,TRUE);
+		szAppPath = TARGETDIR;
+		AddFolderIcon
+		(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+		"PGP 5.5 Manual (Requires Adobe Acrobat)",szProgram,szAppPath
+		,"",0,"",REPLACE);
+	endif;
+
+	if (ComponentIsItemSelected
+	(szComponents,"Unconfigured PGP 5.5 Client Install") = TRUE) then
+		szProgram = TARGETDIR ^ "CSO.pdf";
+		LongPathToQuote (szProgram,TRUE);
+		szAppPath = TARGETDIR;
+		AddFolderIcon
+		(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+		"PGP 5.5 CSO Guide (Requires Adobe Acrobat)",szProgram,szAppPath
+		,"",0,"",REPLACE);
+
+	endif;
+
+
+	szProgram = TARGETDIR ^ "pgpkeys.exe";
+	LongPathToQuote (szProgram,TRUE);
+	szAppPath = TARGETDIR;
+	AddFolderIcon
+	(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+	"PGPkeys",szProgram,szAppPath ,"",0,"",REPLACE);
+
+	if (ComponentIsItemSelected(szComponents,"Unconfigured PGP 5.5 Client" +
+	" Install") = TRUE) then
+		szProgram = TARGETDIR ^ "PGPadmin.exe";
+		LongPathToQuote (szProgram,TRUE);
+		szAppPath = TARGETDIR;
+		AddFolderIcon
+		(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+		"PGPadmin",szProgram,szAppPath ,"",0,"",REPLACE);
+	endif;
+	
+		szProgram = TARGETDIR ^ "PGPtray.exe";
+		LongPathToQuote (szProgram,TRUE);
+		szAppPath = TARGETDIR;
+		AddFolderIcon
+		(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+		"PGPtray",szProgram,szAppPath,"",0,"",REPLACE);
+	
+	szProgram = TARGETDIR ^ "PGPtools.exe";
+	LongPathToQuote (szProgram,TRUE);
+	szAppPath = TARGETDIR;
+	AddFolderIcon
+	(FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy",
+	"PGPtools",szProgram,szAppPath,"",0,"",REPLACE);
+
+	SetStatusWindow
+	(95,"Updating the Registry...");
+
+	nvType = REGDB_STRING;
+	RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+	if (RegDBGetKeyValueEx("Software\\PGP\\PNDetect\\Modules","PGP Plugin"
+	,nvType,szEudoraPath,nvPathLen) = 0) then
+		// ask if they want to remove the 4.5 plugin
+		SetDialogTitle
+		(DLG_ASK_YESNO,"Disable the PGPmail 4.5 Eudora/Netscape Plugin?");
+		if (AskYesNo
+		("Do you wish to disable the PGPmail 4.5 Eudora/Netscape Plugin?"
+		,YES) = YES) then
+			RegDBDeleteValue
+			("Software\\PGP\\PNDetect\\Modules","PGP Plugin");
+		endif;
+	endif;
+
+	svDir = TARGETDIR;
+	LongPathToShortPath (svDir);
+
+// **** ROOT ****
+
+	RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+
+	RegDBSetKeyValueEx
+	("\\.asc" ,"",REGDB_STRING,"PGP Armored Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\.aexpk" ,"",REGDB_STRING,"PGP Armored Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\.bexpk" ,"",REGDB_STRING,"PGP Binary Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\.pgp" ,"",REGDB_STRING,"PGP Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\.prvkr" ,"",REGDB_STRING,"PGP Private Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.pubkr" ,"",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.sig" ,"",REGDB_STRING,"PGP Detached Signature File",-1);
+	RegDBSetKeyValueEx
+	("\\.pkr" ,"",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.skr" ,"",REGDB_STRING,"PGP Private Keyring",-1);
+
+	szLocalDB = "\\*\\shellex\\ContextMenuHandlers\\" +
+	"{969223c0-26aa-11d0-90ee-444553540000}";
+
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"",-1);
+
+	szLocalDB = "\\Folder\\shellex\\ContextMenuHandlers\\" +
+				"{969223c0-26aa-11d0-90ee-444553540000}";
+
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"",-1);
+	szLocalDB = "\\CLSID\\{969223c0-26aa-11d0-90ee-444553540000}";
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"PGP Shell Extension",-1);
+	RegDBSetKeyValueEx
+	(szLocalDB ^ "InProcServer32","" ,
+	REGDB_STRING,"pgp55mn.dll",-1);
+	RegDBSetKeyValueEx
+	(szLocalDB ^"InProcServer32","ThreadingModel" ,
+	REGDB_STRING,"Apartment",-1);
+
+/*
+#define IDI_ICON_SIG                    102
+#define IDI_ICON_ASC                    103
+#define IDI_ICON_PGP                    104
+#define IDI_ICON_PRVKR                  105
+#define IDI_ICON_PUBKR                  106
+#define IDI_ICON_AEXPK                  107
+*/
+	szLocalDB = "\\PGP Encrypted File";
+	RegDBSetKeyValueEx
+	(szLocalDB,"",
+	REGDB_STRING,"PGP Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Encrypted File" ^ "DefaultIcon","",
+	REGDB_STRING,"pgp55sc.dll,-144",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Encrypted File","",
+    REGDB_STRING,"PGP Armored Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Encrypted File" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-143",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key","",
+	REGDB_STRING,"PGP Armored Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-147",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key","",
+	REGDB_STRING,"PGP Binary Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-147",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File","",
+	REGDB_STRING,"PGP Detached Signature File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-142",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring","",
+	REGDB_STRING,"PGP Private Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-145",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring","",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgp55sc.dll,-146",-1);
+
+// **** CURRENT USER ****
+
+	RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+	szLocalDB = "\\Software" ^ COMPANY_FOLDER_NAME;
+
+	// add "where is keys" key value
+	RegDBCreateKeyEx
+	( szLocalDB ^ REGAPP_NAME ^ "PGPkeys","");
+	RegDBSetKeyValueEx
+	(szLocalDB ^ REGAPP_NAME ^ "PGPkeys","ExePath",REGDB_STRING,
+	svTarget  ^  "PGPkeys.exe" ,-1);
+
+	LongPathFromShortPath (EudoraPluginPath);
+	// add "where is EudoraPlugin" key value
+	RegDBCreateKeyEx
+	( szLocalDB ^ REGAPP_NAME ^ "EudoraPlugin","");
+	RegDBSetKeyValueEx
+	(szLocalDB ^ REGAPP_NAME ^ "EudoraPlugin","PluginPath",REGDB_STRING,
+	EudoraPluginPath,-1);
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+
+	RegDBSetKeyValueEx
+	("\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\" +
+	"Approved","{969223c0-26aa-11d0-90ee-444553540000}"
+	,REGDB_STRING,"Shell Extension",-1);
+
+
+if (IS_QUALCOMM_BUILD = "FALSE") then
+	if (ComponentIsItemSelected
+		(szComponents,"PGP 5.5 Microsoft Exchange/Outlook Plugin") = TRUE) then
+		RegDBCreateKeyEx
+		( "SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions\\PGP Plugin","");
+		RegDBSetKeyValueEx
+			("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions","PGP Plugin"
+			,REGDB_STRING,"4.0;pgpExch.dll;1;01000111111100;1001110" ,-1);
+	endif;
+endif;
+
+
+//**** Left Click and Launch ****
+
+	RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+
+	RegDBCreateKeyEx
+	("\\PGP Encrypted File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Encrypted File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Armored Encrypted File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Armored Encrypted File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Armored Extracted Public Key" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Binary Extracted Public Key" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Detached Signature File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+
+	RegDBCreateKeyEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+
+	Delay(3);
+
+	SetStatusWindow
+	(100,"Installation complete,Thank you for installing " + APP_NAME);
+	Disable(STATUSDLG);
+    // Remove the bitmap with ID of 14.
+    PlaceBitmap("",12,0,0,REMOVE);
+
+
+	//Remove any PGPmail dir from startup 
+	szProgram = TARGETDIR ^ "pgp" ^ "PgpMail.exe";
+	LongPathToQuote (szProgram,TRUE);
+	DeleteFolderIcon(FOLDER_STARTUP,"pgpmail");
+
+
+	
+	//Delete the .GID file so help can be updated
+	DeleteFile ("pgp50.gid");
+
+
+	// Announce setup complete,and offer to read README file
+	// also delete registry entries left behind by PGPmail 4.5
+	// this is done at the end in case of install cancel
+
+	//This is the call to comdlg to set the user info
+
+	UseDLL(WINSYSDIR + "pgp55cd.dll");
+	Delay (1);
+	if (PGP_NO_LICENSE_NUMBER = "FALSE") then
+		PGPcomdlgSetUserInfo (szName,szCompany,szSerial);
+	else
+		PGPcomdlgSetUserInfo (szName,szCompany,"");
+	endif;
+	Delay (1);
+
+	//Set Default keyring info.
+	szPubRingPath	= svTarget + "\\pubring.pkr";
+	szPrivRingPath	= svTarget + "\\secring.skr";
+	szRandSeedPath	= svTarget + "\\randseed.bin";
+
+	PGPcomdlgSetSDKFilePaths(szPubRingPath, szPrivRingPath, szRandSeedPath, 1);
+
+	//Set Keyringring Locations if needed
+		if (AskYesNo
+			("Do you have existing keyrings you wish to use?",YES) = YES) then
+			PGPcomdlgPreferences (0,0,1);
+			PGPcomdlgGetSDKFilePaths(szPubRingPath, 512, szPrivRingPath, 512, 
+			szRandSeedPath, 512);
+	//PUBLIC KEYRING
+			VarSave (SRCTARGETDIR);
+			ParsePath (svReturnString, szPubRingPath, PATH);
+			TARGETDIR	= svTarget;
+			SRCDIR		= svReturnString;
+			ParsePath (svReturnString, szPubRingPath, FILENAME);
+			ParsePath (svPubLoc, szPubRingPath, PATH);
+			if (svPubLoc != svTarget^ "\\") then
+				if (AskYesNo
+				   ("Do you want setup to copy these keyrings to your" +
+				   " install directory?",YES) = YES) then
+                    bCopyKeys = TRUE;
+					CopyFile (svReturnString, "pubring.pkr");
+					SdShowMsg ("Your public keyring has been copied to your" +
+					" install directory: " +
+			            svTarget, TRUE);
+					Delay (6);
+					SdShowMsg ("Your public keyring has been copied to your" +
+					" install directory: " +
+			           svTarget, FALSE);
+				endif;
+			endif;
+			VarRestore (SRCTARGETDIR);
+	//PRIVATE KEYRING
+			VarSave (SRCTARGETDIR);
+			ParsePath (svReturnString,  szPrivRingPath, PATH);
+			TARGETDIR	= svTarget;
+			SRCDIR		= svReturnString;
+			ParsePath (svReturnString,  szPrivRingPath, FILENAME);
+			ParsePath (svPrivLoc, szPrivRingPath, PATH);
+			if (svPrivLoc != svTarget ^ "\\") then
+                if (bCopyKeys = TRUE) then
+					CopyFile (svReturnString, "secring.skr");
+					SdShowMsg ("Your private keyring has been copied to your" +
+					" install directory: " +
+			           svTarget, TRUE);
+					Delay (6);
+					SdShowMsg ("Your private keyring has been copied to your" +
+					" install directory: " +
+			          svTarget, FALSE);
+				endif;
+			endif;
+			VarRestore (SRCTARGETDIR);
+	
+			
+		else
+			VarSave (SRCTARGETDIR);
+			TARGETDIR	= svTarget;
+			SRCDIR		= SUPPORTDIR;
+			CopyFile ("pubring.pkr", "pubring.pkr");
+			VarRestore (SRCTARGETDIR);
+		endif;
+if (bCopyKeys = TRUE) then
+		//Re-Set Default keyring info
+		szPubRingPath	= svTarget + "\\pubring.pkr";
+		szPrivRingPath	= svTarget + "\\secring.skr";
+		szRandSeedPath	= svTarget + "\\randseed.bin";
+
+		PGPcomdlgSetSDKFilePaths
+		(szPubRingPath, szPrivRingPath, szRandSeedPath, 1);
+endif;
+
+
+
+	UnUseDLL(WINSYSDIR + "pgp55cd.dll");
+
+
+FinalInstallProcess:
+	//This is cleanup code for removing registry entries left behind by
+	//PGPmail 4.5
+	
+	RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+
+	//RegDBDeleteKey("PGP Armored Encrypted File\\shell\\open");
+	//RegDBDeleteKey("PGP Armored Extracted Public Key\\shell\\open");
+	//RegDBDeleteKey("PGP Binary Extracted Public Key\\shell\\open");
+	//RegDBDeleteKey("PGP Detached Signature File\\shell\\open");
+	//RegDBDeleteKey("PGP Encrypted File\\shell\\open");
+	//RegDBDeleteKey("PGP Private Keyring\\shell\\open");
+	//RegDBDeleteKey("PGP Public Keyring\\shell\\open");
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+
+	RegDBDeleteKey("PGP Armored Encrypted File\\shell\\open");
+	RegDBDeleteKey("PGP Armored Extracted Public Key\\shell\\open");
+	RegDBDeleteKey("PGP Binary Extracted Public Key\\shell\\open");
+	RegDBDeleteKey("PGP Detached Signature File\\shell\\open");
+	RegDBDeleteKey("PGP Encrypted File\\shell\\open");
+	RegDBDeleteKey("PGP Private Keyring\\shell\\open");
+	RegDBDeleteKey("PGP Public Keyring\\shell\\open");
+
+	//End of Script
+	//Add the Download Adobe Acrobat Icon to Start Menu,
+	//this is done at the very end
+	//so that    SRCDIR && TARGETDIR are not lost
+	SRCDIR     = TARGETDIR;
+	TARGETDIR  = FOLDER_STARTMENU ^ "Programs" ^ "Pretty Good Privacy";
+    if (bHaveManual && ComponentIsItemSelected
+	   (szComponents,"PGP 5.5 User's Manual (Adobe Acrobat format)") = TRUE)
+	   then
+		CopyFile ("adobe.url","Download Adobe Acrobat.url");
+	endif;
+
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	szName = svTarget + "\\uninstall.exe";
+	LongPathToShortPath (szName);
+	RegDBSetKeyValueEx
+	("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PGP55DeinstKey"
+	,"UninstallString",REGDB_STRING,szName,-1);
+	
+    if (bUpdateNeeded = TRUE) then
+		CopyFile ("eudora.url","Update Eudora.url");
+
+		MessageBox ("Don't forget to update your version of Eudora.\n"+
+		"The newest versions can be found at\n\n"+
+		"http://www.eudora.com\n\n"+
+		"You must update your Eudora version for the\n"+
+		"Eudora Plugin to function properly.\n\n "+
+		"Thanks for selecting Pretty Good Privacy !", INFORMATION);
+	endif;
+
+
+	TARGETDIR = svTarget;
+	DeleteFile ("adobe.url");
+	DeleteFile ("eudora.url");
+
+	if (BATCH_INSTALL = TRUE) then
+
+		CommitSharedFiles(0);
+		szTemp = "Setup has finished installing " +
+				 APP_NAME +" on your computer";
+
+		szMsg =   "Some files could not be updated because" +
+				  " they are currently in use by other programs" +
+				  " on the system.  Files in use will be updated" +
+				  " the next time you restart your system.";
+
+		// If SdFinishReboot reboots the system,the shared file data is
+		// automatically recorded.
+		RebootDialog ("Restart Windows",szMsg,SYS_BOOTWIN);
+	
+
+		// If BATCH_INSTALL is FALSE,Setup is complete.
+   	else
+		bvOpt1 = TRUE;
+		bvOpt2 = TRUE;
+		szTemp = "Setup has finished installing " + APP_NAME +
+				" on your computer." + " Setup can optionally" +
+				" launch PGPkeys and/or the Read Me file." + 
+				" Choose the options you want below.";
+
+		SdFinish("Setup Complete",szTemp,"Click Finish to complete Setup.",
+				 "Yes, I want to run PGPkeys",
+				 "Yes, I want to view the Read Me File",bvOpt1,bvOpt2);
+		
+		ChangeDirectory(svTarget);
+		if (bvOpt1) then
+			LaunchApp(svTarget ^ "pgpkeys.exe","");
+		endif;
+		if (bvOpt2) then
+			LaunchApp("NOTEPAD.EXE",svTarget ^ "README.TXT");
+		endif;
+
+		LaunchApp(svTarget ^ "PGPTray.exe","");
+
+	endif;
+if (IS_QUALCOMM_BUILD = "TRUE") then
+	PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 1, NULL) ;
+endif;
+	exit;
+
+Exit_Handler:
+// Post a message so that we know the install failed
+PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+exit;
+return;
+
+/*-------------------------------------------------------------------------*\
+ *
+ * Function:  SetupScreen
+ *
+ *  Purpose:  This function will set up the screen look.  This includes
+ *            colors,fonts,text to be displayed,etc.
+ *
+ *
+ *    Input:
+ *
+ *  Returns:
+ *
+ * Comments:
+\*-------------------------------------------------------------------------*/
+function SetupScreen()
+	number nDx,nDy;
+begin
+	GetExtents(nDx,nDy);
+
+  
+	Enable(FULLWINDOWMODE);
+	Enable(INDVFILESTATUS);
+
+	SetTitle(TITLE,24,YELLOW);
+
+	SetColor(BACKGROUND,BK_BLUE);
+	SetColor(STATUSBAR,BLUE);     // Bright blue.
+	SetTitle(TITLE2 + " Setup",0,BACKGROUNDCAPTION); // Caption bar text( no new line ).
+
+	//Enable(BACKGROUND);
+
+	Delay(1);
+
+end;
+
+
+/*-------------------------------------------------------------------------*\
+ *
+ * Function:  CheckRequirements
+ *
+ *  Purpose:  This function will check all minimum requirements for the
+ *            application being installed.  If any fail,then the user
+ *            is informed and the installation is terminated.
+ *
+ *
+ *    Input:
+ *
+ *  Returns:
+ *
+ * Comments:
+\*-------------------------------------------------------------------------*/
+function CheckRequirements()
+number nvDx,nvDy;
+number nvResult;
+STRING svResult;
+
+begin
+
+    // Check screen resolution.                       
+	GetExtents(nvDx,nvDy);
+	if (nvDy < 480) then
+
+		MessageBox
+		("This program requires VGA or better resolution.",WARNING);
+		if (IS_QUALCOMM_BUILD = "TRUE") then
+			PostWindowMessageA( 0xffff, WM_MAHAVISHNU, 0 ,NULL) ;
+		endif;
+		exit;
+
+	endif;
+
+	// Determine the target system's operating system.
+	GetSystemInfo(OS,nvResult,svResult);
+	bWinNT  = FALSE;
+	bWin32s = FALSE;
+	bIsShellExplorer = FALSE;
+	
+	if (nvResult =  IS_WINDOWSNT) then
+		bWinNT = TRUE; // Running Windows NT.
+
+	   // Check to see if NT is using EXPLORER Shell
+		if(QueryShellMgr(svResult) = 0) then
+			if(StrCompare(svResult,"EXPLORER.EXE") = 0) then
+			bIsShellExplorer = TRUE;
+			endif;
+		endif;
+
+	elseif (nvResult =  IS_WIN32S) then
+		bWin32s = TRUE; // Running Win32s.
+	endif;
+
+end;
+
+
+/*-------------------------------------------------------------------------*\
+ *
+ * Function:  FileBrowse
+ *
+ *  Purpose:  
+ *          
+ *
+ *
+ *    Input:
+ *
+ *  Returns:
+ *
+ * Comments:
+\*-------------------------------------------------------------------------*/
+
+function FileBrowse(hwnd,szFilter,svSelected,szTitle,szExt)
+
+      STRING szDLL,svResult;
+      NUMBER nvISType,nResult,nLen,n,nvByte;
+      BOOL bResult;
+
+   begin
+   
+      GetSystemInfo(ISTYPE,nvISType,svResult);
+      
+         // Load the DLL,which must be on disk 1 or in _SETUP.LIB
+         // so that it gets placed into SUPPORTDIR.
+      if (nvISType = 16) then
+         szDLL = SUPPORTDIR ^ "BROWSE16.DLL";
+      else
+         szDLL = SUPPORTDIR ^ "BROWSE32.DLL";
+      endif;
+
+      nResult = UseDLL(szDLL);
+      if (nResult < 0) then
+         MessageBox("FileBrowse failed to load DLL:\n" +
+                    szDLL,SEVERE);
+         return 0;
+      endif;
+
+         // The Windows OPENFILENAME structure requires the browse
+         // filter in string array format. To achieve this,replace
+         // all commas (ASCII 44) with NULL. Then,append an extra NULL
+         // because the array ends with two NULLs.
+      nLen = StrLength(szFilter);
+      for n = 0 to nLen - 1
+         GetByte(nvByte,szFilter,n);
+         if (nvByte = 44) then
+            SetByte(szFilter,n,0);
+         endif;
+      endfor;
+      szFilter = szFilter + "";
+   
+      if (nvISType = 16) then
+         bResult = MyGetOpenFileName16
+					(hwnd,szFilter,svSelected,szTitle,szExt);
+      else
+         bResult = MyGetOpenFileName32
+					(hwnd,szFilter,svSelected,szTitle,szExt);
+      endif;
+
+         // Unload the DLL.
+      UnUseDLL(szDLL); 
+      
+      if (!bResult) then
+         return -1;
+      endif;
+      
+      return 0;
+      
+   end;
+
+#include "sddialog.rul"
+//#include "browse.rul"

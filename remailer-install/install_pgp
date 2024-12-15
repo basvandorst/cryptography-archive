@@ -1,0 +1,206 @@
+#!/bin/sh
+# Ask whether or not to install PGP
+$ECHO -n "Do you want to install PGP? [Y]/n "
+read YN
+if [ "$YN" = 'n' -o "$YN" = 'N' ]
+then
+  rm pgpmail.pl
+  exit
+fi
+
+# Now installing PGP
+mkdir pgp
+cd pgp
+$ECHO -n "Where is PGP? [$DEFAULTPGP] "
+read PGPEXE
+
+if [ ! "$PGPEXE" ]
+then
+  PGPEXE=$DEFAULTPGP
+fi
+
+if [ $EXECTEST "$PGPEXE" ]
+then
+  ln -s $PGPEXE ./pgp
+else
+  $ECHO "PGP not in $PGPEXE"
+  rm pgpmail.pl
+  exit
+fi
+
+$ECHO -n "Where should stderr from PGP go? [/dev/null] "
+read ERR
+
+if [ ! "$ERR" ]
+then
+  ERR=/dev/null
+fi
+
+PGPPATH=$HOME/.remail/pgp
+export PGPPATH
+
+# If no config.txt exists, create one
+if [ -s $PGPPATH/config.txt ]
+then
+  $ECHO -n
+else
+  $ECHO "MyName = test" > $PGPPATH/config.txt
+fi
+
+# Create the key or copy an old one
+$ECHO -n "Create a new key? [Y]/n "
+read YN
+
+if [ "$YN" = 'N' -o "$YN" = 'n' ]
+then
+  $ECHO -n "Where is pubring.pgp and secring.pgp (full path)? "
+  read DIR
+  cp $DIR/pubring.pgp $DIR/secring.pgp .
+else
+  $ECHO "Make sure you choose a key appropriate to a remailer"
+  ./pgp -kg
+fi
+
+# Configure
+$ECHO -n "What did you name your remailer? "
+read MNAME
+$ECHO "MyName =" $MNAME > config.txt
+$ECHO -n "What was the passphrase you chose? "
+read PPHRASE
+cd ..
+
+# Install PPHRASE in "pgpmail.pl"
+sed -e "/PGPPASS/s/remailer_key/\\\\\"$PPHRASE\\\\\"/" pgpmail.pl > newpgpmail.pl
+mv newpgpmail.pl pgpmail.pl
+chmod a+x pgpmail.pl
+
+# Notify author of PGP ability
+$ECHO -n "Would you like to tell $AUTHOR that your remailer can do PGP? [Y]/n "
+read YN
+if [ "$YN" = 'n' -o "$YN" = 'N' ]
+then
+  $ECHO "Not telling $AUTHOR"
+else
+  $ECHO "Notifying $AUTHOR of PGP ability"
+  cat > /tmp/notify.$$ <<EOF
+::
+Anon-To: $NOTIFY
+
+--
+Address: $ADDRESS
+Key-ID: $MNAME
+PGPKey:
+EOF
+
+  ./pgp/pgp -kxaf "$MNAME" >> /tmp/notify.$$ 2>$ERR
+
+  cat >> /tmp/notify.$$ <<EOF
+
+--
+This is an automated posting sent by Sameer's installation script
+Version $VERSION
+EOF
+
+  ./pgp/pgp -eaf "$MNAME" < /tmp/notify.$$ >/tmp/enc.$$ 2>$ERR
+
+  /usr/lib/sendmail $ADDRESS <<EOF
+Subject: New Remailer with PGP
+To: $ADDRESS
+Encrypted: PGP
+
+`cat /tmp/enc.$$`
+
+EOF
+
+  rm /tmp/notify.$$ /tmp/enc.$$
+  $ECHO "Notified Sameer of PGP ability"
+fi
+
+$ECHO -n "Would you like to run a self-test? [Y]/n "
+read YN
+if [ "$YN" = 'n' -o "$YN" = 'N' ]
+then
+  $ECHO "Not testing PGP ability"
+else
+  $ECHO "Running a self-test of PGP"
+  cat > /tmp/notify.$$ <<EOF
+::
+Anon-To: $ADDRESS
+
+--
+Address: $ADDRESS
+Key-ID: $MNAME
+PGPKey:
+EOF
+
+  ./pgp/pgp -kxaf "$MNAME" >> /tmp/notify.$$ 2>$ERR
+
+  cat >> /tmp/notify.$$ <<EOF
+
+--
+This is an automated posting sent by Sameer's installation script
+Version $VERSION
+EOF
+
+  ./pgp/pgp -eaf "$MNAME" < /tmp/notify.$$ >/tmp/enc.$$ 2>$ERR
+
+  /usr/lib/sendmail $ADDRESS <<EOF
+Subject: New Remailer with PGP
+To: $ADDRESS
+Encrypted: PGP
+
+`cat /tmp/enc.$$`
+
+EOF
+
+  rm /tmp/notify.$$ /tmp/enc.$$
+  $ECHO "Ran self-test of PGP"
+fi
+
+cat <<EOF
+**************************************************
+**************************************************
+VERY IMPORTANT DO NOT ANSWER THIS QUESTION LIGHTLY
+**************************************************
+**************************************************
+	Would you like to send the key that you generated for the
+anonymous remailer sent to the keyserver at wasabi.io.com? This means
+that your remailer will be publically announced to the world. Make
+sure that the UserID you chose is of a form reasonable for a remailer,
+such as "Joe's Remailer <joe@foo.bar>", or things could be a bit
+messy.  Do not answer this question lightly.
+	If you'd like to add your key to the server later, you must
+do:
+
+pgp -kxaf "$MNAME" $HOME/.remail/pgp/pubring.pgp | \\
+	elm -s add pgp-public-keys@io.com
+
+EOF
+
+$ECHO -n "Would you like to send your key to the keyserver? [N]/y "
+read YN
+
+if [ "$YN" = 'y' -o "$YN" = 'Y' ]
+then
+  $ECHO -n "Are you sure? [N]/y "
+  read YN
+  if [ "$YN" = 'y' -o "$YN" = 'Y' ]
+  then
+    $ECHO "Ok......"
+    /usr/lib/sendmail pgp-public-keys@io.com <<EOF
+Subject: add
+
+`./pgp/pgp -kxaf "$MNAME" 2>$ERR`
+EOF
+    $ECHO "Key added to server."
+  fi
+fi
+
+
+
+
+
+
+
+
+

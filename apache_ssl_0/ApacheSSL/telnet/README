@@ -1,0 +1,146 @@
+These are patches to some popular packages to use SSLeay to implement
+SSL.
+
+These patches were done by:
+
+Tim Hudson
+tjh@mincom.oz.au
++61 7 303 3333
+
+(Look at the VERSION file for details of contributors since the initial
+release)
+
+You can do whatever you like with these patches except pretend that
+you wrote them. I haven't gone through each file to put my name on 
+things that have changed so keep a copy of this README handy :-)
+Putting it clearly ... there are no commerical or otherwise restrictions
+on these patches. I would also like any derived works to include a 
+statement indicating that they were based on work done by myself and
+to include details of the site that contains this package.
+
+I think that what I have done makes sense and that SSL is the *right* 
+approach to problem of communication over an insecure network. Both Eric
+and myself are working towards making this technology commonly available.
+
+I would like feedback on any enchancements or patches
+to any other useful packages so I can keep a copy of them available
+in the one location, namely:
+
+ftp.psy.uq.oz.au:/pub/Crypto/SSLapps
+
+At the very least, if you are thinking of adding SSL support into 
+a publically available application send email to ssl-users@mincom.oz.au
+to see if anyone has done this or is working on it. If we get enough
+activity on this stuff (the application side of things) then I'll 
+create a separate mailing list.
+
+The documentation for these patches is included as part of the documentation
+that I wrote for SSLeay of which the current version of the documentation
+and the library itself are available from:
+
+ftp.psy.uq.oz.au:/pub/Crypto/SSL 
+http://www.psy.uq.oz.au/~ftp/Crypto/
+
+YOU SHOULD READ THE DOCUMENTATION. This is only a short note so those
+who want to dive straight in can do so without having to actually think
+about what they are doing.
+
+The general structure in each of the packages is to fit into any
+pre-existing encryption negotiation scheme (i.e. where there exists
+an RFC or IETF documented mechanism, it is used).
+
+For example the patches to SRA telnet attempt to negotiate SSL, if that 
+fails, SRA is attempted. If that fails then the "normal" non-encrypted 
+mechanism is used. (Unless you use the new "secure" option which
+specifically switches the fallback off!)
+
+The aim here is to have a drop in replacement client and server that
+works "transparently". I've been using this in-house for a couple of
+months now without any problems.
+
+Each package is done as a patch file to the currently available
+version of the source code (or at least the version that was available
+when I started patching things). You should be able to fetch the current
+source and then zcat PATCHFILENAME | patch -p0  
+
+Simply define -DUSE_SSL to add in the SSL support.
+The Makefile are setup for my development environment which is
+    SunOS 5.x 
+    CC 
+    SOCKS 
+
+I assume that the following exist:
+
+/usr/local/ssl/bin         (all the SSL utilites)
+/usr/local/ssl/lib         (libcrypto.a, libdes.a and libssl.a)
+/usr/local/ssl/include     (required SSL and DES header files)
+
+/usr/local/ssl/certs       PUBLIC keys
+/usr/local/ssl/private     PRIVATE keys
+
+For each of the servers (telnetd, httpd) I have worked using a self-signed
+certificate (this is the simpliest way of driving SSL as a "simple" stream
+encryption library). To generate the required files do the following:
+
+Note: - you need to be running sh or ksh for the make_cert step as it
+      requires you to redirect stderr separate from stdout which csh 
+      doesn't do.
+      - make_cert will ask you some questions ... put whatever you feel
+      in here at this step
+
+
+PATH=$PATH:/usr/local/ssl/bin
+
+genrsa     > telnetd.key
+make_cert 2> telnetd.text
+x509 -inform TEXT -in telnetd.text -signkey telnetd.key \
+     -CAform TEXT -CA telnetd.text -CAkey telnetd.key -CAcreateserial \
+     > telnetd.cert
+cp telnetd.cert /usr/local/ssl/certs
+chmod 644 /usr/local/ssl/certs/telnetd.cert
+cp telnetd.key /usr/local/ssl/private
+chmod 600 /usr/local/ssl/private/telnetd.key
+
+
+You should also find out the hash of each of these keys and make a 
+symlink in the certs directory to each of these files so verify 
+can find them
+
+cd /usr/local/ssl/certs
+ln -s telnetd.cert `x509 -noout -hash < telnetd.cert`.0
+
+Then *test* that verify likes the setup
+
+verify /usr/local/ssl/certs/telnetd.cert
+verify /usr/local/ssl/certs/httpd.cert
+
+I suggest the following strategy for working with things:
+
+* build SSL and have it's test programs server and client happily 
+  talking to each other. Then make install to put things in
+  /usr/local/ssl
+
+* build SRA telnet 
+  (you will have to switch off USE_SOCKS if you are not sitting
+  behind a SOCKS firewall)
+  Test it like this:
+      telnet -z ssl www.netscape.com https
+  (if https is unknown then use 443 :-)
+  then type
+      GET /
+  and you should get back the HTML for the Netscape home page
+
+* build telnetd
+  - and then you can have some security!
+
+* send money, presents, gifts, etc to Eric and Tim! ;-)
+
+* probably should re-read (or at least have a glance at) the documentation
+
+SSL bugs should be directed to ssl-bugs@mincom.oz.au
+SSL comments/discussion should be directed to ssl-users@mincom.oz.au
+
+If you email ssl-users-request@mincom.oz.au you will be emailed 
+instructions on how to interact with the majordomo varient that 
+is managing this list.
+

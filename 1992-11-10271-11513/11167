@@ -1,0 +1,58 @@
+Newsgroups: sci.crypt
+Path: msuinfo!caen!spool.mu.edu!umn.edu!csus.edu!netcom.com!rcain
+From: rcain@netcom.com (Robert Cain)
+Subject: Re: URNG
+Message-ID: <1992Nov21.161216.25901@netcom.com>
+Organization: Netcom - Online Communication Services  (408 241-9760 guest) 
+References: <By1C9x.3K1@chinet.chi.il.us>
+Date: Sat, 21 Nov 1992 16:12:16 GMT
+Lines: 48
+
+What follows is the core of the IDEA cipher system.  Starting with a
+random key and a random dataIn and then feeding back the dataOut
+successively as dataIn, a pretty strong URNG should result.  It generates
+16 bytes at a time.  I don't think much is known about its statistical
+properties but it is known to be a strong cipher.
+
+
+/******************************************************************************/
+/* encryption and decryption algorithm IDEA                                   */
+
+void  Idea(dataIn, dataOut, key)
+
+u_int16 *dataIn, *dataOut, *key;
+{
+	register u_int32 round, x0, x1, x2, x3, t0, t1, t2;
+
+  x0 = (u_int32)*(dataIn++);
+	x1 = (u_int32)*(dataIn++);
+  x2 = (u_int32)*(dataIn++);
+	x3 = (u_int32)*(dataIn);
+  for (round = nofRound; round > 0; round--)
+	{
+    x0 = Mul(x0, (u_int32)*(key++));
+    x1 = (x1 + (u_int32)*(key++)) & ones;
+    x2 = (x2 + (u_int32)*(key++)) & ones;
+    x3 = Mul(x3, (u_int32)*(key++));
+    t0 = Mul((u_int32)*(key++), x0 ^ x2);      
+    t1 = Mul((u_int32)*(key++), (t0 + (x1 ^ x3)) & ones);
+    t0 = (t0 + t1) & ones;
+    x0 ^= t1;
+		x3 ^= t0;
+    t0 ^= x1;
+		x1 = x2 ^ t1;
+		x2 = t0;
+  }
+  *(dataOut++) = (u_int16)(Mul(x0, (u_int32)*(key++)));
+  *(dataOut++) = (u_int16)((x2 + (u_int32)*(key++)) & ones);
+  *(dataOut++) = (u_int16)((x1 + (u_int32)*(key++)) & ones);
+  *(dataOut) = (u_int16)(Mul(x3, (u_int32)*key));
+} /* Idea */
+-- 
+Bob Cain    rcain@netcom.com   408-358-2007
+
+"There are some strings.  They're just not attached."
+                                                    Victoria Roberts
+
+
+               PGP 1.0 or 2.0 public key available on request.

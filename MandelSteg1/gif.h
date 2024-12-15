@@ -1,0 +1,6 @@
+
+#define INTERLACE_BIT	0x40
+#define COLORMAP_BIT	0x80
+
+#define MAX_CODES	4096
+

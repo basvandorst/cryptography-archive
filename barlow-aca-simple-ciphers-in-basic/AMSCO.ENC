@@ -1,0 +1,115 @@
+10 'AMSCO/ENC based on Bill Sutton's pgm in CM SO84 SEPT 30 1984 by M.Barlow last mod July 1985 ABCD 1987.
+11 ' IBM version aug 88 *** key length limited to 9 chars
+20 KEY OFF
+30 CLEAR :DEFINT A-Z:DIM RE$(250),NR(20):FI$="PTEXT.AMS"
+40 GOSUB 5010:PRINT:PRINT TAB(33)"By Mike Barlow
+50 DEF FNM(N)=N-2*INT(N/2) 'mod 2 function
+60 LOCATE 9,1:PRINT"   This program will encode plaintext in AMSCO cipher, in which the plaintext":PRINT"is written horizontally in alternating letter groups consisting of one and two  letters. "
+70 PRINT:PRINT"   The ciphertext is read out vertically in order determined by a keyword.":GOSUB 5020
+75 :
+80 '--- enter data ---
+90 GOSUB 2000                 'get default example
+100 GOSUB 5010:LOCATE 5,1:PRINT"Enter the plaintext (UPPER CASE, with or without spaces, no punctuation, 240 ":PRINT "chars max): ";
+110 PS$="":LINE INPUT PS$:IF PS$="" THEN PS$=XP$:PRINT PS$
+120 LP=LEN(PS$):RP$=PS$    'remember orig text
+130 FOR N=1 TO LP:IF MID$(PS$,N,1)=" "THEN 150 ELSE PT$=PT$+MID$(PS$,N,1) 'remove spaces
+150 NEXT:LT=LEN(PT$)
+160 'IF LT>144 THEN LT=144:PT$=LEFT$(PT$,LT) 'cut oversized text to suit deciphering program
+170 LOCATE 11,1:PRINT "The compressed plaintext is: ":PRINT PT$:PRINT:PRINT"There are"LT"characters in the text.":GOSUB 5020
+180 :
+190 '   --- process the key ---
+200 LL=INT(LT/12):HL=(LT/8)
+210 GOSUB 5010:PRINT:PRINT:N=0:K=0:PRINT "What is the key?":PRINT "(Numbers or CAPITAL letters; ACA limits with this text"LL"to"HL"chars)"
+215 :
+220 PRINT:PRINT "*** Program limit of 9 chars maximum - sorry, but those double digits need some work! ***":PRINT
+225 :
+230 X=POS(0):Y=CSRLIN:LINE INPUT K$:IF K$=""THEN K$=XKW$:LOCATE Y,X:PRINT K$
+235 LK=LEN(K$):IF LK>9 THEN 233 ELSE GOSUB 1600
+240 PRINT:PRINT"The equivalent numeric key is: "KD$
+250 FOR I=49 TO 90
+260   FOR J=1 TO LK
+270     IF MID$(K$,J,1)<>CHR$(I)THEN 290
+280     N=N+1:NR(N)=J:'PRINT NR(N);
+290   NEXT J
+300 NEXT I
+305 LOCATE 1,79-4-LK:PRINT "Key "K$
+310 LOCATE 15,1:PRINT"Start with a <S>ingle letter or <D>ouble? (S*/D) :  ";:Y=CSRLIN:X1=POS(0):LINE INPUT Q$:IF Q$="D" OR Q$="d" THEN X=0 ELSE X=1:LOCATE Y,X1:PRINT "Single"
+320 GOTO 1000
+330 ON ERROR GOTO 0:LOCATE 7,34:PRINT"The ciphertext is:"
+340 N=0
+350 FOR I=1 TO LK
+360   Z=X:J=NR(I):IF FNM(J)=X THEN Y=0 ELSE Y=1
+370   FOR J=J+INT((J-X)/2)TO LT STEP LK+INT((LK-1)/2)
+380     N=N+1:RE$(N)=MID$(PT$,J,1)
+390     IF(Y=1)AND(J<LT)THEN 400ELSE 410
+400     J=J+1:N=N+1:RE$(N)=MID$(PT$,J,1)
+410     IF Y=0 THEN Y=1ELSE Y=0
+420     IF LK/2=INT(LK/2)THEN J=J+Z
+430     IF Z=0 THEN Z=1ELSE Z=0
+440   NEXT J
+450 NEXT I
+460 '--- display the answer in fives ---
+465 OP$="":K=0
+470 LOCATE 8+RK,34:FOR I=1 TO 8:FOR J=1 TO 5
+480   K=K+1:PRINT RE$(K);:OP$=OP$+RE$(K):IF K/5=INT(K/5) THEN OP$=OP$+" "
+485   IF K=LT THEN 510
+490   NEXT J:IF I=8 THEN RK=RK+1 ELSE PRINT" ";
+500 NEXT I:PRINT:GOTO 470
+510 GOTO 9250    'print or end
+1000 '  --- print in cols ---
+1010 'PT$ is text, LK is key length, X=1=single,X=0=double start
+1015 IF X=1 THEN X1=1 ELSE X1=2
+1016 N=1:M=1                   'group and col counters
+1020 GOSUB 5010:LOCATE 1,79-4-LK:PRINT "Key "K$
+1022 LOCATE 3,1:PRINT "Plaintext:":PRINT RP$
+1025 LOCATE 7,1:FOR J=1 TO LK:PRINT MID$(KD$,J,1)"  ";:NEXT
+1030 ON X1 GOSUB 1100,1200   '2/1 or 1/2
+1040 GOTO 1310               'check for EOT
+1050 GOSUB 1400              'check for EOL
+1060 STOP
+1100 LOCATE 8+OS,1+(M-1)*3:PRINT MID$(PT$,N,1);:N=N+1:RETURN
+1200 LOCATE 8+OS,1+(M-1)*3:PRINT MID$(PT$,N,2);:N=N+2:RETURN
+1310 ON ERROR GOTO 1500
+1400 IF M<>LK THEN M=M+1:X1=X1+1:IF X1=3 THEN X1=1:GOTO 1030 ELSE GOTO 1030
+1410 OS=OS+1:M=1:X1=X1+1:IF X1=3 THEN X1=1:GOTO 1030 ELSE GOTO 1030
+1500 RESUME 330
+1600 '--- Strath Goodship's KW conv ex CS 2-16 ---
+1610 FOR I=1 TO LK: K=1
+1620  FOR J=1 TO LK
+1630    IF MID$(K$,I,1) > MID$(K$,J,1) THEN GOTO 1650
+1640    IF  NOT  (I>J AND MID$(K$,I,1)=MID$(K$,J,1))  THEN 1660
+1650    K=K+1
+1660  NEXT J
+1670  KD$=KD$+RIGHT$(STR$(K),1)
+1680 NEXT I:RETURN
+2000 '   --- example ---
+2020 XP$="INCOMPLETE COLUMNAR WITH ALTERNATING SINGLE LETTERS AND DIGRAPHS" 'ACA&U p24
+2030 XKW$="41325"
+2031 'XP$=XP$+XP$+XP$+"ABCDE FGHI JKLMN OPQRS TUVWX YZABC ABACD DEFGH"
+2050 RETURN
+4999 '
+5000 ' --- misc Subs ---
+5010 CLS:PRINT DATE$ TAB(28)"AMSCO ENCIPHERING PROGRAM":LOCATE 2,28:PRINT STRING$(25,"-"):PRINT:RETURN
+5020 LOCATE 23,1:PRINT SPC(79): LOCATE 23,28:PRINT "Press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+9250 '
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,9500,9500:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255    'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT "Amsco encipherment by Mike Barlow on the IBM/AT.     "DATE$:LPRINT
+9360 LPRINT OP$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9500 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+9510 LOCATE 23,1:END
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+60000 'output routine added Oct 1989: limits added at 230/232
+61000 ' key limit of 9 added Oct 6 89
+65000 SAVE"amsco.enc",A
+

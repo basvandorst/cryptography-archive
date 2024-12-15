@@ -1,0 +1,123 @@
+# Top Makefile for GNU MP
+# Copyright (C) 1991, 1993 Free Software Foundation, Inc.
+
+# This file is part of the GNU MP Library.
+
+# The GNU MP Library is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2, or (at your option)
+# any later version.
+
+# The GNU MP Library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with the GNU MP Library; see the file COPYING.  If not, write to
+# the Free Software Foundation, 675 Mass Ave, Cambridge, MA 02139, USA.
+
+srcdir = .
+
+CC = gcc
+LOCAL_CC = $(CC)
+CFLAGS = -g -O
+AR = ar
+RANLIB=`if [ -r /bin/ranlib -o -r /usr/bin/ranlib ]; \
+	then echo ranlib; else echo true; fi`
+SHELL = /bin/sh
+
+SRCS = memory.c mp_set_fns.c mp_clz_tab.c mp_bases.c
+OBJS = memory.o mp_set_fns.o mp_clz_tab.o mp_bases.o
+
+INCLUDES = -I. -I$(srcdir)
+
+all: libgmp.a
+
+libgmp.a: mpn/libmpn.a mpz/libmpz.a mpf/libmpf.a $(OBJS)
+	rm -rf tmpdir
+	mkdir tmpdir
+	for i in mpn mpz mpf; \
+	  do \
+	    mkdir tmpdir/$$i; \
+	    ( cd tmpdir/$$i; $(AR) x ../../$$i/lib$$i.a ); \
+	  done
+	cp $(OBJS) tmpdir
+	cd tmpdir; $(AR) cr $@ *.o */*.o
+	mv tmpdir/$@ .
+	$(RANLIB) $@
+	rm -rf tmpdir
+
+.c.o:
+	$(CC) -c $(CFLAGS) $(INCLUDES) $<
+
+mpn/libmpn.a: force
+	cd mpn; $(MAKE) libmpn.a
+mpz/libmpz.a: force
+	cd mpz; $(MAKE) libmpz.a
+mpf/libmpf.a: force
+	cd mpf; $(MAKE) libmpf.a
+force:
+
+stamp-stddefh:
+	rm -f stddef.h
+	rm -f test-stddefh.c
+	(	echo '#include <stddef.h>'				;\
+		echo 'main(){size_t foo=sizeof(size_t);exit(0);}'	;\
+	) >test-stddefh.c
+	@if $(LOCAL_CC) -DNO_ASM $(CFLAGS) $(INCLUDES) test-stddefh.c -c 2>/dev/null;\
+	then true							;\
+	else								\
+	  echo 'This machine has no "stddef.h".  Creating a minimal in ./';\
+	  $(LOCAL_CC) -DNO_ASM $(CFLAGS) $(INCLUDES) cre-stddefh.c -o cre-stddefh	;\
+	  ./cre-stddefh >stddef.h					;\
+	fi
+	rm -f test-stddefh.o
+	touch stamp-stddefh
+
+mp_bases.c: cre-conv-tab
+	./cre-conv-tab >tmp-$@
+	mv tmp-$@ $@
+cre-conv-tab: $(srcdir)/cre-conv-tab.c $(srcdir)/longlong.h
+	$(LOCAL_CC) -DNO_ASM $(CFLAGS) $(INCLUDES) \
+		`if [ x$(firstword $^) = x ];	\
+			       then echo $(srcdir)/cre-conv-tab.c;	\
+			       else echo $(firstword $^); fi` -o $@ -lm
+
+#gmp-mparam.h: cre-mparam
+#	./cre-mparam >tmp-$@
+#	mv tmp-$@ $@
+#cre-mparam: $(srcdir)/cre-mparam.c stamp-stddefh $(srcdir)/gmp.h
+#	$(LOCAL_CC) -DNO_ASM $(CFLAGS) $(srcdir)/cre-mparam.c -o $@
+
+doc: gmp.dvi gmp.info
+LN = ln -s
+gmp.dvi: $(srcdir)/gmp.texi
+	rm -f tmp.texi
+	$(LN) $(srcdir)/gmp.texi tmp.texi
+	tex tmp.texi </dev/null
+	texindex tmp.cp tmp.fn
+	tex tmp.texi </dev/null 2>/dev/null
+	mv tmp.dvi gmp.dvi
+gmp.info: $(srcdir)/gmp.texi
+	makeinfo $(srcdir)/gmp.texi
+
+clean:
+	rm -f *.o libgmp.a cre-conv-tab cre-mparam cre-stddefh \
+ gmp.dvi gmp.info gmp.ps mp_bases.c stamp-stddefh test-stddefh.c \
+ stddef.h tmp.* tmp-*
+	-cd mpn; $(MAKE) $@
+	-cd mpz; $(MAKE) $@
+	-cd mpf; $(MAKE) $@
+realclean: clean
+	-cd mpn; $(MAKE) $@
+	-cd mpz; $(MAKE) $@
+	-cd mpf; $(MAKE) $@
+	rm -f Makefile config.status tests/Makefile tests/config.status gmp-mparam.h
+
+Makefile: $(srcdir)/Makefile.in $(host_makefile_frag) $(target_makefile_frag)
+	$(SHELL) ./config.status
+
+H = $(srcdir)/gmp.h $(srcdir)/gmp-impl.h gmp-mparam.h
+
+memory.o: $(srcdir)/memory.c $(H)

@@ -1,0 +1,730 @@
+// $Id: setup.rul,v 1.62.4.5.2.2 1998/11/14 00:10:05 heller Exp $
+//____________________________________________________________________________
+//	Copyright (C) 1997 Pretty Good Privacy, Inc.
+//	All rights reserved.
+//
+//	Uninstall for PGP for Windows 95/NT
+//____________________________________________________________________________
+
+declare
+#include "SDDIALOG.H"
+
+#ifndef INCLUDEPGPDISK
+	#define INCLUDEPGPDISK			"FALSE"  // TRUE or FALSE		 			
+#endif
+
+#define PGP_HIDDEN_WINDOW			"PGPtray_Hidden_Window"
+#define WM_CLOSE					0x0010 // defines the WM_CLOSE message.
+#define TITLE						"PGP 6.0.2i"
+#define APP_NAME					"PGP 6.0.2i"
+#define VERSIONNUM					"PGP 6.0.2i"
+#define UNINSTALLKEY			    "PGP60"
+#define MB_OKCANCEL					1
+#define IDCANCEL					2
+#define IDRETRY 					4
+#define MB_RETRYCANCEL				5
+#define IDYES						6
+
+//	FUNCTION PROTOTYPES
+prototype	LONG VERSION.GetFileVersionInfoSizeA( STRING, BYREF LONG );
+prototype	BOOL VERSION.GetFileVersionInfoA( STRING,LONG,LONG,BYREF STRING ); 
+prototype	BOOL VERSION.VerQueryValueA( BYREF STRING,STRING,BYREF POINTER,BYREF NUMBER);
+prototype	BOOL PGPdskIH.AreAnyPGPdisksMounted ();
+prototype	BOOL PGPdskIH.UnmountAllPGPdisks ();
+prototype	PGPdskIH.KillPGPdiskResident();
+prototype	DeleteSharedFile (STRING,STRING);
+prototype	PGPdskIH.PGPdiskCleanup   ();
+
+BOOL		IS_NT;
+
+STRING		szPubRingPath [512];
+STRING		szPrivRingPath[512];
+STRING		szRandSeedPath[512];
+STRING		szKey,szName,svValue,svReturnString,szBmpName, szLocalDB, szTemp, szMsg;
+STRING		Installdir,svTarget,svResult, OEinstall;
+STRING		svOS, szDisplay, svValueAdmin;
+NUMBER		nDx,nDy,nvSize,nvType,nID_BITMAP, nResult, Reboot;
+NUMBER		nvOS, nDisplay,nCounter;
+HWND		hWnd1,hWnd2,hWnd3,hWnd4,hWnd5,hWnd6,hWnd7,hWnd8,hWnd9, hWnd;
+
+//For outlook express
+STRING szFileName, szVerBuffer[1536], szResultBuffer, szData;
+LONG lSize, lData;
+POINTER ptr1, ptr2;
+NUMBER nSize, nHandle;
+BOOL bVerValue, bVerInfo, bUpgraded, bDeleteAdmin, DeleteSharedDLLS;
+
+typedef MYTYPE_PSZ
+begin
+	STRING szString[24];
+end;
+
+program
+
+start:
+nCounter = 0;
+
+//SETUP THE SCREEN
+GetExtents(nDx,nDy);
+Enable(FULLWINDOWMODE);
+Enable(INDVFILESTATUS);
+SetColor(BACKGROUND,BK_BLUE);
+SetColor(STATUSBAR,BLUE);     // Bright blue.
+Enable(DIALOGCACHE);
+
+SetFont(FONT_TITLE, STYLE_BOLD | STYLE_ITALIC, "Times New Roman");
+
+GetSystemInfo (VIDEO, nDisplay, szDisplay);
+if (nDisplay = IS_EGA) then
+	SetTitle(TITLE + " - Uninstall", 10, WHITE); // Maybe 10
+elseif (nDisplay = IS_VGA) then
+	SetTitle(TITLE + " - Uninstall", 12, WHITE);
+elseif (nDisplay = IS_SVGA) then
+	SetTitle(TITLE + " - Uninstall", 16, WHITE);
+elseif (nDisplay = IS_XVGA) then
+	SetTitle(TITLE + " - Uninstall", 18, WHITE);
+elseif (nDisplay = IS_UVGA) then
+	SetTitle(TITLE + " - Uninstall", 24, WHITE);
+else
+	SetTitle(TITLE + " - Uninstall", 20, WHITE);
+endif;
+
+Reboot = 0;
+GetSystemInfo(OS, nvOS, svOS);
+
+switch (nvOS)
+
+case IS_WINDOWSNT:
+	IS_NT = TRUE;
+	if (Is (USER_ADMINISTRATOR, "") != TRUE) then
+
+		MessageBox ("To run this uninstall you need to be logged in\n" +
+					"with administrator privileges.",INFORMATION); 
+			exit;
+
+	endif;
+
+case IS_WINDOWS95:
+	IS_NT = FALSE;
+endswitch;
+
+//MAKE SURE THE USER REALLY WANTS TO UNINSTALL
+SetDialogTitle (DLG_ASK_YESNO,"Confirm uninstall");
+if (AskYesNo("Are you sure you want to Uninstall "+VERSIONNUM	+"?",NO) = NO) then
+	exit;
+endif;
+
+SdShowMsg ("Uninstalling... Please wait.", TRUE);
+
+hWnd = FindWindow(PGP_HIDDEN_WINDOW,"");
+if (hWnd > 0) then
+	if (AskYesNo("For uninstall to continue PGPtray must not be running.\n\n" +
+				 "Would you like setup to shut down PGPtray?",YES) = YES) then
+		SendMessage(hWnd,WM_CLOSE,0,0);
+		//Longer delay needed for correct shut down of tray
+		Delay(10);
+	else
+		MessageBox ("PGPtray must not be running to install this product.", INFORMATION);
+		exit;
+	endif;
+endif;
+Delay(4);
+
+TestForRunningApps:
+
+
+//ENSURE NO PLUGINS\DLL's ARE IN USE
+
+if (INCLUDEPGPDISK = "TRUE") then
+	if (FindWindow ("", "PGPdisk") != NULL) then
+		if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s",
+			"Please shut down PGPdisk before continuing.") = IDCANCEL) then
+			SendMessage(hWnd,WM_CLOSE,0,0);
+			exit;
+		else
+			MessageBox ("PGPdisk must not be running to install this product.", INFORMATION);
+		endif;
+	endif;
+endif;
+
+hWnd2 = FindWindow("Microsoft Exchange 4.0 Viewer","");
+if (hWnd2 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Microsoft Exchange must not be" +
+	" running.\nPlease shut down Microsoft Exchange.")= IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+
+hWnd3 = FindWindow("Microsoft Exchange 5.0 Viewer","");
+if (hWnd3 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Microsoft Exchange must not be" +
+	" running.\nPlease shut down Microsoft Exchange.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+hWnd4 = FindWindow("rctrl_renwnd32","");
+if (hWnd4!= NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Microsoft Outlook must not be" +
+	" running.\nPlease shut down Microsoft Outlook.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+
+hWnd5 = FindWindow("EudoraMainWindow","");
+if (hWnd5 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Eudora must not be running.\n"+
+	"Please shut down Eudora.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+hWnd6 = FindWindow("PGPAdminWizardClass","");
+if (hWnd6 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue the admin wizard must not be" +
+	" running.\nPlease shut down the admin. wizard.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+hWnd7 = FindWindow("PGPkeysMainWinClass","");
+if (hWnd7 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue PGPkeys must not be running.\n"+
+	"Please shut down PGPkeys.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+hWnd8 = FindWindow("PGPtools","");
+if (hWnd8 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue PGPtools must not be running.\n"+
+	"Please shut down PGPtools.") = IDCANCEL) then
+		exit;
+	else 
+		goto TestForRunningApps;
+	endif;
+endif;
+
+hWnd9 = FindWindow("PGPlog","");
+if (hWnd9 != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue PGPLog must not be running.\n"+
+	"Please shut down PGPLog.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+//Ensure that Outlook Express is not running
+if (FindWindow ("ThorBrowserWndClass", "") != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Outlook Express must not be running.\n"+
+	"Please shut down Outlook Express.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+if (FindWindow ("Ath_Note", "") != NULL) then
+	if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For uninstall to continue Outlook Express must not be running.\n"+
+	"Please shut down Outlook Express.") = IDCANCEL) then
+		exit;
+	else
+		goto TestForRunningApps;
+	endif;
+endif;
+
+//AT THIS POINT ALL FILES SHOULD BE FREE
+
+if (INCLUDEPGPDISK = "TRUE") then
+	//Shut down PGPdisk Resident and try to unmount all PGPdisks
+	UseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+		KillPGPdiskResident();
+
+		if (UnmountAllPGPdisks() = FALSE) then
+			//cant unmount all PGPdisks so warn user
+			if (AskYesNo("Uninstall has found mounted PGPdisks on your machine, it is recommended\n" +
+					 "that you unmount all PGPdisks before uninstalling. If you do not\n" +
+					 "do this you will need to reboot your machine at the end of the uninstall.\n\n" +
+					 "Do you want to Exit and unmount your PGPdisks?",YES) = YES) then
+				exit;
+			else
+				Reboot = 1;
+			endif;
+		endif;
+
+		PGPdiskCleanup   ();
+
+	UnUseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+endif;
+
+//See if and components that use the SDK were installed
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szLocalDB = "\\Software" ^ "Network Associates";
+szName = "DelSharedFiles";
+
+DeleteSharedDLLS = FALSE;
+if (RegDBGetKeyValueEx (szLocalDB ^ "PGP60", szName, nvType, szName, nvSize) = 0 ) then
+DeleteSharedDLLS = TRUE;
+endif;
+
+//DELETE .DLL'S FROM WINDOWS SYSTEM DIRECTORY
+TARGETDIR = WINSYSDIR;
+
+if (DeleteSharedDLLS = TRUE) then
+	DeleteSharedFile (WINSYSDIR, "PGP_sdk.dll");
+	DeleteSharedFile (WINSYSDIR, "PGPsdkNL.dll");
+	DeleteSharedFile (WINSYSDIR, "PGPsdkUI.dll");
+endif;
+
+DeleteSharedFile (WINSYSDIR, "pgp60cl.dll");
+DeleteSharedFile (WINSYSDIR, "pgp60mn.dll");
+DeleteSharedFile (WINSYSDIR, "pgp60rd.dll");
+DeleteSharedFile (WINSYSDIR, "pgp60sc.dll");
+DeleteSharedFile (WINSYSDIR, "pgpExch.dll");
+DeleteSharedFile (WINSYSDIR, "pgp60oe.dll");
+DeleteSharedFile (WINSYSDIR, "pgp60hk.dll");
+
+DeleteFile ("randseed.bin");
+DeleteFile ("PGP60.hlp");
+DeleteFile ("PGP60.gid");
+
+TARGETDIR = WINSYSDIR ^ "drivers";
+DeleteSharedFile (WINSYSDIR ^ "drivers", "PGPmemlock.sys");
+
+TARGETDIR = WINDIR;
+DeleteFile ("PGP_sdk.prf");
+DeleteFile ("PGPsdk.prf");
+DeleteFile ("PGPMacBinaryMappings.txt");
+
+
+//Short filename due to 95 bug
+DeleteSharedFile (WINDIR, "PGPMEM~1.vxd");
+
+//GET THE PGP 6.0 INSTALLATION DIRECTORY
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szKey = "Software\\Network Associates\\PGP60\\PGPKeys";
+szName = "ExePath";
+
+RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+ParsePath(svReturnString, svValue, PATH);
+
+//GET THE PGP 6.0 ADMIN INSTALLATION DIRECTORY
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szKey = "SOFTWARE\\Network Associates\\PGP60\\PGPKeys";
+szName = "ExePath";
+
+if (RegDBGetKeyValueEx (szKey, szName, nvType, svValueAdmin, nvSize) = 0) then
+bDeleteAdmin = TRUE;
+endif;
+
+//Outlook Express install location
+szKey = "SOFTWARE\\Network Associates\\PGP60\\OE";
+szName = "OutlookExpress";
+
+RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+OEinstall = svValue;
+
+UnInstallStart:
+
+//DELETE FILES FROM THE PGP 6.0 INSTALL DIRECTORY
+TARGETDIR = svReturnString;
+Installdir = svReturnString;
+DeleteFile ("keygen.avi");
+DeleteFile ("Pgp60.cnt");
+DeleteFile ("pgp60.hlp");
+DeleteFile ("pgp60.gid");
+DeleteFile ("PGPadmin.exe");
+DeleteFile ("PGPkeys.exe");
+DeleteFile ("PGPlog.exe");
+DeleteFile ("PGPtools.exe");
+DeleteFile ("PGPtray.exe");
+DeleteFile ("Quickstart.doc");
+DeleteFile ("PGP_Admin.prf");
+DeleteFile ("PGP_Client.prf");
+DeleteFile ("PGPadmin.prf");
+DeleteFile ("PGPclient.prf");
+DeleteFile ("Eudora.url");
+DeleteFile ("Adobe.url");
+DeleteFile ("randseed.bin");
+DeleteFile ("randseed.rnd");
+DeleteFile ("*.pdf");
+DeleteFile ("*.isu");
+
+TARGETDIR = svReturnString + "\\Documentation";
+DeleteFile ("license.txt");
+DeleteFile ("Readme.txt");
+DeleteFile ("6.0.2 Change History.txt");
+DeleteFile ("PGP55win.pdf");
+DeleteFile ("PGPWinUsersGuide.pdf");
+DeleteFile ("whatsnew.txt");
+DeleteFile ("whatsnew.doc");
+
+TARGETDIR = svReturnString + "\\PGPFone";
+DeleteFile ("PGPfone.pdf");
+DeleteFile ("PGPfone.exe");
+DeleteFile ("readme.txt");
+
+
+TARGETDIR = svReturnString + "\\Sample Keys";
+DeleteFile ("SampleKeys.asc");
+DeleteFile ("WhatIsThis.txt");
+
+if (svReturnString != "") then
+	DeleteDir(svReturnString + "\\PGPFone", ONLYDIR);
+	DeleteDir(svReturnString + "\\ClientInstaller", ALLCONTENTS);
+	DeleteDir(svReturnString + "\\TEMP", ONLYDIR);
+	DeleteDir(svReturnString + "\\Signatures", ONLYDIR);
+	DeleteDir(svReturnString + "\\Documentation", ALLCONTENTS);
+	DeleteDir(svReturnString + "\\Sample Keys", ONLYDIR);
+endif;
+
+//GET THE EUDORA PLUGIN PATH
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+szKey = "SOFTWARE\\Network Associates\\PGP60\\EudoraPlugin";
+szName = "PluginPath";
+
+RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+
+//DELETE THE EUDORA PLUGIN
+TARGETDIR = svValue;
+DeleteFile ("pgpplugin.dll");
+//To remove files accidently installed with 6.0b14
+DeleteFile ("pgpEudoraPluginv4.dll");
+DeleteFile ("pgpEudoraPlugin.dll");
+
+//DELETE REGISTRY ENTRIES
+//HKEY_CURRENT_USER
+RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+RegDBDeleteKey ("Software\\Network Associates\\PGP60");
+
+//HKEY_CLASSES_ROOT
+RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".asc");
+RegDBDeleteKey (".bexpk");
+RegDBDeleteKey (".pgd");
+RegDBDeleteKey (".pgp");
+RegDBDeleteKey (".pkr");
+RegDBDeleteKey (".prvkr");
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".pubkr");
+RegDBDeleteKey (".sig");
+RegDBDeleteKey (".skr");
+RegDBDeleteKey (".shf");
+RegDBDeleteKey (".pgr");
+RegDBDeleteKey (".rnd");
+RegDBDeleteKey ("PGP Groups");
+RegDBDeleteKey ("PGP Groups File");
+RegDBDeleteKey ("PGP Share");
+RegDBDeleteKey ("Randseed File");
+RegDBDeleteKey ("Ranseed File");
+RegDBDeleteKey ("CLSID\\{969223c0-26aa-11d0-90ee-444553540000}");
+RegDBDeleteKey ("PGP Armored Encrypted File");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Armored Extracted Public Key");
+RegDBDeleteKey ("PGP Detached Signature File");
+RegDBDeleteKey ("PGP Encrypted File");
+RegDBDeleteKey ("PGP Private Keyring");
+RegDBDeleteKey ("PGP Public Keyring");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Share File");
+
+//HKEY_LOCAL_MACHINE
+RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGP");
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".asc");
+RegDBDeleteKey (".bexpk");
+RegDBDeleteKey (".pgd");
+RegDBDeleteKey (".pgp");
+RegDBDeleteKey (".pkr");
+RegDBDeleteKey (".prvkr");
+RegDBDeleteKey (".aexpk");
+RegDBDeleteKey (".pubkr");
+RegDBDeleteKey (".sig");
+RegDBDeleteKey (".skr");
+RegDBDeleteKey ("CLSID\\{969223c0-26aa-11d0-90ee-444553540000}");
+RegDBDeleteKey ("PGP Armored Encrypted File");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("PGP Armored Extracted Public Key");
+RegDBDeleteKey ("PGP Detached Signature File");
+RegDBDeleteKey ("PGP Encrypted File");
+RegDBDeleteKey ("PGP Private Keyring");
+RegDBDeleteKey ("PGP Public Keyring");
+RegDBDeleteKey ("PGP Binary Extracted Public Key");
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions\\PGP Plugin");
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\explorer\\IStatus");
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"+UNINSTALLKEY+"DeinstKey");
+RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGP60");
+RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGP");
+RegDBDeleteKey ("SOFTWARE\\Classes\\.pgr");
+RegDBDeleteKey ("SOFTWARE\\Classes\\.rnd");
+RegDBDeleteKey ("SOFTWARE\\Classes\\PGP Groups");
+RegDBDeleteKey ("SOFTWARE\\Classes\\PGP Groups File");
+RegDBDeleteKey ("SOFTWARE\\Classes\\PGP Share");
+RegDBDeleteKey ("SOFTWARE\\Classes\\Randseed File");
+RegDBDeleteKey ("SOFTWARE\\Classes\\Ranseed File");
+
+RegDBDeleteValue ("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions", "PGP Plugin");
+
+//HKEY_USERS
+RegDBSetDefaultRoot(HKEY_USERS);
+RegDBDeleteKey ("S-1-5-21-1998468922-181747292-2076119496-1000\\Software\\PGP");
+
+ProgDefGroupType(PERSONAL);
+DeleteProgramFolder ("P G P");
+DeleteFolderIcon(FOLDER_STARTUP,"PGPtray");
+
+//Outlook Express Uninstall
+SRCDIR = OEinstall;
+
+TARGETDIR = OEinstall;
+//See if the user has installed OE plugin and then upgraded OE
+szFileName = OEinstall ^ "msimn.exe";
+UseDLL( "Version.dll" );
+lSize = GetFileVersionInfoSizeA( szFileName, nHandle );
+NumToStr( szTemp, lSize );
+bVerInfo = GetFileVersionInfoA( szFileName, nHandle, lSize, szVerBuffer);
+ptr1 = AddressString( szResultBuffer );
+ptr2 = AddressNumber( ptr1 );
+bVerValue = VerQueryValueA( szVerBuffer,"\\StringFileInfo\\040904b0\\CompanyName", ptr2, nSize);
+
+if (bVerValue = 0 ) then
+	bVerValue = VerQueryValueA( szVerBuffer,"\\StringFileInfo\\040904E4\\CompanyName", ptr2, nSize);
+endif;
+
+// pszResultBuffer is a pointer to a pointer which is the starting point
+// for the company name. How do you actually get the string ?
+StructGetP( ptr2, "MYTYPE_PSZ", "szString", lData, szData );
+UnUseDLL( "Version.dll" );
+
+if (szData = "Microsoft Corporation") then
+	//the user install the plugin then updated outlook
+	//so we DO want to use this newer file
+	bUpgraded = TRUE;
+endif;
+TARGETDIR = OEinstall;
+if (bUpgraded = FALSE) then
+
+	DeleteFile("msimn.exe");
+	RenameFile ("PGPmsimn.exe", "msimn.exe");
+else
+	DeleteFile("PGPmsimn.exe");
+endif;
+
+
+TARGETDIR = WINSYSDIR;
+DeleteFile("PGP55oe.dll");
+
+
+RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGP55\\OE");
+
+RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PGPOEPlugin");
+
+szLocalDB = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunOnce";
+
+RegDBSetKeyValueEx
+(szLocalDB,"uninstall.exe",REGDB_STRING,"command /c del " + OEinstall ^"uninstall.exe" ,-1);
+
+if (INCLUDEPGPDISK = "TRUE") then
+
+	TARGETDIR = svReturnString ^ "signatures";
+	DeleteFile ("*.sig");
+	DeleteFile ("*.*.sig");
+	DeleteDir  (svReturnString ^ "signatures", ONLYDIR);
+
+	TARGETDIR = svReturnString;
+	SdShowMsg ("Deleting program files.", TRUE);
+
+	DeleteFile ("pgpdiskresident.exe");
+	DeleteFile ("pgpdisk.exe");
+	DeleteFile ("pgpdisk.hlp");
+	DeleteFile ("pgpdisk.cnt");
+	DeleteFile ("pgpdisk.pdf");
+	DeleteFile ("readme.txt");
+	DeleteFile ("license.txt");
+
+	TARGETDIR = WINSYSDIR;
+		DeleteFile ("pgpdskSE.dll");
+
+	if (IS_NT) then
+		TARGETDIR = WINSYSDIR ^ "Drivers";
+		DeleteFile ("pgpdisk.sys");
+	else
+		TARGETDIR = WINSYSDIR ^ "Iosubsys";
+		DeleteFile ("pgpdisk.pdr");
+	endif;
+
+	Delay (2);
+	SdShowMsg ("Deleting program files.", FALSE);
+
+	//Deleting registry Entries.
+	SdShowMsg ("Deleting registry entries.", TRUE);
+
+	RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+	RegDBDeleteKey ("Enum\\Root\\PGPdisk");
+	RegDBDeleteKey ("System\\CurrentControlSet\\Services\\Class\\PGPdisk");
+
+	RegDBSetDefaultRoot (HKEY_CLASSES_ROOT);
+
+	RegDBDeleteKey (".pgd");
+	RegDBDeleteKey ("PGPdisk Volume File");
+	RegDBDeleteKey ("CLSID\\{f8b14440-3785-11d1-b363-5c6f08c10000}");
+	RegDBDeleteKey ("PGPdisk Volume File\\shellex\\ContextMenuHandlers\\PGPdisk Shell Extension");
+	RegDBDeleteKey ("Drive\\shellex\\ContextMenuHandlers\\PGPdisk Shell Extension");
+	RegDBDeleteValue ("Drive\\shellex\\ContextMenuHandlers", "");
+	RegDBDeleteKey ("PGPdisk Volume");
+
+	RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+	RegDBDeleteValue ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved",
+					  "{f8b14440-3785-11d1-b363-5c6f08c10000}" );
+	RegDBDeleteKey ("Enum\\ESDI\\PGP_____PGPDISK_________0");
+	RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGPdisk");
+	RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGPdiskAlpha");
+	RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGPdisk Beta");
+	RegDBDeleteKey ("SOFTWARE\\Network Associates\\PGPdiskBeta");
+	RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PGPdiskDeinstKey");
+	RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\PGPdisk.exe");
+	RegDBDeleteKey ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\PGPdiskResident.exe");
+	RegDBDeleteKey ("SOFTWARE\\Classes\\PGPdisk Volume");
+
+	RegDBSetDefaultRoot (HKEY_CURRENT_USER);
+
+	RegDBDeleteKey ("Software\\Network Associates\\PGPdisk");
+	RegDBDeleteKey ("Software\\Network Associates\\PGPdiskAlpha");
+	RegDBDeleteKey ("Software\\Network Associates\\PGPdiskBeta");
+	RegDBDeleteKey ("Software\\PGP\\PGPdisk");
+	RegDBDeleteKey ("Software\\PGP\\PGPdiskAlpha");
+	RegDBDeleteKey ("Software\\PGP\\PGPdiskBeta");
+
+	if (IS_NT) then
+		RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+		RegDBDeleteKey ("System\\CurrentControlSet\\Services\\PGPdisk");
+		RegDBDeleteKey ("System\\CurrentControlSet\\Services\\EventLog\\System\\PGPdisk");
+	endif;
+endif;
+
+//If there is an Admin install on the system as well, remove it
+if (nCounter = 0) then
+	if (bDeleteAdmin = TRUE) then
+		nCounter = 1;
+		svReturnString = svValueAdmin;
+		goto UnInstallStart;
+	endif;
+endif;
+
+
+SdShowMsg ("Uninstalling... Please wait.", FALSE);
+
+SetDialogTitle (DLG_MSG_INFORMATION,"Uninstall complete");
+MessageBox ( VERSIONNUM	+" has been uninstalled. Your key files have not been\n" +
+			"removed.  You may wish to store them in a safe place.", INFORMATION);
+
+if (Reboot = 1) then
+	szTemp = "Uninstall has finished uninstalling " +
+	APP_NAME +" on your computer";
+	szMsg =   "Some files could not be deleted because" +
+	" they are currently in use by other programs" +
+	" on the system.  Files in use will be deleted" +
+	" the next time you restart your system. You will" +
+	" need to reboot before installing any PGP products.";
+	// If SdFinishReboot reboots the system,the shared file data is
+	// automatically recorded.
+	RebootDialog ("Restart Windows",szMsg,SYS_BOOTWIN);
+endif;
+exit;
+
+
+//This function will check if a library is shared before deleteing
+
+function DeleteSharedFile(szDeleteFilePath, szDeleteFile)
+
+STRING szDelKey, svString, svValue;
+NUMBER nvVar, nvType, nvSize, nSize, nReturn;
+
+begin
+
+RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+szDelKey	= "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\SharedDLLs";
+
+RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+if (RegDBGetKeyValueEx 
+	(szDelKey,  szDeleteFilePath ^ szDeleteFile, nvType, svValue, nvSize) < 0 ) then
+
+	//this is not a shared .dll so delete
+	VarSave (SRCTARGETDIR);
+	TARGETDIR  = szDeleteFilePath;
+	SRCDIR     = szDeleteFilePath;
+	Delay (1);
+	nReturn = DeleteFile (szDeleteFile);
+	if (nReturn != 0) then
+		MessageBox (szDeleteFilePath + szDeleteFile + "\n" +
+					"This file could not be deleted. You can\n" +
+					"safely delete this file manually.", INFORMATION);
+	endif;
+	Delay (1);
+	VarRestore (SRCTARGETDIR);
+
+else
+
+	//this is a shared file
+	StrToNum (nvVar, svValue);
+	nvVar = nvVar - 1;
+	if (nvVar < 1) then
+		SetDialogTitle (DLG_ASK_YESNO,"Confirm delete");
+		if (AskYesNo
+		   (szDeleteFile + " is a shared library. It appears no other applications\n"+
+		   "are using it anymore, do you want to delete it?"
+		   ,NO) = YES) then
+				if (szDeleteFile = "PGPmemlock.sys") then
+		   			//delete the reg. entry
+					RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+					RegDBDeleteKey ("SYSTEM\\CurrentControlSet\\Services\\PGPmemlock");
+				endif;
+				//Delete the file and decrement the count
+				RegDBDeleteValue (szDelKey, szDeleteFilePath ^ szDeleteFile);
+				VarSave (SRCTARGETDIR);
+				TARGETDIR  = szDeleteFilePath;
+				SRCDIR     = szDeleteFilePath;
+				Delay (1);
+				nReturn = DeleteFile (szDeleteFile);
+				if (nReturn != 0) then
+					MessageBox (szDeleteFilePath + szDeleteFile + "\n" +
+					"This file could not be deleted. You can\n" +
+					"safely delete this file manually.", INFORMATION);
+				endif;
+				Delay (1);
+				VarRestore (SRCTARGETDIR);
+		endif;
+	endif;
+	//write the new number of apps shareing the library
+	if (nvVar > 0) then
+		NumToStr (svString, nvVar);
+		RegDBSetKeyValueEx 
+		(szDelKey,  szDeleteFilePath ^ szDeleteFile, REGDB_NUMBER, svString, nSize);
+	endif;
+endif;
+end;
+#include "Sddialog.rul"
+
+

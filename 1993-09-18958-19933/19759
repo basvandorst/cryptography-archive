@@ -1,0 +1,122 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!spool.mu.edu!sol.ctr.columbia.edu!news.kei.com!ub!acsu.buffalo.edu!boyd
+From: boyd@acsu.buffalo.edu (Daniel F Boyd)
+Subject: Re: Privacy-Enhanced Mail: Crypto Problems
+Message-ID: <CE0pJn.A7C@acsu.buffalo.edu>
+Sender: nntp@acsu.buffalo.edu
+Nntp-Posting-Host: autarch-14.acsu.buffalo.edu
+Reply-To: boyd@acsu.buffalo.edu (Daniel F Boyd)
+Organization: UB
+References: <1993Sep24.063530.21163@cactus.org> <CDxDCA.81J@acsu.buffalo.edu> <bryner.28.749084984@chemistry.utah.edu> <1993Sep27.071800.2489@cactus.org>
+Date: Mon, 27 Sep 1993 14:57:22 GMT
+Lines: 109
+
+In article <1993Sep27.071800.2489@cactus.org> 
+ritter@cactus.org (Terry Ritter) writes:
+>  (Normally, we hash a key phrase into a substantial cryptographic
+>  RNG and use the sequence to drive a shuffle for each table; a
+>  different hash drives the DES key.)
+
+Ok, so what you're really doing is increasing the key length by adding
+the keyphrase.  An increased key length increases the cost -- which
+you're conveniently ignoring when you say this system has no increased
+cost.
+
+Also, what particular 'substantial cryptographic RNG' are you talking
+about?  You are using special pleading; this RNG you're going to pull
+out of your hat is where the all the supposed security of your idea
+comes from.  I don't know how expensive this cryptographic RNG is
+going to be.
+
+>  But trying each DES key, by itself, will not work on the design with
+>  the 11 unknown tables, because if even a single ciphertext bit from
+>  one table is wrong, DES will produce completely-different plaintext
+>  which will not match the known plaintext.
+
+You seem to think a known-plaintext attack consists of DECRYPTING with
+all possible keys until you find one that correctly decrypts the
+CIPHERTEXT.  That's one way, sure -- but another way is to ENCRYPT
+with all possible keys until I fine one that correctly encrypts the
+PLAINTEXT.  
+
+With your system I can still do this forward attack on the DES part.
+When I hit the right DES key, I get a DES ciphertext that will have
+frequency statistics that match those of the ASCII-armored ciphertext.
+Since the ASCII ciphertext is only one simple-substitution away from
+my DES ciphertext, their frequency-distribution stats will match, and
+I can check this in an automated way.
+
+The shuffle table doesn't change over the entire message, so for each
+DES key I try, I encrypt several ($n$) blocks worth of the known
+plaintext.  Each DES-encrypted block contains 11 chunks; there are 11
+shuffle tables.
+
+Now I look at the first chunk of each of the $n$ blocks, and compare
+them to the corresponding first chunk of each of the shuffled
+ciphertext blocks.  I know that each of these (chunk, shuffled-chunk)
+pairs has been shuffled by the same one of your shuffle tables.
+
+Now I look for collisions.  This is where two identical chunks map to
+two different results, or two different chunks map to the same result.
+If there are no collisions, (meaning that the DES key I've chosen
+isn't inconsistent with any possible shuffle table) then I set asisde
+this particular DES key to be examined later.  Call this a 'hit'.  If
+I find a collision, any collision at all, I know I have the wrong DES
+key (a miss) and I go on to the next DES key.
+
+I will have exactly one true hit (the correct DES key) and possibly
+many false hits.  The longer the sample I try (the larger $n$ is) then
+the less likely a false hit is.  Indeed, I can try more blocks on each
+DES key until I get a miss; this is cheaper than looking at the
+statistics since I'm probably searching with a hardware DES chip.
+
+Let's look at things carefully, OK?  If the attacker doesn't know the
+correct DES key, then he can't decrypt, period.
+
+So assume the attacker knows the correct DES key.  Now, solving the
+system is trivial; it's just a simple substitution.
+
+So your system is no stronger than DES.
+
+>  Thus, it is now necessary for The Opponent to brute-force
+>  search the tables *as well* as DES, thus adding another 64 bits to
+>  a brute-force search.  
+
+There are 64 factorial possible substitution tables.  This is not 64
+bits, it is almost 296 bits per table.  There are 11 tables, so this
+means 3256 extra key bits.  You are surreptitiously adding these 3256
+bits onto the key length, but as I've shown, they don't help.
+
+>  Since the network translation is required anyway, this added
+>  strength costs almost *nothing* in terms of throughput (and just 11
+>  shuffles of 64-element tables--something like 1,000 RNG
+>  steps--during init).
+
+The regular mapping to ASCII is done by addition and shifting; this
+can be done all in registers.  Your mapping requires a table lookup on
+each character.  I agree that your mapping is not very expensive.
+What you're missing is that your mapping doesn't make the system more
+secure.
+
+>  I should point out that the small block size used in DES is
+>  vulnerable to other attacks based on the very limited uncertainty
+>  of language text when directly used as plaintext.  
+
+You are probably ignoring CFB mode when you talk about this.
+
+>  (Some forms of data-compression might thus provide additional
+>  security in DES systems.)
+
+Yes; you should compress before encrypting.  Compressing after
+encryption is silly.
+
+>  However, preventing normal brute-force attacks at
+>  virtually no cost seems like a worthwhile engineering tradeoff,
+>  one which certainly should not be prevented by the PEM
+>  specifications themselves.
+
+It's not 'virtually no cost'.  It adds an entire new algorithm (the
+cryptographic RNG you glossed over), thousands of bits to the key
+length, and is still no stronger than DES.
+
+

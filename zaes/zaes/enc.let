@@ -1,0 +1,84 @@
+
+                  An encryption algorithm - ZAES.
+
+   0. Introduction.
+
+   ZAES - Zambalaev Adding Encryption System - just to call it somehow. It is
+a block private-key cipher. Block length: 128 bits, key length: 128 bits.
+
+   1. General description.
+
+   We have block b of N (N=16) bytes (numbers) which we want to encrypt. We
+also have a key which consists of N bytes.
+   The main idea is to use function which
+       1) depends on every byte in a block;
+       2) is reversible;
+   That is we must have function f( i, b(1), ... , b(N) ) = s, and if we
+know i, b(1), ... , b(i-1), b(i+1), ... , b(N), s then we can calculate b(i).
+   We can build such a function having a binary reversible function g(x,y).
+f( b(1), ... , b(N) ) = b(1) g b(2) g ... g b(N) (g used like plus). Strictly
+speaking we must use parentheses to fix the order of operations because g is
+not associative.
+   Properties of function g(x,y):
+       1) binary (two arguments - 2 bytes; x,y are from [0..255])
+       2) result s=g(x,y) is a byte
+       3) reversible, i.e. there are functions g_1x(y,s) and g_1y(x,s) such
+          that
+               a) for all x,y g(x,y)=s => g_1x(y,s)=x
+               b) for all x,y g(x,y)=s => g_1y(x,s)=y
+       4) g(x,x) != x for all x
+       5) is not associative, i.e.
+          not[ for all x,y,z g( g(x,y), z ) = g( x, g(y,z) ) ]
+       6) is not commutative, i.e.
+          not[ for all x,y g(x,y)=g(y,x) ]
+
+   2. Algorithm description.
+
+   For exact definitions see source files in C. I just wanted to explain the
+algorithm in a simple way. If you have any questions about the algorithm
+contact me.
+   1) input  - plaintext: array [0..15] of byte,
+               key: array [0..15] of byte
+      output - ciphertext: array [0..15] of byte
+   2) We need a permutation perm which we get from a key. That is we must
+produce N different bytes from [0..N-1] using a key (N bytes). m mod n is
+a remainder after integer division m by n.
+      var perm: array [0..15] of byte,
+      for i:=0 to 15 do perm[i] := i;
+      for j:=16 downto 1 do begin
+        k := key[16-j] mod j;
+        temp := perm[j-1];
+        perm[j-1] := perm[k];
+        perm[k] := temp
+      end
+   3) var gt: array [0..255,0..255] of byte
+      var gt_1x: array [0..255,0..255] of byte
+      var gt_1y: array [0..255,0..255] of byte
+      read 65536 bytes of file "zaes.adf" to array gt
+      read 65536 bytes of file "zaes_1x.adf" to array gt_1x
+      read 65536 bytes of file "zaes_1y.adf" to array gt_1y
+   4) You can generate your own g function (zaes.adf) with 4 stated properties
+(see above). I don't know any weak functions from this set. Having your own
+g function is an additional security point.
+      byte g( byte x, byte y ) { return gt[x,y]; }
+      byte g_1x( byte x, byte s ) { return gt_1x[x][s]; }
+      byte g_1y( byte y, byte s ) { return gt_1y[y][s]; }
+   5) for i:=0 to 15 do ciphertext[i] := g( plaintext[i], key[i] )
+   6) for i:=0 to 15 do begin
+        pos := perm[k];
+        if pos = 0 then suml := 0
+        else begin
+          suml := ciphertext[0];
+          for j:=1 to pos do suml := g( suml, ciphertext[i] )
+        end
+        sum := g( suml, ciphertext[pos] );
+        if pos == 15 then sumr := 0
+        else begin
+          sumr := ciphertext[15];
+          for j:=14 downto pos do sumr := g( ciphertext[i], sumr )
+        end
+        sum = g( sum, sumr );
+        ciphertext[pos] = sum
+      end
+   7) for i:=0 to 15 do ciphertext[i] := g( key[i], ciphertext[i] );
+

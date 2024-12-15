@@ -1,0 +1,291 @@
+
+<A NAME="STARTFILE"> </A>
+<H2>Table of Contents</H2>
+
+<UL>
+<A HREF="#HDR0"> 1.  Certificate Handling Overview</A>
+
+<UL>
+<A HREF="#HDR1"> 1.1  Set Certificate Cache</A>
+
+<BR>
+<A HREF="#HDR2"> 1.2  Add Certificate File</A>
+
+<BR>
+<A HREF="#HDR3"> 1.3  Set Certifying Authority Certificate Location</A>
+</UL>
+
+<A HREF="#HDR4"> 2.  Certificate Verification Process</A>
+
+<UL>
+<UL>
+<A HREF="#HDR5"> 2.0.1  X509_NAME_oneline</A>
+</UL>
+</UL>
+
+<A HREF="#HDR6"> 3.  Generating and Signing Certificates</A>
+
+<UL>
+<A HREF="#HDR7"> 3.1  genrsa</A>
+
+<BR>
+<A HREF="#HDR8"> 3.2  verify</A>
+
+<BR>
+<A HREF="#HDR9"> 3.3  rsa</A>
+
+<BR>
+<A HREF="#HDR10"> 3.4  x509</A>
+
+<BR>
+<A HREF="#HDR11"> 3.5  ssleay</A>
+
+<BR>
+<A HREF="#HDR12"> 3.6  req</A>
+</UL>
+
+<A HREF="#HDR13"> 4.  Generating RSA certificate requests</A>
+
+<BR>
+<A HREF="#HDR14"> 5.  Generating "dummy" certificates</A>
+</UL>
+
+<HR>
+<!-- This file was created with the fm2html filter.
+The filter is copyright Norwegian Telecom Research and
+was programmed by Jon Stephenson von Tetzchner. -->
+
+<!-- Modifications to fm2html filter to support Mincom
+requirements (file relative tags etc) were programmed by
+Tim Hudson (tjh@mincom.oz.au) -->
+
+
+<A NAME="Certificate Handling Overview"> </A>
+<H2><A NAME="HDR0"> 1.  Certificate Handling Overview</A></H2>
+<P>By default we store the all the certificates in either files or series of <I>hashed</I> directories (where the hash is generated from the subject name appended with a unique number to handle any name clashes).
+<P>The format of the certificates can be any of:
+
+<UL>
+<P><LI>DER  - binary DER encoding
+<BR>
+<P><LI>PEM  - base64 PEM encoding
+<BR></UL>
+
+
+<P>By default the code we are shipping uses the <I>directory</I> and <I>PEM</I>-style encoding for the certificates contained therein.
+<A NAME="Set Certificate Cache"> </A>
+<H3><A NAME="HDR1"> 1.1  Set Certificate Cache</A></H3>
+<PRE>
+ X509_add_cert_dir(char *dir,int type)
+</PRE>
+<P><I>dir</I> can be either a single directory or a colon separated list of directories. <I>type</I> must be one of
+
+<UL>
+<P><LI>X509_FILETYPE_PEM
+<BR>
+<P><LI>X509_FILETYPE_DER
+<BR></UL>
+
+
+<A NAME="Add Certificate File"> </A>
+<H3><A NAME="HDR2"> 1.2  Add Certificate File</A></H3>
+<P>To add a certificate:
+<PRE>
+ X509_add_cert_file(char *file,int type)
+</PRE>
+<P><I>file</I> contains the certificate. <I>type</I> must be one of
+
+<UL>
+<P><LI>X509_FILETYPE_PEM
+<BR>
+<P><LI>X509_FILETYPE_DER
+<BR></UL>
+
+
+<P>For <I>X509_FILETYPE_PEM</I> the file can contain multiple certificates.
+<A NAME="Set Certifying Authority Certificate Location"> </A>
+<H3><A NAME="HDR3"> 1.3  Set Certifying Authority Certificate Location</A></H3>
+<P>As part of the general struture used, you can specify the location from which to load "trusted" certifying authority certificates. The cerficates can either be in a single file or in a "hashed" directory.
+<P>All certificates loaded via this interface must be in <I>PEM</I> format as this function simply calls <I>X509_add_cert_dir()</I> and <I>X509_add_cert_file()</I>.
+<PRE>
+ X509_load_verify_locations(char *file,char *dir)
+</PRE>
+<P>Either of <I>file</I> or <I>dir</I> can be <I>NULL</I>.
+<P>The standard behaviour of using the locations as specified in <I>rsa/location.h</I> can be activated by using
+<PRE>
+ SSL_set_default_verify_paths(ssl_con)
+ (which is actually) X509_set_default_verify_paths(ssl_ctx-&gt;cert)
+</PRE>
+<TJH2><PRE></PRE>
+<P>This loads certificates from the "standard" locations and from whatever the standard environment variables point to.
+<P>The default values in <I>rsa/location.h</I> are:
+<PRE>
+ #define SSL_CERT_DIR           "/usr/local/ssl/certs"
+ #define SSL_CERT_FILE  "/usr/local/ssl/cert.pem"
+ 
+ #define SSL_CERT_DIR_ENV       "SSL_CERT_DIR"
+ #define SSL_CERT_FILE_ENV      "SSL_CERT_FILE"
+</PRE>
+<P>Note: the <I>verify</I> and <I>x509</I> utility programs use <I>X509_set_default_verify_paths()</I> so if you want different behaviour you will have to change the calls in those programs.
+
+<A NAME="Certificate Verification Process"> </A>
+<HR><H2><A NAME="HDR4"> 2.  Certificate Verification Process</A></H2>
+<P>Certificate verification is controlled by <I>ssl_set_verify</I>. This sets the verify mode and the optional callback function.
+<PRE>
+ void ssl_set_verify(SSL *s,int mode, int (*callback)() )
+</PRE>
+<P>Supported modes are:
+
+<UL>
+<P><LI>SSL_VERIFY_NONE
+<BR>
+<P><LI>SSL_VERIFY_PEER
+<BR>
+<P><LI>SSL_VERIFY_FAIL_IF_NO_PEER_CERT
+<BR></UL>
+
+
+<P>If <I>SSL_VERIFY_PEER</I> then the server will request a certificate from the client during initial protocol negotiation. If the client does not provide one and <I>SSL_FAIL_IF_NO_PEER_CERT</I> is being used then the verification process will fail and the caller will be returned an error code from <I>ssl_accept()</I>.
+<P>From the client point of view, if <I>SSL_VERIFY_PEER</I> is set then the client will verify the server's certificate.
+<P>The callback function can be used to control the entire certificate hierarchy trust policy. It is called after each attempted verification of a certificate - either because the certificate was received or a certificate was referenced during traversal of the Certifying Authority hierarchy.
+<PRE>
+ int (*callback)(int ok,X509 *subj_cert,X509 *issuer_cert,
+                 int depth,int errorcode)
+</PRE>
+<P><I>ok</I> is set to <I>1</I> if the X509 certificate is syntactically "valid" and has been verified (i.e. the checksum is okay, date range correct, etc). The callback function can return either <I>1</I> to accept, or <I>0</I> to reject - i.e. the return value would have been <I>ok</I> if there was no callback function registered.
+<P><I>subj_cert</I> is the certificate of the <I>subject</I>
+<P><I>issuer_cert</I> is the certificate of the issuer (the signer of the subjects certificate). It may be <I>NULL</I> (if there is an error).
+<P><I>depth</I> is the recursion depth. A depth of <I>1</I> indicates that you are attempting to verify the issuer of the subjects certificate. If you do not wish to traverse the CA hierarchy simply return <I>1</I> when the depth is greater than or equal to <I>1</I>.
+<P><I>errorcode</I> is one of the <I>VERIFY_ERR_</I> defines from <I>rsa/X509.h</I>. <I>VERIFY_OK</I> indicates that there is no error.
+<P>TODO: There are lots of X509 interface routines that you will have to look at if you actually want to do anything useful with certificates :-)
+<P>Have a look at <I>rsa/verify.c</I> for a decent example usage of this stuff.
+
+<P>The following are probably of the most imediate use in the callback function:
+<A NAME="X509_NAME_oneline"> </A>
+<H4><A NAME="HDR5"> 2.0.1  X509_NAME_oneline</A></H4>
+<P>To turn a X509_NAME encoding into a "normal" string:
+<PRE>
+ char *X509_NAME_oneline(X509_NAME *name)
+</PRE>
+<P>It is the responsibility of the caller to <I>free()</I> the returned string.
+
+<A NAME="Generating and Signing Certificates"> </A>
+<HR><H2><A NAME="HDR6"> 3.  Generating and Signing Certificates</A></H2>
+<P>There are five programs in the <I>rsa</I> directory that are required for generating and managing certificates.
+<P>The following two environment variables influence the behaviour of the certificate verification process in <I>verify</I> and <I>x509</I>.
+
+<UL>
+<P><LI><I>SSL_CERT_DIR</I>
+<BR>
+<P><LI><I>SSL_CERT_FILE</I>
+<BR></UL>
+
+
+<P>It is considered a <B>good</B> idea for all implementations to standarise on usage of these environment variables.
+<A NAME="genrsa"> </A>
+<H3><A NAME="HDR7"> 3.1  genrsa</A></H3>
+<P>Used to generate <I>RSA</I> private keys.
+<PRE>
+ genrsa [-des|-idea] [-rand file:file:file] [-F4|-3] [numbits] &gt; key
+</PRE>
+<P>Number of bits to make the RSA private key, default of 512. writes to stdout when finished, in <I>PEM</I> format. If the <I>des</I> or <I>idea</I> option are used you will be prompted for a <I>pass phrase</I>.
+<P>The random number generator can be seeded with a series of files. Each file will have the <I>stat(2)</I> information and the contents of the complete file used.
+<P>The public exponent can be set using <I>-F4</I> or <I>-3</I> if you desire to deviate from the SSLeay default of <I>F4</I>.
+<A NAME="verify"> </A>
+<H3><A NAME="HDR8"> 3.2  verify</A></H3>
+<P>To verify that a certificate is "okay"
+<PRE>
+ verify [-CApath path] [-CAfile filename] file1 [file2 ...]
+</PRE>
+<P><I>verify</I> will attempt to verify a certificate via either looking through a directory or simply a single file - this behaviour is compiled into the program and you really should decide what your "site" default for this is.
+<P><I>verify</I> requires the arguments to be in <I>PEM</I> format and the lookup files also must be in <I>PEM</I> format.
+<P>You <B>may</B> want to tailor this program (or <I>rsa/location.h</I> as it has hard coded paths for the location for the certificates used to verify. Note that you can use the environment variables <I>SSL_CERT_DIR</I> and <I>SSL_CERT_FILE</I> or the command line args <I>CApath</I> and <I>CAfile</I> to influence the location used.
+<A NAME="rsa"> </A>
+<H3><A NAME="HDR9"> 3.3  rsa</A></H3>
+<P>Convert keys from one format to another - i.e. rsa is a filter.
+<PRE>
+</PRE>
+<TJH2><PRE> rsa [-des|-idea] [-inform format] [-outform format]
+     [-in infile] [-out outfile]
+</PRE>
+<P>Terse help is given on error. When a <I>PEM</I> format file is encountered you will be prompted for the <I>pass phrase</I> to encrypt/decrypt the private key if the <I>des</I> or <I>idea</I> options are used.
+<P>Note: <I>rsa</I> can be used to change <I>pass phrases</I> by simply running
+<PRE>
+ rsa -des &lt; in &gt;out
+</PRE>
+<A NAME="x509"> </A>
+<H3><A NAME="HDR10"> 3.4  x509</A></H3>
+<P><I>x509</I> is the real key to the signing process and to managing certificates.
+<PRE>
+ x509
+     [-inform format]
+     [-outform format]
+     [-keyform format]
+     [-CAform format]
+     [-CAkeyform format]
+     [-in input-filename]
+     [-out output-filename]
+     [-signkey self-signing-key-filename]
+     [-CA certifying-authority-certificate-filename]
+     [-CAkey certifying-authority-key-filename]
+     [-CAcreateserial]
+     [-RSAreq private-key-filename]
+     [-days]
+     [-CAserial filename]
+ 
+ Output options:
+     [-serial]     prints the serial number
+     [-hash]       prints the hash vaulue used to dir lookups
+     [-subject]    prints the cert's subject DN
+     [-issuer]     prints the cert's issuer DN
+     [-startdate]  prints the cert's notBefore field
+     [-enddate]    prints the cert's notAfter field
+     [-noout]      do not display the certificate
+</PRE>
+<P>If a given input or output file format is not specified it defaults to <I>PEM</I>.
+<P>If the <I>CAkey</I> is not specified and the <I>CAform</I> is <I>PEM</I> (which is the default) then it is assumed that the <I>CAkey</I> is also stored in the <I>CA</I> certificate file.
+<P>The <I>Output options</I> generate output in the order in which they are specified on the command line.
+<P>If <I>-signkey</I> is set, the certificate has the public component of the key inserted and is signed with the private key. This is required so the certificate can be sent to a CA for certifying.
+<P>If the <I>-CA</I> flag is present, the certificate is certified/signed by the <I>CAkey</I> and has the issuer copied from the <I>CA</I> certificate.  The date is also set and a file of the form <I>CAkey</I> filename.serial is updated and the new serial number is put in the certificate. Unless <I>CAcreateserial</I> is set the file will not be created or edited unless it is in the correct format.
+
+<P>The <I>-signkey</I> and <I>-CA</I> commands are processed in the same order as their command line arguments. Note that this means you will be prompted for the <I>pass phrase</I> for each in the order in which you specified them on the command line. The prompt however <I>does</I> indicate which <I>pass phrase</I> is required so you should <I>read</I> it.
+<PRE>
+ x509 -noout -subject -issuer -enddate &lt; filename
+</PRE>
+<A NAME="ssleay"> </A>
+<H3><A NAME="HDR11"> 3.5  ssleay</A></H3>
+<P>A <I>convenience</I> application that has all the little applications included in it - handy to have in all environments.
+<P>Run it and type <I>help</I> for details on how to use it.
+<A NAME="req"> </A>
+<H3><A NAME="HDR12"> 3.6  req</A></H3>
+<P><I>req</I> is used to generate <I>certificate requests</I> (for sending to your top-level CA for signing - perhaps <I>VeriSign</I>). <I>req</I> also is setup as a convenience utility for managing <I>private key</I> creation.
+<PRE>
+ req -newkey 512 -new  &gt; MINCOM.pem
+</PRE>
+<P>To 'verify' that the checksum of a certificate request is ok:
+<PRE>
+ req -in MINCOM.pem -verify -noout
+</PRE>
+<TJH2><PRE></PRE>
+<A NAME="Generating RSA certificate requests"> </A>
+<HR><H2><A NAME="HDR13"> 4.  Generating RSA certificate requests</A></H2>
+<P>This needs more documentation, however as it stands the procedure is fairly straight forward.
+<PRE>
+ # generate your private+public key
+ req -newkey 512 -new  &gt; MINCOM.pem
+ 
+ # check that we can at least verify the checksum ourselves
+ req -in MINCOM.pem -verify -noout
+</PRE>
+<TJH2><PRE></PRE>
+<A NAME="Generating "dummy" certificates"> </A>
+<HR><H2><A NAME="HDR14"> 5.  Generating "dummy" certificates</A></H2>
+<PRE>
+ # SSLeay 0.5.0b+ (21-Dec-95) supports a quick mechanism for 
+generating
+ #                            "dummy" certificates
+ cd /usr/local/ssl/certs
+ req -new -x509 -nodes -out telnetd.pem -keyout telnetd.pem
+ ln -s telnetd.pem `x509 -noout -hash &lt; telnetd.pem`.0
+</PRE>
+

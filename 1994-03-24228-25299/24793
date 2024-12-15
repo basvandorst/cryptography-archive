@@ -1,0 +1,66 @@
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!transfer.stratus.com!galt.sw.stratus.com!cme
+From: cme@galt.sw.stratus.com (Carl Ellison)
+Newsgroups: sci.crypt
+Subject: Re: Triple-DES in CBC mode
+Date: 17 Mar 1994 17:06:15 GMT
+Organization: Stratus Computer, Marlboro MA
+Lines: 55
+Message-ID: <2ma2m7$8bc@transfer.stratus.com>
+References: <9403170117591.davesparks.DLITE@delphi.com>
+NNTP-Posting-Host: galt.sw.stratus.com
+
+In article <9403170117591.davesparks.DLITE@delphi.com> davesparks@delphi.com (Dave Sparks) writes:
+>About a month or so ago, somebody posted here about why it was more secure
+>to triple encrypt each block of data, and the performing the CBC operation
+>on this block, as opposed to using a separate IV for each stage of DES
+>encryption.  Can someone please repost the reason?
+>
+>It's not intuitively obvious that using a single IV would be more secure
+>than using three different, independent ones, especially if the IVs were
+>kept secret and an error-propagating mode, such as PCBC, were used.  The
+>extra, secret IVs would seemingly add to the total "keyspace" if used that
+>way.
+
+I think I posted that, since I had long been advocating
+
+	CBC|CBC|CBC
+
+for performance reasons.
+
+The problem is with a chosen ciphertext attack.  In that case, the CBC
+paths become a way to bypass entire DES steps in feeding texts to one DES
+at a time, for differential cryptanalysis.  This attack is being described
+by Eli Biham for a paper to be submitted soon.
+
+If you prohibit chosen ciphertext (e.g., by using the triple DES as a PRNG:
+
+	LPBG|CBC|CBC|CBC
+
+where LPBG is a Long Period Byte Generator, like the subtract-with-borrow
+PRNG), then the extra IVs do indeed add security (assuming they're
+kept secret) and the smaller feedback loops improve throughput (assuming
+you're implementing this as independent chips (or regions on a chip)
+so that the data stream can be pipelined.
+
+
+Meanwhile, I also used to advocate
+
+	COMPRESS|CBC|TRAN|CBC|TRAN|CBC
+
+and I now advocate, for security,
+
+	COMPRESS|DES|PRNGXOR|TRAN|nDES|TRAN|DES
+
+where the DES steps are ECB, PRNGXOR masks plaintext repeats, TRAN transposes
+a large block of bytes (8KB in the one posted here) and nDES cycles through
+n different DES keys (using one key for each 64-bit block, then going to
+the next one).
+
+This chain does not permit Eli's attack.
+
+
+-- 
+ Carl M. Ellison                                     cme@sw.stratus.com
+ RIPEM MD5OfPublicKey: 39D9860686A9F075A9A83D49589C677A
+ Stratus Computer Inc.                               TEL: (508)460-2783
+ 55 Fairbanks Boulevard ; Marlborough MA 01752-1298  FAX: (508)624-7488

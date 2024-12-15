@@ -1,0 +1,530 @@
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+                                     _
+
+
+
+
+
+
+
+
+
+
+
+
+                     Fig 4 - Adding a Security Utility
+
+
+    3.2.  Phases of the Protocol
+
+    Given the discussion in  the  previous  section,  the  security
+    additions  will  need  to  incorporate  the following phases of
+    negotiation:
+
+    + Authentication Phase
+         this includes negotiation of a particular type of  authen-
+         tication  protocol to use (eg Kerberos, challenge-response
+         etc) and the associated exchanges of information (eg  Ker-
+         beros ticket, username challenge & response vectors etc).
+
+    + Choice of Cipher Phase
+         this includes the negotiation of which cipher  to  use  to
+         provide  encryption  (eg DES, LOKI, FEAL, RSA, simple sub-
+         stitution cipher etc), the mode  of  use  of  this  cipher
+         (CFB,  OFB),  and  implicitly a size of key to use (eg 64-
+         bits for DES or LOKI, perhaps 128-bits for an extended DES
+         like scheme, 512-bits or more for RSA etc).
+
+    + Choice of Key Phase
+         this will determine how the session key to be used in  the
+         chosen  cipher  is  to be established. It may be derivable
+         from the previous authentication exchange (eg be  included
+         in  the Kerberos ticket, be derived from the response vec-
+         tor etc), or it may be exchanged via a further negotiation
+         (eg  using  Diffie-Hellman  key exchange, RSA key exchange
+         etc).
+
+    Once all of these have been negotiated, then it is possible  to
+    enable  and  disable encryption of information on the link, via
+    suitable handshaking sequences.
+
+    Additional aspects that need to be addressed as part  of  these
+    extensions  include,  how much of the data should be encrypted,
+    whether both input and output streams are encrypted, or perhaps
+    only (say input whilst reading a password), and how to reestab-
+    lish synchronization of  the  ciphers,  should  a  transmisison
+    error  occur.   Again, the choices for these will depend on the
+    actual protocol being modified.
+
+
+                                 - 8 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+    4.  SECLOG - A Secure Remote Login Prototype
+
+    4.1.  Overview
+
+    SECLOG is a prototype implementation of some utilities to  pro-
+    vide  a basic secure login service. Structurally, it uses extra
+    processes around rlogin (option B). Rlogin rather than  telnet,
+    was chosen as the basic remote terminal service because it pro-
+    vides a transparent (8-bit) mode  (using  the  undocumented  -8
+    flag). This made implementation a little easier.  In the SECLOG
+    prototype, the following choices were made with respect to  the
+    phases  of  negotiation.  A  challenge-response  authentication
+    scheme, using the DES cipher was chosen. Keys for this were  to
+    be  derived  external  to  the protocol (in the nature of addi-
+    tional passwords). The session key to be used to  encrypt  ses-
+    sion  data was derived from the response vector.  A negotiation
+    of the cipher to use was provided. Choices ranged  from  simple
+    substitution  to  LOKI  or  DES block ciphers.  In more detail,
+    SECLOG performs the following operations:
+
+        automatic login to a secure userid
+        challenge/response to verify user
+        derive session key from response
+        negotiates encryption cipher to use
+        perform encryption of session data
+
+    It does not need to run as a  a  privileged  (setuid)  program,
+    though  it  does  require a small privileged utility to cleanup
+    utmp/wtmp and reset the terminal permissions. It assumes that a
+    network  key  (here  it is an 8-char key used in the chaalenge-
+    response stage) has been arranged previously.
+
+    The SECLOG processes are structured as  shown  in  Fig  5.  The
+    client  program seclog is run by the user to establish a secure
+    remote terminal session. It then runs rlogin, which establishes
+    a  link  to  rlogind on the remote host. The seclog client then
+    logs into the secure user on the remote system, which in  turns
+    runs   the   seclogd   server.    These   then   negotiate  the
+    challenge/response and cipher to use, and  if  successful,  the
+    server  runs  login  to actually login the user and start their
+    shell.  For the remainder of the session, the client and server
+    encrypt   all   information  being  transferred  between  them.
+    Further details of the SECLOG prototype may  be  found  in  the
+    earlier version of this paper [Bro90].
+
+    4.2.  SECLOG - Problems Observed
+
+    Whilst writing and debugging seclog, a number of problems  were
+    found, including:
+
+    +    The handling of prompts and replies during login.  It  was
+         very easy to get out of sync between the client and server
+         during the automated login.
+
+    +    Sync of encrypted data during session. This  was  a  major
+         problem.  Apart  from  ensuring that the cipher algorithms
+         themselves stay in sync, a more serious  problem  was  the
+
+                                 - 9 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+         use  of stderr by programs inside the encrypted data path,
+         especially messages from rlogin and the seclogd server.
+
+    +    Problems with  the  handling  of  utmp/wtmp  entries,  and
+         resetting the terminal permissions for logged in users.
+
+    It is clear that overcoming  these  problems  will  require  an
+    alternative  approach, one in which the security extensions are
+    much more closely integrated with the existing protocol.
+
+                                   _
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       Fig 5 - SECLOG Processes
+
+
+    5.  STELNET - Security Extensions to Telnet
+
+    5.1.  Why Telnet
+
+    Having gained some experience with SECLOG it was apparent  that
+    the  security  extensions should be integrated into an existing
+    remote terminal program.  The telnet and telnetd programs  were
+    chosen for this, both because of their wide use round the world
+    as part of the TCP/IP  protocols,  their  implementation  on  a
+    range  of  hosts and operating systems, availability of source,
+    and finally, a readily extensible option mechanism which  lends
+    itself  to  such  additions. Implementing the extension in this
+    manner will bypass many of the problems found in the  prototype
+    implementation,  due to the much closer merging of the features
+    with the existing protocols.
+
+    The telnet protocol and its option mechanisms  are  well  docu-
+    mented  in RFCs [PoR83a] [PoR83b] [Bra89]. The option mechanism
+    for telnet is easily extended simply  by  defining  new  option
+    numbers.  If a telnet program does not know about an option, it
+    simply declines to negotiate about  it  further  by  using  the
+    standard  DONT/WONT protocol supported for all options. If both
+    parties do understand and wish to use, they  agree  to  discuss
+    the  option  using  DO/WILL,  and may then actually perform the
+    negotiations using sub-options specific to each telnet option.
+
+    5.2.  Proposed Security Options for Telnet
+
+    I have drafted some proposed additional options to provide net-
+    work   security   in   the  Telnet  options.   Official  telnet
+
+                                - 10 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+    extensions need to be vetted and approved by the Telnet Working
+    Group  of  the  Internet Engineering Task Force, in the US.  To
+    date, I have submitted  these  proposals  for  adding  security
+    options  to  telnet to them. These, along with some alternative
+    proposals, are currently being considered. At the time of writ-
+    ing a firm descision has yet to be made. The result will almost
+    certainly incorporate aspects from both of the proposals  being
+    considered.   It  appears  likely  that the final proposal will
+    have the following form.  There will be two additional options:
+    the  Telnet  Authentication option, and the Telnet Data Encryp-
+    tion Option. It is likely that the  exchange  between  the  two
+    parties  using these options will run as shown in Fig 6 and Fig
+    7.
+
+________________________________________________________________________________
+_Client___________________________Server|________________Comments______________|
+  <---          DO / DONT               |    agree to discuss authentication   |
+               WILL / WONT         ---> |            option (or not)           |
+                                        |                                      |
+  <---      SEND <auth-list>            |    server tells client the list of   |
+                                        |  authentication protocols it supports|
+          IS <auth-type>, <arg>    ---> |   client tells server which protocol |
+                                        |   it will use, and supplies the info |
+  <---       CHALLENGE <arg>            |   servers sends challenge to client  |
+                                        |   (optional depending on auth-type)  |
+             RESPONSE <arg>        ---> |      client replies to challenge     |
+_______________________________________________________________________________|
+______________________Fig_6_-_Telnet_Authentication_Option_____________________|
+
+
+    In Fig 6, the parameters referenced are as follows:
+
+    <auth-list>
+         refers to a list of possible authentication protocols sup-
+         ported  (eg challenge-response, Kerberos, El Gamal digital
+         signature, etc).
+
+    <auth-type>, <arg>
+         names a particular authentication protocol,  and  supplies
+         additional information as appropriate. If the auth-type is
+         challenge-response, this would be the name of the user. If
+         Kerberos, it would be the Kerberos ticket.
+
+    <arg>
+         indicates additional information as required by the proto-
+         col at that point.
+
+    The authentication types are represented as  a  list  of  known
+    integer  values.   These  values  would  be  documented  in the
+    "Assigned Numbers RFC".
+
+    The above exchange enables  the  client  to  authentiate  their
+    identity  with  the  server.  Should  two-way authentication be
+    required,  then  the  exchange  may  be  repeated  with   roles
+    reversed.  The  proposed  protocol  can  accomodate advances in
+    encryption technology, in that new authentication protocols can
+
+
+                                - 11 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+    easily be added by extending the list of known protocols.
+
+________________________________________________________________________________
+Client________________________Server|__________________Comments________________|
+<---        DO / DONT               |      Agree to discuss data encryption    |
+           WILL / WONT         ---> |              option (or not)             |
+                                    |                                          |
+<---  SUPPORT <cipher-list>         |    server sends client list of ciphers   |
+                                    |    supported (including option of NONE)  |
+          USE <cipher>         ---> |    client nominates which cipher to use  |
+                                    |                                          |
+<---   KEY EXCH <key-list>          |    server sends client the list of key   |
+                                    |   exchange protocols supported (includes |
+                                    |  use of default key from auth negotiation|
+                                    |       or explicit list of protocols)     |
+       KEY1 <key-type arg>     ---> |    client nominates which key exchange   |
+                                    |  protocol to use and optionally provides |
+                                    |    some information for it (eg part of   |
+                                    |         Diffie-Hellman exchange).        |
+<---  KEY2 <key-type> <arg>         |      server optionally responds with     |
+                                    |   its half of the key exchange protocol  |
+                                    |  information (eg part of Diffie-Hellman) |
+                                    |                                          |
+<---    REQ_START CIPHER            |       Servers asks client to encrypt     |
+          START CIPHER         ---> |      Client will encrypt session data    |
+<---     REQ_STOP CIPHER            |   Servers asks client to stop encrypting |
+           STOP CIPHER         ---> |  Client will stop encrypting session data|
+_______________________________________________________________________________|
+___________________Fig_7_-_Telnet_Data_Encryption_Option_______________________|
+
+
+    In Fig 7, the parameters referenced are as follows:
+
+    <cipher-list>
+         refers to a list of ciphers and associated modes supported
+         (eg  LOKI  in OFB mode, LOKI in CFB mode, DES in OFB mode,
+         simple substitution etc).
+
+    <cipher>
+         names a particular cipher and mode chosen from  the  list,
+         to be used.
+
+    <key-list>
+         refers to a list of  possible  session  key  determination
+         protocols  (eg external, derive from authentication phase,
+         use Diffie-Hellman key exchange etc).
+
+    <key-type arg>
+         supplies the information needed as part of a key  exchange
+         process  (for  example, the components of a Diffie-Hellman
+         key exchange).
+
+    These exchanges allow  the  parties  to  negotiate  a  mutually
+    agreeable  cipher  and session key, and then to enable and dis-
+    able encryption on each of the data streams.
+
+
+
+                                - 12 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+    Again, as in the authentication  option,  encryption  is  nego-
+    tiated  separately  for  each  direction.  Also  extensions  in
+    encryption technology may be handled by adding  new  values  to
+    the list of ciphers supported.
+
+    5.3.  Implementation
+
+    At present we plan to implement the extensions to telnet in the
+    Berkeley  4.3 versions of telnet and telnetd. This will be done
+    as soon as the extensions have been agreed upon. In the  longer
+    term,  they  will  also be added to the NCSA version of telnet,
+    which can be run on PCs and Macintoshs.
+
+    6.  Conclusions
+
+    This paper has examined means of providing security  in  remote
+    terminal  sessions.  Such  protocols  will  need to address the
+    issues of authentication of the parties, negotiation of a suit-
+    able  cipher to use, and exchange of keys for that cipher. This
+    paper examines some of the alternatives  available  to  address
+    each  of  these issues, describes a prototype implementation of
+    some of these features in the seclog program, and finishes with
+    a  description of work in progress on extending the widely used
+    telnet protocol to incorporate some of these security features.
+
+    Acknowledgements
+
+    To Geoff Collins, Andrzej Goscinski,  Per  M.  Hoff,  Mike  and
+    Cathy Newberry, and Chris Vance for their help and suggestions.
+    Thankyou.
+
+    This work is supported in part  by  ARC  grant  A48830241,  and
+    Telecom Australia Research contract 7027.
+
+    Bibliography
+
+    [ASA85]   ASA, "Electronics Funds Transfer -  Requirements  for
+              Interfaces,  Part  5,  Data  Encryption  Algorithm,"
+              AS2805.5-1985, Standards  Association  of  Australia,
+              Sydney, Australia, 1985.
+
+    [BeM90]   S. M. Bellovin and M. Merritt,  "Limitations  of  the
+              Kerberos   Authentication   System,"    submitted  to
+              Computer Communication Review, JUNE 1990.
+
+    [Bra89]   "" R. Braden, ed., "Requirements for  Internet  Hosts
+              --  Application  and  Support,"    RFC 1123, Internet
+              Engineering Task Force, |October.| 1989.
+
+    [BPS90]   L. Brown, J. Pieprzyk  and  J.  Seberry,  "LOKI  -  A
+              Cryptographic   Primitive   for   Authentication  and
+              Secrecy Applications,"  in  Advances  in  Cryptology:
+              Auscrypt  '90, Lecture Notes in Computer Science, no.
+              453, pp. 229-236, |Springer Verlag|, Berlin, 1990.
+
+    [Bro90]   L. Brown, "SECLOG - A Secure  Remote  Login  Frontend
+              and  Shell,"  Australian Unix Users Group Newsletter,
+
+                                - 13 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+              vol. 11, no. 2, pp. 18-26, |April.| 1990.
+
+    [DaP84]   D. W. Davies and W. L. Price, Security  for  Computer
+              Networks, John Wiley and Sons, New York, 1984.
+
+    [DiH76]   W. Diffie and  M.  E.  Hellman,  "New  Directions  In
+              Cryptography,"   IEEE |Trans.| on Information Theory,
+              vol. IT-22, no. 6, pp. 644-654, |November.| 1976.
+
+    [ElG85]   T.  ElGamal,  "A  Public  Key  Cryptosystem   and   a
+              Signature System Based in Discrete Logarithms,"  IEEE
+              |Trans.| on Information Theory, vol.  IT-31,  no.  4,
+              pp. 469-472, |July| 1985.
+
+    [FFS88]   U. Feige, A.  Fiat  and  A.  Shamir,  "Zero-knowledge
+              proofs  of identity,"  Journal of Cryptology, vol. 1,
+              no. 2, pp. 77-94, 1988.
+
+    [HeR89]   M. Henning and A. Rohde, UNIX File  System  Security,
+              CCSR  Tutorial  Series  in  Computer Security, no. 1,
+              Centre for Computer Security Research, Dept  Computer
+              Science, UC ADFA, Canberra, ACT, Australia, 1989.
+
+    [Koh90]   J. T. Kohl, "The Use of Encryption  in  Kerberos  for
+              Network Authentication,"  in Advances in Cryptology -
+              CRYPTO'89, Lecture Notes  in  Computer  Science,  no.
+              435,  G.  Brassard  (editor),  pp.  35-43,  |Springer
+              Verlag|, Berlin, 1990.
+
+    [McC86]   K. S. McCurley, "Digital  Signatures  and  Public-Key
+              Cryptosystems   Based   on  Discrete  Logarithms  and
+              Factoring,"  in Crypto 86 - Abstracts and Papers, pp.
+              LP1.1-LP1.11, Santa Barbara, CA USA, |August.| 1986.
+
+    [Miy90]   S. Miyaguchi, "The FEAL-8 cryptosystem and a call for
+              attack,"    in  Advances  in  Cryptology - CRYPTO'89,
+              Lecture  Notes  in  Computer  Science,  no.  435,  G.
+              Brassard  (editor),  pp.  624-627, |Springer Verlag|,
+              Berlin, 1990.
+
+    [MoT79]   R. Morris and K. Thompson, "Password Security: A Case
+              History,"    |Comm. of the ACM|, vol. 22, no. 11, pp.
+              594-597, |November.| 1979.
+
+    [MRT90]   S. J. Mullender,  G.  Rossum,  A.  S.  Tanenbaum,  R.
+              Renesse  and  H.  Staveren,  "Amoeba  - A Distributed
+              Operating System for  the  1990's,"    IEEE  Computer
+              Magazine, vol. 23, no. 5, pp. 44-53, |May| 1990.
+
+    [PoR83a]  J.  Postel  and   J.   Reynolds,   "Telnet   Protocol
+              Specification,"    RFC 854, Internet Engineering Task
+              Force, |May| 1983.
+
+    [PoR83b]  J.   Postel   and   J.   Reynolds,   "Telnet   Option
+              Specification,"    RFC 855, Internet Engineering Task
+              Force, |May| 1983.
+
+
+                                - 14 -
+
+
+
+
+     AUUGC90                    STELNET              Lawrence Brown
+
+
+    [Rei87]   B.  Reid,  "Reflections  on  Some  Recent  Widespread
+              Computer  Break-Ins,"    |Comm. of the ACM|, vol. 30,
+              no. 2, pp. 103-105, |February.| 1987.
+
+    [RSA78]   R. L. Rivest, A. Shamir and L. Adleman, "A Method for
+              Obtaining    Digital    Signatures   and   Public-Key
+              Cryptosystems,"  |Comm. of the ACM|, vol. 21, no.  2,
+              pp. 120-126, |February.| 1978.
+
+    [SeP89]   J.  Seberry  and  J.   Pieprzyk,   Cryptography:   An
+              Introduction  to  Computer  Security, |Prentice Hall,
+              Englewood Cliffs, NJ|, 1989.
+
+    [ShM88]   A. Shimizu and S. Miyaguchi, "Fast Data  Encipherment
+              Algorithm FEAL,"  Eurocrypt 87 Abstracts , pp. 11-14,
+              1988.
+
+    [Spa88]   E.  H.  Spafford,  "The  Internet  Worm  Program:  An
+              Analysis,"    Technical Report Computer Science Dpt.-
+              Tech.  Rep.-823,  |Dpt.|  Computer  Sciences,  Purdue
+              University,  West  Lafayette,  IN  47907-2004, USA, 8
+              |December.| 1988.
+
+    [SNS88]   J.  G.  Steiner,  C.  Neuman  and  J.  I.   Schiller,
+              "Kerberos: An Authentication Service for Open Network
+              Systems,"  in  |Proc.|  Usenix  Winter  |Conf.|,  pp.
+              191-201, USENIX Assoc., 1988.
+
+    [Sto88]   C. Stoll, "Stalking the Wily Hacker,"  |Comm. of  the
+              ACM|, vol. 31, no. 5, pp. 484-497, |May| 1988.
+
+    [TMR86]   A. S. Tanenbaum, S.  J.  Mullender  and  R.  Renesse,
+              "Using Sparse Capabilities in a Distributed Operating
+              System,"    in  |Proc.|  Sixth  |Int.|   |Conf.|   on
+              Distributed Operating Systems, IEEE, 1986.
+
+    [WoK85]   P. H. Wood and S. G. Kochan,  UNIX  System  Security,
+              Hayden Book Company, 1985.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                - 15 -
+
+

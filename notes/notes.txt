@@ -1,0 +1,560 @@
+===============================
+PKCS WORKSHOP '99 MEETING NOTES
+===============================
+
+Royal Institute of Technology (KTH)
+Stockholm, Sweden
+29 September - 1 October 1999
+
+Presentations and other supporting documents are available
+at http://www.rsasecurity.com/rsalabs/pkcs/.
+
+Workshop hosted by RSA Laboratories' new Stockholm office 
+(M. Nyström). Thanks to E. Lindberg and J. Jonsson for help 
+with local arrangements.
+
+Notes taken by B. Kaliski.
+
+----------------------------
+Wednesday, 29 September 1999
+----------------------------
+
+Morning
+-------
+
+* B. Kaliski (RSA Laboratories) welcomed participants.
+
+* J. Håstad (KTH) gave a keynote presentation on the role 
+of theory in practical cryptography.
+
+* B. Kaliski and M. Nyström (RSA Laboratories Europe)
+alternately gave presentations on PKCS #5, PKCS #12, the 
+new PKCS contribution agreement, and PKCS #9.
+
+- PKCS #5 v2.0 was completed in March. There is some 
+potential for provable security of its key derivation 
+function. Possible future work includes specification of a 
+key derivation parameters including a salt value and other 
+key usage information, addition of "pepper" (secret portion 
+of salt), and password-based authentication and key 
+establishment methods involving public-key techniques. 
+However, no specific plans were announced.
+
+- PKCS #12 v1.0 was published earlier this year. 
+Technically, it is basically the same as the near-final 
+draft from 18 months ago. The specification reflects 
+industry practice. No further work is planned on this 
+specification; PKCS #15 v1.1 is intended as a successor.
+
+- PKCS #9 v2.0 (currently in draft form) consolidates and 
+updates attribute types that have been defined over recent 
+years and also defines two new object classes for 
+directories, pkcsEntity and naturalPerson. (The latter will 
+be in the next draft.) The naturalPerson object class and
+its associated attributes are defined in support of IETF
+PKIX qualified certificates. A draft was published recently;
+the final version of PKCS #9 v2.0 is expected in December.
+
+
+Afternoon
+---------
+
+* J.M. Robert (Gemplus) and B. Couillard (Chrysalis) 
+presented the concept of "trusted" keys for PKCS #11 which 
+addresses issues related to secure key management on 
+tokens. Currently, there is no way for a token to determine 
+whether the key with which it performs operations is from a 
+trusted source, particularly since a token does not process 
+certificates. (This is a consequence of PKCS #11's focus on 
+managing keys in user applications, rather than system 
+applications.) The proposal adds a "trusted" attribute to 
+keys and a "trusted" mode that can be enabled by a security 
+officer. In the trusted mode, key management operations 
+such as wrapping and unwrapping can only be performed with 
+trusted keys.
+
+Typically, a set of trusted public keys would be installed 
+when a token is initialized. A mechanism is defined that 
+installs an additional public key through the use of the 
+C_ DeriveKey function, where the parameter to the operation 
+is a certificate containing the additional public key that 
+can be verified by a public key that is already trusted. 
+This is a useful extension that addresses the key 
+management infrastructure for PKCS #11 without modifying 
+the interface substantially.
+
+There was some concern about the proposed implementation of 
+the mechanism, where the application pre-parses the 
+certificate and passes pointers to fields including the 
+signature and the public key. The intent is to minimize DER 
+processing by the token, but the implementation introduces 
+the risk that a rogue application may specify the 
+parameters so that they point to different positions within 
+a valid certificate. It may then be possible for the 
+opponent to install a different public key whose 
+corresponding private key is readily determined or that has 
+other weaknesses. 
+
+As an example, it was observed that a valid DER-encoded RSA 
+public key (a SEQUENCE of two INTEGERS) will contain a 
+"baby" public key that is also a valid encoding with 
+probability about 2^{-25} for 1024-bit keys. Such a "baby" 
+public key will likely be easier to factor than the modulus 
+and may not even be composite, so an opponent may be able 
+to determine the corresponding private key. Thus by 
+modifying the pointers for such a certificate, the 
+opponent can install as "trusted" a new public key whose 
+private key the opponent knows.
+
+In the case of discrete logarithm cryptosystems, the 
+opponent could modify the pointers to install a public key 
+that is not in the intended subgroup, leading to a 
+potential 
+security risk when the public key is employed.
+
+Thus, it appears that an implementation of the mechanism 
+needs further processing of the certificate to verify the 
+correct position of the public key, although not 
+necessarily a full DER decoding.
+
+* M. Wood (Intel) gave an update on PKCS #11 v2.1: 
+Cryptographic Token Interface Standard. Two drafts were 
+recently posted and a third is expected after the workshop. 
+The main updates in the drafts are as follows:
+
+Draft #1
+
+- UTF8
+- X.509v3 attribute certificates
+- secondary private key PIN
+- RIPE-MD 128/160 with RSA
+- hardware feature objects
+- formatting
+- lifetime of structures is specified
+
+Draft #2
+
+- PKCS #1 v2.0 OAEP
+- PKCS #5 v2.0 PBKDF2
+- PIN state indicator flags
+
+Draft #3 (after workshop)
+
+- FORTEZZA updates
+- final tweaks to secondary private key PIN
+- PKCS #1 v2.1 PSS
+- wording recommending or suggesting external 
+initialization for complex tokens
+
+There was some discussion about the secondary private key 
+PIN. The current design is based on a new attribute 
+associated with a private key that indicates that a PIN is 
+required each time the private key is employed. This 
+supports emerging digital signature laws. An important goal 
+of the design is to maintain compatibility with PKCS #11 
+v2.01 implementations. In the current draft, the attribute 
+also requires that the PIN is entered through a protected 
+path such as a PIN pad, as opposed to a GUI, as also 
+required by the emerging laws. However, there was some 
+support for removing this restriction so that 
+implementations without a protected path for PIN entry 
+could make use of the feature.
+
+An alternative that was discussed that also maintains 
+compatibility is to have a separate "virtual" token 
+associated with the private key that performs an autologout 
+after a single operation.
+
+There was general support for keeping the approach in the 
+current draft and waiting for comments on the mailing list.
+
+Topics to be considered for version 3.0 include the 
+following:
+
+- generalized credentials ("policy" object)
+- challenge-response authentication
+- multiple users/roles
+- trusted "introduction"
+- CA key cloning (i.e. sharing selected keys between two 
+tokens)
+- k-of-n authentication (instance of generalized 
+credentials)
+- secret splitting
+- condition variable callback
+- "everything is an object"
+- token management
+- directory of modules
+
+Additional topics may be found in Ray Sidney's notes from 
+previous workshops.
+
+Conformance testing was also discussed, including 
+specification of profiles. This may be a more important
+activity in the near-term than development of PKCS #11 
+v3.0. The initial emphasis of the conformance testing is to 
+verify that the interface is implemented correctly, not 
+necessarily that the underlying algorithms are implemented 
+correctly. The latter would involve separate algorithm 
+conformance testing.
+
+Testing software would be useful, but may raise some export
+problems. N. Ziring agreed to check whether this is the 
+case and also to contribute material on FORTEZZA and 
+related algorithms. 
+
+As far as schedule: draft 3 will be the final draft, with a
+30-day review to close approximately December 1. If there
+are no objections, RSA Laboratories will make final style
+edits and publish it as PKCS #11 v2.10. There will be a 
+call for intellectual property issues during the 30-day 
+review.
+
+
+---------------------------
+Thursday, 30 September 1999
+---------------------------
+
+Morning
+-------
+
+* B. Kaliski presented the PKCS #1 v2.1 draft, which adds
+support for the Bellare-Rogaway Probabilistic Signature
+Scheme (PSS). An open technical issue is how well the 
+scheme works on smart cards. J.M. Robert observed that it 
+may be preferable for the smart card to generate the salt 
+(to ensure that it is random), and since it is typically 
+not practical for the smart card to hash the message, the 
+salt should be applied after the message is processed, 
+rather than beforehand as in the draft. Some further study 
+is needed to determine how to do this without reintroducing 
+the potential for "birthday attacks" on initial blocks of 
+the hash function input.
+
+A related concern, expressed by G. Meister (Giesecke & 
+Devrient), is that it may be preferable to generate and 
+keep the salt within the card to defend against fault-
+analysis attacks on RSA signatures like the one observed at 
+Bellcore. (If the salt is known to an opponent before the 
+signature is computed, and the signature computation is 
+faulty, then the opponent may have enough information from 
+the incorrect signature and the correct message and salt to 
+factor the modulus. However, an incorrect signature alone 
+would not provide enough information, since if the salt is 
+unknown the correct hash value and hence the correct 
+message representative would also be unknown.)
+
+There is also a concern that the PSS encoding method may
+also be too complex for some smart card implementations,
+since the underlying mask generation function, which the
+card must implement, is in the default case based on a hash
+function.
+
+W. Whyte (Baltimore) asked why an algorithm identifier for
+the hash function is not incorporated in the encoding
+method. The draft gives some justification and recommends 
+that the  mask generation function be based on the 
+underlying hash function. It may be helpful to repeat this 
+recommendation in the section on ASN.1 syntax. However, even 
+with this provision it may be possible that a very weak
+(e.g., "pathological") hash function be substituted to 
+produce a signature forgery. Thus, there also seems to be 
+a need to designate acceptable hash functions (or signature
+algorithms) for a given public key in a certificate or in
+other key management services.
+
+There was general support for the proposed standards
+strategy calling for short-term recognition of both ANSI
+X9.31 and PKCS #1 v1.5 signatures, and long-term adoption 
+of a more robust scheme like PSS. Some further endorsement 
+for PKCS #1 v1.5 signatures in the short term might be 
+obtained from the WAP Forum, which specifies this scheme, 
+or from the PKCS community itself, although in the latter 
+case there is no formal means for the PKCS community as an 
+entity separate from RSA Laboratories to express a 
+position. (This point was left for further discussion on 
+Friday.)
+
+As far as the additional topics, there was interest in
+documenting the ANSI X9.31 encoding method in PKCS #1 v2.1
+for reference purposes (without adopting other provisions 
+of that standard, such as "strong primes"). PSS-R support 
+is deferred while other standards groups including ISO/IEC 
+JTC1 SC27 study new message recovery schemes. There was no 
+strong interest in the Rabin-Williams primitives, composite 
+hash functions, or a new mask generation function, though 
+such topics could be discussed further on the mailing list.
+
+* J.-O. Larsson (RSA Laboratories Europe) gave an overview
+of the motivation and design of PKCS #14 and described two
+proposed pseudorandom generation methods. There was some
+discussion about the model and compromise scenarios. It was
+also suggested to consider some of the results on provably
+secure pseudorandom generation that J. Håstad presented in
+his keynote presentation.
+
+
+Afternoon
+---------
+
+* G. Meister and B. Struif (GMD) began with presentations 
+on European standardization activities related to PKCS #15. 
+Meister gave an overview of DIN SIG, which shares many 
+common features with PKCS #15 (as well as other PKCS
+documents). She proposed a model in which objects are 
+shared by multiple applications, where the PKCS #15 file 
+format and the other applications' formats (including DIN 
+SIG) coexist and point to many of the same objects. For 
+such a model to be successful, the individual objects' 
+formats need to be the same.
+
+Struif described the German Digital Signature Card and gave
+detailed suggestions of some example "topologies" that
+should be mentioned in PKCS #15 to illustrate how the
+specification would map to the Digital Signature Card and
+other applications. He reiterated the model where multiple
+applications including PKCS #15 coexist and share objects.
+He also pointed out limitations in PKCS #15 related to PIN
+handling and suggested a method for incorporating biometric
+authentication.
+
+There was some general discussion on the relationship
+between PKCS #11 and PKCS #15, and which would be
+implemented in different scenarios.
+
+* S. Hellberg (LM Ericsson) gave an overview of the "SAT"
+(Self-Assessment Tests) project, a joint Norwegian /
+Finnish / Swedish effort focusing on testing of electronic
+ID specifications. Activities being considered include
+compliance tests for certificates and EID applications on
+cards, and interoperability of applications with cards and
+certificates. Other interoperability aspects include:
+
+- PIN-handling (entry, changing, unlocking)
+- EID authentication
+- EID key encrypt/decrypt
+- EID signatures
+
+As a profiling note, some emerging card formats have three
+key pairs (encryption, authentication and digital
+signature), with a separate PIN for the digital signature
+key pair.
+
+* M. Nyström described PKCS #15 v1.1, which extends the
+file format for cryptographic information to support a
+a software-only format suitable for desktop storage as
+well as memory-only smart cards. The new format includes
+integrity-protection and confidentiality-protection with
+a general structure for key management that currently
+includes password-based key derivation methods.
+
+
+----------------------
+Friday, 1 October 1999
+----------------------
+
+Morning
+-------
+
+* B. Kaliski gave an update on PKCS #13. There continues to
+be substantial development of standards involving elliptic
+curve cryptography in other sectors, including:
+
+- IEEE P1363
+- ANSI X9.62 (ECDSA), X9.63 (EC key establishment)
+- NIST FIPS 186-2, recommended elliptic curves
+- ISO/IEC digital signature, key establishment, and ECC
+  documents
+- SECG
+- WAP Forum
+
+Given the intention of PKCS to be a "catalyst" for other
+standards development and to provide "missing pieces",
+it was important to consider how PKCS #13 could add value
+to the other efforts. There was general support for the 
+idea that PKCS #13 could have a useful role in documenting 
+a subset of the other standards, in a straightforward 
+manner similar to PKCS #1. It could also provide 
+recommendations on the use of elliptic curve cryptography.
+
+The initial version of such a document might include ECDSA
+and an elliptic curve encryption scheme like ECAES (based
+on the Adballa-Bellare-Rogaway DHES) which is specified in
+ANSI X9.63 and is in the outline for IEEE P1363a.
+
+* M. Nyström presented plans for improving the ASN.1 syntax
+in the PKCS documents and publishing compilable ASN.1
+modules. All modules will be written in the 1994/1997
+notation but will be compatible with existing documents
+using the 1988 version. Since the PKCS documents reference
+syntax defined in ISO/IEC standards and elsewhere, an
+important goal of the project is to make the referenced
+syntax available as well.
+
+* M. Wood described a proposal developed with C. Ellison
+(Intel) for developing S-expression syntax for PKCS
+documents. The syntax was initially intended for SPKI. He 
+presented some initial syntax including PKCS #1 and #5. An 
+advantage is that encoding and decoding is easier to 
+implement for S-expressions than BER and DER for ASN.1. 
+However, an advantage of ASN.1 is that it provides a 
+language for specifying and constraining types. One 
+possibility is to define S-expression encoding rules for 
+ASN.1 types.
+
+* B. Kaliski led a discussion on the PKCS process and plans
+for the next year. An informal PKCS process has emerged 
+over the past year, with several stages of development. The
+process will often begin with a contribution, which if
+accepted by RSA Laboratories will result in a draft 
+specification (i.e., "standard") or amendment (update to an 
+existing PKCS specification). Alternatively, the process 
+may start with a draft published by RSA Laboratories. The 
+draft will be subject to a review period, typically 14 or 
+30 days, and additional drafts may follow. At some point, a 
+final draft will be released and then a PKCS document 
+(specification or amendment) will be published.
+
+After publication, there are several options. If errors are 
+found in a document, errata may be published or a revision 
+may be published. A revision will be technically the same 
+as the original document, but may have corrections or 
+editorial improvements. Alternatively, a new version may be 
+developed that has technical changes, starting with a draft 
+following the development process above. Some documents may 
+be submitted to other standards bodies (e.g., PKCS #7) or 
+published elsewhere for reference. Others may be obsoleted 
+(e.g., PKCS #6).
+
+The following scheme was proposed for numbering documents:
+
+  PKCS #<number> v<major>.<minor> [amd<i>] [d<j> | rev<k>]
+  * number = document number (1, 3, 5, ..., 15, ...)
+  * major is major version number
+  * minor is minor version number; compatible within 
+    version
+  * amd is amendment number, updating a specification
+  * draft is draft number, during development of document
+    or amendment
+  * revision is revision number, after publication;
+    editorial changes or corrections only
+
+The second area of discussion concerned the PKCS "suite" of 
+documents. There was general support for the idea that for 
+each PKCS specification, there should be a suite of 
+complementary documents, covering the following aspects:
+- ASN.1 syntax
+- test vectors
+- conformance definitions
+- profiles
+- usage guidelines
+
+These are listed in roughly the order in which they are 
+expected to be developed for each specification. The ASN.1 
+project is already underway. As this is a large number of 
+documents, assistance from the PKCS community is requested.
+
+Conformance testing was the third area of discussion. It is 
+clear that some set of conformance definitions along with 
+interoperability profiles will be needed to promote 
+interoperability among implementations of the PKCS 
+documents. The first stage is to define what conformance 
+means for each document. It may be helpful to have a 
+workshop that specifically focuses on conformance. The 
+conformance definitions can then be tested at 
+interoperability workshops. Formal validation based on the 
+definitions remains a long-term possibility.
+
+The final area of discussion was PKCS as an "entity". As 
+was the case last year, there was general support for 
+keeping PKCS as it is, an informal intervendor process, 
+without formal membership or voting. This keeps the 
+uniqueness of PKCS compared to other standards bodies, an 
+open forum for discussion where participants' organizations 
+are not necessarily formally endorsing the results. 
+Although there is not a formal entity that can speak on 
+behalf of the PKCS community, the participants can 
+represent common concerns related to PKCS individually.
+
+There was also general support for having PKCS documents 
+recognized as Publicly Available Specifications (PAS) for 
+ISO, which would provide an additional path, besides the 
+national bodies, for promoting PKCS documents into ISO 
+standards.
+
+* As a final discussion item, B. Kaliski presented an 
+alternative version of PSS that addresses some of the 
+concerns raised on Thursday. In the alternative version, 
+the PSS encoding method is applied to the hash of a message 
+rather than the message itself. With this approach the salt 
+value (i.e., seed) can remain within the smart card during 
+the signature operation. The alternative is more consistent 
+with current methods in that messages are hashed in the 
+usual way (without a salt).
+
+The idea of salted hashing has more general applicability 
+that just PSS, so could be implemented in other signature 
+schemes as well. As a result, it is convenient to separate 
+the role of the salt, which improves security against 
+collision search, from the role of the seed, which provides 
+provable security in the random oracle model and also 
+protects against fault analysis. Accordingly, it may be 
+reasonable to have both a salt and a seed. The discussion 
+on this topic will be continued on the pkcs-tng mailing 
+list.
+
+
+-----------------------------
+Participant / Registrant List
+-----------------------------
+
+Magnus Alström, iD2 Technologies 
+Beni Arazi, CipherIt, Israel
+Stephen Archer, Bull AB 
+Håkan Björsin, Celo Communications AB, Sweden
+Alan Braggins, nCipher Corporation Ltd., England
+Helge Bragstad, Schlumberger, Norway
+Bob Burns, Racal Security & Payments 
+Renato Cantini, Swisscom AG, Bern, Germany
+Sinisa Cicovic, Computer Security Technologies CST AB, Sweden
+Bruni Couillard, Chrysalis-ITS, Inc., Canada
+Jonny Edelbrock, Technology Nexus AB, Sweden
+Michel Guiraossian, Gemplus 
+Fredrik Gustafsson, iD2 Technologies 
+Fredrik Gustavsson, Bull AB 
+Daniel Hegner, Entegrity Solutions, Sweden
+Miklas Hellberg, iD2 Technologies, Sweden
+Stefan Hellberg, Secco, Sweden 
+Per Hägerö, WM-data, Sweden
+Carl Hössner, RSA Security AB 
+Ian Jacksson, nCipher Corporation Ltd., England
+Oscar Jacobsson, Celo Communications AB, Sweden
+Jakob Jonsson, RSA Security AB, Sweden 
+Burt Kaliski, RSA Security Inc., USA 
+Zoltan Kelemen, RSA Security AB, Sweden
+Max Kohler, iT_security AG, Switzerland
+Markko Kontio, Setec Oy, Finland
+Karin Krizinger, Utimaco Safe Concept GmbH, Austria
+Choukri Lahmar, Gemplus, France
+Daniel Lanzd, CertCo, Inc. 
+Björn Lindberg, Ericcson 
+Roland Lockhart, Entrust Technologies Ltd., Canada
+Gisela Meister, Giesecke&Devrient, Munich 
+Paul Montauge, Motorola Australia Software Centre, Australia
+Dragoljub Nesic, Computer Security Technologies CST AB, Sweden
+Magnus Nyström, RSA Security AB, Sweden
+Mats Näslund, Ericsson Research, Sweden 
+Tord Persokrud, Ericsson, AS Norway
+Jean-Marc Robert, Gemplus, Canada
+Alex Sharp, Baltimore Technologies, England
+Peter Sikliosi, Entegrity Solutions Sweden
+Bruno Struif, GMD, Darmstadt 
+James Torjussen, Racal Security & Payments 
+Peter Trommler, Zuercher Kantonalbank 
+Hirosato Tsuji, Mitsubishi Electric Corporation, Japan
+Torsten Walger, Dresdner Bank, AG Germany
+William Whyte, Baltimore Technologies, Ireland
+Peter Widjeskog, Setec Oy, Finland
+Matthew Wood, Intel Security Technology Lab, USA
+Neal Ziring, National Security Agency, USA
+
+=====

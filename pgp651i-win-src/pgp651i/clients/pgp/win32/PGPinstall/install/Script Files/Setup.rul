@@ -1,0 +1,2227 @@
+// $Id: Setup.rul,v 1.95.2.2.2.1.2.1 1999/07/27 22:53:02 heller Exp $
+//____________________________________________________________________________
+//  Copyright (C) 1998 Pretty Good Privacy, Inc.
+//  All rights reserved.
+//
+//  Author: Philip Nathan
+//____________________________________________________________________________
+
+// Include header files
+    #include "sdlang.h"
+    #include "sddialog.h"
+    #include "setup.h"
+// --- include script file section ---
+
+    #include "globals.rul"
+    #include "prototypes.rul"
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//   MAIN PROGRAM
+//
+//      The setup begins here by hiding the visible setup
+//      window.  This is done to allow all the titles, images, etc. to
+//      be established before showing the main window.  The setup is
+//      then performed in a series of calls to script defined functions,
+//      with error checking at each step.
+//
+///////////////////////////////////////////////////////////////////////////////
+program
+    Disable( BACKGROUND );
+
+    CheckRequirements();
+
+    ShutDownApps();
+
+    SetInstallType();
+
+    SetupInstall();
+
+    SetupScreen();
+
+    if (FindInstalledVersions()<0) goto end_install;
+
+    Disable( DIALOGCACHE );
+    if (bPGPFiveZero = TRUE) then
+        Uninstall5X ("PGPFiveZero");
+    endif;
+    if (bPGPFiveFive = TRUE) then
+        Uninstall5X ("PGPFiveFive");
+    endif;
+    if (bFiveFive = TRUE) then
+        Uninstall5X ("FiveFive");
+    endif;
+    if (bSixZero = TRUE) then
+        Uninstall6X();
+    endif;
+    if (bSixFive = TRUE) then
+        Uninstall65();
+    endif;
+    Enable( DIALOGCACHE );
+
+    if (ShowDialogs()<0) goto end_install;
+
+    if (ProcessBeforeDataMove()<0) goto end_install;
+
+    if (MoveFileData()<0) goto end_install;
+
+    if (ProcessAfterDataMove()<0) goto end_install;
+
+    if (SetupRegistry()<0) goto end_install;
+
+    SetPrefUserInfo();
+
+    SetKeyRings();
+
+    if (SetupFolders()<0) goto end_install;
+
+    StartMemLock();
+
+    LaunchCtrlUpdater();
+
+	if (bIsWindowsNT4) then
+    	CleanHardwareSettings();
+	endif;
+	
+    //Temporary
+    SetUninstall();
+
+    FinalInstallProcess();
+
+    end_install:
+
+    CleanUpInstall();
+
+    // If an unrecoverable error occurred, clean up
+    // the partial installation. Otherwise, exit normally.
+
+    if (bInstallAborted) then
+        abort;
+    endif;
+
+    Disable( DIALOGCACHE );
+    SdShowMsg ( "Cleaning up, Please wait. . .", TRUE );
+    Delay (4);
+    SdShowMsg ( "Cleaning up, Please wait. . .", FALSE );
+endprogram
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function:  ShowDialogs
+//
+//  Purpose:  This function manages the display and navigation of
+//            the standard dialogs that exist in a setup.
+//
+///////////////////////////////////////////////////////////////////////////////
+function ShowDialogs()
+    NUMBER nResult;
+    STRING svValue;
+begin
+    Dlg_Start:
+    // beginning of dialogs label
+
+    SetInstallType();
+
+    Dlg_SdWelcome:
+    if (bEasyInstall = FALSE) then
+        Disable (BACKBUTTON);
+        nResult = DialogShowSdWelcome();
+        if (nResult = BACK) goto Dlg_Start;
+        Enable (BACKBUTTON);
+
+        Dlg_SdLicense:
+        nResult = DialogShowSdLicense();
+        if (nResult = BACK) goto Dlg_SdWelcome;
+
+        Dlg_SdShowReadMe:
+        nResult = DialogShowSdShowReadMe();
+        if (nResult = BACK) goto Dlg_SdLicense;
+
+        Dlg_SdRegisterUserEx:
+        nResult = DialogShowSdRegisterUserEx();
+        if (nResult = BACK) goto Dlg_SdShowReadMe;
+    endif;
+
+    Dlg_SdAskDestPath:
+    nResult = DialogShowSdAskDestPath();
+    if (bEasyInstall = FALSE) then
+        if (bImClientInstall = FALSE) then
+            if (nResult = BACK) goto Dlg_SdRegisterUserEx;
+        else
+            if (nResult = BACK) goto Dlg_SdShowReadMe;
+        endif;
+    endif;
+
+    if (bEasyInstall = FALSE) then
+        Dlg_SdComponentDialog2:
+        if ((nResult = BACK) && (svSetupType != "Custom") && (svSetupType != "")) then
+            goto Dlg_SdAskDestPath;
+        endif;
+        nResult = DialogShowSdComponentDialog2();
+        if (nResult = BACK) goto Dlg_SdAskDestPath;
+    else
+        nResult = DialogShowSdComponentDialog2();
+    endif;
+
+    nResult = AmIaPGPdisk(svDir);
+    if (bEasyInstall = FALSE) then
+        if (nResult = TRUE) goto Dlg_SdAskDestPath;
+    else
+        //this is a quick install
+        return 0;
+    endif;
+
+    Dlg_SdStartCopy:
+    nResult = DialogShowSdStartCopy();
+    if (nResult = BACK) goto Dlg_SdComponentDialog2;
+
+    return 0;
+
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: ProcessBeforeDataMove
+//
+//  Purpose: This function performs any necessary operations prior to the
+//           actual file transfer.
+//
+///////////////////////////////////////////////////////////////////////////////
+function ProcessBeforeDataMove()
+    STRING svLogFile, szPath, szFileName, svResult;
+    NUMBER nResult;
+
+begin
+  // Create app information, uninstallation, and App Paths registry keys.
+    InstallationInfo( @COMPANY_NAME, @PRODUCT_NAME, PRODUCT_VERSION, @PRODUCT_KEY );
+
+    svLogFile = @UNINST_KEY + ".isu";
+
+    //nResult = DeinstallStart( svDir, svLogFile, @UNINST_KEY, 0 );
+    //Dont log, we'll manually delete through install.dll(MUCH safer)
+    VarSave ( SRCTARGETDIR );
+    SRCDIR = SUPPORTDIR;
+    XCopyFile ( "install.dll" , "install.dll" , COMP_NORMAL );
+    VarRestore ( SRCTARGETDIR );
+
+    Disable (LOGGING);
+
+    //Deleteing a key created by IS that is not needed.
+    RegDBSetDefaultRoot (HKEY_CURRENT_USER);
+    RegDBDeleteKey ("Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\PGP");
+    RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+    RegDBDeleteKey ( "SOFTWARE\\"+ @COMPANY_NAME + "\\" + @PRODUCT_NAME + "\\" + PRODUCT_VERSION );
+
+    if (nResult < 0) then
+         MessageBox( @ERROR_UNINSTSETUP, WARNING );
+    endif;
+
+    szAppPath = TARGETDIR; // if your application .exe is in a subfolder
+                           // of TARGETDIR then add subfolder
+
+    if ((bIs32BitSetup) && (bIsShellExplorer)) then
+        RegDBSetItem( REGDB_APPPATH, szAppPath );
+        RegDBSetItem( REGDB_APPPATH_DEFAULT, szAppPath ^ @PRODUCT_KEY );
+        RegDBSetItem( REGDB_UNINSTALL_NAME, @PRODUCT_NAME + " " + PRODUCT_VERSION);
+    endif;
+
+  	//Place .DAT files (pref files)
+    if ((bImPersonal = FALSE) && (bImFreeware = FALSE)) then
+        if (bIsWindowsNT4) then
+            GetEnvVar ("USERPROFILE", szUserDir);
+        endif;
+
+        szPath = SRCDIR;
+        szFileName = "PGPadmin.dat";
+
+        if (FindFile (szPath, szFileName, svResult) = 0 ) then
+            bImClientInstall = TRUE;
+            //Copy the prf files over from Disk 1
+            VarSave(SRCTARGETDIR);
+            if (bIsWindowsNT4) then
+            	TARGETDIR = szUserDir ^ "Application Data\\PGP";
+            endif;
+            CopyFile ("PGPclient.dat", "PGPclient.dat");
+            if (bIsWindowsNT4) then
+            	TARGETDIR = WINDIR ^ "Profiles\\All Users\\Application Data\\PGP";
+            endif;
+            CopyFile ("PGPadmin.dat", "PGPadmin.dat");
+            VarRestore(SRCTARGETDIR);
+            CopyFile ("PGPnet.dat", "PGPnet.dat");
+            //client side of DS build so PGPadmin not needed
+            DeleteFile ("PGPadmin.exe");
+        else
+            bImAdminInstall = TRUE;
+        endif;
+    endif;
+
+    return 0;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function:  MoveFileData
+//
+//  Purpose:  This function handles the file transfer for
+//            the setup.
+//
+///////////////////////////////////////////////////////////////////////////////
+function MoveFileData()
+    NUMBER nResult, nDisk;
+
+begin
+
+    nDisk = 1;
+    SetStatusWindow( 0, "" );
+    Disable( DIALOGCACHE );
+    Enable( STATUSDLG );
+    Enable( STATUS );
+    //PlaceWindow (FEEDBACK, 0, 0, LOWER_RIGHT);
+
+    StatusUpdate( ON, 100 );
+    nResult = ComponentMoveData( MEDIA, nDisk, 0 );
+
+    HandleMoveDataError( nResult );
+
+    Disable( STATUS );
+
+    return nResult;
+
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: HandleMoveDataError
+//
+//  Purpose: This function handles the error (if any) during the file transfer
+//           operation.
+//
+///////////////////////////////////////////////////////////////////////////////
+function HandleMoveDataError( nResult )
+    STRING szErrMsg, svComponent , svFileGroup , svFile;
+
+begin
+
+    svComponent = "";
+    svFileGroup = "";
+    svFile = "";
+
+    switch (nResult)
+        case 0:
+            return 0;
+        default:
+            ComponentError ( MEDIA , svComponent , svFileGroup , svFile , nResult );
+            szErrMsg = @ERROR_MOVEDATA  + "\n\n" +
+                @ERROR_COMPONENT + " " + svComponent + "\n" +
+                @ERROR_FILEGROUP + " " + svFileGroup + "\n" +
+                @ERROR_FILE      + " " + svFile;
+            SprintfBox( SEVERE, "", szErrMsg, nResult );
+            bInstallAborted = TRUE;
+            return nResult;
+    endswitch;
+
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: ProcessAfterDataMove
+//
+//  Purpose: This function performs any necessary operations needed after
+//           all files have been transferred.
+//
+///////////////////////////////////////////////////////////////////////////////
+function ProcessAfterDataMove()
+    STRING szReferenceFile, szMsg;
+
+begin
+	if(bImClientInstall) then
+		DeleteFile ("PGPadmin.exe");
+	endif;
+	
+	//if this is not winnt4.0 remove inf files and nt driver
+	if !(bIsWindowsNT4) then
+		DeleteFile ("Oemsetup.inf");
+		DeleteFile ("PGPRebind.inf");
+		VarSave(SRCTARGETDIR);
+		TARGETDIR = WINSYSDIR ^ "Drivers";
+		DeleteFile ("PGPnet.sys");
+		VarRestore(SRCTARGETDIR);
+		DeleteDir (WINSYSDIR ^ "Drivers", ONLYDIR);
+	endif;
+	
+	if (ComponentIsItemSelected ( MEDIA , "NTCmdline" ) = TRUE) then
+		SetEnvVar(1, TARGETDIR);
+	endif;
+	
+    // DeinstallSetReference specifies a file to be checked before
+    // uninstallation. If the file is in use, uninstallation will not proceed.
+    //szReferenceFile = svDir ^ PRODUCT_KEY;
+    //DeinstallSetReference( szReferenceFile );
+    return 0;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: CleanUpInstall
+//
+//  Purpose: This cleans up the setup.  Anything that should
+//           be released or deleted at the end of the setup should
+//           be done here.
+//
+///////////////////////////////////////////////////////////////////////////////
+function CleanUpInstall()
+    STRING svResult;
+begin
+    ListDestroy( listStartCopy );
+
+    if (bInstallAborted) then
+        return 0;
+    endif;
+
+    DialogShowSdFinishReboot();
+
+    if (BATCH_INSTALL) then // ensure locked files are properly transferred
+        CommitSharedFiles(0);
+    endif;
+
+    return 0;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetupInstall
+//
+//  Purpose: This will initialize the setup.  Any general initialization
+//           needed for the installation should be performed here.
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetupInstall()
+STRING szKey;
+
+begin
+   	szKey = "SOFTWARE\\Network Associates\\PGP" ;
+    RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+    RegDBCreateKeyEx ( szKey , "" );
+    RegDBSetKeyValueEx ( szKey, "Reboot" , REGDB_NUMBER , "0" , -1 );
+    Enable( CORECOMPONENTHANDLING );
+
+    bInstallAborted = FALSE;
+
+    SdProductName( @PRODUCT_NAME );
+
+    Enable( DIALOGCACHE );
+
+    return 0;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function:  SetupScreen
+//
+//  Purpose:  This function establishes the screen look.  This includes
+//            colors, fonts, and text to be displayed.
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetupScreen()
+    NUMBER  nvResult, nDisplay;
+    STRING  svResult, szFormat, szBmpPath, szDisplay;
+
+begin
+
+    Enable( FULLWINDOWMODE );
+    Enable( INDVFILESTATUS );
+
+    SetFont(FONT_TITLE, STYLE_BOLD | STYLE_ITALIC, "Times New Roman");
+    GetSystemInfo (VIDEO, nDisplay, szDisplay);
+    if (nDisplay = IS_EGA) then
+        SetTitle(TITLE + " - Setup", 10, WHITE);
+    elseif (nDisplay = IS_VGA) then
+        SetTitle(TITLE + " - Setup", 12, WHITE);
+    elseif (nDisplay = IS_SVGA) then
+        SetTitle(TITLE + " - Setup", 16, WHITE);
+    elseif (nDisplay = IS_XVGA) then
+        SetTitle(TITLE + " - Setup", 18, WHITE);
+    elseif (nDisplay = IS_UVGA) then
+        SetTitle(TITLE + " - Setup", 24, WHITE);
+    else
+        SetTitle(TITLE + " - Setup", 20, WHITE);
+    endif;
+    SetTitle(TITLE2 + " Setup",0,BACKGROUNDCAPTION); // Caption bar text( no new line ).
+
+    Enable( BACKGROUND );
+
+    GetSystemInfo(COLORS,nvResult,svResult);
+    szFormat  = ";1;1;0,128,128;0,128,128";
+    if (nvResult <= 16) then
+        //Set proper background color
+        SetColor( BACKGROUND, RGB(0,51,102) );
+        //Logo in upper_right hand corner of screen
+        PlaceBitmap (SUPPORTDIR ^ "netax.bmp", 0, 0, 0, LOWER_RIGHT);
+        szBmpPath = "@" + SUPPORTDIR ^ "sidebar.bmp" + szFormat;
+    elseif ((nvResult <= 256)&&(nvResult > 16)) then
+        //Set proper background color
+        SetColor( BACKGROUND, RGB(0,51,102) );
+        //Logo in upper_right hand corner of screen
+        PlaceBitmap (SUPPORTDIR ^ "netax.bmp", 0, 0, 0, LOWER_RIGHT);
+        szBmpPath = "@" + SUPPORTDIR ^ "sidebarx.bmp" + szFormat;
+    elseif (nvResult > 256) then
+        //Set proper background color
+        SetColor( BACKGROUND, RGB(0,51,102) );
+        //Logo in upper_right hand corner of screen
+        PlaceBitmap (SUPPORTDIR ^ "netax.bmp", 0, 0, 0, LOWER_RIGHT);
+        szBmpPath = "@" + SUPPORTDIR ^ "sidebarxx.bmp" + szFormat;
+    endif;
+    SetDisplayEffect (EFF_NONE);
+    //Set the alternate bitmap for the AskText dialog box.
+    DialogSetInfo (DLG_INFO_ALTIMAGE,szBmpPath,TRUE);
+
+    Delay( 1 );
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function:  CheckRequirements
+//
+//  Purpose:  This function checks all minimum requirements for the
+//            application being installed.  If any fail, then the user
+//            is informed and the setup is terminated.
+//
+///////////////////////////////////////////////////////////////////////////////
+function CheckRequirements()
+    NUMBER  nvDx, nvDy, nvResult;
+    STRING  svResult;
+
+begin
+
+    bIsShellExplorer = FALSE;
+    bIsWindowsNT4    = FALSE;
+    bIsWindowsNT351  = FALSE;
+    bIsWindows95     = FALSE;
+    bIsWindows98     = FALSE;
+
+    // Check screen resolution.
+    GetExtents( nvDx, nvDy );
+
+    //check if user has admin privs.
+    if !(Is (USER_ADMINISTRATOR, "")) then
+        MessageBox("To run this install you need to be logged in with\n" +
+                    "Administrator privileges. Setup will now exit.", SEVERE);
+        abort;
+    endif;
+
+    if (nvDy < 480) then
+        MessageBox( @ERROR_VGARESOLUTION, WARNING );
+        abort;
+    endif;
+
+    // Set 'setup' operation mode
+    bIs32BitSetup = TRUE;
+    GetSystemInfo( ISTYPE, nvResult, svResult );
+    if (nvResult = 16) then
+        bIs32BitSetup = FALSE; // running 16-bit setup
+        return 0; // no additional information required
+    endif;
+
+    // --- 32-bit testing after this point ---
+
+    // Determine the target system's operating system.
+    GetSystemInfo( OS, nvResult, svResult );
+
+    //Check if OS is Windows 2000
+ 	if (nvResult = IS_WINDOWSNT) then
+ 		if (GetSystemInfo( WINMAJOR, nvResult, svResult ) = 0) then
+        	if (nvResult > 4) then
+        		MessageBox("This product is for Windows NT 4.0 and Windows 95/98 only.", SEVERE);
+        		abort;
+			endif;
+		endif;
+ 	endif;
+ 	
+ 	GetSystemInfo( OS, nvResult, svResult );
+	bDisablePGPnet = FALSE;
+    if (nvResult = IS_WINDOWSNT) then
+        // Check to see if OS is Windows NT 4.0 or Windows NT 3.51,
+        // and if the shell being used is the Explorer shell.
+        if (GetSystemInfo( WINMAJOR, nvResult, svResult ) = 0) then
+            if (nvResult >= 4) then
+                bIsShellExplorer = TRUE;
+                bIsWindowsNT4 = TRUE;
+            else
+            	MessageBox( "This product runs only on Windows NT 4.0 or Windows 95/98.", SEVERE );
+            	abort;
+            endif;
+        endif;
+        //Look for config changed key !! If it exists user MUST reboot
+        RegDBSetDefaultRoot ( HKEY_LOCAL_MACHINE );
+   	    if (RegDBKeyExist ("SOFTWARE\\Microsoft\\Ncpa\\CurrentVersion\\ConfigChanged") = 1) then
+        	//user has changed ncpa config recently without rebooting
+        	if (AskYesNo
+            	("Your network control panel settings have changed recently. Without\n" +
+            	"rebooting your system, setup will not be able to install the PGPnet\n" +
+            	"portion of this install. If you are intending on installing PGPnet\n" +
+            	"you must reboot your system before installing this product.\n\n" +
+            	"Are you planning on installing PGPnet?",YES) = YES) then
+            	MessageBox( "Setup will now exit, so you can reboot your machine.", INFORMATION );
+            	abort;
+            else
+            	MessageBox( "PGPnet will not be able to be installed", INFORMATION );
+            	bDisablePGPnet = TRUE;
+            endif;
+        endif;
+
+
+    elseif (nvResult = IS_WINDOWS9X) then
+    	if (WINNTONLY = "TRUE") then
+    		MessageBox( "This product runs only on Windows NT 4.0.", SEVERE );
+    		abort;
+    	endif;
+        bIsShellExplorer = TRUE;
+        // Check to see if OS is Windows 95 or Windows 98
+        GetSystemInfo (WINMINOR, nvResult, svResult);
+        if (nvResult < 10) then
+           bIsWindows95 = TRUE;
+        else
+           bIsWindows98 = TRUE;
+        endif;
+    endif;
+
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdWelcome
+//
+//  Purpose: This function handles the standard welcome dialog.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdWelcome()
+    NUMBER nResult;
+    STRING szTitle, szMsg;
+
+begin
+
+    szTitle = "";
+    szMsg   = "";
+    nResult = SdWelcome( szTitle, szMsg );
+
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdLicense
+//
+//  Purpose: This function displays the license agreement dialog.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdLicense()
+    NUMBER nResult;
+    STRING szTitle, szMsg, szQuestion, szLicenseFile;
+
+begin
+
+    szLicenseFile = SUPPORTDIR ^ "license.txt";
+    szTitle    = "";
+    szMsg      = "";
+    szQuestion = "";
+    nResult    = SdLicense( szTitle, szMsg, szQuestion, szLicenseFile );
+
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdShowReadMe
+//
+//  Purpose: This function displays the general information list dialog.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdShowReadMe()
+    NUMBER nResult;
+    LIST   listID;
+    STRING szTitle, szMsg, szFile;
+
+begin
+
+    szFile = SUPPORTDIR ^ "WhatsNew.txt";
+
+    listID = ListCreate( STRINGLIST );
+    if (listID = LIST_NULL) then
+        MessageBox ("Unable to create list.", SEVERE);
+        abort;
+    endif;
+    ListReadFromFile( listID, szFile );
+    szTitle  = "Important Product Information.";
+    szMsg    = "Whats New.";
+    nResult  = SdShowInfoList( szTitle, szMsg, listID );
+
+    ListDestroy( listID );
+
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdRegisterUserEx
+//
+//  Purpose: This function displays the user registration dialog.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdRegisterUserEx()
+    NUMBER nResult;
+    STRING szTitle, szMsg;
+
+begin
+    svName    = "";
+    svCompany = "";
+
+    GetProfString (SRCDIR + "\\setup.ini", "STARTUP", "CompanyName", svCompany);
+    if (bImClientInstall = FALSE) then
+        nResult = SdRegisterUser( szTitle, szMsg, svName, svCompany);
+    endif;
+    szTitle = "";
+    szMsg   = "";
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdAskDestPath
+//
+//  Purpose: This function asks the user for the destination folder.
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdAskDestPath()
+    NUMBER nResult, nValue;
+    STRING szTitle, szMsg, szString, svString, szBuffer;
+
+begin
+    szTitle = "";
+    szMsg   = "";
+
+    if (bEasyInstall = FALSE) then
+        nResult = SdAskDestPath( szTitle, szMsg, svDir, 0 );
+    else
+        svDir = svInstallDirectory;
+    endif;
+
+    //Make sure that the user cannot install in the Root.
+    if(svDir % @PRODUCT_NAME) then
+        TARGETDIR = svDir;
+    else
+        if (bIsWindowsNT4) then
+    		TARGETDIR =svDir ^ @PRODUCT_NAME + "NT";
+    		svDir = TARGETDIR;
+    	else
+    		TARGETDIR =svDir ^ @PRODUCT_NAME;
+    		svDir = TARGETDIR;
+    	endif;
+    endif;
+
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: DialogShowSdComponentDialog2
+//
+//  Purpose: This function displays the custom component dialog.
+//  and writes selections to list.
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdComponentDialog2()
+    NUMBER nResult;
+    STRING szTitle, szMsg;
+
+begin
+Top:
+	//default these to off
+    ComponentSelectItem(MEDIA,"PGPnet Driver 95",FALSE);
+    ComponentSelectItem(MEDIA,"PGPnet Driver NT",FALSE);
+    ComponentSelectItem(MEDIA,"PGPdisk Driver 95",FALSE);
+    ComponentSelectItem(MEDIA,"PGPdisk Driver NT",FALSE);
+
+    if ((svSetupType != "Custom") && (svSetupType != "")) then
+        return 0;
+    endif;
+
+    //if !(bIsWindowsNT4) then
+    //	ComponentSelectItem(MEDIA,"NTCmdlinedocs",FALSE);
+	//	ComponentSelectItem(MEDIA,"NTCmdline",FALSE);
+	//	ComponentSetData  (MEDIA, "NTCmdline", COMPONENT_FIELD_VISIBLE, FALSE, "");
+	//endif;
+	
+    if (bDisablePGPnet) then
+    	ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+
+        if (bEasyInstall = TRUE) then
+        	nvPGPnet = 0;
+        endif;
+	endif;
+	
+    if (INCLUDE_PGPDISK = "FALSE") then
+        ComponentSelectItem(MEDIA,"PGPdisk",FALSE);
+        ComponentSetData  (MEDIA, "PGPdisk", COMPONENT_FIELD_VISIBLE, FALSE, "");
+    endif;
+
+    //BEGIN FIX FOR INSTALLSHIELD BUG
+    //This shuts off OS dependant items when not in that OS.
+    //Installshields automatic OS dependancies do not seem
+    //to work properly.
+
+    //If this is an easy/quick install, set components
+    if (bEasyInstall = TRUE) then
+    	if (bIsWindowsNT4) then
+      		if(nvNTcmdln)then
+        		ComponentSelectItem(MEDIA,"NTCmdlinedocs",TRUE);
+				ComponentSelectItem(MEDIA,"NTCmdline",TRUE);
+        	else
+	        	ComponentSelectItem(MEDIA,"NTCmdlinedocs",FALSE);
+				ComponentSelectItem(MEDIA,"NTCmdline",FALSE);
+			endif;
+		endif;
+        if(nvPGPdisk)then
+            ComponentSelectItem(MEDIA,"PGPdisk",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"PGPdisk",FALSE);
+        endif;
+        if(nvPGPnet)then
+            ComponentSelectItem(MEDIA,"PGPnet",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+        endif;
+        if(nvUserManual)then
+            ComponentSelectItem(MEDIA,"User's Manual",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"User's Manual",FALSE);
+        endif;
+        if(nvOutlookExpressPlugin)then
+            ComponentSelectItem(MEDIA,"Outlook Exp Plugin",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"Outlook Exp Plugin",FALSE);
+        endif;
+        if(nvExchangeOutlookPlugin)then
+            ComponentSelectItem(MEDIA,"Exch Plugin",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"Exch Plugin",FALSE);
+        endif;
+        if(nvEudoraPlugin)then
+            ComponentSelectItem(MEDIA,"Eudora Plugin",TRUE);
+        else
+        	ComponentSelectItem(MEDIA,"Eudora Plugin",FALSE);
+        endif;
+    endif;
+
+    if (bIsWindowsNT4) then
+        ComponentSelectItem(MEDIA,"PGPmemlock NT",TRUE);
+        ComponentSelectItem(MEDIA,"PGPmemlock9598",FALSE);
+    else //is 98 or 95
+        ComponentSelectItem(MEDIA,"PGPmemlock NT",FALSE);
+        ComponentSelectItem(MEDIA,"PGPmemlock9598",TRUE);
+    endif;
+    //END FIX FOR INSTALLSHIELD BUG
+
+    if (bEasyInstall = FALSE) then
+        szTitle  = "";
+        szMsg    = "";
+        nResult  = SdComponentDialog2( szTitle, szMsg, svDir, "" );
+
+        if (nResult = BACK) then
+            return nResult;
+        endif;
+    endif;
+
+    if (ComponentIsItemSelected ( MEDIA , "Program Files" ) = FALSE) then
+        Disable (DIALOGCACHE);
+        MessageBox("Program Files are required.\n"+
+        "Please try again.", WARNING);
+        //re-select program files
+        ComponentSelectItem(MEDIA,"Program Files",TRUE);
+        goto Top;
+        Enable (DIALOGCACHE);
+    endif;
+
+	if (ComponentIsItemSelected ( MEDIA , "PGPnet" ) = TRUE) then
+   	//select proper driver
+    	if (bIsWindowsNT4) then
+        	ComponentSelectItem(MEDIA,"PGPnet Driver NT",TRUE);
+      	else
+	   		ComponentSelectItem(MEDIA,"PGPnet Driver 95",TRUE);  	
+    	endif;
+    endif;
+
+    if (ComponentIsItemSelected ( MEDIA , "PGPdisk" ) = TRUE) then
+        UseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+        //added call to PGPdiskCleanup (nryan request)
+        PGPdiskCleanup();
+        UnUseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+        bReboot = TRUE;
+        if (bIsWindowsNT4) then
+            ComponentSelectItem(MEDIA,"PGPdisk Driver 95",FALSE);
+            ComponentSelectItem(MEDIA,"PGPdisk Driver NT",TRUE);
+        else //is 98 or 95
+            ComponentSelectItem(MEDIA,"PGPdisk Driver 95",TRUE);
+            ComponentSelectItem(MEDIA,"PGPdisk Driver NT",FALSE);
+        endif;
+    endif;
+
+    //only install admin docs if this is an admin build.
+	if !(bImAdminInstall) then
+    	ComponentSelectItem(MEDIA,"PGPdocsadmin",FALSE);	
+    endif;
+
+    // Create list of end user selections to be displayed by DialogShowSdStartCopy()
+    listStartCopy = ListCreate(STRINGLIST);
+    // If an error occurred, report it then terminate.
+    if (listStartCopy = LIST_NULL) then
+        MessageBox ("Unable to create list.", SEVERE);
+        abort;
+    endif;
+
+    if (svName != "") then
+        ListAddString (listStartCopy, "Name: ", AFTER);
+        ListAddString (listStartCopy, "- " + svName, AFTER);
+    endif;
+
+    if (svCompany != "") then
+    	ListAddString (listStartCopy, "Company: ", AFTER);
+    	ListAddString (listStartCopy, "- " + svCompany, AFTER);
+    	ListAddString (listStartCopy, "", AFTER);
+    endif;
+
+    ListAddString (listStartCopy, "Client Type:", AFTER);
+    if (FREEWARE = "TRUE") then
+    	ListAddString (listStartCopy, "- Freeware", AFTER);
+    endif;
+    if (PERSONALPRIVACY = "TRUE") then
+        ListAddString (listStartCopy, "- Personal Privacy", AFTER);
+    else
+        if (bImClientInstall = TRUE) then
+            ListAddString (listStartCopy, "- Configured Client", AFTER);
+        else
+            ListAddString (listStartCopy, "- Administrative Client", AFTER);
+        endif;
+    endif;
+    ListAddString (listStartCopy, "", AFTER);
+
+    ListAddString (listStartCopy, "Install Directory: ", AFTER);
+    ListAddString (listStartCopy, "- " + TARGETDIR, AFTER);
+    ListAddString (listStartCopy, "", AFTER);
+
+    ListAddString (listStartCopy, "Selected Components:", AFTER);
+    if (ComponentIsItemSelected ( MEDIA , "Program Files" ) = TRUE) then
+        ListAddString (listStartCopy, "- PGP Key Management", AFTER);
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "Outlook Exp Plugin" ) = TRUE) then
+        Disable (DIALOGCACHE);
+        FindOutlookExpress();
+        Enable (DIALOGCACHE);
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "Eudora Plugin" ) = TRUE) then
+        Disable (DIALOGCACHE);
+        FindEudora();
+        Enable (DIALOGCACHE);
+    endif;
+
+    if ((bIsWindowsNT4)||(bIsWindows95)) then
+    	if (ComponentIsItemSelected ( MEDIA , "PGPnet" ) = TRUE) then
+        	CanIinstallPGPnet();
+    	endif;
+	endif;
+	
+    if (ComponentIsItemSelected ( MEDIA , "PGPnet" ) = TRUE) then
+        ListAddString (listStartCopy, "- PGPnet Virtual Private Networking", AFTER);
+        bReboot = TRUE;
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "PGPdisk" ) = TRUE) then
+        ListAddString (listStartCopy, "- PGPdisk Volume Security", AFTER);
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "NTCmdline" ) = TRUE) then
+        ListAddString (listStartCopy, "- PGP Command Line", AFTER);
+    endif;
+    //Need to check again since FindEudora() may have disabled the choice
+    if (ComponentIsItemSelected ( MEDIA , "Eudora Plugin" ) = TRUE) then
+            ListAddString (listStartCopy, "- Eudora Plugin", AFTER);
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "Exch Plugin" ) = TRUE) then
+        ListAddString (listStartCopy, "- Microsoft Exchange Plugin", AFTER);
+    endif;
+    //Need to check again since FindOutlookExpress() may have disabled the choice
+    if (ComponentIsItemSelected ( MEDIA , "Outlook Exp Plugin" ) = TRUE) then
+        ListAddString (listStartCopy, "- Microsoft Outlook Express Plugin", AFTER);
+    endif;
+    if (ComponentIsItemSelected ( MEDIA , "User's Manual" ) = TRUE) then
+        ListAddString (listStartCopy, "- User's Manual", AFTER);
+    endif;
+
+    return nResult;
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function: DialogShowSdStartCopy
+//
+//  Purpose: This function displays the dialog preceding the start of the
+//           file transfer process.
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdStartCopy()
+    NUMBER nResult;
+    STRING szTitle, szMsg;
+
+begin
+
+    szTitle = "Ready to start copying Files.";
+    szMsg   = "Setup has enough information to begin copying the new program files.\n" +
+            "If you want to review or change any settings, click Back,\n" +
+            "If you are satisfied with the settings, click Next.";
+    nResult = SdStartCopy( szTitle, szMsg, listStartCopy );
+    ListDestroy(listStartCopy);
+    return nResult;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function: DialogShowSdFinishReboot
+//
+//  Purpose: This function will show the last dialog of the product.
+//           It will allow the user to reboot and/or show some readme text.
+//
+///////////////////////////////////////////////////////////////////////////////
+function DialogShowSdFinishReboot()
+    NUMBER nResult, nDefOptions;
+    STRING szTitle, szMsg1, szMsg2, szOption1, szOption2;
+    STRING szKey;
+    NUMBER bOpt1, bOpt2, nSize;
+
+    #define PGPkeys     TARGETDIR ^ "PGPkeys.exe"
+
+begin
+    //end of install, refresh the startmenu
+    UseDLL (SUPPORTDIR ^ "install.dll");
+    RefreshStartMenu();
+    UnUseDLL (SUPPORTDIR ^ "install.dll");
+
+    if ((!BATCH_INSTALL) && (!bReboot)) then
+        bOpt1 = TRUE;
+        bOpt2 = FALSE;
+        szMsg1 = "";
+        szMsg2 = "";
+        szOption1 = "Launch PGPkeys.";
+        szOption2 = "";
+        nResult = SdFinish( szTitle, szMsg1, szMsg2, szOption1, szOption2, bOpt1, bOpt2 );
+
+        if (bOpt1) then
+            LaunchApp (PGPkeys, "");
+        endif;
+        return 0;
+    endif;
+
+    Start:
+        bOpt1 = TRUE;
+        SdFinish ("Setup Complete.", @StringReboot, "", "&Yes, I want to restart my computer now.",
+                "", bOpt1, bOpt2);
+        Disable (DIALOGCACHE);
+        szKey = "SOFTWARE\\Network Associates\\PGP" ;
+        if (bOpt1)then
+            RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+            RegDBSetKeyValueEx ( szKey, "Reboot" , REGDB_NUMBER , "1" , -1 );
+        endif;
+     return 0;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function: ShutDownApps
+//
+//  Purpose: This function finds running apps. and informs the user
+//           to shut them down in order to continue with the install
+//
+///////////////////////////////////////////////////////////////////////////////
+function ShutDownApps()
+    #define MB_OKCANCEL                 1
+    #define IDCANCEL                    2
+    #define IDRETRY                     4
+    #define MB_RETRYCANCEL              5
+    #define IDYES                       6
+    #define WM_CLOSE                    0x0010 // defines the WM_CLOSE message.
+    #define	WM_DESTROY					0x0002 // defines the WMDESTROY message.
+    #define PGP_HIDDEN_WINDOW           "PGPtray_Hidden_Window"
+    #define PGPNET_WINDOW               "PGPnet System Tray App"
+
+    HWND hWnd, hWnd1,hWnd2,hWnd3,hWnd4,hWnd5,hWnd6,hWnd7,hWnd8,hWnd9;
+
+begin
+
+TestForRunningApps:
+    if (FindWindow ("", "PGPdisk") != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s",
+        "Please shut down PGPdisk before continuing.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    //kill pgptray.exe if possible
+    hWnd = FindWindow(PGP_HIDDEN_WINDOW,"");
+    if (hWnd > 0) then
+            SendMessage(hWnd,WM_CLOSE,0,0);
+            //This delay is needed for PGP Dlls to unlock unfortunately
+            Delay(4);
+    endif;
+
+	//Close service windows
+	//hWnd = FindWindow("","PGPnet GUI-IKE Communication");
+	//if (hWnd > 0) then
+	//	SendMessage(hWnd,WM_CLOSE,0,0);
+	//	Delay(1);
+	//endif;
+	
+	hWnd = FindWindow("","PGPnet IKE service");
+	if (hWnd > 0) then
+		SendMessage(hWnd,WM_DESTROY,0,0);
+		Delay(1);
+	endif;	
+	
+	//hWnd = FindWindow("","PGPnetReadWorker");
+	//if (hWnd > 0) then
+	//	SendMessage(hWnd,WM_CLOSE,0,0);
+	//	Delay(1);
+	//endif;
+		
+    //kill pgpnettray.exe if possible
+    hWnd = FindWindow(PGPNET_WINDOW,"");
+    if (hWnd > 0) then
+            SendMessage(hWnd,WM_CLOSE,0,0);
+            //This delay is needed for PGP Dlls to unlock unfortunately
+            Delay(4);
+    endif;
+
+    if (FindWindow ("", "PGPnet") != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s",
+        "Please shut down PGPnet before continuing.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    //ENSURE NO PLUGINS\DLL's ARE IN USE
+    hWnd2 = FindWindow("Microsoft Exchange 4.0 Viewer","");
+    if (hWnd2 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Microsoft Exchange must not be" +
+        " running.\nPlease shut down Microsoft Exchange.")= IDCANCEL) then
+        abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd3 = FindWindow("Microsoft Exchange 5.0 Viewer","");
+    if (hWnd3 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Microsoft Exchange must not be" +
+        " running.\nPlease shut down Microsoft Exchange.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd4 = FindWindow("rctrl_renwnd32","");
+    if (hWnd4!= NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Microsoft Outlook must not be" +
+        " running.\nPlease shut down Microsoft Outlook.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd5 = FindWindow("EudoraMainWindow","");
+    if (hWnd5 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Eudora must not be running.\n"+
+        "Please shut down Eudora.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd6 = FindWindow("PGPAdminWizardClass","");
+    if (hWnd6 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue the admin. wizard must not be" +
+        " running.\nPlease shut down the admin. wizard.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd7 = FindWindow("PGPkeysMainWinClass","");
+    if (hWnd7 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue PGPkeys must not be running.\n"+
+        "Please shut down PGPkeys.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd8 = FindWindow("PGPtools","");
+    if (hWnd8 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue PGPtools must not be running.\n"+
+        "Please shut down PGPtools.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    hWnd9 = FindWindow("PGPlog","");
+    if (hWnd9 != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue PGPLog must not be running.\n"+
+        "Please shut down PGPLog.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    //Ensure that Outlook Express is not running
+    if (FindWindow ("ThorBrowserWndClass", "") != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Outlook Express must not be running.\n"+
+        "Please shut down Outlook Express.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+    if (FindWindow ("Ath_Note", "") != NULL) then
+        if (SprintfBox (MB_RETRYCANCEL, "Application Running", "%s","For install to continue Outlook Express must not be running.\n"+
+        "Please shut down Outlook Express.") = IDCANCEL) then
+            abort;
+        else
+            goto TestForRunningApps;
+        endif;
+    endif;
+
+	if(bIsWindowsNT4) then
+		UseDLL (SUPPORTDIR ^ "install.dll");
+		StopService("PGPnetIke");
+		StopService("PgpMacMP");
+		StopService("NdisWanPgpMacMP");
+		StopService("PGPmemlock");
+		UnUseDLL (SUPPORTDIR ^ "install.dll");
+	endif;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: FindInstalledVersions()
+//
+//  Purpose: Find out if the user has any old versions of this software
+//  installed.
+//
+///////////////////////////////////////////////////////////////////////////////
+function FindInstalledVersions ()
+    LIST listInfo;
+    NUMBER nvType, nvSize;
+    STRING svValue, szKey, szName;
+
+begin
+    bPGPFiveZero = FALSE;
+    bPGPFiveFive = FALSE;
+    bFiveFive = FALSE;
+    bSixZero = FALSE;
+
+    Disable(DIALOGCACHE);
+    SdShowMsg ( "Searching for installed components." , TRUE );
+    Delay(3);
+    // Retrieve previous install path and determine components installed
+    RegDBSetDefaultRoot (HKEY_CURRENT_USER);
+
+    if (RegDBKeyExist ("Software\\PGP\\PGP50\\PGPkeys") >= 0) then
+        bPGPFiveZero = TRUE;
+    elseif (RegDBKeyExist ("Software\\PGP\\PGP55\\PGPkeys") >= 0) then
+        bPGPFiveFive = TRUE;
+    elseif (RegDBKeyExist ("Software\\Network Associates\\PGP55\\PGPkeys") >= 0) then
+        bFiveFive = TRUE;
+    elseif (RegDBKeyExist ("Software\\Network Associates\\PGP60\\PGPkeys") >= 0) then
+        bSixZero = TRUE;
+    endif;
+    RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+    if (RegDBKeyExist ("SOFTWARE\\Network Associates\\PGP") >= 0) then
+      	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+    	szKey = "SOFTWARE\\Network Associates\\PGP";
+    	szName = "InstallPath";
+    	if (RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize)=0) then
+    		bSixFive = TRUE;
+    	endif;
+    endif;
+    Enable(DIALOGCACHE);
+    SdShowMsg ( "Searching for installed components" , FALSE );
+
+    listInfo = ListCreate( STRINGLIST );
+    if (listInfo = LIST_NULL) then
+        MessageBox ("Unable to create list.", SEVERE);
+        abort;
+    endif;
+
+    ListAddString (listInfo, "Setup has found the following installs on your", AFTER);
+    ListAddString (listInfo, "system.", AFTER);
+    ListAddString (listInfo, "", AFTER);
+
+    if (bPGPFiveZero = TRUE) then
+        ListAddString (listInfo, "  PGP 5.0", AFTER);
+    endif;
+    if (bPGPFiveFive = TRUE) then
+        ListAddString (listInfo, "  PGP 5.5", AFTER);
+    endif;
+    if (bFiveFive = TRUE) then
+        ListAddString (listInfo, "  PGP 5.5", AFTER);
+    endif;
+    if (bSixZero = TRUE) then
+        if (RegDBGetKeyValueEx ("Software\\Network Associates\\PGP60", "Version" , nvType , svValue , nvSize) = 0) then
+            ListAddString (listInfo, "  " + svValue, AFTER);
+        else
+            ListAddString (listInfo, "  PGP 6.0X", AFTER);
+        endif;
+    endif;
+    if (bSixFive = TRUE) then
+        if (RegDBGetKeyValueEx ("Software\\Network Associates\\PGP", "Version" , nvType , svValue , nvSize) = 0) then
+            ListAddString (listInfo, "  " + svValue, AFTER);
+        else
+            ListAddString (listInfo, "  PGP 6.5X", AFTER);
+        endif;
+    endif;
+    if ((bSixZero = TRUE) || (bFiveFive = TRUE) ||
+    (bPGPFiveFive = TRUE) || (bPGPFiveZero = TRUE) ||
+    (bSixFive = TRUE)) then
+        ListAddString (listInfo, "", AFTER);
+        ListAddString (listInfo, "These need to be removed for setup to", AFTER);
+        ListAddString (listInfo, "continue. If you press NEXT setup can remove", AFTER);
+        ListAddString (listInfo, "these for you, or you can press CANCEL to exit", AFTER);
+        ListAddString (listInfo, "this install and uninstall these manually.", AFTER);
+        ListAddString (listInfo, "", AFTER);
+        ListAddString (listInfo, "PRESSING NEXT", AFTER);
+        ListAddString (listInfo, "Uninstalls old versions automatically.", AFTER);
+        ListAddString (listInfo, "", AFTER);
+        ListAddString (listInfo, "PRESSING CANCEL", AFTER);
+        ListAddString (listInfo, "Exits setup. So you can uninstall manually.", AFTER);
+        ListAddString (listInfo, "", AFTER);
+        if (bEasyInstall = FALSE) then
+            Disable(BACKBUTTON);
+            SdShowInfoList ( "Search Results" , "Components found" , listInfo );
+            Enable(BACKBUTTON);
+        endif;
+    endif;
+    ListDestroy (listInfo);
+end;
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetInstallType
+//
+//  Purpose: Sets the build type variables.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetInstallType()
+    LIST listID;
+    NUMBER nCount, nvReturnValue;
+	STRING szPath, svResult, szFileName;
+
+begin
+    bImClientInstall = FALSE;
+    bImAdminInstall = FALSE;
+    bImPersonal = FALSE;
+    bImFreeware = FALSE;
+    bEasyInstall = FALSE;
+
+    if((PERSONALPRIVACY = "TRUE" ) && (FREEWARE = "TRUE" )) then
+        MessageBox (@PPANDFREESET, WARNING);
+        abort;
+    endif;
+
+    if ((PERSONALPRIVACY = "FALSE") && (FREEWARE = "FALSE")) then
+        szPath = SRCDIR;
+        szFileName = "PGPadmin.dat";
+
+        if (FindFile (szPath, szFileName, svResult) = 0 ) then
+			bImClientInstall = TRUE;
+        else
+            bImAdminInstall = TRUE;
+        endif;
+    endif;
+
+    if(PERSONALPRIVACY = "TRUE" ) then
+        bImPersonal = TRUE;
+    elseif (FREEWARE = "TRUE" ) then
+        bImFreeware = TRUE;
+    endif;
+
+    //Is this a Quick Install ? If YES then set needed values.
+    GetProfInt (SRCDIR ^ "setup.ini", "Startup", "EasyInstall", nvReturnValue);
+
+    if (nvReturnValue = 1) then
+        bEasyInstall = TRUE;
+        //this is a quick install so we need to get all the values
+        GetProfString (SRCDIR ^ "setup.ini", "Startup", "InstallDir", svInstallDirectory);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "ProgramFiles", nvProgramFiles);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "EudoraPlugin", nvEudoraPlugin);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "ExchangeOutlookPlugin", nvExchangeOutlookPlugin);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "OutlookExpressPlugin", nvOutlookExpressPlugin);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "UserManual", nvUserManual);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "PGPdisk", nvPGPdisk);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "PGPnet", nvPGPnet);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "UninstallOld", nvUninstallOld);
+        GetProfInt (SRCDIR ^ "setup.ini", "Startup", "NTcmdln", nvNTcmdln);
+    endif;
+    bReboot = FALSE;
+
+	if (bEasyInstall) then
+		svDir = svInstallDirectory;
+	else
+		if (bIsWindowsNT4) then
+    		svDir = PROGRAMFILES ^ @COMPANY_NAME ^ @PRODUCT_NAME + "NT";
+    	else
+    		svDir = PROGRAMFILES ^ @COMPANY_NAME ^ @PRODUCT_NAME;
+    	endif;
+   	endif;
+
+    TARGETDIR  = svDir;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetPrefUserInfo
+//
+//  Purpose: Sets the user info that was entered into the pref file.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetPrefUserInfo()
+
+begin
+    UseDLL(WINSYSDIR ^ "pgpcl.dll");
+
+    if (bImClientInstall = FALSE) then
+        PGPclSetUserInfo (svName, svCompany,"");
+    else
+        if (svCompany != "") then
+            PGPclSetUserInfo ("", svCompany,"");
+        endif;
+    endif;
+
+    UnUseDLL(WINSYSDIR ^ "pgpcl.dll");
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetKeyRings
+//
+//  Purpose: Sets the users keyring info.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetKeyRings()
+    STRING szPubRingPath, szPrivRingPath, szRandSeedPath;
+    STRING szFileFilter, szDlgTitle, szExt, svSelectedFile;
+    STRING svSelectedFileb, svReturnString, svReturnStringb, svPubLoc;
+    STRING szLongTarget, svPrivLoc;
+    NUMBER nResult;
+    BOOL bCopyKeys, bPubKeysFound, UseDefaultPubKey;
+    BOOL bPrvKeysFound, bUseDefault;
+    HWND hwndIS;
+    STRING svString, szBuffer;
+	NUMBER nReturn, nvVar;
+
+begin
+	bUseDefault = FALSE;
+    UseDLL(WINSYSDIR ^ "pgpcl.dll");
+
+    //Set Default keyring info.
+    szPubRingPath   = TARGETDIR ^ "PGP Keyrings\\pubring.pkr";
+    szPrivRingPath  = TARGETDIR ^ "PGP Keyrings\\secring.skr";
+    szRandSeedPath  = TARGETDIR ^ "randseed.rnd";
+    //Set Keyring Locations if needed
+    bCopyKeys = FALSE;
+    //if they dont have a PGP Keyrings dir its created.
+    CreateDir (TARGETDIR ^ "PGP Keyrings");
+    if (bEasyInstall = FALSE) then
+        SetDialogTitle
+        (DLG_ASK_YESNO,"Existing Keyrings?");
+        if (AskYesNo
+            ("Do you have existing keyrings you wish to use?",YES) = YES) then
+            //get main window handle
+            hwndIS = GetWindowHandle(HWND_INSTALL);
+            //Get new Public ring
+            szFileFilter = "Public Keyring Files (*.pkr ; pubring.* ; *.pubkr),*.pkr;pubring.pgp;" +
+            "*.pubkr;,All Files (*.*),*.*";
+
+            // Give the file browse dialog a custom title,if you wish.
+            // Leave szDlgTitle null ("") to accept the default title ("Open").
+            szDlgTitle = "Browse to your Public Keyring";
+
+            // Pass in a default file extension.  Do NOT include the period.
+            // If you pass a null string,no extension is used.
+            szExt = "pgp";
+
+            // Call the FileBrowse function.
+            svSelectedFile = TARGETDIR ^ "PGP Keyrings" ^ "*.pkr";
+			UseDLL(SUPPORTDIR ^ "Install.dll");
+            nResult = FileBrowse(hwndIS,szFileFilter,svSelectedFile,szDlgTitle,szExt);
+			UnUseDLL(SUPPORTDIR ^ "Install.dll");
+            if (!nResult) then
+                // Do something with the selected file.
+                szPubRingPath = svSelectedFile;
+                bPubKeysFound = TRUE;
+            else
+            	// Handle the lack of selection,which could be due to a dialog
+            	// box-related error,chosing the Cancel button,or closing
+            	// the dialog with the Close button.
+            	bUseDefault = TRUE;
+            	bPubKeysFound = FALSE;
+            endif;
+
+            //Get new Private ring
+            if (bPubKeysFound = TRUE) then
+                szFileFilter = "Private Keyring Files (*.skr  ; *.prvkr ; secring.*)" +
+                ",*.skr;*.prvkr;secring.pgp;,All Files (*.*),*.*";
+
+                // Give the file browse dialog a custom title,if you wish.
+                // Leave szDlgTitle null ("") to accept the default title ("Open").
+                szDlgTitle = "Browse to your Private Keyring";
+            	// Call the FileBrowse function.
+            	svSelectedFile = TARGETDIR ^ "PGP Keyrings" ^ "*.skr";
+                // Call the FileBrowse function.
+                UseDLL(SUPPORTDIR ^ "Install.dll");
+                nResult = FileBrowse(hwndIS,szFileFilter,svSelectedFileb,szDlgTitle,szExt);
+				UnUseDLL(SUPPORTDIR ^ "Install.dll");
+                if (!nResult) then
+                    // Do something with the selected file.
+                    szPrivRingPath = svSelectedFileb;
+                    bPrvKeysFound = TRUE;
+                else
+                    // Handle the lack of selection,which could be due to a dialog
+                    // box-related error,chosing the Cancel button,or closing
+                    // the dialog with the Close button.
+                    bPrvKeysFound = FALSE;
+                endif;
+            endif;
+
+            if ((bPrvKeysFound = TRUE) &&
+                (bPubKeysFound = TRUE))   then
+                VarSave (SRCTARGETDIR);
+                //public
+                ParsePath (svReturnString, szPubRingPath, FILENAME);
+                ParsePath (svPubLoc, szPubRingPath, PATH);
+                //private
+                ParsePath (svReturnStringb,  szPrivRingPath, FILENAME);
+                ParsePath (svPrivLoc, szPrivRingPath, PATH);
+
+                TARGETDIR   = TARGETDIR ^ "PGP Keyrings";
+                SRCDIR      = svReturnString;
+                szLongTarget = TARGETDIR;
+                VarRestore(SRCTARGETDIR);
+                LongPathFromShortPath (szLongTarget);
+                if ((svPubLoc != szLongTarget ^ "\\") ||
+                 	(svPrivLoc != szLongTarget ^ "\\")) then
+                    SetDialogTitle
+                    (DLG_ASK_YESNO,"Copy keyrings?");
+                    if (AskYesNo
+                       ("Do you want setup to copy these keyrings to your" +
+                       " PGP Keyrings directory?",YES) = YES) then
+                        bCopyKeys = TRUE;
+                        //save any old rings
+                        nReturn = 0;
+	    				nvVar = 1;
+	    				VarSave(SRCTARGETDIR);
+    					szBuffer = TARGETDIR;
+    					if (ExistsDir(TARGETDIR ^ "PGP Keyrings") = EXISTS) then
+	    					SRCDIR = TARGETDIR ^ "PGP Keyrings";
+    	    				while (nReturn = 0)
+        						NumToStr (svString, nvVar);
+            					TARGETDIR = szBuffer ^ "Old Keyrings" + svString;
+            					nReturn = ExistsDir (TARGETDIR);
+            					nvVar = nvVar + 1;
+        					endwhile;
+        					if (XCopyFile ("*.*", "", INCLUDE_SUBDIR) = 0) then
+        						TARGETDIR = TARGETDIR ^ "PGP Keyrings";
+                		 		if ((svPubLoc != szLongTarget ^ "\\") &&
+                 					(svPrivLoc != szLongTarget ^ "\\")) then
+        							DeleteDir(SRCDIR, ALLCONTENTS);
+        						else
+        							if (svPubLoc != szLongTarget ^ "\\") then
+										DeleteFile ("*.pkr");
+									endif;
+									if (svPrivLoc != szLongTarget ^ "\\") then
+										DeleteFile ("*.skr");
+									endif;                 	
+       							endif;
+    						endif;
+    					endif;
+    					VarRestore(SRCTARGETDIR);
+    					
+    					VarSave(SRCTARGETDIR);
+    					TARGETDIR   = TARGETDIR ^ "PGP Keyrings";
+                		SRCDIR      = svPubLoc;
+                	    CopyFile (svReturnString, "pubring.pkr");
+                	    SRCDIR      = svPrivLoc;
+                        CopyFile (svReturnStringb, "secring.skr");
+
+                        SdShowMsg ("Your private and public keyrings have been copied to your" +
+                        " PGP Keyrings directory.", TRUE);
+                        Delay (3);
+                        SdShowMsg ("Your private and public keyrings have been copied to your" +
+                        " PGP Keyrings directory.", FALSE);
+                        VarRestore(SRCTARGETDIR);
+                    endif;
+                endif;
+            else
+        		bUseDefault = TRUE;	
+        	endif;
+           	VarRestore (SRCTARGETDIR);
+
+        //if they dont have existing keys use the default keyring
+        else
+        	bUseDefault = TRUE;	
+        endif;
+    else
+        //fastinstall
+        bUseDefault = TRUE;
+    endif;
+
+    if (bUseDefault) then
+    	//Check if a keying directory exists, if it does rename it
+    	nReturn = 0;
+	    nvVar = 1;
+    	VarSave(SRCTARGETDIR);
+    	szBuffer = TARGETDIR;
+    	if (ExistsDir(TARGETDIR ^ "PGP Keyrings") = EXISTS) then
+	    	SRCDIR = TARGETDIR ^ "PGP Keyrings";
+    	    while (nReturn = 0)
+        		NumToStr (svString, nvVar);
+            	TARGETDIR = szBuffer ^ "Old Keyrings" + svString;
+            	nReturn = ExistsDir (TARGETDIR);
+            	nvVar = nvVar + 1;
+        	endwhile;
+        	if (XCopyFile ("*.*", "", INCLUDE_SUBDIR) = 0) then
+        		DeleteDir(SRCDIR, ALLCONTENTS);
+        	endif;
+    	endif;
+    	VarRestore(SRCTARGETDIR);
+    	CreateDir (TARGETDIR ^ "PGP Keyrings");
+    	
+    	//Default keyrings are copied in
+    	VarSave (SRCTARGETDIR);
+    	CreateDir (TARGETDIR ^ "PGP Keyrings");
+    	SRCDIR      = TARGETDIR ^ "DFK";
+    	TARGETDIR   = TARGETDIR ^ "PGP Keyrings";
+    	CopyFile ("pubring.pkr", "pubring.pkr");
+    	CopyFile ("secring.skr", "secring.skr");
+    	VarRestore (SRCTARGETDIR);
+    endif;
+
+    //delete the default ring we copied into the installdir
+	DeleteDir(TARGETDIR ^ "DFK", ALLCONTENTS);
+
+    if (bCopyKeys = TRUE) then
+        //Re-Set Default keyring info
+        szPubRingPath   = TARGETDIR ^ "PGP Keyrings\\pubring.pkr";
+        szPrivRingPath  = TARGETDIR ^ "PGP Keyrings\\secring.skr";
+
+        PGPclSetSDKFilePaths(szPubRingPath, szPrivRingPath, szRandSeedPath, 1);
+    else
+        LongPathFromShortPath (szPrivRingPath);
+        LongPathFromShortPath (szPubRingPath);
+        PGPclSetSDKFilePaths(szPubRingPath, szPrivRingPath, szRandSeedPath, 1);
+    endif;
+    UnUseDLL(WINSYSDIR + "pgpcl.dll");
+ end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: FileBrowse
+//
+//  Purpose: Access to file browse dialog.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function FileBrowse (hwnd,szFilter,svSelected,szTitle,szExt)
+    STRING szDLL,svResult;
+    NUMBER nvISType,nResult,nLen,n,nvByte;
+    BOOL bResult;
+
+begin
+    GetSystemInfo(ISTYPE,nvISType,svResult);
+
+    // Load the DLL,which must be on disk 1 or in _SETUP.LIB
+    // so that it gets placed into SUPPORTDIR.
+    if (nvISType = 16) then
+        szDLL = SUPPORTDIR ^ "INSTALL.DLL";
+    else
+        szDLL = SUPPORTDIR ^ "INSTALL.DLL";
+    endif;
+
+    nResult = UseDLL(szDLL);
+    if (nResult < 0) then
+        MessageBox("FileBrowse failed to load DLL:\n" +
+                    szDLL,SEVERE);
+        return 0;
+    endif;
+
+    // The Windows OPENFILENAME structure requires the browse
+    // filter in string array format. To achieve this,replace
+    // all commas (ASCII 44) with NULL. Then,append an extra NULL
+    // because the array ends with two NULLs.
+    nLen = StrLength(szFilter);
+    for n = 0 to nLen - 1
+        GetByte(nvByte,szFilter,n);
+        if (nvByte = 44) then
+            SetByte(szFilter,n,0);
+        endif;
+    endfor;
+    szFilter = szFilter + "";
+
+    bResult = MyGetOpenFileName32 (hwnd,szFilter,svSelected,szTitle,szExt);
+
+    // Unload the DLL.
+    UnUseDLL(szDLL);
+
+    if (!bResult) then
+        return -1;
+    endif;
+
+    return 0;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: FinalInstallProcess
+//
+//  Purpose: Some final operations we do, this changes periodically.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function FinalInstallProcess()
+
+begin
+    VarSave (SRCTARGETDIR);
+    TARGETDIR   = WINSYSDIR;
+    SRCDIR      = svDir;
+    CopyFile ("PGP.hlp", "PGP.hlp");
+    VarRestore (SRCTARGETDIR);
+
+    VarSave (SRCTARGETDIR);
+    TARGETDIR   = TARGETDIR ^ "Documentation";
+    SRCDIR      = SUPPORTDIR;
+    CopyFile ("WhatsNew.txt", "WhatsNew.txt");
+    CopyFile ("license.txt", "license.txt");
+    VarRestore (SRCTARGETDIR);
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: LaunchCtrlUpdater
+//
+//  Purpose: This launches
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function LaunchCtrlUpdater()
+    STRING svVersionNumber;
+begin
+    VerGetFileVersion (WINSYSDIR^"comctl32.DLL", svVersionNumber);
+    if (bIsWindowsNT4 = TRUE) then
+        if (VerCompare (svVersionNumber, "4.7.0.0", VERSION)= LESS_THAN) then
+            //launch microsofts updater 401Comupd.exe with args  /r:n /q:a for quiet
+            LaunchAppAndWait (svDir ^ "401Comupd.exe","\/r:n \/q:a", WAIT);
+        bReboot = TRUE;
+        endif;
+    else
+        if (VerCompare (svVersionNumber, "4.7.0.0", VERSION)= LESS_THAN) then
+            //launch microsofts updater 401Comupd.exe with args  /r:n /q:a for quiet
+            LaunchAppAndWait (svDir ^ "401Comupd.exe","\/r:n \/q:a", WAIT);
+        bReboot = TRUE;
+        endif;
+    endif;
+
+    //Delete the microsoft comctl32.dll updater, its no longer needed
+    VarSave     (SRCTARGETDIR);
+    TARGETDIR  = svDir;
+    SRCDIR     = svDir;
+    DeleteFile  ("401Comupd.exe");
+    VarRestore  (SRCTARGETDIR);
+    DeleteFile  ("401Comupd.exe");
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: StartMemLock
+//
+//  Purpose: Attempts to start the PGP memlock driver.
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function StartMemLock()
+    NUMBER nResult;
+begin
+    nResult = UseDLL(SUPPORTDIR ^ "install.dll");
+    //#define DRIVER_NO_ERROR           0
+    //#define DRIVER_NOT_WINNT          1
+    //#define DRIVER_ACCESS_ERROR       2
+    //#define DRIVER_CREATE_FAIL        3
+    //#define DRIVER_ALREADY_STARTED    4
+    //#define DRIVER_MISC_ERROR         5
+    //#define UNKNOWN_ERROR             6
+    nResult = PGPclStartMemLockDriver ();
+    if (( nResult = 0 ) ||
+        ( nResult = 1 ) ||
+        ( nResult = 4 )) then
+        //Dont set bReboot
+    else
+        bReboot = TRUE;
+    endif;
+    UnUseDLL(SUPPORTDIR ^ "install.dll");
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: AmIaPGPdisk
+//
+//  Purpose: Checks to see if user is installing onto a PGPdisk
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function AmIaPGPdisk(szPath)
+    STRING DrvLetUpper, svSubStr, szMsg, szQIMsg;
+    NUMBER DriveNum, nDrvLetUpper;
+begin
+    Disable(DIALOGCACHE);
+    //Shut Down PGPdisk Resident
+    if (ComponentIsItemSelected
+        (MEDIA, "PGPdisk") = TRUE) then
+        UseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+        KillPGPdiskResident();
+
+        //svSubStr is the first char. of the full path (so the drive letter)
+        //svTarget is the directory where the user has selected to install
+        StrSub (svSubStr, szPath, 0, 1);
+        //Convert the drive letter to uppercase
+        StrToUpper (DrvLetUpper, svSubStr);
+        GetByte (nDrvLetUpper, DrvLetUpper, 0);
+        DriveNum = nDrvLetUpper - 65;
+        if (IsVolumeAPGPdisk (DriveNum) = TRUE) then
+                //The drive they are installing to is a PGP disk
+            szMsg = "You cannot install PGPdisk onto a PGPdisk volume. Do you\n" +
+                    "want to change the target location to a different disk.";
+
+            szQIMsg = "You cannot install PGPdisk onto a PGPdisk volume. Please\n" +
+                    "contact your administrator.";
+            if (bEasyInstall = TRUE) then
+                MessageBox(szQIMsg, WARNING);
+                abort;
+            endif;
+
+            if (AskYesNo(szMsg + "\n\n" +
+                "If you do not change the target location PGPdisk will not\n" +
+                " be installed. \n Change target location ?",YES) = YES) then
+                Enable(DIALOGCACHE);
+                return TRUE;
+            else
+                Enable(DIALOGCACHE);
+                ComponentSelectItem(MEDIA,"PGPdisk",FALSE);
+            endif;
+        endif;
+        UnUseDLL (SUPPORTDIR ^ "PGPdskIH.dll");
+    endif;
+return FALSE;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: CanIinstallPGPnet
+//
+//  Purpose: Checks to see if user can install PGPnet
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function CanIinstallPGPnet()
+    #define svSerPack "Service Pack 3"
+
+    NUMBER nvResult;
+    NUMBER nvType, nvSize, nvNumProcessors;
+    STRING svValue, szKey, szValue, szNumProcessors;
+	BOOL bvRc;	
+	
+begin
+	if (bIsWindows95) then
+		UseDLL(SUPPORTDIR ^ "install.dll");
+		bvRc = IsWin95OSR2Compatible();
+		UnUseDLL(SUPPORTDIR ^ "install.dll");
+		
+		if !(bvRc) then
+    		MessageBox(@NOTOSR2COMPATABLE, INFORMATION);
+        	ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+        	Enable (DIALOGCACHE);
+        	return FALSE;
+        endif;
+		
+	endif;
+	
+	if(ALLOWDUALPROCESSORS = "FALSE") then
+    	if (bIsWindowsNT4) then
+    		GetEnvVar ("NUMBER_OF_PROCESSORS", szNumProcessors);
+    		StrToNum (nvNumProcessors, szNumProcessors);
+    		if (nvNumProcessors > 1) then
+    			MessageBox(@TOMANYPROCESSORS, INFORMATION);
+            	ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+            	Enable (DIALOGCACHE);
+            	return FALSE;
+        	endif;    	
+    	endif;
+    endif;
+
+    //Check for proper service pack  (>=3)
+    Disable (DIALOGCACHE);
+    if (bIsWindowsNT4 = TRUE) then
+        nvResult = ISCompareServicePack (svSerPack);
+        if (nvResult < 0) then
+            MessageBox(@INCORRECTSP, INFORMATION);
+            ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+            Enable (DIALOGCACHE);
+            return FALSE;
+        elseif (nvResult = LESS_THAN) then
+            MessageBox(@INCORRECTSP, INFORMATION);
+            ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+            Enable (DIALOGCACHE);
+            return FALSE;
+        endif;
+
+
+    	//Check to see if the user has anything bound (linked) to TCPIP for PGPnet
+    	//if not then PGPnet install is not allowed
+    	szKey = "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Linkage";
+    	szValue = "Bind";
+    	svValue = "";
+    	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+   	 	RegDBGetKeyValueEx ( szKey ,szValue  ,nvType ,svValue ,nvSize );
+    	if (svValue = "") then
+        	MessageBox(@NOTCPIPLINK, INFORMATION);
+        	ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+        	Enable (DIALOGCACHE);
+        	return FALSE;
+    	endif;
+	endif;
+    Enable (DIALOGCACHE);
+    return TRUE;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetUninstall
+//
+//  Purpose: Sets uninstall info (temporary)
+//
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetUninstall()
+    STRING svPath;
+
+begin
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+    svPath = TARGETDIR ^ "uninstall.exe";
+    LongPathToShortPath (svPath);
+    RegDBSetKeyValueEx
+    ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + @UNINST_KEY
+    ,"UninstallString",REGDB_STRING,svPath,-1);
+
+    RegDBSetKeyValueEx
+    ("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\" + @UNINST_KEY
+    ,"DisplayName",REGDB_STRING,TITLE,-1);
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetEnvVar
+//
+//  Purpose: This function adds or removes items from env. var.
+//			
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetEnvVar(mode, szText)
+    #define WM_SETTINGCHANGE	0x001A
+    #define HWND_BROADCAST 		0xffff
+
+    NUMBER	nType, nSize, nReturn, nResult;
+    NUMBER	nvLineNumber;
+    STRING	szKey, szEnv, szNewEnv, svString;
+    STRING	svFileName, svReturnString;
+    STRING	szBuffer, svReturnLine;
+    POINTER pEnv;
+    LIST	listID;
+    BOOL	berr;
+
+begin
+	LongPathFromShortPath (szText);
+	
+	if ((bIsWindows98) || (bIsWindows95)) then
+		if (mode = 1) then
+			//SETTING
+			LongPathToShortPath(szText);
+			szBuffer = "%PATH%;" + szText;
+			BatchFileLoad ("");
+			BatchAdd ("PATH", szBuffer, "", AFTER);
+			BatchFileSave ("");
+		else
+			//UNSETTING
+			LongPathToShortPath(szText);
+			szBuffer = "%PATH%;" + szText;
+			BatchGetFileName (svFileName);
+			ParsePath (svReturnString, svFileName, PATH);
+			VarSave(SRCTARGETDIR);
+			SRCDIR = svReturnString;
+			if (FileGrep ("Autoexec.bat", szBuffer, svReturnLine, nvLineNumber, RESTART) = 0) then
+				FileDeleteLine ("Autoexec.bat", nvLineNumber, nvLineNumber);
+			endif;
+			VarRestore(SRCTARGETDIR);
+			return;
+		endif;
+	else
+		//this is Windows NT
+		berr = FALSE;
+		RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+    	szKey = "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+    	nResult = RegDBGetKeyValueEx (szKey, "Path", nType, szEnv, nSize);
+
+		if (mode = 1) then
+    		//SETTING	
+  			if ( szEnv % szText ) then
+				//already in PATH
+				berr = TRUE;
+    		else
+				szEnv = szEnv + ";" + szText;
+				nResult = RegDBSetKeyValueEx (szKey, "Path", REGDB_STRING_EXPAND, szEnv, -1);
+			endif;
+			goto common;
+		else
+   			//UNSETTING
+    		listID = ListCreate (STRINGLIST);
+   			StrGetTokens (listID, szEnv, ";");	
+   			szNewEnv = "";
+   			if (ListGetFirstString (listID, svString) != END_OF_LIST) then
+   				szNewEnv = svString;
+   			endif;
+	
+GetNextString:
+
+   			nReturn = ListGetNextString (listID, svString);
+   		
+   			if (nReturn = -1) then
+				berr = TRUE;
+				goto common;
+   			elseif (nReturn = 0)then
+   				//got string
+   				if (svString != szText) then
+   					szNewEnv = szNewEnv + ";" + svString;
+   				endif;
+   				goto GetNextString;
+   			endif;
+   			//Set new value
+   			nResult = RegDBSetKeyValueEx (szKey, "Path", REGDB_STRING_EXPAND, szNewEnv, -1);
+    		// Remove the list from memory.
+   			ListDestroy (listID);
+   		endif;
+   	
+common:
+   		if !(berr) then
+   	   		szEnv = "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment";
+   			pEnv = &szEnv;
+   			SendMessage ( HWND_BROADCAST, WM_SETTINGCHANGE, 0, pEnv );
+   			return TRUE;
+   		else
+	   		return FALSE;
+   		endif;
+   	endif;	
+	end;
+
+// --- include script file section ---
+#include "sddialog.rul"
+#include "uninstall.rul"
+#include "registry.rul"
+#include "plugindirs.rul"
+#include "setupfolders.rul"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

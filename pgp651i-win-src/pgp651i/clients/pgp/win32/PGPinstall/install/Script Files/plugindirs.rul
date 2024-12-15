@@ -1,0 +1,210 @@
+// $Id: plugindirs.rul,v 1.10 1999/04/20 23:49:44 philipn Exp $
+//____________________________________________________________________________
+//	Copyright (C) 1998 Network Associates Inc. and affiliated companies.
+//	All rights reserved.
+//	
+//  Author: Philip Nathan
+//____________________________________________________________________________
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function: FindOutlookExpress
+//
+//  Purpose: This function finds where outlook express is installed.
+//           If its not installed, the the plugin does not get installed.
+//
+///////////////////////////////////////////////////////////////////////////////
+function FindOutlookExpress()
+    NUMBER nvType, nvSize, nResult, nHandle, nSize;
+    LONG lSize, lData;
+    STRING szKey, szName, svValue, svResult, szFileName;
+    STRING szVersionInfo1, szVersionInfo2, szData;
+    STRING szResultBuffer;
+    BOOL bFoundOutlook, bVerInfo, bVerValue, bCheckVersion;
+    HWND hwndIS, RenameOriginal;
+    POINTER ptr1,ptr2;
+	
+begin
+	//Get Outlook Express's Install Directory
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	szKey = "Software\\Microsoft\\Outlook Express";
+	szName = "InstallRoot";
+	RegDBGetKeyValueEx (szKey, szName, nvType, svValue, nvSize);
+	szOEdir = svValue;
+	
+	if (FindFile (szOEdir, "msimn.exe", svResult) <0) then
+		bFoundOutlook = FALSE;
+	else
+		//msimn.exe is present
+		bFoundOutlook = TRUE;
+	endif;
+	
+	if (bFoundOutlook = FALSE) then
+		// we must ask the user where Outlook is
+		szOEdir = "";
+		nResult = UseDLL (SUPPORTDIR ^ "INSTALL.DLL");
+		szOEdir = "Setup could not find your Outlook Express Install folder. " +
+		"Please browse to it.";
+		hwndIS = GetWindowHandle(HWND_INSTALL);
+		nResult = MyBrowseForFolder32 (hwndIS, szOEdir);
+		UnUseDLL (SUPPORTDIR ^ "INSTALL.DLL");
+		
+		if (nResult = 0)then
+			//user canceled dialog
+			ComponentSelectItem
+			(MEDIA,"Outlook Exp Plugin",FALSE);
+			return;
+		endif;
+		
+		if ((ExistsDir (szOEdir) = EXISTS) &&
+	   		FindFile(szOEdir,"msimn.exe",svResult)=0) then
+			bFoundOutlook = TRUE;
+		else
+			//They did not enter a path for Outlook
+			// & it cannot be found so we do not install the plugin.
+			MessageBox( "There does not appear to be a valid install of Microsoft Outlook\n" +
+			"Express in this directory so the plugin won't be installed.", INFORMATION );
+			ComponentSelectItem
+			(MEDIA,"Outlook Exp Plugin",FALSE);
+			return;
+		endif;
+	endif;
+end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+//  Function: FindEudora
+//
+//  Purpose: This function finds where Eudora is installed.
+//           If its not installed, the the plugin does not get installed.
+//
+///////////////////////////////////////////////////////////////////////////////
+function FindEudora()
+	BOOL bFoundEudora;
+	NUMBER nvType, nvPathLen, nResult;
+	STRING RegString, KeyVal, svString;
+	STRING szDelimiterSet, EudoraPluginPath;
+	STRING szEudoraFile, WhichPlugin;
+	STRING PathToExe, svEudoraVersion, szData;
+	LIST listID;
+	HWND hwndIS;
+
+begin
+	// add the eudora plugin to the plugins dir
+	nvType = REGDB_STRING;
+
+	RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+	RegString = "\\Software\\Qualcomm\\Eudora\\CommandLine";
+	KeyVal = "Current";
+
+	if (RegDBGetKeyValueEx
+		(RegString,KeyVal,nvType,szEudoraPath,nvPathLen) < 0) then
+		bFoundEudora = FALSE;
+	else
+		// Set necessary variables.
+		listID         = ListCreate(STRINGLIST);
+    	if (listID = LIST_NULL) then
+    		MessageBox ("Unable to create list.", SEVERE);
+    		abort;
+ 		endif;
+		szDelimiterSet = " ";
+	
+		StrGetTokens(listID, szEudoraPath, szDelimiterSet);
+		ListGetFirstString(listID, svString);
+		ParsePath(szEudoraPath, svString, PATH);
+				
+		if (ExistsDir(szEudoraPath) = NOTEXISTS) then
+			bFoundEudora = FALSE;
+		else
+			bFoundEudora = TRUE;
+		endif;
+
+	endif;
+
+	if (bFoundEudora = FALSE) then
+		// we must ask the user where Eudora is
+		szEudoraPath = "";
+		nResult = UseDLL (SUPPORTDIR ^ "INSTALL.DLL");
+		szEudoraPath = "Setup could not find your Eudora Install folder. " +
+		"Please browse to it.";
+		hwndIS = GetWindowHandle(HWND_INSTALL);
+		nResult = MyBrowseForFolder32 (hwndIS, szEudoraPath);
+		UnUseDLL (SUPPORTDIR ^ "INSTALL.DLL");
+		
+		if (nResult = 0)then
+			//user canceled dialog
+			ComponentSelectItem	(MEDIA, "Eudora Plugin",FALSE);
+			return;
+		endif;
+			
+		if ((ExistsDir(szEudoraPath)=EXISTS) &&
+			(FindFile(szEudoraPath,"Eudora.exe",szEudoraFile)=0)) then
+			bFoundEudora = TRUE;
+		else
+			//They did not enter a path for Eudora
+			// & it cannot be found
+			//so we do not install the plugin.
+			MessageBox( "There does not appear to be a valid install of Eudora\n" +
+			"in this directory so the plugin won't be installed.", INFORMATION );
+			ComponentSelectItem	(MEDIA, "Eudora Plugin",FALSE);
+		endif;
+	endif;
+	
+	if (bFoundEudora = TRUE) then
+		EudoraPluginPath = szEudoraPath + "\\Plugins";
+		PathToExe = szEudoraPath^"Eudora.exe";
+
+		// check to see if we need to migrate 3.0.1 to 3.0.2
+		ComponentSelectItem( MEDIA, "Eudora Plugin\\lessthan40", TRUE );
+		ComponentSelectItem( MEDIA, "Eudora Plugin\\40ormore", FALSE );
+		
+		if (VerGetFileVersion
+			(szEudoraPath^"Eudora.exe",svEudoraVersion) = 0) then
+				
+			if (ComponentIsItemSelected
+				(MEDIA,"Eudora Plugin") = TRUE) then
+				if (VerCompare
+					(svEudoraVersion,"3.0.2.0",VERSION) = LESS_THAN) then
+					MessageBox
+					("Setup has detected that Eudora needs to be updated.\n" +
+					"The necessary updates can be found at : \n\n"         +
+					"http://www.eudora.com\n\n"   +
+					" Install update overtop of your current" +
+					" version to maintain\nsettings and plugins, otherwise" +
+					" PGP will need to be reinstalled)", INFORMATION);
+				endif;
+		
+				if ((VerCompare
+					(svEudoraVersion,"4.0.0.0",VERSION) = EQUALS) ||
+					(VerCompare
+					(svEudoraVersion,"4.0.0.0",VERSION) = GREATER_THAN)) then
+					ComponentSelectItem( MEDIA, "Eudora Plugin\\lessthan40", FALSE);
+					ComponentSelectItem( MEDIA, "Eudora Plugin\\40ormore", TRUE );
+				endif;
+			endif;
+		endif; // no version info for file
+
+		if (ComponentIsItemSelected(MEDIA, "Eudora Plugin") = TRUE) then
+			EudoraPluginDir = szEudoraPath ^ "Plugins";
+			LongPathFromShortPath(EudoraPluginDir);
+			ComponentSetTarget (MEDIA, "<EudoraPlugins>", EudoraPluginDir);
+		endif;
+	endif;
+end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

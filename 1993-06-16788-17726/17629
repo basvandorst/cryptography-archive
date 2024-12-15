@@ -1,0 +1,124 @@
+Newsgroups: sci.crypt,alt.privacy.clipper
+Path: msuinfo!uwm.edu!math.ohio-state.edu!usc!elroy.jpl.nasa.gov!ames!sgi!wdl1!nebula!koontzd
+From: koontzd@nebula.lrcs.loral.com (David Koontz )
+Subject: Re: $30M for 1 day DES solution
+Message-ID: <1993Jun28.200130.10554@wdl.loral.com>
+Originator: koontzd@nebula
+Sender: news@wdl.loral.com
+Organization: Loral Rolm Computer Systems
+Distribution: usa
+Date: Mon, 28 Jun 1993 20:01:30 GMT
+Lines: 111
+Xref: msuinfo sci.crypt:17629 alt.privacy.clipper:991
+
+Subject: Re: $30M for 1 day DES solution
+
+I agree with Peter that the use of CAM technology  is very sign-
+ificant, closing the gap between  hardware  and  software imple-
+mentations  from  a factor of 1-2 thousand to 100 or so.  Even I 
+can readily  see applications  in  real  cryptanalysis.   Didn't 
+Xylinx come out with a programmable chip that had 64 bit  lookup
+cells for logic blocks?
+
+Anyway, the point being that $30M is on the high side.  DES should
+certainly be secure for privacy or tactical applications.
+
+>from pcw@access.digex.net (Peter Wayner)
+
+>Without going into details, you can reduce each sbox calculation
+>in each round to the process of taking 6 bits from the current
+>R block, xoring them with 6 bits from the 56 key bits and then
+>computing some boolean function that will return the four bits
+>that emerge from the sbox. We could simply do the xor explicitly,
+>or we could just flip all of the functions in the boolean function.
+
+Something similar is done in a Dave Feldmeier LR block  organized
+crypt(3).   The key is set up in a table and altered by the salt,
+switching key bits to match E bits that are switched by the salt.
+The  SboxP[] table (64 kbytes) also has entries swapped where the
+E bits should have been swapped (first  12  for  third  12  bits)
+according to 12 bits of salt.
+
+The idea of eliminating the E(R) XOR K  for  input  to  the  sbox
+seems  to  have  limited application in software implementations.
+Fast DES implementations typically use 64 Kbytes of Sbox  tables,
+and would be multiplied by 16, as sboxes are made unique for each
+round by the round key.  64 Kbytes x 16 = 1/4 Mbyte, not  fitting
+in  cache  gracefully.   A  software  implementation with smaller
+Sboxes typically has the P permutation folded  into  sboxes,  and
+uses  a L/R block orgranized as two 32 bit values.  You trade off
+two 32 bit XOR operations for increasing  the  sbox  size  to  64
+Kbytes.
+
+Discrete DES implementations in  hardware  oddly  enough  benefit
+from  dropping  the  number  of  XOR gates from 80 to 32, and the
+difference in size (64 versus 1024  words)  is  not  particularly
+signficant  in  terms  of  ROM  or RAM (smaller devices not being
+available).  The area savings is about 20 percent.
+
+So how do you translate an sbox by the key?   Copy  the  original
+sbox(ROM) to a round-unique sbox(RAM) by XORing the source addess
+with the key.  For compiling  sboxes  into  code,  this  has  the
+effect  of  changing all the minterms (which are dependant on the
+input).
+
+The problem Peter has with where to store key bits  for  a  brute
+force  attack  machine doesn't sound real easy.  There are 40 key
+bits share between adjacent rounds and the distance between where
+they   are   used   is   not  uniform  one  round  to  the  next.
+Interestingly enough the superscalar  DES  (16  rounds  worth  of
+hardware)  could  still  operate  at  4800  Mbits/second  (75 MHz
+clock), but couldn't switch keys fast enough  to  be  used  as  a
+brute force machine, when using recompiled sboxes by this method.
+The fastest you could switch keys would be: 512 clocks.
+
+(64 words/sbox (by 32 bits) X 16 rounds / 2 (64 bit bus))
+
+A prudent manufacturer could produce a VeryFastDES chip that  had
+the origional sboxes in ROM, accepted the key in one 64 bit word,
+and copied the 16 rounds worth of sboxes  from  ROM,  xoring  the
+destination  address  with  key bits for that sbox in that round.
+This would only  cost  48  XOR  gates  and  some  key  scheduling
+hardware.
+
+For those not willing to accept the commutative  nature  of  XOR:
+--------------------ubiquitous cut-line ---------------
+/* sboxk.c
+ *		shows that SBOX(E(R) XOR K) is equivalent to
+ *			SBOXK(E(R)) for an S box transformed by key
+ */
+
+static int  S1[64] =   { 14, 4,13, 1, 2,15,11, 8, 3,10, 6,12, 5, 9, 0, 7,
+			  0,15, 7, 4,14, 2,13, 1,10, 6,12,11, 9, 5, 3, 8,
+			  4, 1,14, 8,13, 6, 2,11,15,12, 9, 7, 3,10, 5, 0,
+			 15,12, 8, 2, 4, 9, 1, 7, 5,11, 3,14,10, 0, 6,13 };
+
+main ()
+{
+int input;
+int src, dst;
+int S1K[64];
+int key = 0x1c;
+int mismatches = 0;
+
+    for (src = 0; src < 64;src++) { 	/* compile key into sbox */
+        dst = (key^src)&0x3f; /* limit to 6 bits */
+	S1K[dst] = S1[src];
+    }
+
+    for (input = 0; input < 64; input++) { /* compare S1[i XOR k] to S1K[i] */ 
+        if (S1[(input^key)&0x3f] != S1K[input]) {
+            printf("Mismatch @ %2d, S1[i^key] = %x, S1K[i] = %x\n",input,
+            		S1[(input^key)&0x3f],S1K[input]);
+            mismatches++;
+        }
+        else
+            printf(".");
+    }
+    printf("\nnumber of mismatches: %d\n",mismatches);
+    exit(0);
+}
+
+
+
+

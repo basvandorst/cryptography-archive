@@ -1,0 +1,97 @@
+The publication of this standard by Aleksandr Malchik and Whitfield
+Diffie of Sun, and Josef Pieprzyk and Leonid Tombak of the
+University of Wollongong seems to have attracted little attention.
+
+A few people have suggested that with a 256-bit key and 32 rounds,
+it is a good candidate replacement for the DES.  I am not a skilled
+cryptanalyst, but my examination suggests that this is not a good idea.
+I'd like to share it and attract comments.
+
+Description of the cipher:
+
+The GOST cipher is very similar to the DES, except that
+
+- There are no initial and final permutations
+- There are 32 rounds
+- There is no 32->48 bit expansion
+- The subkey for each round is added, mod 2^32, to the data instead of XORed
+- The S-boxes are 4->4 bits
+- The S boxes are not defined by the standard
+- The permutation is a rotation 11 bits to the left (i.e. in the
+  direction of the carries in the above addition) instead of
+  DES's more complex permutation
+- The key schedule is taken from 8 32-bit words, which are used in the
+  order 0-7,0-7,0-7,7-0 during encryption and 0-7,7-0,7-0,7-0 during
+  decryption
+
+The 512 bits of S-box is considered a parameter of the cryptosystem
+that is developed using the standard, so I assume that given their
+use for a long period of time at many sites, they are not secret.
+
+Eli Biham and Adi Shamir's consideration of DES variants in their
+book Differential Analysis of the Data Encryption Standard is very
+useful here.  Section 4.5.1 considers eliminating the permutation,
+which significantly weakens the cipher by dramatically reducing
+the avalanche effect.
+
+Section 4.5.3.1 considers replacing XOR by addition, which weakens the DES,
+but to me it seems reasonable to attribute that to throwing off the
+scrupulous optimisation of the S-boxes, and re-evaluating the S boxes
+should produce a cipher as strong.
+
+And section 4.5.6 considers eliminating the expansion, which also has
+a dramatic effect on the strength of the DES.
+
+The care with which the S-boxes were chosen is made particularly in sections
+4.5.2, 4.5.4 and 4.5.5, but is also apparent throughout the book.  Just
+this fact, that the GOST standard does not supply strong S-boxes, means
+that considerable work must be done to produce some.
+
+The combination of these simplifications makes me doubt that even doubling
+the number of rounds is sufficient to make this cipher match the
+strength of the DES.
+
+However, it is the simplification of the permutation, leading to a change
+in one input bit one round affecting one S-box which then affects two
+in the next round, three the round after that, and so on, taking
+eight rounds to full avalanche, that worries me most.  I am not sure
+there is sufficient avalanching to provide strong security.  Certainly
+much higher-probability differentials should be possible than with the
+DES.
+
+One possibility is that by choosing keys with a large number of 1 bits,
+carry propagation can produce avalanching between non-adjacent S-boxes.
+This reduces the effective key space from 256 bits, but this key space is
+considerably larger than necessary for security in any case, and
+almost certainly exceeds the strength of the cipher against analytic
+attack.  Thus, it does not weaken the cipher against brute-force attack,
+while possibly increasing its strength against analytic attack.
+
+If this were not publicised, it raises the possibility that good keys
+are sparse, and someone not familair with the need would almost
+inevitably choose a weak one.
+
+Shades of the COMSEC endorsement program!  Perhaps secret organizations
+have a great deal in common around the world.
+
+Admittedly that is wild speculation on my part, but it does seem quite
+attractive.  That, and the lack of supplied good S-boxes, would mean
+that the standard would be almost useless in the hands of someone not
+already cryptographically savvy.
+
+But for these problems, I would strongly advise against adopting the
+cipher until these concerns have been analyzed more thoroughly.
+
+Any comments?
+
+Addendum: Instead of output feedback mode, the feedback-free stream mode
+advised by the GOST standaed is a variant of the counter mode that has
+been suggested for DES.  The way it is done may be worthy of attention.
+
+The IV is first encrypted with the key.  Then, for each block of random
+output, the two magic constants 0x01010101 and 0x01010104 are added,
+modulo 2^32-1 (in such a way that 0xffffffff is the preferred form of
+0) to the two halves of the IV, which is then encrypted to produce the
+output.
+-- 
+	-Colin

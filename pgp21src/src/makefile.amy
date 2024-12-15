@@ -1,0 +1,106 @@
+# makefile for PGP
+# This Makefile is meant for the Amiga, SAS5.10 compiler
+#
+
+# CFLAGS options:
+
+# -DHIGHFIRST if building PGP on a big-endian system
+# -DMPORTABLE if there is no assembly version of the mp_smul	function
+# -DDEBUG     to include debugging information
+# -Dfopen=myfopen
+#	      if your fopen() doesn't like 'b' as the mode modifier
+# -DNOTERMIO  if your system has no termios
+# -DDYN_ALLOC if your compiler does not support large static arrays
+# -DSMALL_MEM if your machine has a small memory (required for MSDOS)
+# For portability to small systems, WSIZE must not be set above 8192.
+
+# Define one of:
+# -DUNIT32    to use 32 bit units (use only with asm primitives)
+# -DPORTABLE  to build the portable version of the RSA primitives
+#	      (ie if no optimized asm versions are available)
+# The above two defines are incompatible.
+
+# Define one of:
+# -DMERRITT    Merritt's modmult (fast on risc machines)
+# -DPEASANT    Russian peasant modulo multiply algorithm
+# -DUPTON     default: use Upton's modmult algorithm */
+
+# Define one of:
+# -DUSE_SELECT to use select() system call
+# -DUSE_NBIO   to use non-blocking read()
+
+# To define the OS we are compiling under, define one of:
+# -DMSDOS, -DUNIX, -DVMS, -DATARI, -DAMIGA
+
+
+CFLAGS= -O -s -cw -v -b0 -DUNIT32 -DAMIGA -DMPORTABLE \
+	-DASM_IDEA -DHIGHFIRST
+
+CC	= lc
+ASM	= asm
+
+
+OBJS_EXT= 68000.o idea68k.o	# ASM obj. files
+
+PROJ	= pgp
+
+ZIPOBJS= zbits.o zdeflate.o zfile_io.o zglobals.o \
+	zinflate.o zip.o zipup.o ztrees.o zunzip.o
+
+OBJ1 =	pgp.o crypto.o keymgmt.o fileio.o \
+	mdfile.o more.o armor.o mpilib.o mpiio.o \
+	genprime.o rsagen.o random.o idea.o passwd.o \
+	md5.o system.o language.o getopt.o keyadd.o \
+	config.o keymaint.o charset.o
+
+OBJS =	$(OBJ1) $(ZIPOBJS) $(OBJS_EXT)
+
+.c.o:
+	$(CC) $(CFLAGS) $*.c
+.s.o:
+	$(ASM) $*.s
+
+$(PROJ):	$(OBJS)
+	blink FROM LIB:c.o $(OBJS) LIB LIB:lcnb.lib TO $(PROJ)
+
+## Dependencies ##
+
+config.o : config.c usuals.h pgp.h
+crypto.o : crypto.c mpilib.h usuals.h mpiio.h random.h idea.h crypto.h \
+  keymgmt.h mdfile.h md5.h fileio.h language.h pgp.h
+fileio.o : fileio.c random.h usuals.h mpilib.h mpiio.h fileio.h language.h \
+  pgp.h
+genprime.o : genprime.c mpilib.h usuals.h genprime.h random.h
+getopt.o : getopt.c
+idea.o : idea.c idea.h usuals.h
+keyadd.o : keyadd.c mpilib.h usuals.h idea.h random.h crypto.h fileio.h \
+  keymgmt.h genprime.h rsagen.h mpiio.h language.h pgp.h
+keymaint.o : keymaint.c mpilib.h usuals.h random.h crypto.h fileio.h \
+  keymgmt.h mpiio.h language.h pgp.h
+keymgmt.o : keymgmt.c mpilib.h usuals.h idea.h random.h crypto.h fileio.h \
+  keymgmt.h genprime.h rsagen.h mpiio.h language.h pgp.h
+language.o : language.c language.h
+mdfile.o : mdfile.c mpilib.h usuals.h mdfile.h md5.h language.h pgp.h
+md5.o : md5.c md5.h
+more.o : more.c mpilib.h usuals.h language.h fileio.h pgp.h
+mpiio.o : mpiio.c mpilib.h usuals.h mpiio.h pgp.h
+mpilib.o : mpilib.c mpilib.h usuals.h
+passwd.o : passwd.c random.h usuals.h md5.h language.h pgp.h
+armor.o : armor.c mpilib.h usuals.h fileio.h mpiio.h language.h pgp.h
+pgp.o : pgp.c mpilib.h usuals.h random.h crypto.h fileio.h keymgmt.h \
+  language.h pgp.h
+random.o : random.c random.h usuals.h language.h
+rsagen.o : rsagen.c mpilib.h usuals.h genprime.h rsagen.h random.h
+system.o : system.c
+
+##
+
+zbits.o : zbits.c zip.h ztailor.h ziperr.h
+zdeflate.o : zdeflate.c zip.h ztailor.h ziperr.h
+zfile_io.o : zfile_io.c zunzip.h
+zglobals.o : zglobals.c zip.h ztailor.h ziperr.h
+zinflate.o : zinflate.c zunzip.h
+zip.o : zip.c usuals.h fileio.h language.h pgp.h
+zipup.o : zipup.c zip.h ztailor.h ziperr.h zrevisio.h
+ztrees.o : ztrees.c zip.h ztailor.h ziperr.h
+zunzip.o : zunzip.c zunzip.h

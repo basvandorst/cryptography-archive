@@ -1,0 +1,1 @@
+#define CHMAX 150

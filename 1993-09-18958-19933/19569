@@ -1,0 +1,176 @@
+Path: msuinfo!agate!howland.reston.ans.net!usc!elroy.jpl.nasa.gov!swrinde!cs.utexas.edu!uunet!psinntp!suite.com!usenet
+From: Jim-Miller@suite.com
+Newsgroups: sci.crypt,comp.protocols.kerberos,comp.security.misc
+Subject: private-key non-repudiation (long)
+Date: 23 Sep 1993 03:54:40 GMT
+Organization: Suite Software
+Lines: 164
+Message-ID: <27r6m0$msm@bilbo.suite.com>
+Reply-To: Jim-Miller@suite.com
+NNTP-Posting-Host: nimrod.suite.com
+Xref: msuinfo sci.crypt:19569 comp.protocols.kerberos:2308 comp.security.misc:5304
+
+
+The computer security books I've read always describe non-repudiation in terms  
+of public-key encryption technology.  It led me to assume that non-repudiation  
+*requires* public-key technology.  However, Don Davis and Ralph Swick from MIT  
+described a private-key authentication mechanism that, with some modifications,  
+I think can provide a practical private-key non-repudiation mechanism.
+
+They describe their mechanism in a paper titled "Network Security via  
+Private-Key Certificates".  You can get this paper via ftp at:
+
+athena-dist.mit.edu:/pub/kerberos/doc/net_sec_cert.PS
+
+In their system, every principal publishes a private-key certificate.  A  
+principal's certificate contains the principal's identity and a private key  
+that is valid for the life of the certificate.  The certificate is encrypted  
+using the Authentication server's master key.  These certificates can be  
+published in world readable Directories, just like public-key certificates.
+
+Let's say Bob wants to send a message to Alice.  Instead of getting a ticket  
+for Alice, as in Kerberos, Bob encrypts the message using the key that is in  
+his private-key certificate.  
+
+Alice receives the message from Bob.  To read and authenticate this message,  
+Alice must retrieve Bob's private-key certificate from the Directory and then  
+send the message, Bob's certificate, and her own certificate to the  
+Authentication server.  The Authentication server will decrypt Bob's  
+certificate, retrieve Bob's private key and decrypt the message, and re-encrypt  
+the message with Alice's private key, which it obtained from Alice's  
+certificate.  The Authentication server then sends the message back to Alice.   
+Alice will now be able to read the message.  The reply from the Authentication  
+server also contains information that assures Alice that Bob really did send  
+the message.
+
+Although interesting, this mechanism is not very efficient.  Alice needs to  
+send every message she receives to the Authentication server for translation,  
+verification, and re-encryption.  However, with some modifications, I *believe*  
+this system can be used as a practical private-key non-repudiation mechanism.
+
+[My proposed modifications]
+
+I propose using the standard Kerberos 5 protocol for most message  
+authentication.  However, the Kerberos protocol does not supply a  
+non-repudiation mechanism.  Tickets and authenticators are encrypted using  
+short lived "session" keys.  For non-repudiation you need to present something  
+that was encrypted using a longer lived key.  Clearly something else must be  
+added to the standard Kerberos 5 protocol if you wish to achieve  
+non-repudiation.
+
+Application's should be able to demand that some messages be non-repudiatable  
+(Is that a word?  Well, it is now.).  To be able send such a message a  
+principal will have to send some data that is encrypted using a long term key.   
+However, you don't want to force him into encrypting known plaintext, because  
+this may, over time, assist in revealing his long term key.
+
+I propose that a sending principal XOR a hash of his message with a nonce  
+present in the principal's private-key certificate, and then encrypt the result  
+with the key contained in the certificate.  The result will be called the  
+message signature:
+
+msg signature = {msg hash XOR certificate nonce}certificate key
+    
+The message signature can be placed in the authenticator sent with the message.
+
+The recipient of the message will continue to use standard Kerberos mechanisms  
+to authenticate messages.  However, since this is a non-repudiatable message,  
+the recipient must also verify that the message signature is valid.
+
+The recipient can't verify that the sender constructed a valid message  
+signature. She must send it to the Authentication server for validation.
+
+To validate the message signature, the recipient sends a new message hash, the  
+message signature, and the sender's certificate (retrieved from the Directory)  
+to the Authentication server.  The Authentication server decrypts the  
+certificate and obtains the certificate nonce and the certificate key.  The  
+Authentication server uses the certificate key to decrypt the message  
+signature. The Authentication server then XOR's the result with the certificate  
+nonce and obtains the original message hash.
+
+If the new message hash equals the original message hash, then the  
+Authentication server can assert that the message signature is valid and that  
+principal identified in the certificate is the originator of the message.
+
+The validation of the message signature can take place in parallel with the  
+recipient's own conventional authentication of the message.  If the message is  
+a requests for a database transaction, then the recipient can perform all of  
+the transaction except the commit.  The commit can be held until the recipient  
+receives the validation reply from the Authentication server.
+
+Upon receiving the reply from the Authentication server, the recipient archives  
+the message, the message signature, and the sender's private-key certificate.  
+
+If, at a later date, the recipient wishes to re-authenticate the origin of the  
+archived message, she can send a new message hash, message signature, and  
+sender's certificate to the Authentication server as described above.
+
+
+Discussion:
+
+In order to send non-repudiatable messages, the sending principal's certificate  
+key must be available to the process creating the message signatures.  How does  
+the sending principal's process manage the certificate key?  What actually is  
+the certificate key?  Is it the principal's secret key derived from his  
+password?
+
+If the certificate key is the sending principal's secret key, then that implies  
+we are keeping the secret key in the process for an extended period of time.   
+Kerberos has chosen not to do this, so I will also avoid doing this.
+
+Here's an idea:
+
+Before obtaining his initial ticket-granting-ticket, a principal obtains his  
+own private-key certificate from the Directory.  Since the Directory is  
+world-readable, it is not necessary for the principal to authenticate himself  
+to the Directory server (assuming there's a Directory server).
+
+Now the principal sends a message to the Authentication server to get his  
+ticket-granting-ticket (a la kinit).  However, in addition to the standard  
+Kerberos information, the message will also contain the principal's  
+certificate.  The Authentication server will construct a standard Kerberos  
+reply, which includes a ticket-granting-ticket.  However, since the original  
+message also contained a certificate, the Authentication server will perform  
+one additional step.  It will decrypt the certificate and obtain the  
+certificate nonce and certificate key.  The certificate nonce and key will be  
+sent back with the ticket-granting-ticket (this is secure since the reply is  
+encrypted using the principal's secret key).  The process can cache the  
+certificate nonce and key in the ticket-granting-ticket credentials.
+
+Problem:  If an attacker obtains the sender's ticket-granting-ticket  
+credentials, then the recipient is in big trouble.  The certificate she  
+archived with the sender's message has been compromised.  The sender can now  
+claim that the attacker sent the message.
+
+To help with this problem, I will alter the message signature validation step  
+described earlier.  Instead of simply verifying the message signature and  
+returning a yea or nay, the Authentication server will also return an encrypted  
+*something* that indicates that a given message signature was successfully  
+validated at a time when the certificate was believed to be secure.
+
+Was is this *something*?  How about a random number, the original message  
+signature, and a timestamp, all encrypted using the Authentication server's  
+master key?   Let's call this *something* a "validated message signature":
+
+validated message signature = 
+	{random, original message signature, timestamp}master key
+
+Instead of archiving the original message signature, the recipient will archive  
+the validated message signature, along with the message and sender certificate.
+
+It is now possible for a recipient to re-authenticate the origin of an archived  
+message, even after the sender's certificate has become compromised.
+
+------
+
+Now for the 64 dollar questions...
+
+Is what I have just described really secure?  Does it seem useful?
+
+I not a cryptographer, so I'm only making educated guesses when I say that this  
+or that is secure or is required.
+
+Any and all comments appreciated.
+
+Jim_Miller@suite.com
+

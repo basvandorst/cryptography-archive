@@ -1,0 +1,59 @@
+#!/bin/sh
+if [ ! "$1" ]
+then
+  echo "You must specify a directory where your ID is stored"
+  exit 1
+fi
+
+PGPPATH=$HOME/.blind/$1
+export PGPPATH
+
+if [ ! -d $HOME/.blind ]
+then
+  mkdir $HOME/.blind
+fi
+
+if [ ! -d $HOME/.blind/$1 ]
+then
+  mkdir $HOME/.blind/$1
+  an.initdir $1
+fi
+
+if [ -f $HOME/.blind/$1/name ]
+then
+  echo "You already have an identity of $1. Do rm -rf $HOME/.blind/$1 to eliminate it"
+  exit
+fi
+
+cat <<EOF
+Generate the key for your identity.. make sure you choose a userid such as:
+Paranoid Guy <paranoid@omega.c2.org>
+	(To get a list of used aliases, run "an.sendused")
+EOF
+
+pgp -kg
+
+echo -n "What is the alias you chose? "
+read ALIAS
+
+echo "Sending the key generated to the server"
+if [ -f $HOME/.blind/$1/serverpath ]
+then
+  cat $HOME/.blind/$1/serverpath - <<EOF| /usr/lib/sendmail -t
+\##
+Subject: addkey
+
+`pgp -kxaf $ALIAS`
+EOF
+else
+  /usr/lib/sendmail `cat $HOME/.blind/$1/servername` <<EOF
+Subject: addkey
+
+`pgp -kxaf $ALIAS`
+EOF
+fi
+
+echo $ALIAS > $HOME/.blind/$1/name
+echo "Now run an.addpath to add paths back to you to the server."
+
+

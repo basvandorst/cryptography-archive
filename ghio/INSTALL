@@ -1,0 +1,116 @@
+Installing the remailer.
+
+First, load the file remailer.c into your favorite editor.  You will see a
+series of #define statements at the beginning.  These should be changed to
+suit your needs.  The values are:
+
+DIR - The directory path where the remailer is.
+
+ANONFROM - This is what is used as the From line when the remailer sends
+ an anonymous message.  It should begin with From: and end with a \n
+
+REMAILERFROM - This is what should go in the From line when the remailer
+ returns a help or stats response.  It should also begin with From: and
+ end with \n
+
+REMAILERADDRESS - The address of the remailer.  This should contain the
+ remailer's email address only.
+
+RETURN (Optional) - If defined, the remailer calls sendmail with the -f
+ option and uses this as the return address.  Generally, errors or bounces
+ will get sent to this address.
+
+DISCLAIMER - Any header you want inserted into an anonymous message to
+ identify where to send complaints, etc
+
+NONANONDISC - A header to be inserted into messages when sent with the
+ non-anonymous forwarding feature.
+
+SPOOL - The file to append non-remailer messages to.  Usually
+ /var/spool/mail/remailer if the account is named "remailer".
+
+SPAM_THRESHOLD (optional) - If more than this number of messages arrive
+ before they can be processed, the remailer will stop processing
+ messages.  This is to prevent spams and mailbombs.  If this happens,
+ you will need to remove the extra messages from the in.queue directory
+ before the remailer will function again. 
+
+WAIT_SEC (optional) - After delivering a message, the remailer will wait
+ this many seconds before delivering another one.  Increasing this value
+ can reduce system load, but will make it possible to reach the spam
+ threshold more easily.
+
+DEFAULT_LATENCY (optional) - If this is defined, any message which does
+ not have a latent-time header will have a random delay added to it, not
+ exceeding this number of seconds.  (1 hour = 3600 seconds)
+
+PGP - The pathname of your PGP executable
+PGPPASS - The password to the remailer's PGP secret key.
+PGPPATH - Sets the PGPPATH environment variable.  Normally the same as DIR
+
+INEWS - The pathname to the INEWS executable for usenet posts.  
+ If this is not defined, the remailer does not allow posting.
+ Often /usr/lib/news/inews, but may be different depending on your system.
+NNTPSERVER - The NNTP server to use for posting.  If defined, sets the
+ enviornment variable NNTPSERVER when calling INEWS.
+
+LS - The ls program.  Usually /bin/ls
+SENDMAIL - Sendmail.  Usually /usr/lib/sendmail
+
+The rest are the names of the files the remailer uses.  They are all
+relative to DIR, and except for remailer-help, are created by the remailer
+if they do not exist.  You shouldn't need to change them.  They are:
+BLOCKFROM: the name of the source block list (default: source.block)
+BLOCKTO: the name of the destination block list (default: dest.block)
+INQUEUE: The directory for incoming messages (default: in.queue)
+OUTQUEUE: The directory for outgoing messages (default: out.queue)
+TEMPDIR: Directory for temporary files (default: temp)
+STATSDATA: File to keep usage statistics in (default: statsdata)
+HELPFILE: The "remailer-help" file
+
+
+After setting up the remailer, compile it by typing:
+ gcc remailer.c -o remailer
+
+Next, create a PGP key for the remailer.  Be sure the password matches the
+one you put in remailer.c, and put the pubring and secring in the directory
+you set for PGPPATH.  Extract the key with ascii armor and put it into the
+remailer-help file.  Be sure to have a randseed.bin file in the directory,
+or PGP will not run properly.
+
+Finally, create a .forward file in your home directory.  In it, put a | as
+the first character, followed by the complete pathname of the remailer
+executable.  For example, if the remailer was in the home directory of the
+account "remailer", and user directories were under /home, you would put:
+|/home/remailer/remailer
+
+The remailer should now be operational.  Send a test message from another
+account to be sure it works.  If you defined a default latency, you will
+need to put a Latent-Time: +0:00 header to get an immediate response.
+
+
+
+Address Blocking
+
+Two files specify lists of addresses to block.  Any message coming from an
+address specified in the source.block file is discarded.  Any message sent
+to an address in the dest.block file is similarly discarded.  The dest.block
+file can also be used to block posts to newsgroups.  The blocking files
+consist of a list of addresses, one on each line.  Addresses will be matched
+regardless of whether it is upper or lower case.  A * may be used as a
+wildcard.  For example, spammer@*.velveeta.com would block the address
+spammer at any subdomain of velveeta.com.  Any line beginning with
+a ! is an exclusion, and the address following it will be unblocked even
+if it matched a previous line.  An exclusion must come after the line
+which would block it.  Any line beginning with a # is treated as a comment
+line, and is ignored.
+
+
+Message Delivery and Cron
+
+Every time the remailer is run, it also checks the outgoing message queue
+to see if there are any latent messages to be delivered.  Ordinarilly the
+messages will be delayed until the next time a message comes in, but you
+can set up a cron job to deliver the waiting messages in a more timely
+fashion.  To get the remailer to deliver queued messages, execute the
+remailer and send it an empty message with the command: remailer </dev/null

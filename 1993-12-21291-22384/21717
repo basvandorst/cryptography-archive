@@ -1,0 +1,43 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Weakness in CFB disk encryption + fix
+Message-ID: <1993Dec4.185840.20456@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx's hardware; my words.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1993Dec3.164857.22120@mnemosyne.cs.du.edu>
+Date: Sat, 4 Dec 93 18:58:40 GMT
+Lines: 31
+
+As a followup to my previous posting, I've thought of a giid first pass
+for an encryption algorithm such as I described.
+
+Use a word-wise CRC scrambler polynomial.  E.g. making a first pass over
+the data, do
+
+x[i] ^= x[i-k1] ^ x[i-k2];
+
+(Maybe more terms would be a good idea.)  It's fast because it's 32 bits
+(or whatever) wide, but causes the last chunk of k2 words to depend
+on everything before that.
+
+This is using x[-k2] through x[-1] as an IV.  You only need one IV,
+since this doesn't destroy information.  After the first pass with
+this, which just makes the last few words depend on the whole sector
+plus the IV, use the last block as the IV for CFB encryption.
+
+This also provides resistance to the selective-modification attack,
+that allows an enemy to diddle selected bits in the last block of
+something CFB encrypted without gross damage.  By damaging the IV
+to the strong CFB encryption, you will totally corrupt the first
+block, which is less likely to go unnoticed.
+
+Oh, yes, if k2 is larger than the cipher block size in words, then
+k1 must be chosen so that the last cipher block contains dependencies
+from everything.  For DES or IDEA, k1 = 1 and k2 = 2 are probably
+best.
+
+Anyway, any comments?
+-- 
+	-Colin

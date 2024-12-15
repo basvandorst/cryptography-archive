@@ -1,0 +1,79 @@
+Newsgroups: sci.crypt
+Path: msuinfo!caen!uunet!pipex!pavo.csi.cam.ac.uk!cam-cl!rja14
+From: rja14@cl.cam.ac.uk (Ross Anderson)
+Subject: Re: Pseudo-one-time pads
+Message-ID: <1992Oct6.113356.457@infodev.cam.ac.uk>
+Sender: news@infodev.cam.ac.uk (USENET news)
+Nntp-Posting-Host: ely.cl.cam.ac.uk
+Reply-To: rja14@cl.cam.ac.uk (Ross Anderson)
+Organization: U of Cambridge, England
+References: <1992Oct2.172914.2263@vixvax.mgi.com> <1992Oct3.015908.12242@ulysses.att.com> <1992Oct5.221733.27777@netcom.com>
+Date: Tue, 6 Oct 1992 11:33:56 GMT
+Lines: 66
+
+In<1992Oct5.221733.27777@netcom.com>, rlglende@netcom.com (Robert Lewis 
+Glendenning) writes:
+
+>                                                    I have made my RNGs
+> pretty unpredictable by running 32 different Additive Congruential Method
+> RNGs, and only selecting one bit of each for each 32-bit number. I do so
+> by randomly (another RNG) selecting the particular bit from each. Of course,
+> this is computationally extremely expensive.
+>
+> I believe that the OTP using itis pretty safe.
+
+I don't.
+
+If you're using a standard linear congruential generator as supplied with
+the average compiler, then it will have 32 bits of internal state and we 
+can assume the attacker knows the constants (the a, b such that x_{n+1} = 
+ax_{n} (mod b)).
+
+Now guess the internal state of the generator which you use as a pointer: 
+this takes on average 2^{31} tries. For each guess, do the following:
+
+  Take about 1500 bits of keystream and from it pick, for the first of the
+  32 target generators, 40 bits which would have come from that
+  generator (if our guess was right).
+
+  Use the first 32 of these bits to solve for the target generator's state 
+  (note x_{n+k) = ka.x_{n} (mod b)).
+
+  Check the next 8 bits to see if they're consistent with your reconstruction. 
+
+    If not, go to the next guess.
+    If they are, go to the second target generator
+
+     . . .
+
+  If no contradiction is found despite reconstructing all 32 target
+generators,   
+  stop.
+
+The above can be optimised a lot - with more maths, you can discard lots of
+guesses at a time. 
+
+It can get slightly messier if the generators' recurrence relations are 
+unknown, but even then it's still reasonably tractable. Even with only the 
+known optimisations, you'd have to put at least 80 bits of internal state 
+in each of your component generators for the above analysis to become
+unfeasible. Even then, I'd be nervous about someone coming up with a better
+optimisation.
+
+This is a variant of an attack on multiplexed shift register sequences which 
+I thought up in 1986 and was allowed to send off for publication in 1989;
+
+	Cryptologia vol XIV no 3 (July 1990) pp 285 - 288
+	`Solving a class of stream ciphers' 
+	RJ Anderson
+
+There's a more general (but slower) attack in:
+
+	Proc Crypto 89 (Springer LNCS 435) pp 164 - 174
+	`On the Linear Consistency Test (LCT) in Cryptanalysis'
+	KC Zeng, CH Yang, TRN Rao
+
+Stream ciphers are fun - why do so few Americans do any work in the field?
+Almost all the research seems to come from Europe and China!
+
+Ross

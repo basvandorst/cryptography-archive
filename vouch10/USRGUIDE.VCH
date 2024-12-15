@@ -1,0 +1,1140 @@
+vch 1.0 :digital signature msg [nist] : : : vouch_author :
+$9A41A435F3AC68A1E0FB2B54A4192E0BE51B4438$
+$AE15EB3F69A0DAD88A301B2808B316E6A4E05771$
+ <UsrGuide.vch>_____________________________________15 December 1993
+ |                                                                 |
+ |                    V O U C H   version  1.0                     |
+ |                                                                 |
+ |                       VCH  version 1.0                          |
+ |                                                                 |
+ |                 VCH SecurityTool  version 1.0                   |
+ |                                                                 |
+ |                   VCH PubKey  version 1.0                       |
+ |                                                                 |
+ |    Copyright (c) 1993 Awais M. Hussain.  All rights reserved.   |
+ |_________________________________________________________________|
+
+
+   VOUCH  (VCH) is an implementation of the Digital Signature
+   Authentication Standard (DSS) recently proposed by the
+   US National Institute of Standards and Technology (NIST),
+   Gaithersburg, MD 20899.  In addition, VOUCH provides
+   encryption option with Diffie-Helman key-exchange.
+   =========================================================
+   VOUCH runs on 386 PCs (and above) under MSDOS.
+   =========================================================
+
+ * For auto-installation, see <readme.vch>.
+ * VOUCH Installation and Setup information is in Section III.
+ * Use of VOUCH is facilitated by the SECURITY_TOOL (Section V).
+ 
+ ===================================================================
+	    ________
+ 	    CONTENTS 
+ I .................... Introduction to Digital Signatures
+ II ................... NIST Digital Signature Standard (DSS) 
+ III .................. Setting-up VOUCH 
+                           Installation
+                           Generating public-Key parameters (PubKey)
+ IV ................... VOUCH (VCH) Command Description       
+ V .................... VCH Security Tool
+ VI ................... Appendix A: DSA description
+                                 B: File formats
+                                 C: Hash of executables
+                                 D: VCH usage summary
+                                 E: Error codes
+ VII .................. References
+ VIII ................. Notes
+                           VOUCH error messages
+ IX ................... Legal Matters
+
+
+ ===================================================================
+               I. INTRODUCTION TO DIGITAL SIGNATURES
+ ------------------------------------------------------------------- 
+ Digital signatures (DS), as their handwritten counterparts, are
+ meant to provide signer's identity verification and signer's
+ endorsement of a document signed (e.g., a letter, a bank cheque).
+ The digital signatures, in addition, serve to authenticate the
+ contents of the signed_message.  For example, if the contents of a
+ signed e_mail message were changed in any way, the signature will
+ fail to verify.  DS are also intended to be used for programs and
+ data. From a legal viewpoint, DS should be unforgeable and 
+ undeniable.
+
+ The way DS schemes work is as follows. Each user has two keys, one
+ public and the other private. The public_key is distributed to the
+ potential recipients of a user's messages beforehand through some
+ secure channel.  Or the public keys may be made available through a
+ trusted authority. A user signs a message using his public and
+ private keys.  The signed_message can be authenticated (signature
+ verified) by using his public_key alone.  Thus, anyone possessing
+ Juan's public_key can verify a document signed by Juan, but cannot
+ forge Juan's signature without knowing Juan's private key.
+
+ 
+ ===================================================================
+           II. NIST DIGITAL SIGNATURE STANDARD (DSS) 
+ -------------------------------------------------------------------
+
+ The DSS proposed by NIST is based on Schnorr's (1989) [4]
+ modification of ElGamal's (1985) work [3]. Here, we will give only
+ operational details relevant to VOUCH. The technical details can be
+ found in Appendix A and the references [1], [5].
+
+ A VOUCH user's public_key is stored in a file named <myPublic.key>.
+ The private_key is stored in <myPrivat.key>. A public_key consists
+ of four long_numbers denoted p, q, g, Y. These numbers are in
+ <myPublic.key>, written in hex, delimited by '$'.  It is the (long)
+ length of these numbers which makes the DSS scheme secure against
+ forgery.  The first three numbers may be common to many users. The
+ last number Y is user specific and is related to his private_key.
+ Thus, sometimes we will refer to Y alone as the public_key. The
+ details of public_key file format are given in Appendix B.
+
+ The public_ and private_keys are generated by issuing the command
+ 'Vch/k' (See Section IV, Usage 1).
+  
+ For signing a message_file, VOUCH first computes a 160_bit number
+ called the hash_digest of the message file. The hash function has
+ also been proposed by NIST [2]. The property of a secure hash
+ function is that any change in the message will produce a change in
+ the hash_digest of the message (with very high probability).
+ Furthermore, given a hash digest, it is virtually impossible
+ (computationally) to find another message having the same
+ hash_digest.  It is the hash of a message_file that is actually
+ used to generate the signature.  The signature is generated using
+ the hash and the keys of the signer.  The signature consists of two
+ numbers, 160_bits each, called the r_signature and the s_signature.
+ The signature (r,s) are written on the first two lines of a
+ signed_message. (For the long_number format, see Appendix B.)
+ Different signatures are generated if a given message is signed
+ repeatedly, since a random_number is also used in computing a
+ signature.
+ 
+ The hash of a file can be produced by 'Vch/h'. A message can be
+ signed by 'Vch/s' or 'Vch/f' (See Section IV).
+  
+ To verify a signature, VOUCH first computes the hash_digest of the
+ message as before. The signature (r,s) is verified using the hash
+ and the signer's public_key. If the signature does not verify, it
+ means that either the signature is incorrect (forged/incorrectly
+ signed) or the message was altered (perhaps garbled in transit, if
+ indeed signed by the assumed signer). The reader should appreciate
+ that a change in message_content changes the hash, which is why the
+ signature will fail to verify.
+
+ To verify a signed_message, use 'Vch/v' (See Section IV).
+  
+  
+ ===================================================================
+                    III. SETTING-UP  VOUCH 
+ -------------------------------------------------------------------
+
+ /* For a 'Quick Start', see <readme.vch>.                        */
+
+ 1) Set environment variable VCH in your <autoexec.bat> file
+    pointing to VOUCH_data directory,
+    e.g., SET VCH=D:\SECRET   or   SET VCH=E:  or SET VCH=C:\VCH\PRV.
+    This will be referred to as the VOUCH_directory.  The
+    VOUCH_directory is not necessarily the same as in which <Vch.exe>
+    resides.  If the environment variable is not set, the current 
+    directory will be treated as the VOUCH_directory.
+
+ 2) The following files are kept in the VOUCH_directory.
+
+     i) Your public_key file <myPublic.key>, and public_key 
+        files of others <*.key>.
+    ii) Your private_key file <myPrivat.key>. 
+   iii) Pre_computed r_signatures file <r_sign.vch>.
+    iv) File <init.vch> containing a 16_character string. 
+     v) File <match.vch>. Contains email address aliases 
+        corresponding to public_key filenames. Used by 
+        SecurityTool (STD) (Section V).
+
+    If any of these files needs to be specified on the command line,
+    no path should be given.
+ 
+ 3) A password is used to encrypt <myPrivat.key> and <r_sign.vch>.
+    Password is a string of eight to sixteen characters.  (It is
+    case_sensitive.) You must remember your password.  Conventional
+    rules for choosing a good password should be followed.  A longer
+    password is securer than a short one. You are prompted for the
+    password, if not specified on the command line.  If no password
+    was set, the P_field may be left empty on the command line,
+    e.g.,
+                        Vch /s  M:message.doc  P:
+    If you intend to give the password on the command line, make
+    sure that the password does not contain any characters which
+    cannot be typed.  Normally, the password is specified on the
+    command line only in batch files.
+
+ 4) Files <myPrivat.key> and <r_sign.vch> although password
+    protected must be guarded securely. Anyone in possession of your
+    private_key can impersonate you. Basically, all the files in the
+    VOUCH_directory should be inaccessible to others, for different
+    reasons.  It is recommended that VOUCH_directory be created on
+    an NDISK, if you use Norton Utilities.  For better security, it
+    may be specified on a floppy disk which should be kept under
+    lock and key.  Use of a floppy however will slow things down.
+    The reader is reminded that deleting a file does not erase
+    its data from the disk.  For purging a file (or disk space), the
+    Norton Utility 'WipeInfo' may be used. Perhaps, something also
+    needs to be said about insuring the integrity of VCH executables
+    on your PC.
+
+                           ____________
+ 5)                        INSTALLATION 
+
+  /* It is preferable to auto_install VOUCH by running 
+    <install.bat> as described in <readme.vch>, but DO read 
+    this section.                                              */
+
+   i) Copy all the files on the distribution diskette into a certain
+      directory (say C:\VCH).  This directory may be specified in
+      your PATH variable in <autoexec.bat>.
+
+  ii) Set environment variable VCH as described in (1) above. Create
+      the directory indicated by the VCH environment_variable. Copy
+      <myPublic.key> into the VOUCH_directory. Using a text-editor,
+      replace the dummy address (doe@pc.xyz.com) in the first line
+      of <myPublic.key> with your email address. When editing a
+      key_file, make sure that your text-editor can handle long
+      lines.  Also copy files mentioned in (2) into the
+      VOUCH-directory (those that exist).  Update <match.vch>. 
+      Edit <STC.BAT> and <STD.BAT> if needed.
+
+ iii) Initialize as
+                    Vch /i
+
+      You will be prompted for a 16_character individualization
+      string.  Enter a string of 16 arbitrary characters. (You do
+      not need to remember this string. This string is stored in
+      <init.vch>. If you ever wish to change this string, simply
+      delete <init.vch>.)
+ 
+  iv) Generate your keys by (cf. Section IV Usage 1)
+
+          Vch /k 
+     
+      Your private_key file <myPrivat.key> will be created and the
+      public_key file <myPublic.key> will be updated.  Recall that
+      these files are in the VOUCH_directory. Now you can distribute
+      <myPublic.key> (appropriately renamed) to people who wish to
+      receive and authenticate messages from you. Similarly, you can
+      get the public_key files of others and put them in the
+      VOUCH_directory. (Before you engage in any serious
+      distribution of your public_key, see (6) below on generation
+      of public_key parameters.)
+
+   v) See Section IV (Usage 2,3) on how to sign and verify
+      messages.  For example, to sign a message_file <fib.doc>, use
+
+           Vch  M:fib.doc  /s
+
+      Supply password when prompted. The signed_message will be
+      written in <fib.sgn>.
+
+      To verify the signature in the signed_message <fib.sgn> (i.e.,
+      to authenticate the signed_message), use
+
+            Vch  K:myPublic  L:fib.sgn  /v
+
+      since <fib.sgn> contains your signature. If the signer was
+      someone else, the K_field would have been the
+      public_key_filename of the signer.
+ 
+
+                   _________________________________
+ (6)               Generating Public_Key parameters
+
+    After you have become familiar with VOUCH, you may want to
+    generate your own parameters for the public_key, i.e., to
+    generate a new <myPublic.key> instead of using the one supplied
+    on the distribution diskette.  In fact, cryptographers strongly
+    recommend that you do so [5], [6].  It is often wise to heed the
+    cryptographers' advice.
+
+    The parameters p, q, g (See Section II and Appendix A) are
+    generated by the utility <PubKey.exe>. To make your task easier,
+    a batch file <gPubKey.bat> is supplied. The syntax is:
+
+         gPubKey  <newPub.key>   [ q_length   p_length ]
+
+    The q_length and p_length are given in 32_bit_words. The default 
+        q_length = 5 words = 40 hex_digits = 160 bits 
+    and the default 
+        p_length = 16 words = 128 hex_digits = 512 bits,
+    which are the values recommended by NIST.  For example, to
+    generate p of length 640 bits and q of length 160 bits in a file
+    <newPub.key>, you would use:
+
+        gPubKey  newPub.key  5  20
+
+    This will generate (p,q,g) in the proper format for a public_key
+    file (Appendix B). The search for these numbers can take an hour
+    of computer time on a 386SX/16 PC.
+    
+    Now you can copy <newPub.Key> into the VOUCH_directory renaming
+    it <myPublic.key>. Next run
+
+         Vch /k
+
+    Follow with an integrity check 'Vch/p.'
+
+    For getting familiar with VOUCH faster, you may want to generate
+    a 'toy' public_key of small length parameters, like:
+
+           gPubKey   myPublic.key   1   2
+
+    This will generate p (and g) of length 64 bits and q of length
+    32 bits.
+    
+    In practice, it would be unwise to use lengths of less than 512
+    bits and 160 bits for p and q, respectively. NIST recommends
+    that increments in p_length be of 64 bits, above 512 bits.  You
+    would probably also want to increase q_length with p_length.
+ 
+ 
+ ===================================================================  
+                   IV. VOUCH Command Description           
+ -------------------------------------------------------------------
+
+ /* Note: Entries within <...> denote filenames. Entries within 
+    [...] are optional parameters. For example, in the dummy command
+
+       Vch /option  F:<filename>   [P:password]
+
+    the F_field gives a filename while the P_field optionally 
+    specifies the password string. The fields may be specified in 
+    arbitrary order.                                               */
+  
+ _______
+ Usage 1:    Vch /k 
+
+  Generates your public_ and private_keys. The file <myPublic.key>
+  with entries p, q, g, (see Section II) should exist before this
+  command is issued.  The private_key file <myPrivat.key> is created
+  and the corresponding public_key (Y, see Section II) is written in
+  <myPublic.key>.  If Y already exists, it is overwritten. The
+  existing <my*.key> files are renamed <my*.old>.
+  
+  You are prompted for a 8_to_16 character password. This password
+  is used to encrypt <myPrivat.key>. Press <return> if you do not
+  wish to use the encryption feature. You must remember your
+  password. The password is case_sensitive. This password is then
+  used for all other options when required.
+  
+  This operation need be done only once. Make backup copies of your
+  keys <myPublic.key> and <myPrivat.key>. The public key
+  <myPublic.key>, appropriately renamed (e.g., <Juan.key>, if you
+  happen to be Juan), is distributed to people who wish to receive
+  your signed messages. The distribution must be done via a
+  trustworthy medium. You must securely guard your private_key
+  <myPrivat.key>. See Section III.
+
+  When the keys are generated, the pre_computed r_signatures (if
+  any) become invalid, so <r_sign.vch> (if exists) is deleted. If
+  you ever change your keys (say by restoring from backup), delete
+  <r_sign.vch>.
+ 
+ ________
+ Usage  2: Vch /s  M:<message>  [L:<signed_message>]  [P:password]
+
+  Sign a message file specified in the M_field. The signed_message
+  filename is optionally specified in the L_field. The default
+  signed_message filename is the message filename with extension
+  '.sgn'. The password if not specified on the command line will be
+  asked for. If no password was set, press <return> at the password
+  prompt; on the command line leave the P_field empty. 
+
+  For example, to sign a file <fib.doc>, when no password has been
+  set, use:
+
+     Vch  /s  M:fib.doc   L:fib.ltr  P:
+
+  The signed_message will be created in <fib.ltr>. If the L_field
+  were not specified, the signed_message would have been named
+  <fib.sgn>.  The signed_message consists of r_signature and
+  s_signature on the first two lines followed by the original
+  message.
+  
+  The password is not checked for validity, so be careful to enter
+  the correct one.
+
+  The verification is done with Usage 3.
+
+  (Usage 8  describes alternate fields for the /s option.)
+
+ _______
+ Usage 3:  Vch /v  L:<signed_message>   K:<signer's_public_key>
+
+  Verify if the signed_message was in fact signed by the person with
+  the public_key_file in the K_field. If the signature does not
+  verify, it means that
+  either the signature is incorrect 
+         (forged; or simply erroneously signed; or not of the 
+         person referred to in the K_field)
+  or     
+    the message content was altered after being signed (perhaps
+    garbled in transit, if indeed signed by the assumed signer).
+
+  Suppose you receive a signed_message <urgent.ltr> (supposedly)
+  from Juan.  Assuming Juan's public_key_filename is <Juan.key>
+  (which you must have obtained reliably from Juan beforehand), 
+  you would use:
+
+      Vch /v  L:urgent.ltr  K:juan.key
+  or 
+      Vch /v  L:urgent.ltr  K:juan
+
+  Vouch will then report if the signature is indeed of Juan and
+  whether the integrity of the message has been preserved since it
+  was signed.  A failure to verify means that either or both of the
+  above are not true.
+ 
+  To verify a message <memo.sgn>, signed by yourself, you can use
+
+      Vch /v  L:memo.sgn  K:myPublic
+
+  Recall that all public_key_files are kept in the VOUCH_directory
+  (see Section III(1)).
+
+  (Usage 9  describes alternate fields for the /v option.)
+
+ _______
+ Usage 4:   Vch /r  N:#   [P:password]
+
+  Generates message_independent r_signatures for later use. Since
+  computing a r_signature can take considerable time, these can be
+  pre_computed 'off_line,' when you do not have another application
+  to run. You can then use 'Vch/f' to sign messages (Usage 5,10).
+  The r_signatures are stored in <r_sign.vch>. The N_field specifies
+  the number of r_signatures that <r_sign.vch> should contain.
+  First, your password is verified.
+
+  Assuming that <r_sign.vch> already contains 2 r_signatures, 
+
+     Vch /r  N:5
+
+  will generate 3 more r_signatures to make the total 5. This
+  operation may be interrupted by hitting <Cntrl-C>.
+
+  The size of <r_sign.vch> gives an indication of the number of
+  r_signatures stored there.  The file <r_sign.vch> is encrypted
+  with your password. You must securely guard <r_sign.vch> (along
+  with <myPrivat.key>).
+
+ _______
+ Usage 5:   Vch /f  M:<message>  [L:<signed_message>]  [P:password]
+
+  Sign message using pre_computed r_signature (see Usage 4).  ('f'
+  is for fast.) This option has to compute only the s_signature,
+  which can be done much faster compared to the r_signature. This
+  operation consumes one r_signature from <r_sign.vch>, which should
+  contain at least one r_signature before you can use this option.
+  Other details are as in Usage 2.
+
+  The signed_message is authenticated with Usage 3.
+
+  (Usage 10  describes alternate fields for the /f option.)
+ 
+ _______
+ Usage 6:    Vch /p
+
+  Performs the following two functions:
+    i) Tests the integrity of your public_ and private_keys,
+       <myPublic.key> and <myPrivat.key>.
+   ii) Changes/sets password.
+
+  First you are prompted for your current password. Press <return>
+  if no password was set. The password is then checked for validity.
+  Next the integrity checks on the key files are made. (Certain
+  relations that hold between the key_parameters are checked; 
+  See Appendix A.)
+
+  Then you are asked if you wish to set a new password. If your
+  purpose was only the integrity check, you can reply with a "no" at
+  this stage.
+
+  The password is used to encrypt <myPrivat.key> and <r_sign.vch>. A
+  string of 8-to-16 characters is specified as a password. The
+  password is case_sensitive. You must always remember your
+  password.
+
+ _______
+ Usage 7:   Vch /h  M:<message>  [H:<hash>]  [S:<signature>]
+
+  Computes 160_bit hash_digest of message using the secure hash
+  algorithm (the standard by NIST [2]).  The H_field specifies where
+  hash is stored.  The default is message filename with extension
+  '.hsh'.
+
+  After the hash is computed, it is compared with the third
+  long_number in the <signature> file, if <signature> exists. VOUCH
+  then reports whether the computed hash matches that in
+  <signature>.  The reason for this will become apparent after
+  looking at Usage 8-10. The default S_field is message_filename
+  with extension '.sig'.
+
+  For example, to compute the hash digest of <tales.tal>, use:
+
+       Vch /h  M:tales.tal
+
+  The hash will be created in <tales.hsh>. If <tales.sig> exists,
+  the computed hash will be compared with the third line in
+  <tales.sig> and the result of the comparison reported.
+
+  Hashing time depends on the file_length. Large files can take
+  considerable time, so be patient.
+ 
+ _______
+ Usage 8:   Vch /s  H:<hash>  [S:<signature>]  [P:password]
+
+  Sign <hash>. The signature file is specified in the S_field. The
+  signature file consists of three lines (r_signature, s_signature,
+  hash).  The default signature filename is hash filename with the
+  extension '.sig'.  Usage 7 describes the computation of hash of a
+  file. Rest of the details are the same as in Usage 2.
+
+  Suppose you wish to compute a signature for a file <Pakistan.gif>.
+  Use
+
+     Vch /h  M:pakistan.gif
+
+  to create the hash digest <pakistan.hsh>. Now use
+
+     Vch /s  H:pakistan.hsh
+
+  The signature file <pakistan.sig> will be created.
+
+  The verification is done with Usage 9.
+ 
+ _______
+ Usage 9:   Vch /v  S:<signature>  K:<signer's_public_key>
+
+  Verify signature in the <signature> file. (See Usage 8, 10 for
+  the corresponding signing procedure.) Rest of the details are as
+  in Usage 3.
+
+  Continuing the example of Usage 8, to verify the signature in
+  <pakistan.sig>, use
+
+      Vch /v  S:pakistan.sig  K:myPublic
+
+  Vouch will report verification. Next to confirm the hash, use
+
+      Vch /h  M:pakistan.gif  H:nul
+
+  Vouch will report that the computed hash matches that in
+  <pakistan.sig>.
+  
+ _________
+ Usage 10:     Vch /f  H:<hash>  [S:<signature>]  [P:password]
+
+  Fast sign hash using pre_computed r_signature. See Usage 7, 8, 5.
+  The r_signatures are pre_computed by Usage 4.
+  The verification is done with Usage 9.
+ 
+ ________
+ Usage 11:  
+        Vch /c  L:<plain>  [C:<cipher>]  K:<receiver's_public_key>
+
+  Encrypt plain-text file using FEAL/N-X algorithm [7]. The encrypted
+  message is called the cipher-text. FEAL is a DES-like secret-key
+  encryption algorithm. The key required by FEAL is generated
+  according to the Diffie-Helman key exchange method [3]. This uses
+  the recipient's public_key.
+
+  Suppose you want to send a file <upc.dwg> to Juan in encrypted
+  form. Use
+
+      Vch /c  L:upc.dwg  K:Juan
+
+  The encrypted message will be written in <upc.cph> along with the
+  information needed by Juan to find the encrypting_key.
+   
+ ________
+ Usage 12:    Vch /d  C:<cipher>  [L:<plain>]  [P:password]
+
+  Decrypt cipher-text file encrypted with your public_key according
+  to Diffie-Helman key exchange method (Usage 11). Your private_key
+  is required for deciphering. 
+   
+  In the example of Usage 11, Juan on receipt of <upc.cph> would
+  issue
+
+     Vch /d  C:upc.cph 
+
+  and give his password to get the decrypted file <upc.pln> (which
+  will be the identical to <upc.dwg>).
+   
+ ________
+ Usage 13:          Vch /z  L:<signed_message>  
+
+  Check if <signed_message> is from the VOUCH_author. See Usage 3.
+  The author's public_key is contained inside the executable. Notice
+  that <usrGuide.vch>, <readme.vch>, and <pubkey.vch> have been
+  signed by the author.  To verify the authenticity of this file
+  use:
+         Vch /z  L:usrGuide.vch
+
+ ________
+ Usage 14:     Vch /?
+
+  Displays short help_screen.
+ 
+
+ ===================================================================
+                      V.  VCH SECURITY-TOOL 
+ -------------------------------------------------------------------
+
+ To facilitate the usage of VOUCH, Security Tool(s)
+
+             STC.BAT and STD.BAT 
+
+ are provided. 
+
+ STC is for "capping" a message to be sent; 
+ STD is for "decapping" a received message.
+
+ The syntax is:  STC.bat  <inFile>
+                 STD.bat  <inFile>
+
+ Running 
+
+      STC  <inFile>
+
+ will display the options menu:
+
+ OPTIONS:
+        1: Encryption 
+        2: Sign 
+        3: Hash & Signature
+        4: Six-bit encode 
+
+ Enter options sequence (e.g., 1 2 4 ): 
+
+ When you enter a sequence, the asked operations are performed in
+ sequence and the output is written with the <inFile> modified by
+ proper extension.  Files created during intermediate steps are
+ named <v#*.*>.  The screen-output is also recorded in a file
+ <vch.log>.
+
+ For example, a sample session by the author on a 386SX/16 PC looks
+ like:
+ 
+ ______________Sample STC Session___BEGIN___________________________
+
+ C:\vch\STC.BAT  Test.in
+
+ OPTIONS:
+        1: Encryption
+        2: Sign
+        3: Hash & Signature
+        4: Six-bit encode
+
+ Enter options sequence (e.g., 1 2 4 ):  2 1 4
+   
+ STC: SIGNING. . . <Test.in>
+ Password(8_to_16 characters): **********
+ Hashing....          0.330 seconds
+ Computing r_signature.....May take a while...        2.52 seconds
+ Now computing s_signature.....          0.050 seconds
+ Signed message created in <v#suwaci.sgn>
+
+ STC: ENCRYPTING. . . <v#suwaci.sgn>
+ Enter recipient's public_key filename: Juan
+ Generating key for encryption...
+ Encrypting file...
+        5.54 seconds
+ Cipher file <v#eypeky.cph> written.
+
+ STC: SIX-BIT ENCODING. . . <v#eypeky.cph>
+ OutFILE: <v#imtzua.eml>
+
+ STC: OutFile: <Test.eml>
+
+ ___________END___Sample STC Session________________________________
+   
+ In the above example session, the user specifies file <Test.in> on
+ the command line.  On the options sequence prompt, he enters 
+ "2 1 4" meaning that the file <Test.in> should be 
+
+    i) signed
+   ii) the signed message be encrypted
+  iii) the encrypted cipher should then be converted into "text"
+       suitable for transmission via e-mail systems.
+
+ These operations are performed in turn. For signing, you are
+ prompted for your password (see Usage 1 & 6, Section IV). For
+ encryption (Usage 11, Section IV), the name of the public_key_file
+ of the recipient is asked for (<Juan.key> in this case).  The end
+ result is stored in <Test.eml>, which can now be mailed to Juan.
+ The intermediate files <v#suwaci.sgn> and <v#eypeky.cph> can be
+ deleted.
+ 
+
+ Running
+
+        STD  <inFile>
+
+ does the reverse of STC, peeling off steps performed earlier by
+ STC.  This is illustrated by continuing the example of the "STC
+ Sample Session" above; Juan on receipt of <Test.eml> does:
+
+ ______________Sample STD Session___BEGIN___________________________
+
+ C:\vch\STD.BAT  Test.eml
+
+ STD: SIX-BIT DECODING. . .<Test.eml>
+ vch 1.0 utility :6-bit alphabet encoded
+
+ STD: DECRYPTING. . .<v#fdbelh.bbb>
+ vch 1.0 :cipher (feal-x) :key : juan@ante.ubsk.edu :
+ Password(8_to_16 characters): **************
+ Computing key for decryption....May take a while...
+ Decrypting file...
+         3.74 seconds
+ Plaintext file <v#uffghd.pln> written.
+
+ STD: SIGNED MESSAGE. . .<v#uffghd.pln>
+ vch 1.0 :digital signature msg [nist] :16 :5 : awais@hub.iccc.pk :
+ Enter signer's public_key filename: AWAIS.KEY : 
+ Hashing...          0.390 seconds
+ Verifying signature.....May take a while...        2.88 seconds
+ Signed_message <v#uffghd.pln> VERIFIED to be from <AWAIS>
+
+ STD: OutFile: <Test.msg>
+
+ ______________END___Sample STD Session_____________________________
+
+ The received file <Test.eml> is in turn 
+
+    i)  converted back from "text" to "binary"
+   ii)  resulting file is decrypted
+  iii)  the signatures are then checked for validity.
+   
+ During decryption, Juan is asked for his password. For signature
+ verification, the signer's public_key filename is asked for
+ (<Awais.key> in this case). The signed message <v#uffghd.pln> is
+ here accepted as authentic. The final file <Test.msg> is identical
+ to <Test.in> of the last session example.
+   
+ During signature verification STD asks for the public_key filename
+ of the signer. It also displays the public_key filename based on
+ the header information and the file <match.vch> (located in the
+ VOUCH_directory). If the displayed filename is correct, just press
+ <return> on this prompt.
+
+
+ ===================================================================
+            VI.  Appendix A:  Digital Signature Algorithm
+ -------------------------------------------------------------------
+
+ /*  NOTE: The material in this Appendix is for information only.   
+           It is not required for using VOUCH.                    */
+
+ A brief description of the Digital Signature Standard (DSS) is
+ given. See [1], [5]. The DSS employs modular arithmetic, since the
+ numbers used are elements of finite_fields.  The security of DSS
+ hinges on the fact that it is computationally very difficult to
+ find discrete logarithms as opposed to exponentiation in (large)
+ finite fields.
+
+ Preliminaries: 
+  1)  The numbers used are non_negative integers.
+
+  2)  X mod M, is defined as the remainder left when X is
+      divided by M.  For example, 31 mod 5 is 1; also
+      written: 31 ð 1 mod 5, spelled 31 is congruent to 1 
+      modulo 5. Another example: 11ù4 ð 2 mod 7 
+      (since 11ù4 = 44 = 6ù7 + 2).
+
+  3)  A finite_field (Galois field) GF(p), p a prime,
+      consists of elements {0,1,2,ùùù,p-1}.  In GF(p),
+      operations of multiplication and addition are defined
+      modulo p.  A multiplicative inverse of an element s is
+      an element u, such that súu ð 1 mod p.  An additive
+      inverse of an element s is element w such that 
+      s + w ð 0 mod p.  Thus division and subtraction are also
+      defined in GF(p).  Exponentiation is also defined
+      since multiplication is.  If Y = g^X mod p, then X is
+      referred to as the discrete logarithm of Y to the base g
+      (where ^ denotes exponentiation).
+
+ In the DSS scheme, each user has a public and a private key. The
+ public key consists of four parameters:
+
+      i)  p, a 512_bit prime number
+     ii)  q, a 160_bit prime, which divides p-1
+    iii)  g, an element of GF(p) of order q, i.e., g^q ð 1 mod p
+     iv)  Y = g^X mod p, where X is the 160_bit private_key 
+
+ (where ^ denotes exponentiation.)
+ The first three parameters can be common to many users, therefore,
+ sometimes only Y is referred to as the public_key.  The bit_length
+ of p determines the security of the DSS. Longer numbers may be
+ chosen for a securer system at the expense of computational time.
+ 
+ A user simply generates a 160_bit random number as his private_key
+ X (0<X<q). The public key Y is then computed as in (iv) above. The
+ public key (p,q,g,Y) is distributed to potential recipients of a
+ user's messages, while the private key (X) is kept secret.
+
+ A hash function H(.) which is used to calculate a 160_bit hash
+ digest of a message has also been specified by NIST [2]. The
+ message (m) to be signed is passed through the hasher to produce a
+ 160_bit number, H(m), called the hash of the message. This H(m) is
+ actually used to produce the signature.
+
+ The signature consists of two 160_bit numbers, the so called
+ r_signature and the s_signature.  To sign a message, a 160_bit
+ random number K is also generated (0<K<q). The multiplicative
+ inverse of K in GF(q) is denoted K^{-1}.  The signature components
+ are computed as
+                 r = (g^K mod p) mod q
+ and 
+                 s = K^{-1} ( H(m) + Xùr ) mod q 
+
+ The message (m) along with (r,s) can then be sent.  The receiver
+ can verify the signature by using the signer's public_key only as
+ follows.
+
+ The receiver uses the received values of (r,s,m). He first computes
+ H(m) using the hash function. Next he computes
+    
+            w = s^{-1} mod q
+           u1 = H(m)ùw mod q
+           u2 = rùw mod q
+            v = ( (g^u1 ù Y^u2) mod p ) mod q
+
+ If v=r, the signed message is accepted as authentic; otherwise it
+ is rejected as invalid.
+
+ From the above description note that the lengths of r_signature and
+ s_signature are equal to q_length. It should be clear that most of
+ the computational time is taken up by the exponentiation
+ operations.  In the exponentiation operation, the lengths of
+ numbers to be multiplied are determined by the p_length whereas the
+ number of such multiplications is determined by the q_length.
+
+ 
+ =================================================================== 
+                   Appendix B:  Formats
+ -------------------------------------------------------------------
+
+ /*    NOTE: The material in this Appendix is for information only.  
+             It is not required for using VOUCH.                  */
+
+ Here we describe the format in which long_numbers are stored in
+ various files. The binary long_numbers are written
+
+   * in hex, delimited by '$' characters
+   * in reverse order (least_significant hex_digit first)
+   * on a single line with no spaces between hex_digits
+   * Uppercase letters are allowed for alphabetic characters
+     ('A', not 'a')
+   * Most_significant zeros are added, if necessary, to make the 
+     number of hex_digits a multiple of 8. (Apart from this, extra
+     leading (MS) zeros are not allowed.)  
+
+ (A hex_digit represents four bits.) For example, the number
+ 'A734BCF01DE1F0' has 14 digits, so we add 2 leading_zeros to make
+ the length a multiple of 8. This number would then be written in
+ reverse order as: $0F1ED10FCB437A00$. However,
+ $0F1ED10FCB437A0000000000$, with ten extra zeros, would be invalid.
+    
+ 1) Format of public key files:
+    As an example, see <myPublic.key> on the distribution diskette.
+    The parameters p,q,g,Y are written on the second thru fifth
+    lines. A dummy public_key file is shown below:
+
+	  <myPublic.key>
+	  -----------------------
+	  2 ron@mc.ieee.org
+	  $5843098377DEF818$ = p
+	  $B9C6603B$         = q
+	  $1906384D082C05C0$ = g
+	  $67AE2930EF106584$ = Y
+	  ______________________
+
+    The '2' on the first line is the number of hex_digits in p
+    divided by 8. In this example, the number of hex digits in p is
+    16, so the word_length of p is specified as 2 (= 16 div 8)
+    (32_bit_words).  Notice that the number of hex_digits in p will
+    always be perfectly divisible by 8 (see above).  The
+    length_parameter is in decimal notation (not hex).  Following
+    the length_parameter, email address of the person is optionally
+    written as a mnemonic aid. (This address text should not contain
+    a '$' character.)
+ 
+ 2) Format of the signature files (*.sig): 
+    The signature files consist of (r_signature, s_signature, hash)
+    written on three lines, in that order. The first line is the 
+    identifying header.
+
+ 3) Format of the signed_message files (*.sgn):
+    The first line is the identifying header.
+    The next two lines contain the r_signature and the s_signature,
+    followed by the original message.
+
+ 4) Format of the encrypted files (*.cph):
+    The first line is the identifying header. The next line is a
+    number needed by the recipient to find the encrypting key,
+    followed by the ciphertext. 
+
+    
+ ===================================================================  
+            Appendix C:  Hash numbers of VCH executables
+ -------------------------------------------------------------------
+
+  * The hash of the executable <Vch.exe> is:
+       $68BDDF6030FD280C09670A8FB35D80843BF87B0B$
+
+  * The hash of the utility <PubKey.exe> is:
+       $564C67CE00F2564DE353E58C2C6448EF44CED4F1$
+
+  See Section IV, Usage 7.
+ 
+
+ ===================================================================
+                   Appendix D:  VCH Usage Summary
+ -------------------------------------------------------------------
+ ______
+ Usage:
+
+   Vch /s  M:<message>   [L:<signed_message>]   [P:password]
+   Vch /s  H:<hash>   [S:<signature>]   [P:password]
+   Vch /f  M:<message>   [L:<signed_message>]   [P:password]
+   Vch /f  H:<hash>   [S:<signature>]   [P:password]
+   Vch /v  L:<signed_message>   K:<signer's_public_key>
+   Vch /v  S:<signature>   K:<signer's_public_key>
+   Vch /h  M:<message>   [H:<hash>]   [S:<signature>]
+   Vch /c  L:<plain>  [C:<cipher>]  K:<receiver's_public_key>
+   Vch /d  C:<cipher>  [L:<plain>]  [P:password]
+
+   Vch /k
+   Vch /r  N:#   [P:password]
+   Vch /p
+   Vch /i
+
+   Vch /z  L:<signed_message>
+
+   Vch /?
+  ____
+  Note: Entries within <..> denote filenames. Entries within
+        [..] are optional parameters.
+
+        message = Message file
+ signed_message = File containing the triplet 
+                      (r_signature, s_signature, message)
+      signature = File containing the triplet 
+                      (r_signature, s_signature, hash)
+           hash = File containing hashed_digest of <message>
+              # =  maximum number of r_signatures
+         cipher = encrypted   
+
+   /k = Generate new public_ and private_keys
+   /s = Sign message
+      = Sign hash (of a message)
+   /v = Verify signed_message
+      = Verify signature corresponding to a hash
+   /r = Compute (message_independent) r_signatures (for later use)
+   /f = (Fast) sign message using precomputed r_signature
+      = (Fast) sign hash using precomputed r_signature
+   /h = Compute hash of message
+   /p = Set/change password and check integrity of your keys
+   /c = Encrypt plain message
+   /d = Decrypt cipher
+   /z = Verify if signed_message is from the Vouch_author
+   /i = Store the individualization string in <init.vch>
+   /? = Display short help_screen
+
+ For details, see Section IV.
+ 
+
+ ===================================================================
+                  Appendix E:  VOUCH Error Codes  
+ -------------------------------------------------------------------
+
+ Error        
+ codes     Description
+
+  02	File not found
+  03	Path not found
+  05	Access denied
+  30	Long_hex_number not found
+  31	File write error
+  40	File contains less than expected number of long_hex_numbers
+  41	Invalid format for long_hex_number
+  45	Invalid format for signature
+  50	Length of long_hex_number greater than expected
+  51	Signatures too long
+  70	File read error (hasher)
+  72	File read error
+ 100    Disk read error
+ 106	Invalid numeric format
+ 111    Signature does not verify [vch/v; vch/z]
+ 113    Computed hash does not match that in signature file [vch/h]
+ 152	Drive not ready
+ 203	Heap overflow error
+    
+    Other runtime errors that may be reported give 
+    Turbo Pascal 7.0 (from Borland) runtime error codes.  
+   
+ ===================================================================
+                      VII.   REFERENCES 
+ -------------------------------------------------------------------
+
+ [1] NIST, ``A Digital Signature Standard,'' FIPS PUB XX, August 19,
+     1991.  Copies available from NTIS, US Department of Commerce,
+     Springfield, VA 22161.
+
+ [2] NIST, ``A Secure Hash Standard,'' FIPS PUB YY, Jan. 22, 1992.
+
+ [3] T. ElGamal, ``A public_key cryptosystem and a signature scheme
+     based on discrete logarithms,'' IEEE Transactions on 
+     Information Theory, IT_31, pp. 469-472, July 1985. 
+
+ [4] C.P. Schnorr, ``Efficient identification and signatures for 
+     smart cards,'' in Proceedings of CRYPTO '89, G.Brassard (Ed),
+     Lecture Notes in Computer Science (435), Springer_Verlag, 1990,
+     pp. 239-251.
+
+ [5] ACM, Communications of the ACM, July 1992.
+
+ [6] IEEE, IEEE Spectrum Magazine, August 1992.
+
+ [7] S. Miyaguchi, S. Kurihara, K. Ohta, and H. Morita, ``Expansion
+     of FEAL cipher,'' NTT Review, Vol. 2, No. 6, Nov. 1990.
+ 
+    
+ ===================================================================
+                         VIII.  NOTES
+ -------------------------------------------------------------------
+
+ * If you change your keys, any pre_computed r_signatures become
+   invalid.  Therefore 'Vch/k' automatically deletes <r_sign.vch>.
+   If you change the keys (by restoring from backup, say), delete
+   <r_sign.vch> located in the VOUCH_directory.
+
+ * The input files should not have attributes 'read_only' or
+   'hidden' or 'system.' This includes <r_sign.vch> and key_files.
+   The attribute of the VOUCH_directory can however be set to
+   hidden.
+
+ * Files to be processed by VOUCH should not contain a '$' character
+   in the filename (restriction only for Usage 7, 8, Section IV).
+
+ * The output files are overwritten if they already exist. For
+   example,
+             Vch /s  M:input.doc  L:output.doc
+ 
+   will overwrite <output.doc> if it already existed. The output
+   files, if already exist, should not have attributes 'read_only'
+   or 'hidden.'
+   ____________________ 
+ * VOUCH ERROR Messages are adequate but not extensive. Most error
+   messages are like: 
+   ** File <xyz.inp> error: error_code.  
+   In most cases, the error message is followed by a brief
+   explanation.  Such an error could mean that the file <xyz.inp>
+   does not exist; or is read_only; or does not have the required
+   format (for example, a signature file does not contain the hash).
+
+   The description of error_codes is in Appendix E.
+  
+   Some error messages can be more subtle. Supposing that the
+   q_length in <juan.key> is 40 hex_digits and signature file
+   <NEC.SIG> has signature components of 120 hex_digits each, then
+                      Vch /v  k:JUAN  s:NEC.SIG  
+   will complain that
+                      ** File <NEC.SIG> error: 50
+                      Long_hex_number too long.
+
+   pointing out that Juan's signature components cannot have more
+   than 40 digits each.  In short, it means that <NEC.SIG> is not
+   from Juan.
+  
+ * Do set the DOS environment variable VCH as described in
+   Section III(1).  Note that you can also set environment
+   variables on the command line. One can thus keep multiple VOUCH
+   directories switching between them by changing the VCH variable.
+
+                      ______________
+ * Messages for which time of origin is important should include a
+   time/date-stamp in the signed text. Other forms of documents may
+   require additional security measures. For example, bank cheques
+   would invariably require serial numbers.
+
+ * When adding new public_key files in the VCH directory, the file
+   <match.vch> should be updated. Please carefully adhere to the
+   format of this file. This information is used by the
+   SecurityTool.
+
+ * If VCH executables do not reside in C:\VCH, update <STC.BAT> and
+   <STD.BAT>.
+
+ * You may write comments in public_key files after the last line,
+   such as the name/address of the person. When editing a public_key
+   file, make sure that your text_editor can handle long lines. On
+   the first line, following the length parameter, the email address
+   of the person should be written for id.
+
+ * The bit_length of public_key parameter p is not restricted to 512
+   bits. VOUCH should be able to handle a bit_length of up to 5760
+   bits for p. Similarly, the length of q can also be varied. See
+   Section III. If you run out of memory, heap-overflow error
+   (code=203) occurs.
+
+ * A 16-bit version of VOUCH (for 88/286 PCs) was released in May
+   1993.
+
+ * The author welcomes comments from the users of VOUCH.  
+
+  
+ ===================================================================
+                      VIII.  Legal Matters 
+ -------------------------------------------------------------------
+
+ *  Various trademarks mentioned in this document are the properties
+    of their respective owners.
+
+ *  VOUCH and VCH refer to the same product.
+
+
+                     ------ DISCLAIMER -------
+
+   The author is NOT liable for any damage or loss caused, directly
+   or indirectly, by the use of this software. No warranties are
+   expressed or implied.  The user of this software bears all risks
+   as regards to its suitability for a particular application.  The
+   author further does NOT certify that this product meets all the
+   requirements of the NIST digital signature/hash standards.
+    
+
+                ------ Copyright Notice -------
+
+   VOUCH  Version 1.0, Copyright (c) 1993 Awais M. Hussain
+   VCH  Version 1.0, Copyright (c) 1993 Awais M. Hussain
+   VCH PubKey Version 1.0, Copyright (c) 1993 Awais M. Hussain
+   VCH SecurityTool Version 1.0, Copyright (c) 1993 Awais M. Hussain
+
+                       All rights reserved.
+
+      (Implementation of NIST Digital Signature Standard) 
+
+   The author holds all copyrights to this software.  This product
+   may not be modified in any way. It may not be incorporated into
+   any other product without the prior written permission of the
+   author.
+
+   This software is not for sale.  It may be used by individuals
+   without paying any fees to the author. This software may be
+   distributed freely as long as it is done in the form provided by
+   the author without any modification and without charging any
+   fees. The shareware distributors and on_line service nets may
+   however charge the usual nominal customary distribution fee.
+
+ ___________________________________________________________________

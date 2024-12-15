@@ -1,0 +1,218 @@
+The following is a list of the changes that were made in the source code
+for MIT PGP 2.6.1 in order to make PGP 2.6.i.
+
+
+In pgp.c:
+
+#ifdef USA_ONLY
+char rel_version[] = _LANG("2.6.1");	/* release version */
+static char rel_date[] = "29 Aug 94";	/* release date */
+#else
+char rel_version[] = _LANG("2.6.i");	/* release version */
+static char rel_date[] = "29 Sep 94";	/* release date */
+#endif
+
+...
+
+#ifdef USA_ONLY
+    fputs(
+LANG("Export of this software may be restricted by the U.S. government.\n"),
+	  stderr);
+#else
+    fputs(
+LANG("If this software is imported to the USA, it must not be re-exported.\n"),
+	  stderr);
+#endif
+
+...
+
+#ifndef USA_ONLY
+    /* Legal kludge defaults to OFF for international version */
+    legal_kludge = FALSE;
+#endif
+
+...
+
+#ifdef USA_ONLY
+    /* Turn on incompatibility as of 1 September 1994 (GMT) */
+    legal_kludge = (get_timestamp(NULL) >= 0x2e651980);
+#endif
+
+
+In mpilib.h:
+
+#ifdef USA_ONLY
+#if (SLOP_BITS > 0)
+#define MAX_BIT_PRECISION (1280+(2*UNITSIZE))
+#else
+#define MAX_BIT_PRECISION 1280
+#endif
+#else
+#if (SLOP_BITS > 0)
+#define MAX_BIT_PRECISION (2048+(2*UNITSIZE))
+#else
+#define MAX_BIT_PRECISION 2048
+#endif
+#endif
+
+
+In keymgmt.c:
+
+#ifndef DEBUG
+    /* minimum RSA keysize: */
+    if (keybits < 384)
+	keybits = 384;
+#ifdef USA_ONLY
+    if (keybits > 1024)
+	keybits = 1024;
+#else
+    /* Allow generation of 2048-bit keys after 1 December 1994 (GMT) */
+    if (get_timestamp(NULL) >= 0x2e651980) {
+        if (keybits > 2048)
+	    keybits = 2048;
+    } else {
+        if (keybits > 1280)
+	    keybits = 1280;
+    }
+#endif
+#else
+    if (keybits > MAX_BIT_PRECISION)
+	keybits = MAX_BIT_PRECISION;
+#endif
+
+
+In config.c:
+
+enum
+{	ARMOR, COMPRESS, SHOWPASS, KEEPBINARY, LANGUAGE,
+	MYNAME, TEXTMODE, TMP, TZFIX, VERBOSE, BAKRING,
+	ARMORLINES, COMPLETES_NEEDED, MARGINALS_NEEDED, PAGER,
+	CERT_DEPTH, CHARSET, CLEAR, SELF_ENCRYPT,
+	INTERACTIVE, PKCS_COMPAT, PUBRING, SECRING, RANDSEED,
+	COMMENT,
+#ifndef USA_ONLY
+        LEGAL_KLUDGE,
+#endif
+	/* options below this line can only be used as command line
+	 * "long" options */
+#define CONFIG_INTRINSICS	BATCHMODE
+	BATCHMODE, FORCE,
+#ifdef USA_ONLY
+        LEGAL_KLUDGE,
+#endif
+        NOMANUAL
+};
+
+static char *intrinsics[] =
+{	"ARMOR", "COMPRESS", "SHOWPASS", "KEEPBINARY", "LANGUAGE",
+	"MYNAME", "TEXTMODE", "TMP", "TZFIX", "VERBOSE", "BAKRING",
+	"ARMORLINES", "COMPLETES_NEEDED", "MARGINALS_NEEDED", "PAGER",
+	"CERT_DEPTH", "CHARSET", "CLEARSIG", "ENCRYPTTOSELF", 
+	"INTERACTIVE", "PKCS_COMPAT", "PUBRING", "SECRING", "RANDSEED",
+	"COMMENT",
+#ifdef USA_ONLY
+	"BATCHMODE", "FORCE", "LEGAL_KLUDGE", "NOMANUAL"
+#else
+	"LEGAL_KLUDGE", "BATCHMODE", "FORCE", "NOMANUAL"
+#endif
+};
+
+...
+
+		  case LEGAL_KLUDGE:
+#ifdef USA_ONLY
+                        /* Do not attempt to correct bug in MIT PGP 2.6.1 */
+			legal_kludge = value;
+#else
+                        /* The flag works properly in PGP 2.6.i */
+			legal_kludge = flag;
+#endif
+			break;
+
+
+In armor.c:
+
+#ifdef USA_ONLY
+	/* Skip header lines until a blank is hit */
+	do {
+	    ++infile_line;
+	    status = skipline(in);
+	} while (status != 0);
+#else
+	/* Skip only one blank line */               
+	++infile_line;
+	status = skipline(in);
+
+	if (status != 0) {
+	    fprintf(pgpout,LANG("\nWARNING: \
+Bad signature, doesn't match file contents!\007\n"));
+	    fclose(in);
+	    fclose(litout);
+	    rmtemp (litfile);
+	    return 12;
+	}
+#endif
+
+
+The file rsaglue.c is put together by elements from 2.3a's rsaglue.c and
+2.6.1's rsaglue2.c. Here's the outline for this new file:
+
+/* rsaglue.c - These functions wrap and unwrap message digests (MDs) and
+ * data encryption keys (DEKs) in padding and RSA-encrypt them into
+ * multi-precision integers.  This layer was introduced to allow the
+ * transparent use of RSAREF for the encryption (in regions where it is
+ * legally available - the U.S. and treaty partners), or Philip Zimmermann's
+ * mpi library (where permitted by patent law - outside the U.S.).
+ *
+ * Compile with -DRSAREF or -DUSA_ONLY to use the RSAREF library.
+ */
+
+#include <string.h> 	/* for mem*() */
+#include <assert.h>
+#include "mpilib.h"
+#include "mpiio.h"
+#include "pgp.h"
+#include "rsaglue.h"
+#include "random.h"	/* for cryptRandByte() */
+#include "language.h"	/* for _LANG() */
+
+#ifdef USA_ONLY
+#define RSAREF
+#endif
+
+#ifdef RSAREF
+char signon_legalese[] =
+_LANG("Distributed by the Massachusetts Institute of Technology.  \
+Uses RSAREF.\n");
+#else
+char signon_legalese[] =
+_LANG("International version - not for use in the USA.  \
+Does not use RSAREF.\n");
+#endif
+
+/* These functions hide all the internal details of RSA-encrypted
+ * keys and digests.  They owe a lot of their heritage to
+ * the preblock() and postunblock() routines in mpiio.c.
+ */
+
+#ifdef RSAREF
+
+...
+
+(Stuff from 2.6.1's rsaglue2.c)
+
+...
+
+#else /* !RSAREF */
+
+...
+
+(Stuff from 2.3a's rsaglue.c, but all the RSAREF conditions are removed,
+and the idearand() function has been replaced with cryptRandByte().)
+
+...
+
+#endif
+
+
+That's all, folks! :-)

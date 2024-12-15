@@ -1,0 +1,1267 @@
+\section{Product identification}
+\begin{verbatim}
+;;; --------------- PRODUCT IDENTIFICATION -----------
+;;;| Product              : phi-pgp                   |
+;;;| Date                 : November 1993             |
+;;;| Last update          : 22 Nov 93                 |
+;;;| Conceived by         : O. Nicole                 |
+;;;| Purpose              : GNU Emacs interface for PGP
+;;;--------------------------------------------------
+
+;;; --------------- HISTORY ------------------------
+;;;|%c%--------------------------------------------------
+
+;;; --------------- CONSTANTS ----------------------
+
+;;; This are strings genearted by output of PGP
+
+(setq pgp-strconst-enter-pass "\nEnter pass phrase: ")
+        				; Prompt requesting for the passphrase
+(setq pgp-strconst-bad-pass "\nError:  Bad pass phrase\\.\n")
+        				; Message for s bad pass phrase.
+(setq pgp-strconst-pass-key "^Key for user ID \".*\"\n")
+        				; Message specifying the key which
+        				; pass phgrase is about to be read
+(setq pgp-strconst-key-id "^Key for user ID:")
+        				; Message specifying the key ID used 
+        				; for secret of public key
+(setq pgp-strconst-signed-mess
+      "^File has signature.  Public key is required to check signature.")
+        				; Message issued when a signed
+        				; message is decrypted.
+(setq pgp-strconst-good-sign "^Good signature from user \".*\"\\.$")
+        				; Message issued when a valid 
+        				; signature is encountred.
+(setq pgp-strconst-bad-sign "^WARNING: Can't find the right public key-- can't check signature integrity.$")
+        				; Message issued when there is no
+        				; public key corresponding to the
+        				; signature of the message.
+(setq pgp-strconst-packet-sep
+      "\n?\nLooking for next packet in '.*'\\.\\.\\.$")
+        				; Message issued when there are 
+        				; several pgpcoded packet in a
+        				; same file.
+(setq pgp-strconst-good-pass
+      "^Pass phrase is good.  Just a moment\\.\\.\\.\\.\\.\\.")
+        				; Message issued just before the
+        				; message (no \\n) when the pass
+        				; is good,
+(setq pgp-strconst-recur-sep "Trying a recursive call to pgp...\n")
+        				; Message added when a automatic
+        				; recursive call to pgp is generated.
+(setq pgp-strconst-crypted-mess
+      "^File is encrypted.  Secret key is required to read it. $")
+        				; Message issued when decrypt a text.
+(setq pgp-strconst-double-bad-pass
+      "^You do not have the secret key needed to decrypt this file.$")
+        				; Message send when the pass phrase
+        				; have been entered incorectely
+        				; twice while decrypt.
+(setq pgp-strconst-bad-ascii
+      "^Error: Transport armor stripping failed for file ")
+        				; Message issued when the packet has
+        				; been altered during the mailransport
+(setq pgp-strconst-begin-ro
+  "^This message is marked \"For your eyes only\".  Display now (Y/n)\\? y?$")
+        				; Promp message displayed when a
+        				; view-only text is decrypted.
+(setq pgp-strconst-end-ro "^Done\\.\\.\\.hit any key\\( +\\)?$")
+        				; Prompt message at the end of a
+        				; 'view-only' section.
+(setq pgp-strconst-more-ro "-- Hit space for next screen, Enter for new line, 'Q' to quit --\\( +\\)?")
+        				; Prompt message in the middle of a
+        				; 'view-only' section
+(setq pgp-strconst-add-keyring
+      "^Do you want to add this keyfile to keyring '.*' (y/N)\\? $")
+        				; Prompt for adding a key to a keyring
+(setq pgp-strconst-key-mess
+      "^File contains key(s)\\.  Contents follow\\.\\.\\.\nKey ring: '.*'\n")
+        				; Message when the decrypted
+        				; mail contains key.
+(setq pgp-strconst-end-key-mess "^[0-9]+ key(s) examined\\.$")
+        				; Message at the end of a
+        				; decrypted mail containing keys.
+(setq pgp-strconst-no-key-found "^No keys found in '.*'\\.$")
+        				; Message when no valid key is
+        				; found while adding key.
+
+;;; --------------- MACROS -------------------------
+
+;;; --------------- STATIC VARIABLES ---------------
+
+(defvar pgp-list-keys nil)
+        				;Lists of public and secret keys
+        				; extracted from pgp-keyrings
+;;;(setq pgp-exit-status nil)
+        				; Exit status of the latest pgp
+        				; asynchromous process
+;;;(setq pgp-buffer-search-point nil)
+        				; Last character of *PGP process*
+        				; buffer already examinated
+(setq pgp-list-completion nil)
+        				; Define the list of pgp possible
+        				; keys used for a key read
+(setq pgp-selected-seckey nil)
+        				;The secret key currently in use.
+        				; It is set to the user define
+        				; pgp-default-seckey or to the first
+        				; key of secring. It is changed using
+        				; thegp-set-seckey function
+(defvar pgp-list-secring-set nil
+  "Set non-nil means a list of secret keys have been extracted form secring.")
+(defvar pgp-list-pubring-set nil
+  "Set non-nil means a list of public keys have been extracted form pubring.")
+(defvar pgp-program "pgp"
+  "Define the name of the local pgp program, if not in the default PATH, the
+name should be absolute.")
+
+;;; --------------- USER VARIABLES -----------------
+
+(defvar pgp-default-seckey nil
+  "*User define default secret key to use. If not define, will choose the last
+added key of secring.")
+(defvar pgp-delete-pass nil
+  "*Set non-nil means always delete the pass phrase. Keeping a pass phrase 
+associated to a secret key during an Emacs session can be a security hole, 
+if the pass phrase is in memory of Emacs when it crashes, it will appear 
+in the core file.")
+(defvar pgp-self-crypt nil
+  "*Set to non-nil means encrypt with user's own key in addition of recipients
+keys.")
+(defvar pgp-auto-add-pubkey nil
+  "*Set to non-nil, try to automatically add the user's public key inside
+an encrypted message. No meaning for the signed message, the view-only 
+messages of the partially encrypted ones. The key is added at the very
+end of the message.")
+
+;;; --------------- END PRODUCT IDENTIFICATION -----
+\end{verbatim}
+\section{Functions identification}
+\subsection{Function {\tt pgp-read-passphrase}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-read-passphrase      |
+;;;| Purpose               : Read a pass phrase from the minibuffer
+;;;| Calling parameters    :                          |
+;;;|  prompt: the string that it is prompt at screen  |
+;;;| Return value          : the pass phrase or nil   |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-get-passphrase        |
+;;;-------------------------------------------------- 
+
+;;; --------------- Function definition ------------
+
+;;;Stolen from rat-pgp.el
+(defun pgp-read-passphrase (prompt)
+  "Read a pass phrase form the minibuffer. 
+Echos a '.' for each character typed. 
+RET   end the pass phrase
+LFD   end the pass phrase
+DEL   delete characters backward
+C-k   clear the pass phrase
+C-g   abort"
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-get-passphrase}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-get-passphrase       |
+;;;| Purpose               : Read the pass phrase for a given user.
+;;;| Calling parameters    :                          |
+;;;| Return value          : t or nil                 |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-get-seckey pgp-read-passphrase
+;;;| Calling functions    : pgp-output-filter         |
+;;;|  pgp-general-sign, pgp-sign-encrypt              |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-get-passphrase ()
+  "Read the pass phrase for a given user."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-get-seckey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-get-seckey           |
+;;;| Purpose               : return the actual secret key
+;;;| Calling parameters    :                          |
+;;;| Return value          : the secret key or nil    |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-secring, pgp-check-seckey
+;;;|  pgp-set-seckey                                  |
+;;;| Calling functions    : pgp-get-passphrase, pgp-view-seckey,
+;;;|  pgp-general-encrypt, pgp-append-pubkey, pgp-sign-encrypt
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-get-seckey ()
+  "Return the actual secret key.
+The key is a cons of the key and the pass-phrase if it exists."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-view-seckey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-view-seckey          |
+;;;| Purpose               : Display the selected secret key
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-get-seckey            |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-view-seckey ()
+  "Display the selected secret key."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-check-seckey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-check-seckey         |
+;;;| Purpose               : Return the first matching secret key from secring
+;;;| Calling parameters    :                          |
+;;;|  key :the key to check                           |
+;;;| list: the list to check the key against          |
+;;;| Return value          : (key . pass) or nil      |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : RECURSIVE                 |
+;;;| Calling functions    : pgp-get-seckey pgp-set-seckey
+;;;|  pgp-set-var-seckey                              |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-check-seckey (key list)
+  "Return the first matching secret key of PGP secring."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-set-seckey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-set-seckey           |
+;;;| Purpose               : the selected secret key in use
+;;;| Calling parameters    :                          |
+;;;| Return value          : (key . pass) or nil      |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-secring, pgp-check-seckey
+;;;|  pgp-read-recipient                              |
+;;;| Calling functions    : pgp-get-seckey            |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-set-seckey ()
+  "Set the selected secret key in use."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-set-var-seckey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-set-var-seckey       |
+;;;| Purpose               : Set the selected secret key in use
+;;;|   depending on the key send as argument          |
+;;;| Calling parameters    :                          |
+;;;|  key: the new secret key to select               |
+;;;| Return value          : (key . pass)             |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-secring, pgp-check-seckey
+;;;| Calling functions    : pgp-output-filter         |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-set-var-seckey (key)
+  "Set the selected secret key in use depending on the key send as argument.
+The key send as argument is a valid secret key."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-extract-email-recipient}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-extract-email-recipient
+;;;| Purpose               : Extract the list of recipient from a
+;;;|            *mail* buffer                         |
+;;;| Calling parameters    :                          |
+;;;| Return value          :list of recipients or nil |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-general-encrypt, pgp-sign-encrypt
+;;;| Calling functions    : pgp-extract-recipient-feild
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-extract-email-recipient ()
+  "Extract the list of recipient from a *mail* buffer.
+Extract recipients of every To:, CC: or BCC: mail-header feilds as 
+if one request for message encrypting, the message should be made 
+readable for any recipient. The *mail* buffer is considered to be
+the current buffer. Return a list of strings."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-extract-recipient-feild}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-extract-recipient-feild
+;;;| Purpose               : Extract the list of recipients for a *mail*
+;;;|                 buffer for a specified feild     |
+;;;| Calling parameters    :                          |
+;;;|  feild: the header feild to search for           |
+;;;|  end-header-point: a mark to the end of mail header
+;;;| Return value          : list of recipients or nil|
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-string-to-list        |
+;;;| Calling functions    : pgp-extract-email-recipient
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-extract-recipient-feild (feild end-header-point)
+  "Extract the list of recipients for a *mail* buffer for a specified feild."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-string-to-list}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-string-to-list       |
+;;;| Purpose               : Make a list of single word strings from a
+;;;|               string containing several words    |
+;;;| Calling parameters    :                          |
+;;;|  entry-str: the entry string                     |
+;;;| Return value          : list of words or nil     |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-extract-recipient-feild
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-string-to-list (entry-str)
+  "Make a list of single word strings from a string containing several words.
+The entry string contains several words that are SPACE, NEW-LINE, 
+TAB and/or comma separated. The resulting list contains single words, 
+the separating characters having been removed."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-create-output-buffer}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-create-output-buffer |
+;;;| Purpose               : Create the *PGP process* buffer
+;;;| Calling parameters    :                          |
+;;;| Return value          : the buffer               |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-list-pubring, pgp-list-secring
+;;;|  pgp-general-sign, pgp-general-encrypt, pgp-append-pubkey,
+;;;|  pgp-sign-encrypt, pgp-decr-mess, pgp-add-key    |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-create-output-buffer ()
+  "Create the *PGP process* buffer.
+Create or clean the buffer used for working and output by pgp
+asynchronous processes."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-create-temp-buffer}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-create-temp-buffer   |
+;;;| Purpose               : Create the *PGP temp* buffer
+;;;| Calling parameters    :                          |
+;;;| Return value          : the buffer               |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-encrypt, pgp-encrypt-view
+;;;|  pgp-encrypt-region, pgp-append-pubkey, pgp-show-status
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-create-temp-buffer ()
+  "Create the *PGP temp* buffer.
+Create or clean the buffer used for temporary working by pgp
+asynchronous processes."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-wait-process-exit}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-wait-process-exit    |
+;;;| Purpose               : Wait for the termination of a pgg
+;;;|                         asychronous process      |
+;;;| Calling parameters    :                          |
+;;;|  proc: the process to wait for                   |
+;;;| Return value          : exit code of the process |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-list-pubring, pgp-list-secring
+;;;|  pgp-general-sign, pgp-general-encrypt, pgp-append-pubkey,
+;;;|  pgp-sign-encrypt, pgp-decrypt, pgp-add-key      |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-wait-process-exit (proc)
+  "Wait for the termination of a pgg asychronous process.
+This is an active wait with 0.5 seconds pauses. Return an exit status."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-output-filter}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-output-filter        |
+;;;| Purpose               : Filters and print the output of PGP
+;;;| Calling parameters    :                          |
+;;;|  proc  : the PGP process                         |
+;;;|  string: new string to output                    |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-ro-protect, pgp-set-var-seckey,
+;;;|  pgp-get-passphrase                              |
+;;;| Calling functions    : pgp-list-secring, pgp-general-sign
+;;;|  pgp-sign-encrypt, pgp-decrypt                   |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-output-filter (proc string)
+  "Filters and print the output of PGP.
+Scan the output for various strings corresponding to pgp questions and
+messages. Take actions according to thoses messages. Maintains a point
+to the last scan section so the same message will not be dected at each
+call of the filter."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-nil}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-nil                  |
+;;;| Purpose               : Do nothing, for null key binding only
+;;;| Calling parameters    :                          |
+;;;| Return value          : no significant           |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-ro-protect            |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-nil ()
+  "Do nothing, for null key binding only."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-ro-protect}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-ro-protect           |
+;;;| Purpose               : et protection on the current buffer when a
+;;;|                         message is 'view-only'   |
+;;;| Calling parameters    :                          |
+;;;| Return value          : no significant           |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-nil                   |
+;;;| Calling functions    : pgp-output-filter, pgp-show-status
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-ro-protect ()
+  "Set protection on the current buffer when a message is 'view-only'.
+This is the best level of protection I have been avble to think of till
+now."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-list-pubring}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-list-pubring         |
+;;;| Purpose               : Extract a list of public keys from pgp-pubring
+;;;| Calling parameters    :                          |
+;;;| Return value          : t or nil                 |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-output-buffer, |
+;;;|  pgp-wait-process-exit                           |
+;;;| Calling functions    :pgp-general-encrypt, pgp-sign-encrypt
+;;;|  pgp-decr-mess, pgp-add-key                      |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-list-pubring ()
+  "Extract a list of public keys from pgp-pubring.
+This function is called only once during a Emacs session, the list is
+updated automatically if new public keys are added to the pgp-pubring."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-list-secring}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-list-secring         |
+;;;| Purpose               : Extract a list of secret keys from pgp-secring
+;;;| Calling parameters    :                          |
+;;;| Return value          : t or nil                 |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-output-buffer, pgp-wait-process-exit
+;;;| Calling functions    : pgp-get-seckey, set-set-seckey,
+;;;|  pgp-set-var-seckey, pgp-decr-mess               |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;This one is a bit tricky, cf. PGP doc, run a pgp on the secring.pgp file
+(defun pgp-list-secring ()
+  "Extract a list of secret keys from pgp-secring.
+This function is called only once during a Emacs session."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-try-completion}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-try-completion       |
+;;;| Purpose               : Return the first element of the list matching str
+;;;| Calling parameters    :                          |
+;;;|  str : the element to match                      |
+;;;|  list: the list to match str against             |
+;;;| Return value          : matching string or nil   |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : RECURSIVE                 |
+;;;| Calling functions    : pgp-find-first-match, pgp-collection
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-try-completion (str list)
+  "Return the first element of the list matching str."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-all-completion}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-all-completion       |
+;;;| Purpose               : Return a list of elements matching str
+;;;| Calling parameters    :                          |
+;;;|  str : the element to match                      |
+;;;|  list: the list to match str against             |
+;;;| Return value          : the list or nil          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : RECURSIVE                 |
+;;;| Calling functions    : pgp-collection            |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-all-completion (str list)
+  "Return a list of elements matching str."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-set-initial}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-set-initial          |
+;;;| Purpose               : Try to find a good entry in the list
+;;;|                         matching name            |
+;;;| Calling parameters    :                          |
+;;;|  name: the name to find matching for             |
+;;;| Return value          : a string matching        |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-read-recipient        |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;; This function is not implemented yet.
+
+;;; Given the email address and the list of public keys, it should try
+;;; to guess which pgp key correspond to the given email address. This
+;;; should be quite a straight process when the pgp key contains the email
+;;; address (but require some works anyway when the email is local but the
+;;; address given in the key is fully defined) but what to do when the
+;;; pgp public key is only the user name?
+
+(defun pgp-set-initial (name)
+  "Try to find a good entry in the list matching name."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-read-recipient}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-read-recipient       |
+;;;| Purpose               : Read from minibuffer a PGP key for a given prompt
+;;;| Calling parameters    :                          |
+;;;|  prompt: a prompt string to display              |
+;;;|  list-coll: a list of all possible choices       |
+;;;|  name: to be inserted in the prompt              |
+;;;| Return value          : a completed key          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-find-first-match, pgp-find-first-exit
+;;;|  pgp-restore-map, pgp-mouse-choose, pgp-set-initial,
+;;;|  pgp-collection                                  |
+;;;| Calling functions    : pgp-set-seckey, pgp-list-recipient-id,
+;;;|  pgp-general-encrypt, pgp-sign-encrypt           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-read-recipient (prompt list-coll name)
+  "Read from minibuffer a PGP key for a given prompt.
+This function uses the PGP keys lists and implements completion:
+SPC   find the first matching ID
+TAB   find the first matching ID and exit
+RET   find the first matching ID and exit
+LFD   find the first matching ID and exit
+C-g   abort
+C-n   find next matching
+?     give a list of possible matching ID"
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-restore-map}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-restore-map          |
+;;;| Purpose               : Restore minibuffer-local-completion-map
+;;;|                         before exiting           |
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-read-recipient        |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-restore-map ()
+  "Restore minibuffer-local-completion-map before exiting."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-find-first-match}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-find-first-match     |
+;;;| Purpose               : Find the first PGP recipient ID that match
+;;;|                         the string               |
+;;;| Calling parameters    :                          |
+;;;| Return value          : a completed key or nil   |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-try-completion        |
+;;;| Calling functions    : pgp-read-recipient, pgp-find-first-exit
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-find-first-match ()
+  "Find the first PGP recipient ID that match the string."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-find-first-exit}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-find-first-exit      |
+;;;| Purpose               : Find the first PGP recipient ID that match
+;;;|                         the string and exit      |
+;;;| Calling parameters    :                          |
+;;;| Return value          : a completed key or nil   |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-find-first-match      |
+;;;| Calling functions    : pgp-read-recipient        |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-find-first-exit ()
+  "Find the first PGP recipient ID that match the string and exit."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-collection}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-collection           |
+;;;| Purpose               : Create the alist collection of matching PGP keys
+;;;| Calling parameters    :                          |
+;;;|  str : the string to complete                    |
+;;;|  func: not used but needed                       |
+;;;|  flag: set return a list, nil a single element   |
+;;;| Return value          : a list or the first      |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-try-completion, pgp-all-completion
+;;;| Calling functions    : pgp-read-recipient        |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;; It is a programmed completion function as decribed in GNE Emacs Lisp
+;;; Reference Manual (17.5.2)
+(defun pgp-collection (str func flag)
+  "Create the alist collection of matching PGP keys."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-list-recipient-id}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-list-recipient-id    |
+;;;| Purpose               : Make a string of quoted PGP recipient ID
+;;;| Calling parameters    :                          |
+;;;|  mail-list: list of name to find pgp-key for     |
+;;;| Return value          : list of key or nil       |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : RECURSIVE, pgp-read-recipient
+;;;| Calling functions    : pgp-general-encrypt, pgp-sign-encrypt
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-list-recipient-id (mail-list)
+  "Make a string of quoted PGP recipient ID."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-mouse-choose}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-mouse-choose         |
+;;;| Purpose               : Click on an alternative in the `*Completions*'
+;;;|                         buffer to choose it      |
+;;;| Calling parameters    :                          |
+;;;|  event: a mouse event                            |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-read-recipient        |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;Stolen from mouse.el
+(defun pgp-mouse-choose (event)
+  "Click on an alternative in the `*Completions*' buffer to choose it."
+  (interactive "e")
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-clear-sign}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-clear-sign           |
+;;;| Purpose               : Clear-sign a mail message|
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-general-sign          |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-clear-sign ()
+  "Clear-sign a mail message."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-sign}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-sign                 |
+;;;| Purpose               : Sign a mail message      |
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-general-sign          |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-sign ()
+  "Sign a mail message."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-general-sign}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-general-sign         |
+;;;| Purpose               : General function to sign a mail message
+;;;| Calling parameters    :                          |
+;;;|  clear: flag to clear-sign or not                |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-output-buffer, pgp-get-passphrase,
+;;;|  pgp-wait-process-exit, pgp-output-filter, pgp-show-status,
+;;;| pgp-update-pass                                  |
+;;;| Calling functions    : pgp-sign, pgp-clear-sign  |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-general-sign (clear)
+  "General function to sign a mail message.
+Clear is a boolean tha means if set to non-nil that a clear-signature should
+be generated."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-encrypt}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-encrypt              |
+;;;| Purpose               : Enrypt a mail message    |
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-append-pubkey, pgp-general-encrypt,
+;;;|  pgp-create-temp-buffer                          |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-encrypt ()
+  "Encrypt a mail message."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-encrypt-view}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-encrypt-view         |
+;;;| Purpose               : Encrypt a mail message for view-only
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-temp-buffer, pgp-general-encrypt
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-encrypt-view ()
+  "Encrypt a mail message for view-only."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-encrypt-region}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-encrypt-region       |
+;;;| Purpose               : Encrypt a mail message for viewthe region
+;;;|                  defined between mark and point  |
+;;;| Calling parameters    :                          |
+;;;|  beg: the beginning of the region                |
+;;;|  end: the end of the region                      |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-temp-buffer, pgp-general-encrypt
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-encrypt-region (beg end)
+  "Encrypt a mail message for viewthe region defined between mark and point."
+  (interactive "r")
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-general-encrypt}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-general-encrypt      |
+;;;| Purpose               : General function to encrypt a mail message
+;;;| Calling parameters    :                          |
+;;;|  view: if set, encrypt for view only             |
+;;;|  begreg, endreg: limit of the region to encrypt  |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-pubring, pgp-list-recipient-id,
+;;;|  pgp-extract-email-recipient, pgp-set-key, pgp-read-recipient,
+;;;|  pgp-create-output-buffer, pgp-wait-process-exit, pgp-show-status
+;;;| Calling functions    : pgp-encrypt, pgp-encrypt-region,
+;;;| pgp-encrypt-view                                 |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-general-encrypt (view begreg endreg)
+  "General function to encrypt a mail message.
+View is a boolean that if set to non-nil means the message should
+be crypted with view-only option. The message is crypted between the 
+begreg and endreg."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-append-pubkey}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-append-pubkey        |
+;;;| Purpose               : Append the public key to the mail message
+;;;| Calling parameters    :                          |
+;;;|  &status: display the status or not              |
+;;;| Return value          : t or nil                 |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-output-buffer, pgp-get-seckey,
+;;;|  pgp-wait-process-exit, pgp-show-status, pgp-create-temp-buffer
+;;;| Calling functions    : pgp-encrypt               |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-append-pubkey (&optional status)
+  "Append the public key to the mail message.
+The public key is the one corresponding to the selected secret key. It is
+appended at the current point. If status is set non-nil show the status
+after the run."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-sign-encrypt}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-sign-encrypt         |
+;;;| Purpose               : Sign and crypt a mail message
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-output-buffer, pgp-get-passphrase,
+;;;|  pgp-list-pubring, pgp-list-recipient-id, pgp-extract-email-recipient,
+;;;|  pgp-get-seckey, pgp-read-recipient, pgp-wait-process-exit,
+;;;|  pgp-show-status, pgp-update-pass                |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-sign-encrypt ()
+  "Sign and crypt a mail message."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-show-status}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-show-status          |
+;;;| Purpose               : Display the *PGP output* buffer
+;;;| Calling parameters    :                          |
+;;;|  str: specify the kind of output                 |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-create-temp-buff, pgp-ro-protect,
+;;;|  pgp-print-return-message                        |
+;;;| Calling functions    : pgp-general-sign, pgp-general-encrypt,
+;;;|  pgp-append-pubkey, pgp-sign-encrypt, pgp-decr-mess,
+;;;|  pgp-add-key                                     |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-show-status (str)
+  "Display the *PGP output* buffer.
+Clean the buffer then display it. In case of view-only message, another
+function is used. Str is used to switch the cleaning according to the 
+performed operation.
+Side effect in case of add key to the pubring: update the internal list."
+  
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-update-pass}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-update-pass          |
+;;;| Purpose               : Save the pass phrase associated to a
+;;;|                         secret key or wipe it out|
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-general-sign, pgp-sign-encrypt,
+;;;|  pgp-decrypt                                     |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-update-pass ()
+  "Save the pass phrase associated to a secret key or wipe it out.
+If pgp-delete-pass is set to non-nil the pass phrase is wiped out after
+each run of pgp, else it is kept during a session of Emacs. There is a
+security hole if the pass phrase is in memory of Emacs when it crashes,
+it will appear in the core file."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-print-return-message}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-print-return-message |
+;;;| Purpose               : Display or return message saying how to restore
+;;;|                         windows after PGP command|
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     :                           |
+;;;| Calling functions    : pgp-show-status           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;Stolen from help.el
+(defun pgp-print-return-message ()
+  "Display or return message saying how to restore windows after PGP command.
+Computes a message and print it."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-decrypt}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-decrypt              |
+;;;| Purpose               : Decrypt a pgp message    |
+;;;| Calling parameters    :                          |
+;;;|  buffer: the buffer to read the message from     |
+;;;|  begreg, endreg: the region to decrypt           |
+;;;| Return value          : t or nil                 |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-wait-process-exit, pgp-update-pass
+;;;| Calling functions    : pgp-decr-mess             |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+(defun pgp-decrypt (buffer begreg endreg)
+  "Decrypt a pgp message.
+The message to decrypt is in buffer between begreg and endreg points, this
+allows recursive calls. Return non-nil if the message have been scanned
+by pgp."
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-decr-mess}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-decr-mess            |
+;;;| Purpose               : Decrypt an Emacs buffer  |
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-pubring, pgp-list-secring,
+;;;|  pgp-create-output-buffer, pgp-decrypt, pgp-show-status
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-decr-mess ()
+  "Decrypt an Emacs buffer.
+It can be called from RMAIL buffer or from the 2 output buffers."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}
+\subsection{Function {\tt pgp-add-key}}
+\leavevmode
+\begin{verbatim}
+;;; --------------- Function identification ----------
+;;;| Function name         : pgp-add-key              |
+;;;| Purpose               : Extract key blocs and update plublic keyring
+;;;| Calling parameters    :                          |
+;;;| Return value          : non significant          |
+;;;--------------------------------------------------
+
+;;; --------------- Cross calls ----------------------
+;;;| Called functions     : pgp-list-pubring, pgp-create-output-buffer,
+;;;|  pgp-wait-process-exit, pgp-show-status          |
+;;;| Calling functions    :                           |
+;;;--------------------------------------------------
+
+;;; --------------- Function definition ------------
+
+;;;###autoload
+(defun pgp-add-key ()
+  "Extract key blocs and update plublic keyring.
+It also update the list of public keys accordingly. It can be called from
+RMAIL buffer or from the 2 output buffer."
+  (interactive)
+
+;;; --------------- End function identification ----
+\end{verbatim}

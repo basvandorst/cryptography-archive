@@ -1,0 +1,185 @@
+10 '*** HOMO.ENC *** Homophonic encipherer MB Feb 90
+20 KEY OFF:CLEAR:DEFINT A-Z:DIM ROW$(4)
+30 RANDOMIZE TIMER
+40 GOTO 9500
+100 ' --- now for the Homophonic bit ---
+110 LOCATE 13,1:INPUT "What size of square is to be used? (4-8): ",SQ
+120 IF SQ=0 THEN SQ=XSQ:LOCATE 13,41:PRINT SQ:S=SQ:GOSUB 2300:GOTO 150
+130 IF SQ<4 OR SQ>8 THEN PRINT"Wrong length. Try again.":GOSUB 5020:GOTO 110
+140 S=SQ:GOSUB 2000              'generate keysquare k(i,j)
+150 GOSUB 5020
+160 GOSUB 5010              'title
+170 LOCATE 4,1:COLOR 0,7:PRINT "Plaintext is: ":COLOR 7,0:PRINT PT$
+180 PRINT:COLOR 0,7:PRINT" Key square: ":COLOR 7,0:GOSUB 3000:Y=CSRLIN
+185 LOCATE 19,1:PRINT "ACA limits for this size square are"3*SQ*SQ"-"6*SQ*SQ"letters. You have"LP"letters.":GOSUB 5030:IF QF=1 THEN GOSUB 5010:GOTO 100
+188 LOCATE 19,1:PRINT SPC(79):LOCATE Y+1,1
+190 :
+200 '   --- calculate number of squares NS ---
+210 X=SQ*SQ:NS= -INT(-LP/X)
+220 :
+230 ' --- calculate number of columns of PT ---
+240 TNC=LP/SQ:IF LP/SQ=INT(LP/SQ) THEN GOTO 300
+250 PRINT "Padding the text with nulls to make a complete rectangle:":X=-INT(-LP/SQ):Y=CSRLIN
+260 P$=LEFT$(P$+STRING$(SQ,"X"),SQ*X)
+270 PRINT "New text is:":PRINT P$: LP=LEN(P$):PRINT LP"letters.":TNC=X
+280 GOSUB 5030:IF QF=1 THEN GOSUB 5010:GOTO 100
+290 LOCATE Y-1,1:FOR N=1 TO 23-Y:PRINT SPC(79):NEXT
+300 '   --- write PT into columns COL$(square,col) ---
+310 FOR SQUARE=1 TO NS
+320   FOR COL=1 TO SQ
+330     FOR ROW=1 TO SQ
+335       X$=MID$(P$,(ROW-1)*TNC+COL+(SQUARE-1)*SQ,1)
+340       COL$(SQUARE,COL)=COL$(SQUARE,COL)+X$
+350       COUNT=COUNT+1:IF COUNT=LP THEN GOTO 385
+360     NEXT ROW
+370   NEXT COL
+380 NEXT SQUARE
+385 LOCATE 8,26:COLOR 0,7:PRINT " Plaintext squares: ":COLOR 7,0
+390 GOSUB 4000:GOSUB 5020
+400 '   --- now put the column letters in key order ---
+410 FOR SQUARE=1 TO NS
+420   FOR COL=1 TO SQ:TEMP$=STRING$(SQ," ")
+430     FOR ROW=1 TO SQ
+440       X$=MID$(COL$(SQUARE,COL),ROW,1)
+450       MID$(TEMP$,K(ROW,COL),1)=X$
+460     NEXT ROW
+461     COL$(SQUARE,COL)=TEMP$
+470   NEXT COL
+480 NEXT SQUARE
+485 LOCATE 8,26:COLOR 0,7:PRINT " Ciphertext squares: ":COLOR 7,0
+490 GOSUB 4000
+500 '   --- assemble the ciphertext ---
+510 FOR SQUARE=1 TO NS
+520   FOR COL=1 TO SQ
+530     CT$=CT$+COL$(SQUARE,COL)
+540   NEXT
+550 NEXT
+600 '   --- and put it into fives ---
+610 FOR N=1 TO LEN(CT$)
+620  X$=MID$(CT$,N,1)
+630  IF X$<"A" OR X$>"Z" THEN 660
+640  OP$=OP$+X$
+650  IF N/5=INT(N/5) THEN OP$=OP$+" "
+660 NEXT
+670 CT$=OP$
+680 PRINT:PRINT:COLOR 0,7:PRINT " Ciphertext is: ":COLOR 7,0
+690 PRINT CT$
+700 GOTO 9260
+2000 '   --- generate keysquare ---
+2010 ' ** SWAGMAN CHALLENGE by BITSIFTER Dec 3 1989
+2020 RANDOMIZE TIMER
+2030 'the square will be K(i,j)
+2040 :
+2050 '   --- build a valid square ---
+2060 :
+2070 FOR I = 1 TO S
+2080   FOR J = 1 TO S
+2090     K(I,J) = ((J+I) MOD S) +1
+2100  NEXT
+2110 NEXT
+2120 :
+2130 ' --- mix the rows then columns by exchanging each with a random other ---
+2140 :
+2150 FOR I = 1 TO S             'for each row
+2160   IT = 1 + INT(RND * S)    'pick a row to exchange with
+2170   FOR J = 1 TO S
+2180     SWAP K(I,J),K(IT,J)    'exchange
+2190   NEXT
+2200 NEXT
+2210 :
+2220 FOR I = 1 TO S             'for each column
+2230   IT = 1 + INT(RND * S)    'pick a col to exchange with
+2240   FOR J = 1 TO S
+2250     SWAP K(J,I),K(J,IT)    'exchange
+2260   NEXT
+2270 NEXT
+2280 IF K(2,1)=K(1,2) THEN GOTO 2070 'prevents a row being same as a col
+2290 :
+2300 '   --- print array ---
+2310 FOR I = 1 TO S
+2320   FOR J = 1 TO S
+2330     PRINT USING"###";K(I,J);
+2340   NEXT
+2350   PRINT
+2360 NEXT
+2370 PRINT
+2380 RETURN
+3000 ' --- print key square ---
+3010 FOR ROW = 1 TO SQ
+3020  FOR COL = 1 TO SQ
+3030    PRINT K(ROW,COL);
+3040  NEXT
+3050  PRINT
+3060 NEXT:RETURN
+4000 '   --- SUB: print text squares from col$(n) ---
+4010 YT=8:XT=26
+4020 FOR SQUARE=1 TO NS
+4030   FOR ROW=1 TO SQ
+4040     FOR COL=1 TO SQ
+4050       X$=MID$(COL$(SQUARE,COL),ROW,1)
+4070       LOCATE YT+ROW,XT+COL:PRINT X$;
+4080     NEXT COL
+4090   NEXT ROW
+4100   YT=8:XT=XT+2+SQ
+4110 NEXT SQUARE
+4120 RETURN
+4130 :
+4990 :
+5000 ' --- misc subs ---
+5010 CLS:PRINT DATE$ TAB(28)"* SWAGMAN ENCIPHERMENT *" :PRINT TAB(30)STRING$(20,"-"):RETURN
+5020 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,28:PRINT "Press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+5030 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,20:PRINT "Press <ENTER> to proceed, <R> to redo: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:IF Q$="R" OR Q$="r" THEN QF=1 ELSE QF=0
+5035 RETURN
+5100 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end":LOCATE 23,1:END
+9250 ' --- ENCPRT.STD ---
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,5100,5100:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255           'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT "Swagman encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT CT$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9490 :
+9500 '   ---   start here   ---
+9510 GOSUB 5010
+9520 PRINT:PRINT TAB(33)"By Mike Barlow"
+9540 '   ---   enter data   ---
+9600 GOSUB 20000                'pick up default example XPT$
+9610 :
+9620 LOCATE 7,1:PRINT"ENTER THE PLAIN TEXT (either case, with or w/o spaces or punctuation):"
+9630 Y=CSRLIN:LINE INPUT PT$: IF PT$="" THEN PT$=XPT$:LOCATE Y,1:PRINT PT$
+9640 :
+9650 ' --- change PT$ to unspaced U.C P$ ---
+9660 LPT=LEN(PT$)
+9670 FOR N=1 TO LPT
+9675   X$=MID$(PT$,N,1)
+9680   X$=MID$(PT$,N,1)
+9690   IF X$<"A" OR X$>"z" THEN 9700 ELSE P$=P$+CHR$(ASC(X$) AND 223)  'remove spaces and and punctuation and force UC
+9700 NEXT:LP=LEN(P$)
+9710 PRINT:PRINT"With spaces and punctuation removed, there are"LP"characters in the text."
+9720 GOTO 100
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+20000 '                    ----  example ----
+20010 XPT$="Don't be afraid to take a big leap if one is indicated. You cannot cross a river or a chasm in two small jumps.": XSQ=5 'ACA&U p50
+20011 ' XPT$="Don't be afraid to take a big leap if one is indicated. You cannot cross a river or a chasm in small jumps.": XSQ=5 'ACA&U p50
+20050 ' --- assemble default keysquare ---
+20060 FOR ROW=1 TO 5
+20070  FOR COL=1 TO 5
+20080    READ K(ROW,COL)
+20090  NEXT
+20100 NEXT
+21000 RETURN
+30000 DATA 3,2,1,4,5
+30010 DATA 1,5,3,2,4
+30020 DATA 2,4,5,3,1
+30030 DATA 5,3,4,1,2
+30040 DATA 4,1,2,5,3
+65000 SAVE"swagman.enc",A
+

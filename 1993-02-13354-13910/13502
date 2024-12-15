@@ -1,0 +1,78 @@
+Path: msuinfo!caen!uwm.edu!cs.utexas.edu!qt.cs.utexas.edu!yale.edu!ira.uka.de!math.fu-berlin.de!news.netmbx.de!Germany.EU.net!mcsun!sunic!dkuug!diku!njk
+From: njk@diku.dk (Niels J|rgen Kruse)
+Newsgroups: sci.crypt
+Subject: Re: Wanted: very fast random number generator
+Message-ID: <1993Feb8.223200.5590@odin.diku.dk>
+Date: 8 Feb 93 22:32:00 GMT
+References: <C1H7tG.7At.2@cs.cmu.edu> <16B65F11C.R0264@vmcms.csuohio.edu> <wingo-010293130834@wingosmac.apple.com>
+Sender: njk@embla.diku.dk
+Organization: Department of Computer Science, U of Copenhagen
+Lines: 67
+
+wingo@apple.com (Tony Wingo) writes:
+
+>Along the same lines is a RNG called r250, described by Kirkpatrick and
+>Stoll in the Journal of Computational Physics (vol 40, 1981). There was an
+>article on it in the May 1991 issue of Dr. Dobbs.  R250 only requires a
+>single XOR and some array housekeeping for each number generated.  Its main
+>advantage outside of simplicity is that it has an extremely long period (2
+>^ 249).  I have no idea how good it's statistical characteristics are: The
+>arguments in the K & S article were not entirely convincing.  Does anyone
+>else have any information on this?
+
+The generator you mention is of the form X[n] = X[n-c] OP X[n-d],
+with OP = Xor.  If there exist a function f, mapping the range of
+the generator to (0,1), such that f(x OP y) = f(x) Xor f(y)
+        d   c
+and if x + x + 1 is a primitive trinomial Mod 2, then the period of
+                  d
+the generator is 2 - 1.  This is of course the case with OP = Xor or
+OP = Add with f(x) = odd(x), but also (eg.) with x OP y = x Xor Perm(y)
+and f(x) = Bitcount(x), where Perm is any bitpermutation (eg. Rotate left).
+
+I rather like the plain OP = Xor even though it may require a larger state
+to achieve the same level of randomness as other generators, as i am more
+comfortable that i know its weaknesses and i like its speed.
+In my experience, the most sensitive statistical test for this type of
+generator (plain Xor) is the Coupon Collectors test, in my implementation
+collecting 8 bit coupons.
+For trinomials with c smaller than 3 - 7 or so, the most sensitive test
+gather the bits of each coupon as one bit (in the same position) from 8
+consecutive numbers in the generated stream, otherwise taking all 8 bits
+from the same number is more efficient (in CPUtime).
+
+               250   103
+The trinomial x   + x   + 1 (which is used in r250) was adequate in 1981,
+i suppose.  However, in 1993 an efficient implementation of the test
+mensioned above can prove nonrandomness beyond doubt in less than 3 hours
+of CPU on a HP9000/730.  This means that you can't draw more than about
+2e9 numbers from it and still be safe.  An efficient implementation can
+generate that many numbers in 7 minutes of CPU.
+
+To determine what it takes to be adequate on a HP/730, we have to make some
+assumptions about the use of the PRNG.  Probably the most demanding use of
+a PRNG is in simulation.  If we want to allow a simulation running for a
+month and if the simulation spends 5% of its time on generation of raw
+equidistributed numbers (a conservative estimate, it probably spends less),
+then the generator gets 1.296e11 uS.  An efficent implementation (a macro
+doling out numbers from a buffer, refilled by a routine generating d numbers
+at a time) take 0.2 uS per number, so this correspond to a production of
+6.48e11 random numbers.  To safely draw that many numbers from a generator
+of this type, i estimate that a trinomial of degree 763 is required (but
+possibly as little as 630 may be enough(*)).
+
+To get adequate quality 10 years from now on a comparable machine (last
+years hottest WS), assuming a growth in CPU power no greater than 50% per
+year, my estimate is that a trinomial of degree 1300 is required, but
+possibly as little as 1020 is enough).
+
+                       1279   418
+In my own PRNG, i use x    + x   + 1.
+
+(*)  In the model i use, i am extrapolating beyond the data points i have.
+These sag slightly below the fitted curve in the middle and vice versa for
+the extremes, so i am probably underestimating the quality provided by
+trinomials of large degrees.
+-- 
+Niels Jxrgen Kruse    |  It is amazing what people will believe
+    njk@diku.dk       |     if it is enough of a sensation.

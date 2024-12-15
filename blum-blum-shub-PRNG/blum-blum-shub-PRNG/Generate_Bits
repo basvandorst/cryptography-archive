@@ -1,0 +1,81 @@
+#!/bin/csh
+
+# Syntax: Generate_Bits -n num_bits  file1  file2  file3  > outputfile
+#
+#  num_bits      how many bits do you want me to create
+#  file1, file2  contain the two Key Primes, p and q
+#  file3         contains the seed for the random number generator
+#  stdout        will be the place where the random bita are written
+#
+#  Note: it is assumed that the Key Primes are in standard Blum form,
+#        and that the seed is a quadratic residue modulo (p*q)
+
+if ($#argv != 5) then
+   echo "Usage: " $0 " -n no_of_bits   keyfile1  keyfile2  seedfile"
+   exit 1
+endif
+
+if( "$1" == "-n" ) then
+   @ num_bits = $2
+   shift ; shift
+else
+   echo "Usage: " $0 " -n no_of_bits   keyfile1  keyfile2  seedfile"
+   echo "   .... Please specify the number of bits to be generated"
+   echo "   .... by using the -n option"
+   exit 1
+endif
+
+if ( ! -e $1 ) then
+   echo "Cant find file " $1
+   exit 1
+endif
+
+if ( ! -e $2 ) then
+   echo "Cant find file " $2
+   exit 1
+endif
+
+if ( ! -e $3 ) then
+   echo "Cant find file " $3
+   exit 1
+endif
+
+if ( ! -e ./Reblock ) then
+   echo "Cant find executable program Reblock"
+   exit 1
+endif
+
+
+
+
+# cook up a name for a temporary workfile
+set tf = ./genbit_ugh.$$
+
+# first, grab the bc program that does the Blum, Blum, and Shub generator
+cp ./bitgen_bc $tf
+chmod 777 $tf
+
+# grab the first Blum integer from keyfile1
+echo ' p = \' >> $tf
+cat $1 >> $tf
+
+# grab the second Blum integer from keyfile2
+echo ' q = \' >> $tf
+cat $2 >> $tf
+
+# grab the seed (a quadratic residue modulo p*q) from seedfile
+echo ' s = \' >> $tf
+cat $3 >> $tf
+
+# the number of bits to be generated was specified on the command line
+echo ' b = \' >> $tf
+echo $num_bits >> $tf
+
+# tell bc to run the BBS generator
+echo "g(p,q,s,b)" >> $tf
+
+# fire up bc.  Output is piped thru Reblock then goes to stdout as desired.
+bc < $tf | Reblock $num_bits
+
+# clean up the excess
+rm $tf

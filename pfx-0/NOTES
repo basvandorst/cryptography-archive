@@ -1,0 +1,83 @@
+Here are a few technical notes about the code, if in doubt try the source :-)
+
+The following files contain fairly standard ASN1 stuff:
+pfx_asfe.c pfx_bitm.c pfx_ccrl.c pfx_crts.c pfx_espk.c pfx_lib.c pfx_mac.c
+pfx_pbe.c pfx_priv.c pfx_sbag.c pfx_supd.c
+
+The only minor points are that pfx_supd.c contains a kludge to use
+BMPSTRING which SSLeay doesn't currently support. This will go away soon.
+pfx_priv.c uses the PrivateKeyInfo structure of PKCS#8.
+
+hmac.c implements RFC2104 hmac. It uses an HMAC_CTX structure defined in
+hmac.h . This file can be used independently of everything else. It contains
+the following three functions.
+
+void HMAC_Init(HMAC_CTX *hctx, unsigned char *key, int keylen, EVP_MD *md_type);
+void HMAC_Update(HMAC_CTX *hctx, unsigned char *data, unsigned int len);
+void HMAC_Final(HMAC_CTX *hctx, unsigned char *md, unsigned int *len);
+
+If you know what a HMAC is then the usage of these is fairly obvious. If you
+don't read RFC2104 :-) The hmac files have no copyright restrictions at all.
+
+pfx_hash.c is an implementation of the p_HASH function of the TLS spec.
+However this is an imcompatible version to account for bugs in the Netscape
+implementation so it isn't much use for anything else.
+
+Most of the work is done in pfx_key.c in the function pfx_keyiv_gen this
+generates the relevant keys and IV for all the crypto stuff.
+
+A wrapper for this function is in pfx_crpt.c this generates the keys when
+passed the relevant nid for a pbe algorithm and otherwise sets up the
+cipher.
+
+pfx_init.c contains two initialisation routines. pfx_init sets up a bare
+bones PFX structure. pfx_pbe returns X509_ALGOR pbe structure with the
+parameters passed to it.
+
+pfx_add.c contains two routines that add a certificate chain to the
+safe and a thumbprinted private key to the baggage.
+
+pfx_encr.c and pfx_decr.c encrypt and decrypt the safe and private keys and
+to set and verify the MAC. PFX and ESPVK structures contain unencrypted and
+encrypted versions of the safe and private keys. One of these is normally
+empty until the safe is encrypted/decrypted. You can in theory use any of
+the pbe algorithms for encryption, however not all of these will work with
+Netscape export version (ITAR restrictions on strong crypto). ITAR is not
+really a problem though because the private keys can use strong encryption,
+the certificates cannot but they are not secret anyway.
+
+pfx_pk.c packs/unpacks the safe contents. Again either authsafe or safe_cont
+in PFX will be empty until the relevant routine is called.
+
+pfx_utl.c contains some utilities for gathering all the certificates together
+and finding the one that matches a thumprint.
+
+pfx.c is the frontend. This should give some idea of how the routines work
+together. 
+
+I obtained the PFX spec from http://www.microsoft.com/standards/PFX020SYNTAX.HTM
+If you want to make more sense of the structures then this spec should help.
+
+It is ***NOT*** PKCS#12. When this stuff was added to Netscape PKCS#12 didn't
+exist. The stuff is incompatible with PKCS#12 even to the point that some
+OID's clash (though not seriously).
+
+Netscape follows the PFX spec very closely at an ASN1 level. The only
+differences I found where that the 'regenerable' flag is missing from
+PVKSupportingData and a CertCRL has this form:
+
+CertCRL ::= SEQUENCE {
+  BagId OID,
+  value [0] EXPLICIT ANY DEFINED BY BagID
+}
+
+The spec does not include the explicit tag.
+
+However the key generation algorithms are different from the PFX spec (which
+in any case is ambiguous and inadequate). Netscape is planning to make a doc
+detailing the differences available on their web site soon. If in doubt have
+a look at the source.
+
+Steve.
+
+shenson@bigfoot.com

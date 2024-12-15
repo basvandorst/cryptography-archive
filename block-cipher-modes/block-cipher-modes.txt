@@ -1,0 +1,90 @@
+From msuinfo!uwm.edu!cs.utexas.edu!wupost!mont!mizzou1.missouri.edu!C445585 Thu Aug 12 00:22:16 1993
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!cs.utexas.edu!wupost!mont!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu (John Kelsey)
+Subject: Re: IDEA operating modes
+Message-ID: <16C23B4A0.C445585@mizzou1.missouri.edu>
+Sender: news@mont.cs.missouri.edu
+Nntp-Posting-Host: mizzou1.missouri.edu
+Organization: University of Missouri
+Date: Sat, 07 Aug 93 12:50:40 CDT
+Lines: 77
+
+   There are four modes of operation supported for DES, and they will
+generally work well with any block cipher.  These are the same modes
+of operation used for IDEA.
+ 
+   ECB mode is the simplest--it's simply running the block cipher alone.
+With IDEA and DES, this simply maps one 64-bit block onto another 64-bit
+block, according to the key.  This has a few problems:  If there are lots
+of repetitions of the same 64-bit block in your plaintext, then there are
+lots of repetitions of the corresponding 64-bit block in your ciphertext.
+It's possible for an attacker to give you a chosen plaintext to encrypt,
+which goes directly as input into the encryption function.  Each ciphertext
+bit is a function of exactly 64 plaintext bits and all the key bits.
+ 
+    C(i) = E(M(i),K)     <-----  ECB-mode
+ 
+   CBC mode XORs each plaintext block with the preceeding ciphertext block.
+This means that multiple occurrences of the same 64-bit plaintext block
+don't get encrypted to the same cipehrtext block.  This also makes chosen-
+plaintext attacks all but impossible.
+ 
+    C(i) = E(M(i) xor C(i-1),K)
+ 
+   OFB mode is simply a way of using a block cipher as a pseudorandom
+number generator.  The output bits are simply fed back into the input
+of the block cipher, and are also XORed against the plaintext to give
+the ciphertext.
+ 
+    X = E(X,K)
+    C(i) = M(i) xor X
+ 
+   Usually, all 64-bits of output are fed back into the input, but
+sometimes less that 64-bits are fed back.  Clearly, patterns in the
+plaintext will get clobbered.  However, this is very susceptible to a
+"bit-twiddling" attack--if you know where a given bit is, and you want
+it changed, just flip that bit in the ciphertext--it will get flipped
+in the plaintext, too.  Also, this clearly protects the encryption
+function from chosen-plaintext attacks.  However, a good block cipher
+acts like a random mapping generally.  This means that there is a good
+likelihood that you'll eventually run into a cycle--where you reach a
+value of X (above) that you've reached before.  Then, you'll start
+repeating X's, and you will have lost most of your security.  Along
+similar lines, if you mis-implemented this and didn't select a different
+IV for two encryptions, you would lose almost all the security this
+scheme gives--exactly like using the same one-time pad on two different
+messages.
+ 
+   CFB-mode is a little harder to diagram in ASCII, but it's conceptually
+pretty simple.  The block encryption function is used to map the contents
+of a feedback buffer (64-bits) into another 64-bits, of which 8 bits are
+generally used at a time.  Those 8 bits are XORed against the plaintext
+byte, giving the next ciphertext byte.  Then, the contents of the feedback
+buffer are shifted 8 bits, and the new ciphertext character is shifted in.
+ 
+         C(i-8) C(i-7) C(i-6) C(i-5) C(i-4) C(i-3) C(i-2) C(i-1) <--+
+             |_____|______|______|_____|_______|_____|______|       |
+                                    |                               |
+                                   Enc                              |
+                                    |                               |
+                    M(i) --------> XOR ---------------------------------> C(i)
+ 
+ 
+   Once again, this clobbers plaintext patterns and resists chosen-plaintext
+attacks against the underlying cipher.
+ 
+   The IV values need to be as random as possible for all three modes (CBC,
+OFB,CFB) that use them.  However, a random IV is most important for OFB-mode
+encryption.  If an attacker could get a duplicate IV used twice, he could
+trivially break your cipher.  Similarly, a random IV in CBC-mode is important
+in protecting against adaptive chosen plaintext attacks, where the attacker
+submits something for you to encrypt, and then observes the ciphertext from
+it before deciding on what else to submit for you to encrypt.  CFB's need for
+a random IV is similar.
+ 
+   Does this help?  If I missed anything, or made any weird typos, I
+appologize in advance.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu
+

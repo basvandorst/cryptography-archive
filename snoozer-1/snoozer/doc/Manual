@@ -1,0 +1,441 @@
+
+
+   SNOOZER - ver 1.0
+           - (c) 12/1995 by Gino Corradin - Gino.Corradin@dei.unipd.it
+
+ o Snoozer is a modular checking program. It forks a new job for every 
+   action requested by user. This program is projected to run much faster 
+   than it's possible.
+ o Snoozer accepts some optional switches : "-V" (echo current version), 
+   "-f jobtable_name" to specify another jobtab file other than the 
+   standard specified at compilation time, and "-q" to run snoozer in 
+   auto quitmode, in this working modality every son listed in jobtab 
+   file will run only one time and then exit (and father too).
+ o Every requested action will be carried out by a specific procedure, 
+   projected for this task. Number of specific jobs can be easily expanded.
+   Actually there are 4 job types : own, perm, sign, time. Own checks
+   the owner/group ship, perm checks the perrmission mode, sign computes
+   the checksum and compare it with an older one, and time compare the
+   actual last changed time and compare it with an older one.
+   Note that for security reasons (and speed) time and sign jobs
+   maintain the entire databases in memory.
+ o The father (main routine) reads the jobtable every N seconds (the 
+   default value is 15 minutes), or immediately if it receives the SIGINT 
+   signal. Various preferences or definitions about father and sons are 
+   listed in jobtab. The reconfig program do this in an automatic way.
+ o Snoozer runs until a SIGQUIT signal will be received, in this case 
+   the same signal will be sent to every son. This is the only way to
+   obtain a clean exit : every file will be closed and every action will
+   be correctly terminated. Quit program does this.
+ o Various debugging levels are provided via INFO variable in Makefile.
+   If INFO=1 then job quitting will be logged, with INFO=2 all started 
+   jobs will be logged, with INFO=3 additional informations about speed 
+   will be logged. During normal use define it equal to zero, or comment
+   it out.
+ o A copy of each suspicious situation can be delivered via mail when
+   SEND_MAIL compilation variable is defined (in Makefile) to a specified
+   user (defined in SENDTO variable, in config/mail.h).
+
+                                 ------
+
+   Follows an index of this manual, every paragraph can be found 
+   searching the string "#?#" where the character "?" will be 
+   substitued with a positive number, in respect of the index.
+
+   Index 
+      Installation ........................................ #1#
+      Jobtab Sintax ....................................... #2#
+      Runtime Log Information ............................. #3# 
+      Start Snoozer ....................................... #4#
+      Return Codes ........................................ #5#
+      Quit Snoozer ........................................ #6#
+
+                    _________________________________
+        
+#1# Installation
+   The snoozer installation is simple. A fast reference is the Install
+   document in the doc subdir. Now follows a complete step-by-step guide. 
+    . auto self checking 
+      It can be enabled and configured via AUTO, OSS and NSS variables 
+      in ~config/selfcheck.h. Snoozer computes an auto-selfchecksum and 
+      compare it with the old red from file OSS, then write the result 
+      to NSS. If new and old checksum differ you must move the NSS 
+      file to OSS and restart snoozer, obviously the right way is to 
+      move the OSS file in a read-only filesystem. When log via mail 
+      is enabled a copy of this checksum will be delivered.
+    . log level
+      More levels are provided for extra logging : 1, 2, and 3.
+      In level 1 quitting activity is logged, in level 2 it's added
+      starting activity, and level 3 adds extra time informations
+      to determine the duration time of each phase. Assign the right
+      value to IFLAGS variable in Makefile, f.e. to set log level to
+      2 : "IFLAGS=-DINFO=2". For debugging purposes only define this
+      variable to a value other than zero, else comment it out.
+      If the IFLAGS variable isn't equal to zero then the program's
+      output can interferes with mail flux when you exit from your
+      login session.
+    . log via mail
+      1st you must define the SEND_MAIL variable in the Makefile to 
+      enable this type of logging, 2nd set the MAILER variable in the
+      config/mail.h to specify the mailer system daemon (usually
+      /usr/lib/sendmail, conform to BSD and SYSV rules), 3rd set the
+      SENDTO variable in config/mail.h to specify the destination user.
+      An unusually, but valid, value for this variable could be 
+      "user1,user1" to send mail to multiple user at the same time.
+      A subset of total log flow is delivered : starting, management
+      and quitting job activity and "Danger" informations.
+    . (Optional) In the file config/config.h you can set the ELOG, 
+      PIDFILE and JOBTAB variables to set the default snoozer's file
+      names. Read the comments to understand the mean of each of these.
+    . Set the right place where to install the snoozer binary via the 
+      variable SNOOZERHOME in the Makefile, if this last isn't equal
+      to the actual dir, at the end of the compilation step will be
+      necessary a "make install" to install everything. To avoid any
+      uid mismatch do a "chown -R root ." in SNOOZERHOME. 
+    . Now compilation phase is obtained with a simple "make".
+      Other Makefile options are : "make clean" to do some clean, 
+      "make pack" to produce a backup package (stored in ~sec dir),
+      and "make install" to install the entire package (sources and
+      binaries).
+         To test the program all needed binaries must be contained 
+      in the SNOOZERHOME directory, so if this last isn't equal to 
+      the compilation dir then you must first install all binaries 
+      with a "make install".
+    . Edit the jobtab file, remember that a comment is a line that 
+      starts with a "#" character, blank lines are skipped, sintax
+      errors must be corrected, else snoozer doesn't start any job.
+      This last rule isn't respected in individual son configuration
+      file (to start multiple snoozer istances it's necessary to
+      specify different jobtab files).
+    . Edit individual configuration files (listed in jobtab).
+    . Start snoozer with "/absolute_path/snoozer" by hand to avoid
+      any problem and check periodically your incoming mailbox to
+      monitor the snoozer activity. After that snoozer is started
+      check the errorlog file (default is jobtab.errlog) to verify
+      that it's correctly started without any errors; correct them
+      if present.
+    . You can halt snoozer with ~quit script or with a SIGQUIT signal.
+      Snoozer and its sons are forced to reread as soon as the 
+      individual configuration file when a SIGINT signal is received.
+      In this last case send a SIGINT signal to snoozer father.
+      Note that on some systems snoozer terminates effectively when
+      sleep time (for father) is completely elapsed.
+
+#2# Jobtab Sintax 
+ . A line that starts with a "#" character will be treated like a 
+   comment. Blank lines will be skipped. 
+ . Jobtab contains a sequence of definition blocks, each one that starts 
+   and ends with a special word. The 1st optional block, referred like
+   smain-emain sequence, defines the parameters of the father program. 
+   After this block follow various specific son definitions, one for 
+   action, obviously more then one same type can be present, under the 
+   condition that the configuration file must be unique for each job.
+   Each sequence sintax is now listed :
+   + Father :
+               smain
+               name:main_name
+               sleep:n_secs
+               emain
+     The name field hydes the real program name. Program rereads the 
+     jobtab file every "n_secs" seconds. Every subfield contained in 
+     this sequence and the entire sequence too are completely optional. 
+     For example it's possible to specify only the sleep subfield in
+     smain-emain sequence. This sequence it's allowed only one time and
+     at the beginning of file.
+   + sign job :
+     It computes the checksum of a specified file specified with a 
+     proper sintax in the configuration file. The right sintax to 
+     specify a sign job in jobtab file is :
+               sjob sign
+               name:son_name
+               sleep:n_secs               (optional)
+               cfg:config_file
+               oseen:old_result_file
+               nseen:new_result_file
+               run:times                  (optional)
+               sig:signature              (optional)
+               ejob
+     New job starts with the name "son_name". Program sleeps for 
+     n_secs seconds, then restarts for another check cycle. 
+     Config_file is the configuration file, it contains informations 
+     about which file (or set of files) must be checked. Various
+     type of sintaxes are listed here (remember one sintax for line) :
+               /absolute_path/*
+               /absolute_path/prefix*
+               /absolute_path/filename
+     The 1st form specifies all files in directory absolute_path,
+     2nd indicates all files that start with string "prefix", and
+     3rd an unique filename named "/absolute_path/filename".
+     Old_result_file is the list of old signatures (one for line, 
+     for each file), signature that will be computed by this son
+     will be compared with these. New_result_file will contains all 
+     new computed signatures. 
+        All runtime results will be logged to new_result_file.tmp 
+     file, one error for line with the general form :
+
+               prefix [date_time] : <filename> type of error
+
+     If prefix is equal to "Warning" then a little (but ininfluent) 
+     error is present (f.e. a file doesn't exist), else if it's equal 
+     to "Danger" then someone had changed or deleted some file (verify
+     with big attention this situation), else if it's equal to 
+     "Ignored" then a sintax error is present : sign job ignore this 
+     line and proceed with the next. 
+        If SEND_MAIL, MAILER and SENDTO variables (respectively in 
+     Makefile and config/mail.h) are correctly defined, then "danger" 
+     errors will be logged via e-mail too (to the user specfied via 
+     SENDTO variable in config/mail.h). 
+        Configuration file will be automatically reread every "times" 
+     times, the default value is 1. Note that when configuration file 
+     isn't reread every complete check cycle, then it's possible that 
+     someone add a new file that will be not checked. Obviously when  
+     configuration file will be reread then new file bill be found. 
+        This job checks every file with the "signature" method, where 
+     "signature" must be choosen between "crc32" (fast) and "MD5" (more 
+     secure but slower), and MD4 (very fast on some machines, but 
+     gerally a little faster than MD5), default is MD5.
+   + perm job :
+     It checks permission for each file (or directory) listed in the 
+     "config_file". The correct sintax for jobtable is :
+               sjob perm
+               name:son_name
+               sleep:n_secs               (optional)
+               cfg:config_file
+               out:output_file
+               ejob
+     New son starts with name "son_name". After the completition of 
+     each check cycle the job sleeps for n_secs seconds. Config_file 
+     contains the list of files and directories that must be checked. 
+     Valid sintax for configuration file are :
+               /absolute_path/*:perm
+               /absolute_path/prefix*:perm
+               /absolute_path/filename:perm
+     In the 1st case are checked all files in dir "absolute_path", 
+     in the 2nd only those which name starts with prefix "prefix",
+     in the 3rd only one file is checked.
+     The perm string is a sequence of 4 positive numbers, the correct 
+     sintax is :
+               a0cd
+     where a,c and d are integer number each in the range 0..7. Each
+     number specifies a complementary action, f.e. if "c" is equal to 
+     5 then isn't allowed read and execute for group. If "a" is equal 
+     to 3 then cannot exist any file with sgid or sticky bit set.
+     Owner bit will not be checked, it's a constant that must be 
+     always present to avoid any mismatch.
+     Output_file will contains various results for each execution 
+     (complete check cycle); one error for line will be listed. 
+     The general form is :
+     
+               prefix [date_time] : <filename> type of error
+
+     If prefix is equal to "Error" then check the configuration file 
+     for a bad perm sintax, if it's equal to "Warning" the specified
+     file or dir not exist, if it's equal to "Danger" then exists a 
+     filename with an erroneous permission mode, verify with extreme 
+     care this situation.
+   + time job :
+     This type of job checks the last changed time (see stat structure 
+     in stat manual, st_ctime field) and compare it with last old value.
+     This time cannot be changed by "touch" command, and it's modified
+     by any command that move or change the file. Complete sintax is :
+               sjob time
+               name:son_name
+               sleep:n_secs               (optional)
+               cfg:config_file
+               oseen:old_result_file
+               nseen:new_result_file
+               run:times                  (optional)
+               ejob
+     Son_name will be the name of this son. Son sleeps for n_secs 
+     seconds after a complete check cycle. Config_file is the name 
+     of the proper configuration file; the valid sintaxes are :
+               /absolute_path/*
+               /absolute_path/prefix*
+               /absolute_path/filename
+     In the 1st form all files in directory "absolute_path" are
+     compared with their old lctime, in 2nd form only files which 
+     name starts for "prefix" are compared, and in the latter form 
+     only the file "/absolute_path/filename" will be compared.
+     Time job rereads cfg_file every "times" times, in the meantime 
+     it checks only these files listed in the internal dynamics list 
+     (built in the precedent check cycle).
+     Old_result_file and new_result_file will be respectively the
+     file from which this son read old time values and where to 
+     store new time values. Runtime informations will be logged to 
+     new_result_file.tmp, where ".tmp" is a fixed postfix.
+     This file contains one entry for each line with the form :
+     
+               prefix [date_time] : <filename> type of error
+               
+     If prefix is equal to "Danger" then "filename" has the last
+     changed time not equal to the oldest, this is a bad fact :
+     someone has moved or recopied file. If prefix is equal to 
+     "Warning" then the "filename" file (or directory) not exist. 
+     If prefix is equal to "Ignored" then this line contains a 
+     sintax error and will be ignored, time job proceed with next 
+     line. The last part of line is a briefly error description.
+        If SEND_MAIL, MAILER and SENDTO variables are defined a copy 
+     of each "Danger" line will be delivered to the SENDTO user.
+   + own job :
+     Own job check the owner/group ship of a file, here the proper 
+     sintax for jobtab file :
+               sjob own
+               name:job_name
+               sleep:n_seconds            (optional)
+               cfg:config_file
+               out:output_file
+               ejob
+     Job_name is the name that appears to every user, n_seconds is the
+     time (in seconds) between two consecutive checks. Config_file 
+     contains the informations about which files would be checked,
+     one for line. Various sintaxes can be used to perform this check 
+     action. The general line form is :
+               absolute_filename:check_string
+     where
+               absolute_filename = /path/* | /path/prefix* | /path/file
+               check_string = o uid1 uid2... | no uid1 uid2... |
+                              g gid1 gid2... | ng gid1 gid2...
+     Note that "|" is an Exclusive OR, only one form for line of the 
+     absolute_filename and check_string must be present. 
+     Naturally two lines can differ only in check_string to perform
+     a cross check (postive and negative belong).     
+     In the output_file will be logged all runtime results, one for 
+     line with the following form :
+
+               prefix [date_time] : <filename> type of error
+               
+     If prefix is equal to "Danger" then the file "filename" has an
+     erroneous owner/group ship respect to how specified in config_file,
+     this can be very unsafe for the system !!. If prefix is equal to 
+     "Warning" then the file "filename" (or directory) not exist. 
+     If prefix is equal to "Ignored" then this line (specified in 
+     config_file) contains a sintax error and will be ignored, own job 
+     proceed with next line. The last part of line is a briefly error 
+     description.
+        This job can deliver "Danger" informations to the SENDTO user 
+     (defined in mail.h) when the compilation variable SEND_MAIL is
+     defined and MAILER constant (in config/mail.h) point to the system
+     mailer daemon (usually /usr/lib/sendmail).
+
+#3# Runtime Log Information 
+ . Error logging :
+   Sintax errors in the jobtab file will be logged in jobtab.errlog 
+   (see config/config.h to change this name), only when the error(s) 
+   will be correct snoozer program will proceed.
+ . Info logging :
+   Debugging informations are available if the INFO macro is defined 
+   in the Makefile. In particular 3 effective levels are provided :
+      + INFO=1
+        Quitting and starting of various sons and father will be 
+        put on stdout.
+      + INFO=2
+        At this level program advises when father and various sons start.
+      + INFO=3
+        Start time, end time, signal activity will be logged on stdout.
+   No other informations will be wrote on stdout.
+   Note that every variation of this macro must be followed by a total
+   compilation, i.e. do a "make clean;make". For normal use comment out
+   this variable or assign the zero value to it, else the normal output
+   can interfere with mail flux.
+ . Mail logging :
+   Serious errors can be sent via mail to the SENDTO user (see mail.h)
+   if the macro SEND_MAIL is defined at the compilation time. 
+   Program uses the mailer defined by the macro MAILER in config/mail.h 
+   file, default is "/usr/lib/sendmail". 
+   Either the main program snoozer or a son can send a mail.
+   Note that a variation of the SENDTO and/or MAILER variables must be
+   followed by a total recompilation, i.e. does a "make clean;make"
+   (more precisely it's necessary deletes the src/utils.o and does a
+   simple "make").
+
+   When snoozer starts, if it's defined the AUTO constant in the file 
+   config/selfcheck.h, it computes an auto self md5 checksum : read 
+   old checksum from OSS file compare it with the new just computed 
+   and write the result to NSS file. If new checksum differs from old 
+   it exit (and eventually, if SEND_MAIL variable is defined, sends a 
+   mail to SENDTO user), and write new checksum in the NSS file.
+   Note the OSS and NSS variables are defined in the config/selfcheck.h 
+   file; initialization is made like an array of chars, so if anyone 
+   does a "strings" command on compiled binary he can't see the location 
+   of OSS file so he cannot modify the old checksum. If the SEND_MAIL 
+   macro is defined the security is increased. Normally OSS file must 
+   reside in a safe place, like a ro-mounted filesystem, while NSS can 
+   be placed in an hidden subdirectory.
+   Every variation of each of these files must be followed by a complete 
+   recompilation. 
+
+   Snoozer sends the 1st mail with its pid, another mail each time that
+   a son (or group of sons) will be killed, restarted or simply started,
+   and finally another when it has received a SIGQUIT.
+   The signature job sends a mail at the end of each check cycle if  
+   a file checksum is changed or a file was deleted. Only the "Danger"
+   errors will be sent by mail. 
+   Every mail has the "From:" field equal to "snoozer", while the 
+   "Subject:" field informs directly about the contents of mail. 
+    + The father dispose of 3 possible subject fields : "Warning : 
+      snoozer started", "Warning : snoozer quitted", and "job 
+      management" when one or more jobs has been killed. 
+    + Signature job has only one possible subject : "Danger in name",
+      where name is the name of signature job, like defined in jobtab.
+   An exemple of a normal flux is the mailbox file ReceivedMail in
+   doc subdirectory, the ReceivedMail2 is runtime log with auto-quitmode
+   feature enabled. In each case auto-check feature was enable. 
+
+#4# Start snoozer
+   The normal way to start snoozer is "/absolute_pathname/snoozer" or 
+   after cd'ing in the snoozer home with "./snoozer". In each case only 
+   one instance for time of the snoozer program can run without any 
+   interferences, this behaviour occurs because it's defined an unique 
+   default name for the jobtab configuration file.
+      To avoid this problem it's necessary to start snoozer with the 
+   "-f" parameter to point out another jobtab file with an arbitrary 
+   name, f.e. "./snooer -f another_jobtab_filename". For security 
+   reasons when snoozer starts it hydes every switch.
+      Sometime it's necessary to execute a particular son with a low 
+   frequency, in this case sould be a bad idea to add this son to the 
+   normal jobtab file, it's more convenient to start snoozer under the 
+   condition that the son (or a group of sons) will be executed only 
+   one time. In this way you can save some memory. The "-q" switch is 
+   provided for this target, "./snoozer -q -f another_jobtab" is the
+   correct sintax. You can start snoozer from your crontab file using 
+   a different jobtab file to avoid any interferences with a possible 
+   running jobtab binary. Every mail sent by snoozer will differ from 
+   a normal one for the string "auto quitmode" (due to the -q switch).
+      Wait a few seconds when you start snoozer, if any error is 
+   present snoozer wait or terminate. In particular if it's present a 
+   sintax error in jobtab file then it will not exit, but wait until 
+   the error will be corrected, else if a startup file isn't present 
+   it exit. Nevralgic files are jobtab, jobtab.errlog, individual son 
+   configuration files. This file check will be performed during a 
+   normal check cycle too. Various log messages will be wrote to 
+   jobtab_filename.errlog (default name jobtab.errlog).
+      Check the snoozer return code to understand the exit reason.
+
+#5# Return Codes
+   The snoozer return codes are :
+     .  0 : quitted from user, all right
+     .  1 : errlog file cannot be opened
+     .  2 : old signature file (OSS) not found
+     .  3 : new signature file (NSS) cannot be opened
+     .  4 : new signature differs from old !!!!
+     .  5 : pidfile (PIDFILE) cannot be opened
+     .  6 : job table file (JOBTAB) not found
+     .  7 : no more processes to fork (after 3 errors)
+     . 10 : unrecognized switch (bad calling parameter)
+
+#6# Quit snoozer
+   Snoozer (and its sons) terminates when itself receives a SIGQUIT,
+   for this reason the quit shell script is provided in the root 
+   directory of the snoozer program. The shell script reads the 
+   jobtab.pid file.  Note that "jobtab" is exactly the name of jobtab 
+   file, obviously when snoozer has been started specifying another 
+   name for jobtab file this name will change, so reconfig and quit 
+   scripts will not work.
+
+                                     gino
+----
+E-Mail  : Gino.Corradin@dei.unipd.it
+          gino@maya.dei.unipd.it
+Address : Gino Corradin - T.Albinoni, 11 - 45100 Rovigo (Italy)
+Phone   : 039 (425) 34465 (Q) --  039 (425) 35523 (fax)
+

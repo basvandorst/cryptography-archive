@@ -1,0 +1,154 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uchinews!linac!uwm.edu!zaphod.mps.ohio-state.edu!cs.utexas.edu!milano!cactus.org!ritter
+From: ritter@cactus.org (Terry Ritter)
+Subject: Pkzip Cipher Work
+Message-ID: <1992Oct18.070935.11234@cactus.org>
+Organization: Capital Area Central Texas UNIX Society, Austin, Tx
+Date: Sun, 18 Oct 1992 07:09:35 GMT
+Lines: 145
+
+
+
+ Experiments in Pkzip-type Encryption
+
+
+
+ One of the many tasks remaining in practical cryptology is to
+ come to some decent technical understanding of the strength of
+ Pkzip-type encryption.  I have now conducted a few experiments
+ which provide some insight into toy Pkzip-like ciphers.  In
+ particular, I have examined randomizers composed of up to three
+ stages of CRC-32 operations.
+
+
+ Pkzip Encryption
+
+ Pkzip is an example of an "autokey" stream cipher, lately known
+ as "ciphertext feedback."  (Presumably, the use of the second
+ term would differentiate the design from "plaintext feedforward"
+ or some other topology which I have not seen).
+
+ Basically, the idea is to use a "randomizer" mechanism to
+ generate a pseudo-random "confusion sequence"; as in most stream
+ ciphers, the sequence is XOR-combined with plaintext to generate
+ ciphertext.  However, instead of simply using a random number
+ generator to produce the sequence, the ciphertext stream is used
+ to add information to the randomizer.  A similar mechanism on the
+ decipher side produces the same sequence which can be "subtracted"
+ from the ciphertext to recover the plaintext:
+
+
+                     ENCIPHER      DECIPHER
+
+        +--------------+                 +-------------+
+        |  Randomizer  |<--+         +-->|  Randomizer |
+        +--------------+   |         |   +-------------+
+               |           |         |          |
+            +-----+        |         |       +-----+
+       ---->| Xor |--------+--/ ~~/--+-------| Xor |---->
+ Plaintext  +-----+        Ciphertext        +-----+  Plaintext
+
+
+ The problem with such a design is well-known:  Under a known-
+ plaintext attack, the cryptanalyst has access to *both* the input
+ *and* the output of the randomizer box (as well as the design of
+ the box, of course).
+
+      I note that, in the Pkzip environment, the cipher "plaintext"
+      is actually *compressed* text, which could make it difficult
+      to obtain "known plaintext" for, say, the middle of a
+      compressed file.
+
+      Also, the entire known-plaintext attack revolves around the
+      ability to immediately recover the confusion sequence when
+      given the plaintext and corresponding ciphertext.  This is
+      true of the XOR combiner used in most stream ciphers, but
+      stronger combiners are now available which are not nearly
+      so cooperative.
+
+
+ The Pkzip randomizer box contains 3 "levels" of mechanisms, two
+ of which are CRC-32, with a sort of linear congruential generator
+
+    x := x * 134775813 + 1
+
+ in the center.
+
+
+
+    Bit #   33222222222211111111110000000000  <-- CRC-32 <--+
+            10987654321098765432109876543210                |
+                                    ========          Ciphertext
+                                        +-----+
+                                              |
+                                       ADD <--+
+                                    ========
+    Bit #   33222222222211111111110000000000  <-- LCG <--+
+            10987654321098765432109876543210  >----------+
+            ========
+               |
+               +--------------------------------------------+
+                                                            |
+    Bit #   33222222222211111111110000000000  <-- CRC-32 <--+
+            10987654321098765432109876543210
+
+
+ There is also some output processing intended to prevent
+ access to the data from the third stage.
+
+
+ Experiments
+
+ As a first step to understanding some part of this mechanism,
+ I constructed toy "ciphers" in which all stages were CRC-32, and
+ which had no output processing.  That is, a ciphertext byte was
+ CRC'd, and one byte of the CRC result (it did not seem to matter
+ which) was taken as the confusion output.  I tried one, two, and
+ three stage "randomizers" composed entirely of CRC-32.
+
+ I found that it was possible to reconstruct the original state
+ of the randomizer given only as much known-plaintext (and
+ corresponding ciphertext) as the internal state.  That is, I was
+ able to "break" a toy single level 32-bit CRC randomizer using
+ only 4 bytes of known-plaintext.  Worse, a two-level (8-byte state)
+ CRC randomizer could be evaluated with only 8 bytes of known-
+ plaintext, and a three-level (12-byte state) CRC randomizer needed
+ only 12 bytes of known-plaintext.  I used symbolic evaluation and
+ had to deal with the 3800 Boolean terms which occurred in 12 bytes
+ of three-level CRC ciphering.
+
+
+ Analysis
+
+ When I previously considered the Pkzip design, I was comforted
+ by the idea that as much information flowed *into* the randomizer
+ as *out* of it.  The implication of this might be that one could
+ not hope to resolve the randomizer state because as much information
+ was added to that state as could possibly be interpreted from the
+ output.  The problem with that logic was that it implicitly assumed
+ some sort of strong isolation between the input and the main state.
+ In the case of the Pkzip first stage, there is no isolation at all,
+ and knowing the input data (bit-constants!) allows one to describe
+ the CRC step operation *with no added symbolic terms*.
+
+ Next, I had always assumed that whatever complexity was added by
+ each CRC stage would obviously be multiplicative.  That assumption
+ was wrong.  Even when used in randomizers, CRC is not just
+ theoretically weak.
+
+
+ Implications
+
+ It should be clear that I have described *early* work on *toy*
+ ciphers which are only *partially* related to the actual Pkzip
+ cipher.  In particular, the LCG stage may be difficult to analyze,
+ and the output isolation has been totally ignored.
+
+ Nevertheless, the ability to solve a 12-byte three-stage system
+ with only 12 bytes of known-plaintext is worrisome, especially
+ when one considers that the three stages which were solved are
+ just like two of the three stages used in the actual cipher.
+
+ ---
+ Terry Ritter   ritter@cactus.org
+

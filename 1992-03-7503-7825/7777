@@ -1,0 +1,232 @@
+Path: msuinfo!caen!sdd.hp.com!wupost!waikato.ac.nz!aukuni.ac.nz!kcbbs!kc
+Newsgroups: sci.crypt
+Subject: NSEA CFB comments + CBC code  
+Message-ID: <19825.849214562@kcbbs.gen.nz>
+From: Peter_Gutmann@kcbbs.gen.nz (Peter Gutmann)
+Date: 25 Mar 92 05:30:25 GMT
+Organization: Kappa Crucis Unix BBS, Auckland, New Zealand
+Lines: 223
+
+  
+In article <1992Mar23.012555.9395@gpu.utcs.utoronto.ca>  
+        mirage1@gpu.utcs.utoronto.ca (Robert Ames) writes:  
+  
+>Peter Gutmann asked for comments on his NSEA encryption program.  I  
+>generated some 10,000 byte files consisting of all zero bytes in the  
+>first instance, and all zeroes except the last byte in the second  
+>instance, and I encrypted them in CFB mode with NSEA.  The resulting  
+>encrypted files differed by one bit.  Generally, a mark of a good  
+>cipher is that a small change in plaintext results in a large change  
+>in ciphertext, so I'd be hesitant to use this program as is.  
+  
+Actually this is an artifact of the way CFB encryption works.  The  
+standard way of implementing CFB encryption is to use a block cipher as a  
+random number generator and XOR its output a bit at a time with the  
+cleartext (discarding the rest of the block and feeding the ciphertext bit  
+back into the block cipher to generate the next random number).  I  
+actually XOR a block at a time - there's nothing special about this, it  
+just makes it a lot faster.  This looks as follows:  
+  
+    +-----------------+  
+    |                 | Block cipher output  
+    +-----------------+                      
+  
+            (+)  
+  
+    +-----------------+  
+    |                 | Cleartext  
+    +-----------------+            
+  
+             |  
+             v  
+  
+    +-----------------+  
+    |                 | Ciphertext (fed back into block cipher to produce  
+    +-----------------+             next block of output)  
+  
+Now the change you made in the data was in the last byte, therefore it has  
+no way of propagating back through the block cipher to affect any more  
+ciphertext.  This behaviour is actually correct, and will occur with any  
+cipher (eg DES) used in CFB mode.  
+                                   
+Then in article <9208317.4736@mulga.cs.mu.OZ.AU>  
+        ggr@corowa.acci.com.au (Greg Rose) writes:  
+  
+>The real question, which remains unanswered (for all of a day so far)  
+>is whether the fact that only one output bit changes in the face of a  
+>chosen plaintext can be used to compromise real communication, for  
+>example by revealing (a part of) the key. This is not at all clear (one  
+>way or the other) for NSEA.  
+  
+Probably not.  The way CFB as I have implemented it works is as follows  
+('IV' is the initialization vector, '[B]' is the block cipher (DES, NSEA,  
+whatever), 'OUTx' is the x-th block cipher output block, 'Px' is the x-th  
+plaintext block, 'Cx' is the x-th ciphertext block):  
+  
+    IV -> [B] -> OUT1  
+                 (+)  
+                  P1 -> C1  
+  
+                        C1 -> [B] -> OUT2  
+                                     (+)  
+                                      P2 -> C2  
+          
+                                            C2 -> [B] -> OUT3  
+                                                         (+)  
+                                                          P3 -> C3  
+  
+(What this is supposed to show is that the IV is encrypted and the  
+resulting output is XOR'd with plaintext block 1 to produce ciphertext  
+block 1.  This is then fed back into the block encryption algorithm to  
+produce output block 2, which is XOR'd with plaintext block 2, etc etc).  
+If you're like me you'll probably find it easier to look at the source  
+code than try and decipher my diagrams :-).  
+  
+Now lets assume you can choose Px.  You can observe Cx, and using this  
+knowledge can deduce OUTx.  Thus you have gone from a chosen-plaintext  
+attack on the CFB cipher to a known-plaintext attack on the block cipher  
+itself.  This doesn't give you much of an advantage....  
+  
+Finally, a CBC implementation - this is rather nasty so I didn't include  
+it in the original posting.  It pads the file out to the blocksize, but it  
+does do away with the observed behaviour in CFB mode.  The disadvantage is  
+that the data must be mangled to be block-aligned.  In addition, CFB as  
+I've implemeted it allows en/decryption of data in arbitrary-size blocks  
+(ie it's not sensitive to buffer sizes - you can encrypt data in groups of  
+13 bytes for each encryptCFB() call and decrypt in groups of 51 bytes for  
+each decryptCFB() call), whereas CBC mode forces you to en/decrypt in  
+16-byte (or whatever the cipher block size is) byte groups for each  
+encrypt()/decrypt() call.  In CFB mode you can decrypt 1 byte per  
+decryptCFB() call, or 1000 bytes per decryptCFB() call, it makes no odds.  
+  
+Take the existing NSEA code and make the following change:  
+  
+.***************  
+.*** 232,240 ****  
+    /* Encrypt the key using the standard S-Boxes */  
+    index = 0;  
+- #ifdef TEST_VERSION  
+-   keyLength = BLOCKSIZE;  
+- #else  
+    keyLength = strlen( key );  
+- #endif /* TEST_VERSION */  
+  #ifdef CBC  
+    ivLLeft1 = ivRLeft1 = ivLRight1 = ivRRight1 = 0L;  
+--- 232,236 ----  
+  
+(ie zap the lines with '-' in front).  Then in place of the existing test  
+en/decryption sample program at the end of the code substitute:  
+  
+/**************************************************************************** 
+*                                                                           * 
+*               Sample Program:  Perform Test En/Decryptions                * 
+*                                                                           * 
+.***************************************************************************/ 
+  
+#ifdef TEST_VERSION  
+  
+/* Grossly inefficient CBC file en/decryption program */  
+  
+void main( const int argc, const char *argv[] )  
+    {  
+    FILE *inFilePtr, *outFilePtr;  
+    BYTE dataIn[ BLOCKSIZE ], dataOut[ BLOCKSIZE ];  
+    char key[ MAX_KEYLENGTH + 1 ];  
+    int count = 0, ch;  
+  
+    if( argc == 4 )  
+        {  
+        if( ( inFilePtr = fopen( argv[ 2 ], "rb" ) ) == NULL )  
+            {  
+            perror( argv[ 1 ] );  
+            exit( ERROR );  
+            }  
+        if( ( outFilePtr = fopen( argv[ 3 ], "wb" ) ) == NULL )  
+            {  
+            perror( argv[ 2 ] );  
+            exit( ERROR );  
+            }  
+        }  
+    else  
+        {  
+        puts( "Usage: nsea128 e|d <infile> <outfile>" );  
+        exit( ERROR );  
+        }  
+  
+    initCrypt();  
+  
+    /* Set up the S-Boxes */  
+    *key = '\0';  
+    while( strlen( key ) < 6 )  
+        {  
+        printf( "Key (6-%d chars): ", MAX_KEYLENGTH );  
+        fgets( key, MAX_KEYLENGTH, stdin ); /* Should use something better */ 
+        key[ strlen( key ) - 1 ] = '\0';    /* Stomp '\n' */  
+        putchar( '\n' );  
+        }  
+  
+    initSBoxes( key );  
+    ivLLeft1 = ivRLeft1 = ivLRight1 = ivRRight1 = \  
+        ivLLeft2 = ivRLeft2 = ivLRight2 = ivRRight2 = 0L;  
+  
+    /* Grovel through a file en/decrypting it */  
+    memset( dataIn, 0, BLOCKSIZE );  
+    while( !feof( inFilePtr ) )  
+        {  
+        /* Read in a block of chars */  
+        while( count < BLOCKSIZE )  
+            {  
+            if( ( ch = getc( inFilePtr ) ) == EOF && count == 1 )  
+                /* File is a multiple of blocksize, exit now */  
+                goto endLoop;  
+            dataIn[ count++ ] = ( ch == EOF ) ? 0 : ch;  
+            }  
+  
+        /* Encrypt/decrypt data block */  
+        if( *argv[ 1 ] == 'e' )  
+            encrypt( dataIn, dataOut );  
+        else  
+            decrypt( dataIn, dataOut );  
+  
+        /* Write out block and reset counter */  
+        for( count = 0; count < BLOCKSIZE; count++ )  
+            fputc( dataOut[ count ], outFilePtr );  
+        count = 0;  
+        }  
+  
+endLoop:  
+    fclose( inFilePtr );  
+    fclose( outFilePtr );  
+  
+    endCrypt();  
+    }  
+  
+#endif /* TEST_VERSION */  
+  
+Compile it with -DTEST_VERSION and you've got a CBC mode en/decryption program
+instead of the previous CFB mode en/decryption program.  
+  
+I took the CFB test data and ran the CBC mode encryption program on it (the  
+only difference was that I used ASCII '123456' as the key since the code  
+expects the key input in ASCII).  The final block was:  
+  
+...00000: 54 82 42 A7 34 C7 0F 25 2D 47 17 EF 7B F2 84 99  
+...00001: 45 BD 21 4D 29 9E 7C 53 9A 99 72 1B B2 54 A1 5B  
+    XOR   11 3F 63 EA 1D 59 73 76 67 DE 65 F4 C9 A6 25 C2  
+ diff.bits 2  6  4  5  4  4  5  5  5  6  4  5  4  4  3  3  
+  
+This gives a total of 69 bits flipped out of 128 for a 1 bit change in  
+input, or 53.9% of bits being flipped (E&OE :-).  This is pretty close to  
+the 50% bits flipped criteria presented in the original comment on CFB  
+mode (BTW I'm not saying that NSEA is the perfect encryption algorithm  
+just because this one example happens to work out, it was just a response  
+to the original comment on CFB mode).  
+  
+Peter.  
+--  
+    pgut1@cs.aukuni.ac.nz || peterg@kcbbs.gen.nz || peter@nacjack.gen.nz  
+                           (In order of preference)  
+Warning!  
+  Something large, scaly, and with fangs a foot long lives between <yoursite> 
+and <mysite>.  Every now and then it kills and eats messages.  If you don't  
+receive a reply within a week, try resending...  

@@ -1,0 +1,377 @@
+/*
+ *  MIRACL routine muldiv
+ *  bnmuldv.c
+ * 
+ *  calculates (a*b+c)/m and (a*b+c)%m as quickly as
+ *  possible. Should ideally be written in assembly
+ *  language of target machine for speed and/or to allow
+ *  largest possible MAXBASE. See mirdef.h. The problem is
+ *  to avoid overflow in the calculation of the intermediate
+ *  product a*b+c. Note that this routine needs only work
+ *  for UNSIGNED parameters 
+ *
+ *  First are shown two straight-forward portable approaches, 
+ *  which needs a long data type capable of holding
+ *  the product of two int types (i.e. twice as long).
+ *  The second method uses the 'ldiv' function which
+ *  is defined in the new ANSI standard for C. If you are
+ *  using a C compiler which complies with this standard, this
+ *  should be faster, as it calculates quotient and remainder
+ *  simultaneously (somebody up there heard me!).
+ *
+ *  This is followed by various other assembly language
+ *  implementations for popular processors, computers and 
+ *  compilers.
+ *
+ *  Since parameter passing and returning is time-consuming,
+ *  this routine should be generated 'inline', if compiler
+ *  allows it.
+ *
+
+int muldiv(a,b,c,m,rp)
+int a,b,c,m,*rp;
+{
+    long p;
+    int q;
+    p=(long)a*b+c;
+    q=p/m;
+    *rp=p-(long)q*m;
+    return q;
+}
+
+#include <stdlib.h>
+
+int muldiv(a,b,c,m,rp)
+int a,b,c,m,*rp;
+{
+    ldiv_t r;
+    r=ldiv((long)a*b+c,(long)m);
+    *rp=(int)r.rem;
+    return (int)r.quot;
+}
+
+;
+;   VAX11 version for Dec C compiler
+;   with 32 bit int using 64-bit quadword
+;   for the intermediate product. 
+;
+    .entry muldiv,0
+    subl   #4,sp
+    emul   4(ap),8(ap),12(ap),r0   ;a*b+c
+    ediv   16(ap),r0,r0,@20(ap)    ;quo. in r0, rem. in *rp
+    ret
+    .end
+
+;
+;  IBM-PC versions - small memory model only
+;  Easily modified for other memory models
+;
+;  Microsoft C compiler V4.0+
+;  Written for MS macro-assembler
+;
+        ASSUME CS:_TEXT
+_TEXT   SEGMENT BYTE PUBLIC 'CODE'
+
+        PUBLIC _muldiv
+_muldiv PROC NEAR
+        push bp                 ;standard C linkage
+        mov  bp,sp
+
+        mov  ax,[bp+4]          ;get a
+        mul  WORD PTR [bp+6]    ;multiply by b
+        add  ax,[bp+8]          ;add c to low word
+        adc  dx,0h              ;add carry to high word
+        div  WORD PTR [bp+10]   ;divide by m
+        mov  bx,[bp+12]         ;get address for remainder
+        mov  [bx],dx            ;store remainder
+
+        pop  bp                 ;standard C return
+        ret                     ;quotient in ax
+
+_muldiv endP
+
+_TEXT   ENDS
+END
+
+/*
+ *  Turbo C compiler V1.0. Uses inline assembly feature
+ *  Generates code identical to above Microsoft version
+ */
+int muldiv(a,b,c,m,rp)
+int a,b,c,m,*rp;
+{
+    asm mov  ax,a             ;/* get a                     */
+    asm mul  WORD PTR b       ;/* multiply by b             */
+    asm add  ax,c             ;/* add c to low word         */
+    asm adc  dx,0h            ;/* add carry to high word    */
+    asm div  WORD PTR m       ;/* divide by m               */
+    asm mov  bx,rp            ;/* get address for remainder */
+    asm mov  [bx],dx          ;/* store remainder           */
+    return (_AX);
+}
+/*    Replace last two asm lines when using large data memory models */
+/*    asm les  bx, DWORD PTR rp          ; get address for remainder */
+/*    asm mov  WORD PTR es:[bx],dx       ; store remainder           */
+
+;
+;  Zorland C compiler Version 1.1 (Lattice C compatible)
+;  Note that later versions of Zortech C (and C++) use the MS version
+;  Written for MS macro-assembler
+; 
+PGROUP  GROUP PROG
+PROG    SEGMENT BYTE PUBLIC 'PROG'
+        ASSUME CS:PGROUP
+        PUBLIC muldiv
+muldiv  PROC NEAR
+        push bp                 ;standard C linkage
+        mov  bp,sp
+ 
+        mov  ax,[bp+4]          ;get a
+        mul  WORD PTR [bp+6]    ;multiply by b
+        add  ax,[bp+8]          ;add c to low word
+        adc  dx,0h              ;add carry to high word
+        div  WORD PTR [bp+10]   ;divide by m
+        mov  bx,[bp+12]         ;get address for remainder
+        mov  [bx],dx            ;store remainder
+
+        pop  bp                 ;standard C return
+        ret                     ;quotient in ax
+
+muldiv  endP
+
+PROG    ENDS
+END
+
+;
+;   Aztec C compiler V3.4
+;
+CODESEG SEGMENT BYTE PUBLIC 'CODESEG'
+        ASSUME CS:CODESEG
+        PUBLIC muldiv_
+muldiv_ PROC NEAR
+        push bp                 ;standard C linkage
+        mov  bp,sp
+ 
+        mov  ax,[bp+4]          ;get a
+        mul  WORD PTR [bp+6]    ;multiply by b
+        add  ax,[bp+8]          ;add c to low word
+        adc  dx,0h              ;add carry to high word
+        div  WORD PTR [bp+10]   ;divide by m
+        mov  bx,[bp+12]         ;get address for remainder
+        mov  [bx],dx            ;store remainder
+
+        pop  bp                 ;standard C return
+        ret                     ;quotient in ax
+
+muldiv_ endP
+
+CODESEG ENDS
+END
+
+/
+/  Mark Williams C compiler V2.0
+/
+.globl muldiv_
+
+muldiv_:
+        push bp                 /standard C linkage
+        mov  bp,sp
+
+        mov  ax,4(bp)           /get a
+        mul  6(bp)              /multiply by b
+        add  ax,8(bp)           /add c to low word
+        adc  dx,$0x00           /add carry to high word
+        div  10(bp)             /divide by m
+        mov  bx,12(bp)          /get address for remainder
+        mov  (bx),dx            /store remainder
+
+        pop  bp                 /standard C return
+        ret                     /quotient in ax
+
+;
+;  IBM-PC-8087 for Microsoft C compiler V4.0+
+;  with 'small' defined as 'long' (32 bit). See mirdef.h
+;  This allows IBM-PC to look like 32-bit computer
+;  (which it isn't). To make use of this option:
+;
+;  (1) Must have 8087 Maths Co-processor (for speed and to hold 64-bit
+;      intermediate product).
+;
+;  (2) Must use 'ANSI' enhanced type C compiler, e.g. Microsoft V3.0+
+;      and must use header 'miracl.h' which declares function
+;      parameter types. Changes will be necessary in 'mirdef.h'
+;
+;      Note: many compilation warnings may be generated - ignore them.  
+;
+;  Note: This is NOT, in most cases, faster, but it does allow
+;        very high precision calculations, e.g. 1000!
+;
+        ASSUME CS:_TEXT
+_TEXT   SEGMENT BYTE PUBLIC 'CODE'
+
+        PUBLIC _MULDIV
+_muldiv PROC NEAR
+        push si                 ;standard C linkage
+        push bp          
+        mov  bp,sp
+
+        finit                   ;initialise 8087
+        fild  DWORD PTR [bp+6]  ;get a
+        fimul DWORD PTR [bp+0ah];multiply by b
+        fiadd DWORD PTR [bp+0eh];add c
+        fild  DWORD PTR [bp+12h];get m
+        fld st(1)               ;duplicate a*b+c on stack
+        fprem                   ;get remainder
+        fist  DWORD PTR [bp+0ah];store remainder in b
+        fsubr st,st(2)          ;subtract rem from total
+        fdiv st,st(1)           ;divide by m
+        fist  DWORD PTR [bp+6]  ;store quotient in a
+        wait
+
+        mov  si,[bp+22]         ;get address for remainder
+        mov  ax,[bp+10]
+        mov  dx,[bp+12]         ;get remainder
+        mov  [si],ax
+        mov  [si+2],dx          ;store remainder
+        mov  ax,[bp+6]
+        mov  dx,[bp+8]          ;get quotient in dx:ax
+
+        pop  bp                 ;standard C return
+        pop  si
+        ret
+
+_muldiv endP
+
+_TEXT   ENDS
+END
+
+;
+;  IBM-80386 version - for Microsoft C V5.0+
+;  Written for MS macro-assembler V5.0+ by Andrej Sauer 
+;  Same comments apply as above (except for 8087 requirement)   
+;
+        .386
+        ASSUME CS:_TEXT
+_TEXT   SEGMENT USE16 PUBLIC 'CODE'
+
+        PUBLIC _MULDIV
+_muldiv PROC  NEAR
+        push  bp                     ;standard C linkage
+        mov   ebp,esp
+
+        mov   eax,[ebp+4]            ;get a
+        mul   DWORD PTR [ebp+8]      ;multiply by b
+        add   eax,DWORD PTR [ebp+12] ;add c to low word
+        adc   edx,0h                 ;add carry to high word
+        div   DWORD PTR [ebp+16]     ;divide by m
+        movzx ebx,WORD PTR [ebp+20]  ;get address for remainder, zero high
+        mov   [ebx],edx              ;store remainder
+        shld  edx,eax,16             ;shift higher half of quotient
+                                     ;into lower half of edx
+
+        pop   bp                     ;standard C return
+        ret                          ;quotient: high bits in dx, lows in ax
+
+_muldiv endP
+
+_TEXT   ENDS
+END
+
+int muldiv(a,b,c,m,rp)
+int a,b,c,m,*rp;
+{
+    asm
+    {
+    ;
+    ;  MACintosh version for Megamax C compiler
+    ;  with 16-bit int, 68000 processor
+    ;
+        move   a(A6),D1      ;get a
+        mulu   b(A6),D1      ;multiply by b
+        move   c(A6),D0      ;get c
+        ext.l  D0            ;extend to longword
+        add.l  D0,D1         ;D1 contains a*b+c
+        divu   m(A6),D1      ;divide by m
+        move   D1,D0         ;return with quotient in D0
+        swap   D1            ;get remainder
+        move.l rp(A6),A0     ;get address for remainder
+        move   D1,(A0)       ;store remainder
+    }
+}
+
+int muldiv(a,b,c,m,rp)
+int a,b,c,m,*rp;
+{
+    asm
+    {
+    ;
+    ; 32016 processor version for BBC Master Scientific
+    ; with 32-bit int, by Dudley Long, Rutherford-Appleton Labs.
+    ;
+        movd   a,0           ;move a to R0
+        meid   b,0           ;multiply  by b, result extended
+        addd   c,0           ;add c to extended number in R0 & R1
+        addcd  #0,1
+        deid   m,0           ;divide by m
+        movd   0,0(rp)       ;remainder to *rp
+        movd   1,0           ;quotient returned in R0
+    }
+}
+
+;
+; Acorn ARM Risc version (32-bit) for Archimedes micro
+; unsigned only
+; Wingpass Macro Assembler
+;
+.INCLUDE "A.REGNAMES"
+
+.AREA C$$code, .CODE, .READONLY
+
+muldiv::
+         MOV     ip, sp             ;standard linkage
+         STMFD   sp!, {v1-v4}
+
+         CMPS    a2,#0x40000000     ;check for b=MAXBASE
+         MOVEQ   v3,a1,LSL #30      ;this idea is quicker because
+         MOVEQ   v4,a1,LSR #2       ;of ARM barrel shifting capability
+         BEQ     addin
+         MOV     v1,a1,LSR #16      ;do it the hard way
+         MOV     v2,a2,LSR #16
+         BIC     a1,a1,v1,LSL #16
+         BIC     a2,a2,v2,LSL #16
+         MUL     v3,a1,a2           ;form partial products of a*b
+         MUL     v4,v1,v2
+         SUB     v1,v1,a1
+         SUB     v2,a2,v2
+         MLA     v1,v2,v1,v3        ;look - only 3 MULs!
+         ADD     v1,v1,v4
+         ADDS    v3,v3,v1,LSL #16
+         ADC     v4,v4,v1,LSR #16
+addin:
+         ADDS    v3,v3,a3           ;now add in c
+         ADCCS   v4,v4,#0
+
+         CMPS    a4,#0x40000000     ;check for m=MAXBASE
+         MOVEQ   a1,v3,LSR #30
+         ADDEQ   a1,a1,v4,LSL #2
+         BICEQ   v4,v3,#0xC0000000
+         BEQ     leave
+         MOV     a1,#0              ;do long division by m
+
+divlp:
+
+.REPEAT 32                          ;2xfaster than a loop!
+         MOVS    v3,v3,ASL #1       ;get next bit into carry
+         ADC     v4,v4,v4           ;accumulate remainder
+         CMPS    v4,a4
+         SUBCS   v4,v4,a4
+         ADC     a1,a1,a1           ;accumulate quotient
+.ENDREPEAT
+
+leave:
+         LDR     v3,[ip]
+         STR     v4,[v3]       ;store remainder
+         LDMFD   sp!, {v1-v4}
+         MOVS pc,lr
+*/
+

@@ -1,0 +1,183 @@
+######################################################################
+# 			Computing on an elliptic curve		     #
+######################################################################
+
+EcmMult := proc(m, P, E, p)
+
+	RETURN(AEcmMult(m, P, E, p));
+#	RETURN(HEcmMult(m, P, E, p));
+
+end:
+
+EcmIsZero := proc(P, p)
+
+	RETURN(AEcmIsZero(P));
+#	RETURN(HEcmIsZero(P, p));
+
+end:
+
+########## Affine code ##########
+# Returns mP on E mod p.
+AEcmMult := proc(m, P, E, p)
+
+	local n, Q, R;
+	
+	n:=m;
+	Q:=copy(P);
+	if irem(n, 2)=1 then R:=copy(P) else R:=[0, 1, 0]; fi;
+	n:=iquo(n, 2);
+	while n > 0
+	do
+	  Q:=AEcmDouble(Q, E, p);
+	  if irem(n, 2)=1 then R:=AEcmAdd(R, Q, E, p); fi;
+	  n:=iquo(n, 2);
+	od;
+	RETURN(R);
+	
+       end:
+
+# General routine of addition of two points P and Q on E(mod p).
+AEcmAdd := proc(P, Q, E, p)
+
+	local l, x;
+	
+	if AEcmIsZero(P) then RETURN(Q);
+	elif AEcmIsZero(Q) then RETURN(P);
+	elif (Q[1]=P[1]) and (Q[2]=P[2]) then AEcmDouble(P, E, p);
+	elif (Q[1] = P[1]) and (Q[2]+P[2] mod p =0) then RETURN([0, 1, 0]);
+	else
+	  l:=(Q[2]-P[2])/(Q[1]-P[1]) mod p;
+	  x:=l^2-P[1]-Q[1] mod p;
+	  [x, l*(P[1]-x)-P[2] mod p, 1];
+	fi;
+	
+       end:
+
+AEcmDouble := proc(P, E, p)
+
+	local l, x;
+	
+	if AEcmIsZero(P) then RETURN(P);
+	elif (P[2]=0) then RETURN([0, 1, 0]);
+	else
+	  l:=(3*P[1]^2+E[1])/(2*P[2]) mod p;
+	  x:=l^2-2*P[1] mod p;
+	  [x, l*(P[1]-x)-P[2] mod p, 1];
+	fi;
+	
+       end:
+
+AEcmIsZero := proc(P) evalb(P[3]=0) end:
+
+########## homogeneous code ##########
+
+# Returns mP on E mod p.
+HEcmMult := proc(m, P, E, p)
+
+	local n, Q, R;
+	
+	n:=m;
+	Q:=copy(P);
+	if irem(n, 2)=1 then R:=copy(P) else R:=[0, 1, 0]; fi;
+	n:=iquo(n, 2);
+	while n > 0
+	do
+	  Q:=HEcmDouble(Q, E, p);
+	  if irem(n, 2)=1 then R:=HEcmAdd(R, Q, E, p); fi;
+	  n:=iquo(n, 2);
+	od;
+	RETURN(R);
+
+end:
+
+HEcmIsZero := proc(P, p) evalb(igcd(P[3], p)=p) end:
+
+HEcmAdd := proc(P, Q, E, p)
+
+	if HEcmIsZero(P, p) then RETURN(Q);
+	elif HEcmIsZero(Q, p) then RETURN(P);
+	else RETURN(HEcmPlus(P, Q, E, p));
+	fi;
+
+end:
+
+HEcmPlus := proc(P, Q, E, p)
+
+	local a, pp, wr2, rr, s, t, u1, u2, s1, s2, w, px, py, pz, qx, qy, qz,
+	      rx, ry, rz;
+
+        a:=E[1];
+	px:=P[1]; py:=P[2]; pz:=P[3];
+	qx:=Q[1]; qy:=Q[2]; qz:=Q[3];
+	s1:=py * qz mod p;
+        s2:=qy * pz mod p;
+        u1:=px * qz mod p;
+        u2:=qx * pz mod p;
+        w:= pz * qz mod p;
+        pp:=u2 - u1 mod p;
+        rr:=s2 - s1 mod p;
+	if((pp = 0) and (rr = 0))then
+	  RETURN(HEcmDouble(P, E, p));
+        else
+	  s:=u1 + u2 mod p;
+	  t:=pp * pp mod p;
+          s:=  s * t mod p;
+          wr2:=rr * rr mod p;
+          wr2:=w  * wr2 mod p;
+          rx:=wr2 - s mod p;
+          rx:=rx * pp mod p;
+          ry:=3 * s - 2 * wr2 mod p;
+          ry:=ry * rr mod p;
+          t:=t * pp mod p;
+          s:=s1 + s2 mod p;
+          s:=s * t mod p;
+	  ry:=(ry - s)/2 mod p;
+          rz:=w * t mod p;
+        fi;
+	RETURN([rx, ry, rz]);
+
+end:
+
+HEcmDouble := proc(P, E, p)
+
+	local a, m, s, t, sm, t2, rx, ry, rz, x, y, z;
+
+	a:=E[1]; x:=P[1]; y:=P[2]; z:=P[3];
+	t:=y * z mod p;
+        s:=t + t mod p;
+	t:=z * z mod p;
+        t:=a * t mod p;
+        m:=x * x mod p;
+        m:=3 * m mod p;
+        t:=t + m mod p;
+        m:=x * y mod p;     
+        rz:=s * s mod p;
+        ry:=y * y mod p;
+        ry:=ry * rz mod p;
+        ry:=2 * ry mod p;
+        rz:=s * rz mod p;
+	sm:=s *  m mod p;
+        sm:=2 * sm mod p;
+        t2:=t *  t mod p;
+        rx:=t2 - 2 * sm mod p;
+        rx:=rx * s mod p;
+        m:=3 * sm - t2 mod p;
+        m:=m * t -ry mod p;
+        ry:=m;
+	RETURN([rx, ry, rz]);
+	
+end:
+
+HEcmNormalize := proc(P, p)
+
+	local iz;
+
+	if P[3] = 0 then RETURN(P);
+	else
+	  iz:=1/P[3] mod p;
+	  RETURN([P[1]*iz mod p, P[2]*iz mod p, 1]);
+	fi;
+
+end:
+
+

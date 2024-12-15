@@ -1,0 +1,61 @@
+From: asussman@vidya.com (Adam Sussman)
+Subject: Preserve query portion of URL in mod_dir.c redirects
+Affects: mod_dir.c
+ChangeLog: Internal redirects which occur in mod_dir.c do not preserve the
+	query portion of a request (the bit after the question mark).  If
+	the directory index is redirected to a script or has an include,
+	the query string is lost before invocation.
+
+*** mod_dir.c.old	Fri Nov 17 13:33:16 1995
+--- mod_dir.c	Tue Dec 12 22:35:14 1995
+***************
+*** 768,774 ****
+      if (r->method_number != M_GET) return NOT_IMPLEMENTED;
+      
+      if (r->uri[0] == '\0' || r->uri[strlen(r->uri)-1] != '/') {
+!         char* ifile = pstrcat (r->pool, r->uri, "/", NULL);
+  	table_set (r->headers_out, "Location",
+  		   construct_url(r->pool, ifile, r->server));
+  	return REDIRECT;
+--- 768,780 ----
+      if (r->method_number != M_GET) return NOT_IMPLEMENTED;
+      
+      if (r->uri[0] == '\0' || r->uri[strlen(r->uri)-1] != '/') {
+! 	char* ifile;
+! 	if (r->args != NULL)
+!         	ifile = pstrcat (r->pool, r->uri, "/",
+! 					"?", r->args, NULL);
+! 	else
+!         	ifile = pstrcat (r->pool, r->uri, "/", NULL);
+! 
+  	table_set (r->headers_out, "Location",
+  		   construct_url(r->pool, ifile, r->server));
+  	return REDIRECT;
+***************
+*** 787,794 ****
+  	request_rec *rr = sub_req_lookup_uri (name_ptr, r);
+             
+  	if (rr->status == 200 && rr->finfo.st_mode != 0) {
+!             char *new_uri = escape_uri(r->pool, rr->uri);
+  	    destroy_sub_req (rr);
+  	    internal_redirect (new_uri, r);
+  	    return OK;
+  	}
+--- 793,807 ----
+  	request_rec *rr = sub_req_lookup_uri (name_ptr, r);
+             
+  	if (rr->status == 200 && rr->finfo.st_mode != 0) {
+! 	    char* new_uri = escape_uri(r->pool, rr->uri);
+  	    destroy_sub_req (rr);
++ 
++ 	    if (r->args!=NULL)
++ 	    {
++ 		char* f = new_uri;
++ 		new_uri = pstrcat(r->pool, f, "?", r->args, NULL);
++ 	    }
++ 	
+  	    internal_redirect (new_uri, r);
+  	    return OK;
+  	}
+
+

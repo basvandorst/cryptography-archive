@@ -1,0 +1,64 @@
+Path: msuinfo!caen!uakari.primate.wisc.edu!samsung!transfer!lectroid!ellisun.sw.stratus.com!cme
+From: cme@ellisun.sw.stratus.com (Carl Ellison)
+Newsgroups: sci.crypt
+Subject: PRNG encryption (was Re: Encrypting with MZT sequences?)
+Message-ID: <10643@lectroid.sw.stratus.com>
+Date: 28 Jan 92 15:54:49 GMT
+References: <10587@lectroid.sw.stratus.com> <1992Jan28.051922.1257rcain@netcom.COM>
+Sender: usenet@lectroid.sw.stratus.com
+Organization: Stratus Computer, Software Engineering
+Lines: 53
+
+In article <1992Jan28.051922.1257rcain@netcom.COM> rcain@netcom.COM (Robert Cain) writes:
+>I know that this has been shown for GF(2) polynomial, or "linear" approaches
+>but has it been shown for the MZT algorithm.  I can't get a copy of the
+>damn paper so I can't speak to its "linear" nature.
+
+It's linear.  The algorithm is a chain addition with carry (add two prior
+results and the prior carry to give the latest result and latest carry).
+
+	(x[i],c[i]) = x[i-a] + x[i-b] + c[i-1]		mod  N
+
+The paper proves cycle lengths for at least one generator (a,b,N).
+
+>It was stated some time back that xor'ing a pseudo random sequence with
+>plain text was vulnerable regardless of the PRNG employed.  Please
+>elaborate.                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+
+This is not quite true.
+
+Assuming a known plaintext attack, XOR yields the PRNG sequence itself.
+The enemy is assumed to know the algorithm.  The question then is whether
+the PRNG algorithm can be inverted to yield the state from the outputs.
+
+Generators like MZT or linear congruential (x'=a*x+b) can be broken easily.
+MZT has a slight complication because the carry bit is never output, but
+it can be deduced.
+
+There has been work on cryptographically secure PRNGs.  There's one of the
+DES modes (CFB?) which uses it as a byte-wide PRNG, for example.
+
+There have been others.  Rivest had a paper in Cryptologia many years ago
+describing a PRNG in which there is an uncertainty of 1 bit about the
+preceeding state (quadratic function) -- so you use two of them, one
+running forward from the start of the message and one running backward from
+the end of the message -- using only 1 bit of output for each iteration of
+each generator and XORing the bits of the message with both PRNG outputs.
+
+There was a more recent paper (2 years old?) I saw describing a PRNG
+provably as hard to break as the knapsack problem.  Roughly:
+
+	use a large modulus M, of size N (500 bits?)
+	pick a small w (1 or 8) -- the number of bits produced per cycle
+
+	have an array of N-w random numbers of size N;
+	have an initial, random "previous output" of N-w bits;
+	add together, mod M, all those numbers in the array for which the
+		corresponding bit in the previous output is a 1;
+	take the w low order bits of the the resulting number of size N
+		as this round's output and save the N-w remainder
+		as the new "previous output".
+
+Of course this gets expensive (eg., with w=1, N=1024) -- but I suspect that
+with PRNGs, TANSTAAFL applies.

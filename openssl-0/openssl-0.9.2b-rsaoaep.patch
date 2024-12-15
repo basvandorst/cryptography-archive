@@ -1,0 +1,61 @@
+
+Official source patch from the OpenSSL project
+==============================================
+
+FILENAME:                     APPLY TO:       CONTACT:             DATE:
+openssl-0.9.2b-rsaoaep.patch  OpenSSL 0.9.2b  openssl@openssl.org  06-Apr-1999
+
+DESCRIPTION:
+The recently added support for RSA Optimal Asymmetric Encryption Padding (RSA
+OAEP, see also RFC 2437 ``PKCS #1: RSA Cryptography Specifications, Version
+2.0'') is only supported in combination with OpenSSL's own RSA implementation.
+With RSA DSI's old RSAref library RSA OAEP is not supported. This leaded to
+problems for US citizens who compile OpenSSL with RSAref (the ``make test''
+step already failed for them because of the RSA OEAP test). The appended patch
+makes sure the RSAref glue code inside OpenSSL recognizes this situation (and
+now explicitly forces an error). Additionally, when RSAref is used the RSA
+OAEP test is skipped under ``make test'', too. NOTICE THAT THIS PATCH IS ONLY
+NEEDED WHEN YOU BUILD OpenSSL WITH THE EXTERNAL RSA IMPLEMENTATION LIBRARY
+RSAref.
+
+PATCH:
+Move this file to the top-level directory of a fresh OpenSSL 0.9.2b source
+tree and run the command ``patch -p0 <openssl-0.9.2b-rsaoaep.patch'' from
+within this directory.
+
+Index: crypto/rsa/rsa_oaep_test.c
+===================================================================
+RCS file: /e/openssl/cvs/openssl/crypto/rsa/rsa_oaep_test.c,v
+retrieving revision 1.4
+diff -u -r1.4 rsa_oaep_test.c
+--- crypto/rsa/rsa_oaep_test.c	1999/03/12 20:41:09	1.4
++++ crypto/rsa/rsa_oaep_test.c	1999/04/06 07:10:42
+@@ -195,6 +195,11 @@
+     int clen = 0;
+     int num;
+ 
++#ifdef RSAref
++    printf("No OAEP support with RSAref - skipping test\n");
++    return 0;
++#endif
++
+     plen = sizeof(ptext_ex) - 1;
+ 
+     for (v = 0; v < 3; v++)
+Index: rsaref/rsaref.c
+===================================================================
+RCS file: /e/openssl/cvs/openssl/rsaref/rsaref.c,v
+retrieving revision 1.2
+diff -u -r1.2 rsaref.c
+--- rsaref/rsaref.c	1999/01/14 18:25:07	1.2
++++ rsaref/rsaref.c	1999/04/06 07:11:32
+@@ -328,6 +328,9 @@
+ 	RSARandomState rnd;
+ 	unsigned char buf[16];
+ 
++	if (padding == RSA_PKCS1_OAEP_PADDING) 
++		goto err;
++
+ 	R_RandomInit(&rnd);
+ 	R_GetRandomBytesNeeded((unsigned int *)&i,&rnd);
+ 	while (i > 0)

@@ -1,0 +1,1285 @@
+#! /bin/sh
+# This is a shell archive, meaning:
+# 1. Remove everything above the #! /bin/sh line.
+# 2. Save the resulting text in a file.
+# 3. Execute the file with /bin/sh (not csh) to create the files:
+#	README
+#	stego.c
+#	iso8859.c
+#	iso8859.h
+#	stego.1
+#	Makefile
+# This archive created: Tue Dec 27 17:55:56 1994
+export PATH; PATH=/bin:$PATH
+echo shar: extracting "'README'" '(1161 characters)'
+if test -f 'README'
+then
+       echo shar: will not over-write existing file "'README'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'README'
+      XTo build and install:
+      X
+      X    1.  Edit the Makefile, specifying your C compiler, the options with
+      X        which it should be run, and the full path name of the default
+      X        dictionary (DEFAULTDICT) and whether this file should be treated
+      X        as a spelling dictionary or a text file (DEFAULTDICTMODE).
+      X
+      X    2.  Build with:
+      X
+      X            make
+      X
+      X    3.  Run the diagnostic test and, if it suceeds, the confidence
+      X        test with:
+      X
+      X            make diagnostic
+      X
+      X            make confidence
+      X
+      X        (The confidence test uses a lot of memory, runs for quite a
+      X        while, and assumes you have the "compress" and "uncompress"
+      X        tools on your system.  It can't be run on all systems.)
+      X
+      X    4.  Copy the binary "stego" to a local binaries directory and the
+      X        manual page "stego.1" to a local manual page directory for pages
+      X        in section 1.
+      X
+      X    5.  Clean up debris left from the build with:
+      X
+      X            make clean
+      X
+      XSee the manual page for application details.  You can read it on-line
+      Xwith "make manpage" or print it with "make printman"
+      X
+      X
+      X                   John Walker -- kelvin@fourmilab.ch
+      X                       <http://www.fourmilab.ch/>
+SHAR_EOF
+if test 1161 -ne "`wc -c < 'README'`"
+then
+       echo shar: error transmitting "'README'" '(should have been 1161 characters)'
+fi
+fi # end of overwriting check
+echo shar: extracting "'stego.c'" '(17559 characters)'
+if test -f 'stego.c'
+then
+       echo shar: will not over-write existing file "'stego.c'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'stego.c'
+      X/* #define TRACE */
+      X/*
+      X
+      X		      S T E G A N O S A U R U S
+      X
+      X	      Slow-moving, extremely large steganography
+      X
+      X	       by John Walker  --  kelvin@fourmilab.ch
+      X	       WWW home page: http://www.fourmilab.ch/
+      X
+      X		This program is in the public domain.
+      X
+      X*/
+      X
+      X#include <stdio.h>
+      X#include <stdlib.h>
+      X#include <ctype.h>
+      X#include <string.h>
+      X#include <malloc.h>
+      X#include <sys/types.h>
+      X#include <sys/time.h>
+      X
+      X#include "iso8859.h"
+      X
+      X/* Default dictionary file.  Use spelling checker dictionary. */
+      X
+      X#ifndef DEFAULT_DICT		      /* Usually specified in Makefile */
+      X#ifdef _SYSTYPE_SVR4
+      X#define DEFAULT_DICT    "/usr/share/lib/dict/words"
+      X#else
+      X#define DEFAULT_DICT    "/usr/dict/words"
+      X#endif
+      X#endif
+      X
+      X#ifndef DEFAULT_DICT_MODE	      /* Usually specified in Makefile */
+      X#define DEFAULT_DICT_MODE   0
+      X#endif
+      X
+      X#define FALSE	 0
+      X#define TRUE	 1
+      X
+      X#define NHASH	 997		      /* Entries in hash table */
+      X#define HASHBN	 25		      /* Initial slots in hash items */
+      X
+      X#define INITWORDS 26000 	      /* Initial word list length */
+      X#define GROWWORDS 1000		      /* Word list growth increment */
+      X
+      X#define JUSTLEN  65		      /* Break output lines at this length */
+      X
+      Xstruct hashitem {		      /* Hash table entry for a word */
+      X    char *hword;		      /* Word string */
+      X    long hnum;			      /* Word index */
+      X};
+      X
+      Xstruct hashent {		      /* Hash table list item */
+      X    int nitems, maxitems;	      /* Number of items and max */
+      X    struct hashitem hitem[HASHBN] ;   /* Items */
+      X};
+      X
+      Xstatic char **words;		      /* Word table for encoding */
+      Xstatic long wordsl = INITWORDS;       /* Length of word list */
+      Xstatic struct hashent **hash;	      /* Hash table for decoding */
+      Xstatic long zbits = 0, zbytes = 0;    /* Bit and byte I/O count */
+      Xstatic char delim[] = " .?!\"`;:,()`[]{}\n\r"; /* Known delimiters */
+      Xstatic char s[4097];		      /* String I/O buffer */
+      Xstatic FILE *fi = stdin;	      /* Input file */
+      Xstatic FILE *fo = stdout;	      /* Output file */
+      Xstatic long nwords = 0; 	      /* Number of words in dictionary */
+      Xstatic int nbits = 1, blib = 0, bbuf = 0,
+      X	   bitsgotten, ateof = FALSE, verbose = FALSE,
+      X	   linelen = JUSTLEN;
+      Xstatic unsigned long next = 987, tnext = 11821; /* Random seeds */
+      X
+      X/* The standard rand() random number generators below aren't very
+      X   good, but we're not relying on them for security in any way.  We
+      X   just use them to shuffle the order of the words chosen from the
+      X   dictionary to prevent repeated sequences in the input file from
+      X   encoding to the same output over and over, and to insert noise
+      X   punctuation with plausible frequency.  Note that they are both used
+      X   with a constant seed and thus produce identical results on
+      X   successive executions. */
+      X
+      X/* RRAND  --  Return next random integer.  Called in situations which must
+      X	      occur precisely at the same moment in encoding and decoding.  */
+      X
+      Xstatic int rrand(void)
+      X{
+      X    next = next * 1103515245L + 12345;
+      X    return (unsigned int) (next / 65536L) % 32768L;
+      X}
+      X
+      X/* TRAND  --  Return next random integer.  Called in situations which are
+      X	      irrelevant to synchronisation between encoding and decoding.  */
+      X
+      Xstatic int trand(void)
+      X{
+      X    tnext = tnext * 1103515245L + 12345;
+      X    return (unsigned int) (tnext / 65536L) % 32768L;
+      X}
+      X
+      X/* GETBIT  --  Get next bit from input file.  Returns EOF
+      X	       if end of file is encountered.  */
+      X
+      Xstatic int getbit(void)
+      X{
+      X    int b;
+      X
+      X    if (ateof) {
+      X	return EOF;
+      X    }
+      X    if (blib <= 0) {
+      X	bbuf = getc(fi);
+      X	if (bbuf == EOF) {
+      X	    return ateof = EOF;
+      X	}
+      X	zbytes++;
+      X	blib = 8;
+      X    }
+      X    b = (bbuf & 0x80) ? 1 : 0;
+      X    bbuf <<= 1;
+      X    blib--;
+      X    zbits++;
+      X    return b;
+      X}
+      X
+      X/*  GETNBITS  --  Get next "nbits" bits from input file.  Returns
+      X		  EOF only if no bits were returned.  If EOF is
+      X		  encountered during input, unread bits are set
+      X		  to 1.  BITSGOTTEN is set to the number of actual
+      X		  (non-EOF-fill) bits read.  */
+      X
+      Xstatic long getnbits(void)
+      X{
+      X    int i, d;
+      X    long b;
+      X
+      X    bitsgotten = 0;
+      X    if (ateof || ((b = getbit()) == EOF)) {
+      X	return EOF;
+      X    }
+      X    bitsgotten++;
+      X    for (i = 1; i < nbits; i++) {
+      X	d = getbit();
+      X	b = (b << 1) | (d & 1);
+      X	if (d != EOF) {
+      X	    bitsgotten++;
+      X	}
+      X    }
+      X    return b;
+      X}
+      X
+      X/*  PUTBIT  --	Output a bit to the output stream.  */
+      X
+      Xstatic void putbit(int bit)
+      X{
+      X    zbits++;
+      X    bbuf = (bbuf << 1) | (!!bit);
+      X    if (++blib >= 8) {
+      X	zbytes++;
+      X	putc((char) bbuf, fo);
+      X	blib = 0;
+      X    }
+      X}
+      X
+      X/*  PUTXBITS  --  Output X bits to output stream.  The first bit output
+      X		  is the 2 ** nbits bit.  */
+      X
+      Xstatic void putxbits(long v, int x)
+      X{
+      X    int i, j;
+      X
+      X    for (i = nbits - 1, j = 0; j < x; i--, j++) {
+      X	putbit(v & (1 << i));
+      X    }
+      X}
+      X
+      X/*  PUTNBITS  --  Output "nbits" bits to output stream.  */
+      X
+      Xstatic void putnbits(long v)
+      X{
+      X    putxbits(v, nbits);
+      X}
+      X
+      X/*  EOS  --  Randomly return end of sentence string with a
+      X	     frequency remotely similar to English text.  */
+      X
+      Xstatic char *eos(void)
+      X{
+      X    int which = (trand() >> 6) & 15;
+      X    static char s[2] = ".";
+      X
+      X    if (which == 2) {
+      X        s[0] = '!';
+      X    } else if (which == 6) { 
+      X        s[0] = '?';
+      X    } else {
+      X        s[0] = '.';
+      X    }
+      X    return s;
+      X}
+      X
+      X/*  HASHCODE  --  Compute hash code for string.  */
+      X
+      Xstatic int hashcode(char *s)
+      X{
+      X    unsigned short h = 0x3757;
+      X
+      X    while (*s) {
+      X	h = ((h << 5) | (h >> 11)) ^ *s++;
+      X    }
+      X
+      X    return (int) (h % NHASH);
+      X}
+      X
+      X/*  FINDWORD  --  Find word in dictionary and return its ordinal
+      X                  number.  Returns -1 if the word isn't in the
+      X		  dictionary.  */
+      X
+      Xstatic long findword(char *s)
+      X{
+      X    int h = hashcode(s);
+      X
+      X    if (hash[h] != NULL) {
+      X	int i;
+      X
+      X	for (i = 0; i < hash[h]->nitems; i++) {
+      X	    if (strcmp(hash[h]->hitem[i].hword, s) == 0) {
+      X		return hash[h]->hitem[i].hnum;
+      X	    }
+      X	}
+      X    }
+      X    return NULL;
+      X}
+      X
+      X/*  NEXTWORD  --  Return next word from dictionary source file, scanning
+      X		  according to the current rules.  */
+      X
+      Xstatic char *nextword(FILE *fp, int softmode)
+      X{
+      X    static char *w = NULL, *w1, *w2;
+      X    static int read = TRUE;
+      X
+      X    while (TRUE) { 
+      X	if (read) {
+      X	    if (fgets(s, sizeof s, fp) == NULL) {
+      X		return NULL;
+      X	    }
+      X	    w = s;
+      X	}
+      X	if (softmode) {
+      X	    while (*w) {
+      X		if (isISOalpha(*w)) {
+      X		    w2 = w;
+      X		    w1 = w + 1;
+      X		    while (*w1) {
+      X			if (!isISOalpha(*w1) && !isdigit(*w1) &&
+      X                            !(*w1 == '\'' && isISOalpha(w1[1]))
+      X			   ) {
+      X			    *w1 = 0;
+      X			    w = w1 + 1;
+      X			    read = FALSE;
+      X			    return w2;
+      X			}
+      X			w1++;
+      X		    }
+      X		    read = TRUE;
+      X		    return w2;
+      X		}
+      X		w++;
+      X	    }
+      X	    read = TRUE;
+      X	    continue;
+      X	} else {
+      X            if (strchr(s, '.') != NULL) {
+      X		continue;
+      X	    }
+      X	    while (!isISOalpha(s[strlen(s) - 1]) && isspace(s[strlen(s) - 1])) {
+      X		s[strlen(s) - 1] = 0;
+      X	    }
+      X	    break;
+      X	}
+      X    }
+      X    return s;
+      X}
+      X
+      X/*  LOADHASH  --  Load hash table from file.  */
+      X
+      Xstatic void loadhash(FILE *fp, int verbose, int makewords, int softmode)
+      X{
+      X    int h;
+      X    char *w;
+      X
+      X    if (makewords) {
+      X	words = (char **) malloc(INITWORDS * sizeof(char *));
+      X    }
+      X    hash = (struct hashent **) calloc(NHASH, sizeof(struct hashent *));
+      X
+      X    while ((w = nextword(fp, softmode)) != NULL) {
+      X	h = hashcode(w);
+      X
+      X	/* Allocate hash item if not already present. */
+      X
+      X	if (hash[h] == NULL) {
+      X	    hash[h] = (struct hashent *) calloc(1, sizeof(struct hashent));
+      X	    hash[h]->nitems = 0;
+      X	    hash[h]->maxitems = HASHBN;
+      X	}
+      X
+      X	/* Expand hash item if necessary. */
+      X
+      X	if (hash[h]->nitems >= hash[h]->maxitems) {
+      X	    hash[h] = (struct hashent *) realloc(hash[h],
+      X			sizeof(struct hashent) +
+      X			(sizeof(struct hashitem) *
+      X			((hash[h]->maxitems - HASHBN) + HASHBN)));
+      X	    hash[h]->maxitems += HASHBN;
+      X	}
+      X
+      X	/* If softmode, silently discard duplicate words. */
+      X
+      X	if (softmode) {
+      X	    int i, dup = FALSE;
+      X
+      X	    for (i = 0; i < hash[h]->nitems; i++) {
+      X		if (strcmp(hash[h]->hitem[i].hword, w) == 0) {
+      X		    dup = TRUE;
+      X		    break;
+      X		}
+      X	    }
+      X	    if (dup) {
+      X		continue;
+      X	    }
+      X	}
+      X
+      X        /* If debug mode is on, make sure word isn't a duplicate, and
+      X           doesn't contain any of our delimiter characters. */
+      X
+      X	if (verbose) {
+      X	    int i;
+      X	    char *d = delim;
+      X
+      X	    for (i = 0; i < hash[h]->nitems; i++) {
+      X		if (strcmp(hash[h]->hitem[i].hword, w) == 0) {
+      X		    fprintf(stderr,
+      X                        "Disaster!!  Word %s duplicated in dictionary.\n",
+      X			w);
+      X		}
+      X	    }
+      X
+      X	    while (*d) {
+      X		if (strchr(w, *d) != NULL) {
+      X		    fprintf(stderr,
+      X                        "Disaster!!  Word \"%s\" contains delimiter character \"%c\".\n",
+      X			w, *d);
+      X		}
+      X		d++;
+      X	    }
+      X
+      X	    d = w;
+      X	    while (*d) {
+      X		if (!isISOalpha(*d) && isspace(*d)) {
+      X		    fprintf(stderr,
+      X                        "Disaster!!  Word \"%s\" contains white space character 0x%X\".\n",
+      X			w, *d & 0xFF);
+      X		}
+      X		d++;
+      X	    }
+      X	}
+      X
+      X	/* Stuff word into hash item and word list. */
+      X
+      X	hash[h]->hitem[hash[h]->nitems].hword = strdup(w);
+      X	if (makewords) {
+      X	    if (nwords >= wordsl) {
+      X		words = (char **) realloc(words, (wordsl += GROWWORDS) *
+      X					     sizeof(char *));
+      X		if (verbose) {
+      X                    fprintf(stderr, "Word list growing to %ld entries.\n",
+      X			    wordsl);
+      X		}
+      X	    }
+      X	    words[nwords] = hash[h]->hitem[hash[h]->nitems].hword;
+      X	}
+      X	hash[h]->hitem[hash[h]->nitems++].hnum = nwords++;
+      X    }
+      X
+      X    while ((2 << nbits) < nwords) {
+      X	nbits++;
+      X    }
+      X
+      X    if (verbose) {
+      X      fprintf(stderr, "%ld words in dictionary: %d bits per word\n",
+      X	  nwords, nbits);
+      X    }
+      X}
+      X
+      X/*  USAGE  --  Print how-to-call information.  */
+      X
+      Xstatic void usage(char *pname)
+      X{
+      X    fprintf(stderr, "%s  --  Encode binary file as words.  Call\n", pname);
+      X    fprintf(stderr, "           with %s [input [output]]\n", pname);
+      X    fprintf(stderr, "\n");
+      X    fprintf(stderr, "   Options:\n");
+      X    fprintf(stderr, "             -D      Decode\n");
+      X    fprintf(stderr, "             -E      Encode\n");
+      X    fprintf(stderr, "             -F file Use <file> as dictionary\n");
+      X    fprintf(stderr, "             -L n    Break lines at n characters (n <= 4096)\n");
+      X    fprintf(stderr, "             -T file Take dictionary from text file\n");
+      X    fprintf(stderr, "             -U      Print this message\n");
+      X    fprintf(stderr, "             -V      Verbose/verify: make extra checks, show all warnings\n");
+      X    fprintf(stderr, "             -W file Write dictionary to file\n");
+      X    fprintf(stderr, "\n");
+      X    fprintf(stderr, "Default dictionary: %s (%s mode)\n", DEFAULT_DICT,
+      X                    DEFAULT_DICT_MODE ? "Text" : "Dictionary");
+      X    fprintf(stderr, "Author: John Walker -- kelvin@fourmilab.ch <http://www.fourmilab.ch/>\n");
+      X}
+      X
+      X/*  Main program.  */
+      X
+      Xint main(int argc, char *argv[])
+      X{
+      X    int i, f = 0, function = 0, textdict = DEFAULT_DICT_MODE;
+      X    long b;
+      X    char *w, *dictout = NULL;
+      X    char *cp, *arg, opt;
+      X    FILE *fp;
+      X    static char *wordlist = DEFAULT_DICT;
+      X#define CheckArg    if (arg == NULL) { fprintf(stderr, "Argument missing for -%c flag.\n", opt); return 2; } else i++
+      X
+      X    for (i = 1; i < argc; i++) {
+      X	cp = argv[i];
+      X        if (*cp == '-' && cp[1]) {
+      X	    opt = *(++cp);
+      X	    if (islower(opt))
+      X		opt = toupper(opt);
+      X	    arg = ((i + 1) < argc) ? argv[i + 1] : NULL;
+      X	    switch (opt) {
+      X
+      X                case 'D':
+      X		    function = -1;
+      X		    break;
+      X
+      X                case 'E':
+      X		    function = 1;
+      X		    break;
+      X
+      X                case 'F':
+      X		    textdict = FALSE;
+      X		    CheckArg;
+      X		    wordlist = arg;
+      X		    break;
+      X
+      X                case 'L':
+      X		    CheckArg;
+      X		    linelen = atoi(arg);
+      X		    if (linelen < 1) {
+      X			linelen = 1;
+      X		    } else if (linelen > ((sizeof s) - 1)) {
+      X			linelen = (sizeof s) - 1;
+      X		    }
+      X		    break;
+      X
+      X                case 'T':
+      X		    textdict = TRUE;
+      X		    CheckArg;
+      X		    wordlist = arg;
+      X		    break;
+      X
+      X                case 'V':
+      X		    verbose = TRUE;
+      X		    break;
+      X
+      X                case 'W':
+      X		    CheckArg;
+      X		    dictout = arg;
+      X		    function = 2;
+      X		    break;
+      X
+      X                case '?':
+      X                case 'U':
+      X		    usage(argv[0]);
+      X		    return 0;
+      X	    }
+      X	} else {
+      X	    switch (f) {
+      X
+      X		/** Warning!  On systems which distinguish text mode and
+      X		    binary I/O (MS-DOS, Macintosh, etc.) the modes in these
+      X		    open statements will have to be made conditional based
+      X		    upon whether an encode or decode is being done, which
+      X                    will have to be specified earlier.  But it's worse: if
+      X		    input or output is from standard input or output, the 
+      X		    mode will have to be changed on the fly, which is
+      X                    generally system and compiler dependent.  'Twasn't me
+      X                    who couldn't conform to Unix CR/LF convention, so 
+      X                    don't ask me to write the code to work around
+      X                    Apple and Microsoft's incompatible standards. **/
+      X
+      X		case 0:
+      X                    if (strcmp(cp, "-") != 0) {
+      X                        if ((fi = fopen(cp, "r")) == NULL) {
+      X                            fprintf(stderr, "Cannot open input file %s\n", cp);
+      X			    return 2;
+      X			}
+      X		    }
+      X		    f++;
+      X		    break;
+      X
+      X		case 1:
+      X                    if (strcmp(cp, "-") != 0) {
+      X                        if ((fo = fopen(cp, "w")) == NULL) {
+      X                            fprintf(stderr, "Cannot open output file %s\n", cp);
+      X			    return 2;
+      X			}
+      X		    }
+      X		    f++;
+      X		    break;
+      X
+      X		default:
+      X                    fprintf(stderr, "Too many file names specified.\n");
+      X		    return 2;
+      X	    }
+      X	}
+      X    }
+      X
+      X    fp = fopen(wordlist, "r");
+      X    if (fp == NULL) {
+      X        fprintf(stderr, "Cannot open word list file %s\n", wordlist);
+      X	return 2;
+      X    }
+      X
+      X    if (function == 1) {
+      X
+      X	/* Encode binary file as stream of words. */
+      X
+      X	int lbitsg = 0;
+      X
+      X	if (verbose || textdict) {
+      X
+      X	    /* In verbose mode, we use load_hash() to load the
+      X	       dictionary.  This uses more memory, but provides a
+      X	       check for duplicate words and delimiter-containing
+      X	       words in the dictionary which the word-list-only
+      X	       code below does not. */
+      X
+      X	    loadhash(fp, verbose, TRUE, textdict);
+      X	} else {
+      X	    words = (char **) malloc(INITWORDS * sizeof(char *));
+      X	    while (fgets(s, sizeof s, fp) != NULL) {
+      X                if (strchr(s, '.') != NULL) {
+      X		    continue;
+      X		}
+      X		while (isspace(s[strlen(s) - 1])) {
+      X		    s[strlen(s) - 1] = 0;
+      X		}
+      X		if (nwords >= wordsl) {
+      X		    words = (char **) realloc(words, (wordsl += GROWWORDS) *
+      X						 sizeof(char *));
+      X		    if (verbose) {
+      X                        fprintf(stderr, "Word list growing to %ld entries.\n",
+      X				wordsl);
+      X		    }
+      X		}
+      X		words[nwords++] = strdup(s);
+      X	    }
+      X
+      X	    while ((2 << nbits) < nwords) {
+      X		nbits++;
+      X	    }
+      X
+      X	    if (verbose) {
+      X              fprintf(stderr, "%ld words in dictionary: %d bits per word\n",
+      X		  nwords, nbits);
+      X	    }
+      X	}
+      X	fclose(fp);
+      X
+      X	/* Start with a random word with an initial capital. */
+      X
+      X	strcpy(s, words[time(NULL) % nwords]);
+      X	if (isISOlower(s[0])) {
+      X	    s[0] = toISOupper(s[0]);
+      X	}
+      X
+      X	while ((b = getnbits()) != EOF) {
+      X	    lbitsg = bitsgotten;
+      X	    w = words[(b + rrand()) % nwords];
+      X#ifdef TRACE
+      X            fprintf(stderr, "%6d %s\n", b, w);
+      X#endif
+      X
+      X	    if (isISOupper(w[0]) && s[0] != 0) {
+      X		if ((trand() & 1) == 0) {
+      X		    strcat(s, eos());
+      X		    if ((trand() & 3) == 0) {
+      X                        fprintf(fo, "%s\n\n", s);
+      X			s[0] = 0;
+      X		    } else {
+      X                        strcat(s, " ");
+      X		    }
+      X		}
+      X	    } else if (s[0] != 0) {
+      X		if ((trand() & 7) == 7) {
+      X                    strcat(s, ",");
+      X		}
+      X	    }
+      X
+      X	    if ((strlen(s) + strlen(w)) > (linelen - 1)) {
+      X		if (strlen(s) > 0) {
+      X                    fprintf(fo, "%s\n", s);
+      X		}
+      X		s[0] = 0;
+      X	    }
+      X	    if (s[0] != 0) {
+      X                strcat(s, " ");
+      X	    }
+      X	    strcat(s, w);
+      X	}
+      X
+      X	/* Tack on a final word which encodes the number of bits
+      X	   of actual data in the last frame. */
+      X
+      X	if (verbose) {
+      X            fprintf(stderr, "%d bits of data in last %d bit frame.\n",
+      X		lbitsg, nbits);
+      X	}
+      X	w = words[(lbitsg + rrand()) % nwords];
+      X#ifdef TRACE
+      X        fprintf(stderr, "%6d %s\n", lbitsg, w);
+      X#endif
+      X	if ((strlen(s) + strlen(w)) > (linelen - 1)) {
+      X	    if (strlen(s) > 0) {
+      X                fprintf(fo, "%s\n", s);
+      X	    }
+      X	    s[0] = 0;
+      X	}
+      X	if (s[0] != 0) {
+      X            strcat(s, " ");
+      X	}
+      X	strcat(s, w);
+      X        fprintf(fo, "%s.\n", s);
+      X
+      X	if (verbose) {
+      X            fprintf(stderr, "Output: %ld bits, %ld bytes.\n", zbits, zbytes);
+      X	}
+      X    } else if (function == -1) {
+      X
+      X	/* Decode word stream into binary file. */
+      X
+      X	int f = 1;
+      X	static long w0 = -1, w1 = -1;
+      X
+      X	loadhash(fp, verbose, FALSE, textdict);
+      X	fclose(fp);
+      X
+      X	while (fgets(s, sizeof s, fi) != NULL) {
+      X	    w = strtok(s, delim);
+      X
+      X	    if (f) {
+      X		/* Burn first random word. */
+      X		f = 0;
+      X		w = strtok(NULL, delim);
+      X	    }
+      X
+      X	    while (w != NULL) {
+      X		b = findword(w);
+      X		if (b == -1) {
+      X		    fprintf(stderr,
+      X                        "Disaster!!  Word \"%s\" not found in dictionary.\n",
+      X			w);
+      X		    if (verbose) {
+      X			b = 0;
+      X		    } else {
+      X			return 2;
+      X		    }
+      X		}
+      X		b -= rrand();
+      X		while (b < 0) {
+      X		    b += nwords;
+      X		}
+      X#ifdef TRACE
+      X                fprintf(stderr, "%6d %s\n", b, w);
+      X#endif
+      X
+      X		/* Now output word, running behind as required to handle
+      X		   special case of last word. */
+      X
+      X		if (w0 != -1) {
+      X		    putnbits(w0);
+      X		}
+      X		w0 = w1;
+      X		w1 = b;
+      X		w = strtok(NULL, delim);
+      X	    }
+      X	}
+      X	if (w0 != -1 && w1 != -1) {
+      X	    if (verbose) {
+      X                fprintf(stderr, "%d bits of data in last %d bit frame.\n",
+      X		    (int) w1, nbits);
+      X	    }
+      X	    putxbits(w0, (int) w1);
+      X	}
+      X	if (verbose) {
+      X            fprintf(stderr, "Input:  %ld bits, %ld bytes.\n", zbits, zbytes);
+      X	}
+      X    } else if (function == 2) {
+      X	long i;
+      X	FILE *dw;
+      X
+      X	loadhash(fp, verbose, TRUE, textdict);
+      X	fclose(fp);
+      X        dw = fopen(dictout, "w");
+      X	if (dw == NULL) {
+      X            fprintf(stderr, "Cannot open output dictionary file %s.\n",
+      X		dictout);
+      X	    return 2;
+      X	}
+      X	for (i = 0; i < nwords; i++) {
+      X            fprintf(dw, "%s\n", words[i]);
+      X	}
+      X	fclose(dw);
+      X    } else {
+      X	usage(argv[0]);
+      X    }
+      X
+      X    fclose(fo);
+      X    return 0;
+      X}
+SHAR_EOF
+if test 17559 -ne "`wc -c < 'stego.c'`"
+then
+       echo shar: error transmitting "'stego.c'" '(should have been 17559 characters)'
+fi
+fi # end of overwriting check
+echo shar: extracting "'iso8859.c'" '(469 characters)'
+if test -f 'iso8859.c'
+then
+       echo shar: will not over-write existing file "'iso8859.c'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'iso8859.c'
+      X
+      X/* ISO 8859/1 Latin-1 alphabetic and upper and lower case bit vector tables. */
+      X
+      Xunsigned char isoalpha[32] = {
+      X    0,0,0,0,0,0,0,0,127,255,255,224,127,255,255,224,0,0,0,0,0,0,0,0,255,255,
+      X    254,255,255,255,254,255
+      X};
+      X
+      Xunsigned char isoupper[32] = {
+      X    0,0,0,0,0,0,0,0,127,255,255,224,0,0,0,0,0,0,0,0,0,0,0,0,255,255,254,254,
+      X    0,0,0,0
+      X};
+      X
+      Xunsigned char isolower[32] = {
+      X    0,0,0,0,0,0,0,0,0,0,0,0,127,255,255,224,0,0,0,0,0,0,0,0,0,0,0,1,255,255,
+      X    254,255
+      X};
+SHAR_EOF
+if test 469 -ne "`wc -c < 'iso8859.c'`"
+then
+       echo shar: error transmitting "'iso8859.c'" '(should have been 469 characters)'
+fi
+fi # end of overwriting check
+echo shar: extracting "'iso8859.h'" '(1034 characters)'
+if test -f 'iso8859.h'
+then
+       echo shar: will not over-write existing file "'iso8859.h'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'iso8859.h'
+      X
+      X/* ISO 8859/1 Latin-1 "ctype" macro replacements. */
+      X
+      Xextern unsigned char isoalpha[32], isoupper[32], isolower[32];
+      X
+      X#define isISOspace(x)   (isascii(((unsigned char) (x))) && isspace(((unsigned char) (x))))
+      X#define isISOalpha(x)   ((isoalpha[(((unsigned char) (x))) / 8] & (0x80 >> ((((unsigned char) (x))) % 8))) != 0)
+      X#define isISOupper(x)   ((isoupper[(((unsigned char) (x))) / 8] & (0x80 >> ((((unsigned char) (x))) % 8))) != 0)
+      X#define isISOlower(x)   ((isolower[(((unsigned char) (x))) / 8] & (0x80 >> ((((unsigned char) (x))) % 8))) != 0)
+      X#define toISOupper(x)   (isISOlower(x) ? (isascii(((unsigned char) (x))) ?  \
+      X                            toupper(x) : (((((unsigned char) (x)) != 0xDF) && \
+      X                            (((unsigned char) (x)) != 0xFF)) ? \
+      X                            (((unsigned char) (x)) - 0x20) : (x))) : (x))
+      X#define toISOlower(x)   (isISOupper(x) ? (isascii(((unsigned char) (x))) ?  \
+      X                            tolower(x) : (((unsigned char) (x)) + 0x20)) \
+      X                            : (x))
+SHAR_EOF
+if test 1034 -ne "`wc -c < 'iso8859.h'`"
+then
+       echo shar: error transmitting "'iso8859.h'" '(should have been 1034 characters)'
+fi
+fi # end of overwriting check
+echo shar: extracting "'stego.1'" '(9746 characters)'
+if test -f 'stego.1'
+then
+       echo shar: will not over-write existing file "'stego.1'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'stego.1'
+      X.TH STEGO 1 "27 DEC 1994"
+      X.UC 4
+      X.SH NAME
+      Xstego \- encode binary file as text
+      X.SH SYNOPSIS
+      X.B stego
+      X.BR \-d | \-e 
+      X.if n .ti +.5i
+      X[
+      X.B \-w
+      X.I outdict
+      X]
+      X[
+      X.B \-f
+      X.I dictfile
+      X]
+      X[
+      X.B \-l
+      X.I linelen
+      X]
+      X.if n .ti +.5i
+      X.if t .ti +0.5i
+      X[
+      X.B \-t
+      X.I textfile
+      X]
+      X[
+      X.B \-u
+      X]
+      X[
+      X.B \-v
+      X]
+      X[
+      X.I infile
+      X[
+      X.I outfile
+      X] ]
+      X.SH DESCRIPTION
+      X.I Steganography
+      Xis the art and science of secret communication, encompassing everything from
+      Xinvisible ink to the latest techniques of spread spectrum
+      Xbroadcasting.  While cryptography focuses on preventing any but the
+      Xintended recipients' begin able to read the content of a message,
+      Xsteganography attempts to hide the very existence of the message,
+      Xusually by disguising it in another, more innocuous, form.
+      X.PP
+      XSteganography has its place even if cryptographic tools are generally
+      Xaccessible and deemed to provide adequate security.  Often, one
+      Xwishes not only to protect messages from interception, but also to
+      Xobscure the fact that one is exchanging encrypted messages at all.
+      XSimply using encryption creates, in the minds of nosy people, a
+      Xpresumption that you're doing something wrong.  Why raise suspicion?
+      X.PP
+      XOne of the very best ways to hide an encrypted message is to embed it
+      Xas low-level noise in an image or sound file: tools exist to
+      Xaccomplish this.  This technique has the disadvantage, however, of
+      Xrequiring large files in order to hide substantial data without making
+      Xthe message-carrying ``noise'' too obvious.  Lossy compression cannot be
+      Xused to reduce the file size, as it would destroy the embedded
+      Xinformation.
+      X.PP
+      X.BR stego ,
+      Xshort for
+      X.IR Steganosaurus ,
+      Xprovides a compromise which transforms any binary file into nonsense
+      Xtext based on a dictionary either given explicitly or built on the fly
+      Xfrom a source document.  Its name, which recalls the large,
+      Xheavily-armoured dinosaur
+      X.IR Stegosaurus ,
+      Xwas chosen because this is a large, slow moving form of steganography
+      Xwhich, nonetheless, is armoured and robust.
+      XThe output of
+      X.B stego
+      Xis nonsense, but statistically resembles text in the language of the
+      Xdictionary supplied.  Although a human reader will instantly recognise it as
+      Xgibberish, statistical sampling employed by eavesdroppers
+      Xto detect encrypted messages may consider it to be unremarkable,
+      Xespecially if a relatively small amount of such text appears within a
+      Xlarger document.  A human snoop would have to read the entire document
+      Xjust to discover that it contained some curious passages.
+      X.PP
+      X.B stego
+      Xmakes no attempt, on its own, to prevent your message from being read.
+      XIt is the equivalent of a book code as large as the
+      Xnumber of unique words in the dictionary; techniques
+      Xexist to break book codes even without obtaining a copy of the code.
+      XCryptographic security should be delegated to a package intended for
+      Xthat purpose such as
+      X.BR pgp .
+      X.B stego
+      Xcan then be applied to the encrypted output, transforming it into
+      Xseemingly innocuous text for transmission.  Text created by
+      X.B stego
+      Xuses only characters in the source dictionary or document (plus
+      Xstandard ASCII punctuation symbols), so it can be sent through media,
+      Xsuch as electronic mail, which cannot transmit binary information.
+      XUnlike files encoded with
+      X.B uuencode
+      Xor
+      X.BR pgp 's
+      X``ASCII armour'' facilities, the result doesn't scream ``suspicious''
+      Xat the (very) first glance.
+      X
+      X.SH OPTIONS
+      X.TP 12
+      X.B \-d
+      XDecode: the input, previously created by
+      X.B stego
+      Xusing the same dictionary, is decoded to recover the original input file.
+      X.TP
+      X.BI \-e
+      XEncode: converts the input into an output text file using the
+      Xspecified (or default) dictionary.
+      X.TP
+      X.BI \-f " dictfile"
+      XThe specified
+      X.I dictfile
+      Xis used as the dictionary to encode the file.  The dictionary is
+      Xassumed to be a text file with one word per line, containing no
+      Xextraneous white space, duplicate words, or punctuation within the
+      Xwords.  To verify that the given dictionary meets these conditions,
+      Xuse the
+      X.B \-v
+      Xoption.  The default dictionary is the system's spelling checker
+      Xdictionary, if any.
+      X.TP
+      X.BI \-l " len"
+      XOutput lines will be broken so as not to exceed
+      X.I len
+      Xcharacters, if possible.
+      X.I len
+      Xmay be any number up to 4096 characters per line, allowing generation
+      Xof output compatible with word processors which write each paragraph
+      Xas a single long line.  The default is 65 characters per line.
+      X.TP
+      X.BI \-t " textfile"
+      XThe named
+      X.I textfile
+      Xis used to build the dictionary used to encode or decode the
+      Xinput file.  The
+      X.I textfile
+      Xis scanned and words, consisting of an ISO 8859/1 alphabetic character
+      Xfollowed by a sequence of ISO alphanumeric characters, are extracted.
+      XDuplicate words are automatically discarded to prevent errors in
+      Xencoding and decoding.
+      X.TP
+      X.B \-u
+      XPrint how-to-call information.
+      X.TP
+      X.B \-v
+      XVerbose diagnostic messages are sent to standard error chronicling
+      Xthe momentous events in
+      X.BR stego 's
+      Xprocessing of the file, and extra verifications of the correctness of
+      Xthe dictionary are made.
+      X.TP
+      X.BI \-w " outdict"
+      XThe dictionary, usually built from a text file specified with the
+      X.B \-t
+      Xoption, is written into the file
+      X.I outdict
+      Xin a form suitable for subsequent use as a dictionary supplied with
+      Xthe
+      X.B \-f
+      Xoption: all duplicate words and words containing punctuation
+      Xcharacters are deleted, and each word appears by itself on a separate
+      Xline.  Preprocessing a text file into dictionary format allows it to
+      Xbe loaded much faster in subsequent runs of
+      X.BR stego .
+      X.SH "APPLICATION NOTES"
+      XThe efficiency of encoding a file as words depends upon the size of
+      Xthe dictionary used and the average length of the words in the dictionary.
+      XWhen used in conjunction with existing compression and encryption
+      Xtools, the resulting growth in file size is usually acceptable.  For
+      Xexample, a random extract of electronic mail 32768 bytes in length
+      Xwas chosen as a test sample.  Compression with
+      X.B gzip
+      Xcompacted the file to 14623 bytes.  It was then encrypted for
+      Xtransmission to a single recipient with
+      X.BR pgp ,
+      Xwhich resulted in a 14797 byte file.  (Even though
+      X.B pgp
+      Xhas its own compression, smaller files usually result from initial
+      Xcompression with
+      X.BR gzip .
+      XIn this case,
+      X.B pgp
+      Xalone would have produced a file of 15194 bytes.)
+      X.PP
+      XUsing a 25144 word spelling dictionary,
+      X.B stego
+      Xtranslated this file into a 71727 byte text file.  Thus, the growth
+      Xfrom the original text file into the encrypted and encoded output was
+      Xa factor of 2.2.  However, re-compressing this output file with
+      X.BR gzip ,
+      Xa perfectly unsuspicious act (since anybody
+      Xcan uncompress such a file), reduces it to 37290 bytes, a growth of
+      Xonly 14% compared to the original text file.
+      X.PP
+      XThe ability to recognise gibberish in text is highly language
+      Xdependent.  Using a dictionary in a language different than the mother
+      Xtongue of the suspected eavesdropper may better disguise a message,
+      Xespecially if you and your correspondent have a credible reason to
+      Xcommunicate in that language.  For example, if you don't speak French,
+      Xtry using the electronic text of Jules Verne's
+      X.I ``De la Terre \o'`a' la Lune''
+      Xavailable from:
+      X.PP
+      X.CE 1
+      X<ftp://ftp.fourmilab.ch/pub/kelvin/etexts/DeLaTerreALaLune.txt>
+      X.PP
+      Xas your
+      X.B \-t
+      Xdictionary file (be sure to strip the header and trailer from this
+      Xfile, leaving only the French language body text).
+      X.SH FILES
+      XIf no
+      X.I infile
+      Xis specified or
+      X.I infile
+      Xis a single ``\-'',
+      X.B stego
+      Xreads from standard input; if no
+      X.I outfile
+      Xis given, or
+      X.I outfile
+      Xis a single ``\-'',
+      Xoutput is sent to standard output.  The input and
+      Xoutput are processed strictly serially; consequently
+      X.B stego
+      Xmay be used in pipelines.
+      X.SH BUGS
+      XDictionaries (default or specified with the
+      X.B \-f
+      Xoption) are not checked for duplicate words or words containing
+      Xforbidden punctuation characters unless the
+      X.B \-v
+      Xoption is present.  It's a good idea to use the
+      X.B \-v
+      Xoption when testing a new dictionary.
+      X.PP
+      XThe default dictionary is the system spelling checker
+      Xdictionary.  This dictionary is
+      X.I not
+      Xstandard across all systems.  Users exchanging information between
+      Xdifferent machines and/or operating system versions should make sure
+      Xthey're using identical dictionary files to encode and decode messages.
+      X.PP
+      XA comprehensive spelling checker dictionary is less than ideal for
+      Xlow-profile steganography.  For example, most spelling
+      Xdictionaries include words such as ``plutonium,'' ``assassinate,''
+      X``heroin,'' and ``CIA,'' which might tend to draw unwanted attention
+      Xtoward your document.  It's better to use a dictionary drawn from a
+      Xtext that doesn't contain such trigger words.
+      X.PP
+      XThe output would be less obviously gibberish if based upon template
+      Xsentence structures filled in by dictionaries which specify parts of
+      Xspeech.  This would, of course, require different templates for each
+      Xnatural language and dictionaries containing part-of-speech
+      Xinformation.  It would also preclude using simple word lists or documents
+      Xas the dictionary.
+      X.PP
+      X.B stego
+      Xaccepts 8-bit ISO 8859/1 characters in dictionary files and, if they are
+      Xpresent, emits them in its encoded output.  If the medium used to
+      Xtransmit the output of
+      X.B stego
+      Xcannot correctly deliver such data, the recipient will be unable to
+      Xreconstruct the original message.  To avoid this problem, either
+      Xencode the data before transmission or use a dictionary which contains
+      Xonly characters which can be transmitted without loss.
+      X.SH "SEE ALSO"
+      X.PD
+      X.BR gzip (1),
+      X.BR pgp (1),
+      X.BR iso_8859_1 (7),
+      X.BR uuencode (1)
+      X.ne 5
+      X.SH AUTHOR
+      X.RS 5
+      X.nf
+      XJohn Walker
+      Xkelvin@fourmilab.ch
+      X<http://www.fourmilab.ch/>
+      X.fi
+      X.RE
+      X.PD
+      X.PP
+      XThis software is in the public domain.
+      XPermission to use, copy, modify, and distribute this software and its
+      Xdocumentation for any purpose and without fee is hereby granted,
+      Xwithout any conditions or restrictions.  This software is provided ``as
+      Xis'' without express or implied warranty.
+SHAR_EOF
+if test 9746 -ne "`wc -c < 'stego.1'`"
+then
+       echo shar: error transmitting "'stego.1'" '(should have been 9746 characters)'
+fi
+fi # end of overwriting check
+echo shar: extracting "'Makefile'" '(2373 characters)'
+if test -f 'Makefile'
+then
+       echo shar: will not over-write existing file "'Makefile'"
+else
+sed 's/^      X//' << \SHAR_EOF > 'Makefile'
+      X
+      XCC = acc
+      X
+      X#   Default dictionary file
+      X#   BSD and early systems
+      XDEFAULTDICT = /usr/dict/words
+      X#   System V uses this (at least on SGI)
+      X#DEFAULTDICT = /usr/share/lib/dict/words
+      X
+      X#   Set DEFAULTDICTMODE to 0 if the above file is in dictionary format
+      X#   (-f mode) or 1 if the a text file is used (-t mode).
+      XDEFAULTDICTMODE = 0
+      X
+      X#   For debug
+      XCCOPTS = -g
+      XSTRIP = true
+      X
+      X#   For production
+      X#CCOPTS = -O
+      X#STRIP = strip
+      X
+      X#   Other tools
+      XLINT = alint
+      XPAGER = less
+      X
+      X#   Directories
+      X
+      XSOURCE = stego.c iso8859.c
+      XOBJS = stego.o iso8859.o
+      XINCLUDES = iso8859.h
+      XMAN = stego.1
+      XMISC = Makefile
+      XNOTES = README
+      X
+      XRELEASE = $(NOTES) $(SOURCE) $(INCLUDES) $(MAN) $(MISC)
+      X
+      XCFLAGS = $(CCOPTS) -DDEFAULT_DICT=\"$(DEFAULTDICT)\" \
+      X		   -DDEFAULT_DICT_MODE=$(DEFAULTDICTMODE)
+      X
+      Xall:	stego
+      X
+      Xstego:	$(OBJS)
+      X	$(CC) $(CFLAGS) $(OBJS) -o stego
+      X	$(STRIP) stego
+      X
+      X#   Run lint on source.  This program is not entirely lint free,
+      X#   as I refuse to obfuscate the source to eliminate the last
+      X#   few irrelevant natters.
+      X
+      Xlint:
+      X	$(LINT) $(SOURCE)
+      X
+      X#   Show manual page on terminal
+      X
+      Xmanpage:
+      X	nroff -man stego.1 | $(PAGER)
+      X
+      X#   Print manual page
+      X
+      Xprintman:
+      X	ptroff -man stego.1
+      X
+      X#   Create shell archive release file
+      X
+      Xshar:
+      X	shar -a $(RELEASE) >stego.shar
+      X
+      X#   Run tests
+      X
+      Xtest:	diagnostic confidence
+      X
+      X#   Diagnostic test
+      X
+      Xdiagnostic: stego
+      X	stego -e -v stego.c testfile.ste
+      X	stego -d -v testfile.ste testfile.std
+      X	@if cmp -s stego.c testfile.std ; \
+      X	then \
+      X	    echo "Passed diagnostic test." ; \
+      X	    rm testfile.ste testfile.std ; \
+      X	else \
+      X	    echo "** Error: decoded file differs from source." ; \
+      X	    ls -l stego.c testfile.std ; \
+      X	    cmp stego.c testfile.std ; \
+      X	fi
+      X
+      X#   Full-on confidence test: Don't expect to understand the output if
+      X#   something goes wrong here!	This takes a *long* time to run and
+      X#   uses lots of memory.
+      X
+      Xconfidence: stego
+      X	stego -t stego.c -w testfile.dic
+      X	time stego -e stego | stego -t stego.c -e | stego -e | compress -c | \
+      X	    stego -e | stego -d | uncompress -c | stego -d | \
+      X	    stego -d -f testfile.dic | stego -d >testfile.std
+      X	@if cmp -s stego testfile.std ; \
+      X	then \
+      X	    echo "Passed confidence test." ; \
+      X	    rm testfile.std testfile.dic ; \
+      X	else \
+      X	    echo "** Error: decoded file differs from source." ; \
+      X	    ls -l stego testfile.std ; \
+      X	    cmp stego testfile.std ; \
+      X	fi
+      X
+      Xclean:
+      X	rm -f *.bak *.o stego testfile.ste testfile.std core *.out *.shar
+SHAR_EOF
+if test 2373 -ne "`wc -c < 'Makefile'`"
+then
+       echo shar: error transmitting "'Makefile'" '(should have been 2373 characters)'
+fi
+fi # end of overwriting check
+#	End of shell archive
+exit 0

@@ -1,0 +1,57 @@
+10 '*** STDINPUT.BAS *** for encipherers MB Feb 90
+20 KEY OFF:CLEAR:DEFINT A-Z
+30 GOTO 9500
+490 :
+500 '   --- and print as ciphertext ---
+510 X$=CT$:CT$="":FOR N=1 TO LEN(X$)
+520  IF  MID$(X$,N,1)=" " THEN GOTO 530 ELSE CT$=CT$+MID$(X$,N,1)
+530 NEXT
+540 FOR N=1 TO LP
+550  PRINT MID$(CT$,N,1);
+560  IF N/5=INT(N/5) THEN PRINT " ";
+570 NEXT
+580 PRINT
+590 GOTO 9260
+4999 STOP
+5000 ' --- misc subs ---
+5010 CLS:PRINT TAB(28)"* RAILFENCE ENCIPHERMENT *" TAB(70) DATE$:PRINT TAB(30)STRING$(22,"-")
+5015 RETURN
+5020 LOCATE 23,1:PRINT SPC(79);:LOCATE 23,28:PRINT "Press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79);:RETURN
+5050 LOCATE 4,1:FOR M=1 TO 3:PRINT SPC(79):NEXT:LOCATE 4,1
+5060 FOR M=1 TO 3:PRINT MID$(PT$,1+(M-1)*78,78):NEXT:RETURN
+5100 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end":LOCATE 23,1:END
+9250 ' --- ENCPRT.STD ---
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,5100,5100:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255           'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT "Railfence encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT OP$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9490 :
+9500 '   ---   start here   ---
+9510 GOSUB 5010
+9520 PRINT:PRINT TAB(33)"By Mike Barlow"
+9560 '   ---   enter data   ---
+9610 GOSUB 20000  'pick up default example XPT$
+9620 LOCATE 7,1:PRINT"ENTER THE PLAIN TEXT (either case, with or w/o spaces, 240 chars max):"
+9630 Y=CSRLIN:LINE INPUT PT$: IF PT$="" THEN PT$=XPT$:LOCATE Y,1:PRINT PT$
+9640 NC=LEN(PT$):FOR N=1 TO NC:IF MID$(PT$,N,1)=" " THEN 9650 ELSE P$=P$+CHR$(ASC(MID$(PT$,N,1)) AND 223)  'remove spaces and force UC
+9650 NEXT:NR=LEN(P$)
+9660 PRINT:PRINT"With spaces removed, there are"NR"characters in the text:":PRINT P$
+9790 GOSUB 5020:GOTO 100
+9798 :
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+20000 '                    ----  examples ----
+20010 XPT$="Civil War field cipher": XNR=3: XOS=0 'ACA&U p48
+20100 RETURN
+64000 SAVE"stdinput.bas",A
+65000 SAVE"railf.enc",A
+

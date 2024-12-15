@@ -1,0 +1,167 @@
+                                                         July 1, 1990
+
+INTRODUCTION:
+
+This is a quick-and-dirty package for the generation of "strong"
+pseudorandom numbers using the quadratic residue algorithm published by
+Blum, Blum, and Shub [1].  It is "strong" in that it passes all
+polynomial-time statistical tests; informally speaking, there is no
+effective algorithm which, in polynomial time, will distinguish the
+output of this generator from that produced by a truly random source.
+
+The goal of the package is to allow experimentation with the generator;
+to that end, simplicity has been favored over speed.  Thus the software
+constructed as a set of subroutines for use with the UNIX bignum
+calculator "bc" (bc is unfortunately not a champion of runtime efficiency).
+
+The generator uses two "keys" and a "seed".  Each of the two keys is a
+large "Blum" prime number; that is, a prime which is congruent to 3, mod 4.
+[If you divide the number by 4, it yields a remainder of 3].  A script
+is provided for creating and/or verifying keys: Create_Key_Prime.
+
+The seed must also be in a specific form: it must be a quadratic residue
+modulo (the product of the keys).  Another script is provided for
+finding suitable seeds: Create_Seed.
+
+The security of the pseudorandom generator, and the runtime of the program
+implementing it, is dependent upon the size of the two keys.  The larger
+are the keys, the more secure (and slower) the generator.  In their
+landmark paper Rivest, Shamir, and Adleman [2] recommend that the product
+of the two keys should be about 200 decimal digits long (or longer).
+
+Preliminary experiments have been performed with keys about 100 decimal
+digits each (product is about 200 decimal digits).  If we let N stand
+for the product of the key primes, the algoritm generates about log2(log2(N))
+bits per iteration.  So when N is 200 digits long, the generator produces
+9 bits per iteration.  This is due to a theoretical refinement published
+by Alexi et al [3]; prior to that, it was felt that the generator should
+only produce a single bit per iteration.
+
+Experiments were performed on an RC3240 deskside computer.  When the
+product of the keys was 200 digits, this software generated pseudorandom
+bits at the rate of 64 bits/second.  The software was also tried on
+the SPARCstation 1 machine.  Unfortunately this machine has somewhat slower
+integer multiplication (which is a frequent operation in the generator),
+so its performance was lower: 24 bits/second.  Although not blindingly
+fast, this is still adequate for many purposes,esepcially including
+research and/or verification of higher-speed implementations in either
+software or hardware.
+
+(State of the art for special-purpose "RSA microcomputer" chips is
+reportedly around 9000 bits/second, not uncomfortably larger than
+this [unoptimized] software approach).
+
+
+HOW TO USE THIS SOFTWARE:
+
+
+ 0.   Clean up the directory and establish the required file permissions
+      by doing a "make clean".  In all likelihood, make will tell you that
+      it was unable to find any temporary files called "*ugh*" to delete.
+
+
+
+ 1.   Select two large prime numbers as your secret "keys".  Supplied
+      with this package are a few precomputed large prime numbers, but
+      you will probably want to calculate new, secret primes of your own.
+
+      BEWARE: it takes a very large amount of computer time to find
+              these large prime numbers.  Fortunately, once found, they
+              are used repeatedly (as the "keys"), so you can compute
+              them once [say, over the weekend] and that's that.  The
+              runtime is quite variable; here are the runtimes used by
+              an RC3240 to compute the primes supplied in this s/w:
+
+                          99 digit Blum prime    773 seconds
+                          99 digit Blum prime   3357 seconds
+                         100 digit Blum prime    915 seconds
+                         101 digit Blum prime    859 seconds
+                         102 digit Blum prime   2601 seconds
+                         104 digit Blum prime   1125 seconds
+                         107 digit Blum prime   2003 seconds
+
+      Make an initial guess of a prime number and place it in a file, for
+      example "guessfile".
+           % cat - >guessfile
+           37
+           ^D
+           %
+      (Naturally we would prefer the guess to be a 100 digit number but 
+       the above is only a simple example.)
+
+      Now execute the CShell script that finds Blum primes.  Assuming that
+      you want a prime of about 103 decimal digits in length:
+
+           % nohup Create_Key_Prime -d 103  guessfile  >My_key_P &
+
+      (We use "nohup" so we can log out later and keep the process alive).
+
+      Of course, you will need to do this a second time for your second
+      Blum integer key ("My_key_Q"), *using*a*different*guess* (!!).  If
+      you were to just run Create_Key_Prime again, using the same guess
+      and asking for the same number of digits again, you'd get the same
+      Blum prime as before -- not what you want.
+
+
+
+ 2.   Select a "seed" for the pseudorandom number generator.  This is
+      effectively a starting-place for the sequence of pseudorandom
+      numbers produced by your chosen key primes.  
+
+      We supply an "initializer" integer which is then converted into an
+      acceptable quadratic-residue seed.  Note that the pseudorandom number
+      generator is deterministic [this is the "paradox" of pseudo-random
+      number generators which prompted John von Neumann to quip that users
+      of them are in a state of sin].  Given (key1, key2, seed), the
+      generator computes the same stream of output bits, each and every
+      time it is invoked (with the same key1, key2, and seed).  Thus, to vary
+      the generator output, you vary the seed.  This is exactly analagous
+      to the operation of other, non-secure random number generators such
+      as the linear congruential generators, additive generators, etc.
+
+      The "initializer" integer is converted into a quadratic-residue seed
+      using a CShell script.  This script is relatively quick: it runs in
+      less than ten seconds:
+           % Create_Seed  My_key_P  My_key_Q  initializerfile  >My_seed
+
+
+
+ 3.   Run the pseudorandom number generator.  Assuming that you desire
+      450 bits of random output,
+           % Generate_Bits -n 450  My_key_P  My_key_Q  My_seed  >OutputBits
+
+      As mentioned above, this procedure is relatively quick: it operates
+      at 60 bits/second or so, when the keys are each about 100 decimal
+      digits.
+
+
+
+FILES NEEDED:
+
+      This preliminary version uses a very crude file structure: it assumes
+      all necessary files are located in the same directory where the
+      software is being executed.
+
+      It also assumes the existence of the UNIX "bc" bignum calculator.
+
+==============================================================================
+Although some small effort has been expended to verify the correctness of
+this package, no warranty is expressed or implied.  Use at your own risk.
+You get what you pay for, and you paid nothing.
+
+It has been tested and successfully run on an RC3240 and a SPARCstation 1.
+==============================================================================
+
+REFERENCES:
+
+[1] Blum, Blum, and Shub, "Comparison of Two Pseudorandom Number Generators",
+    in Chaum, D. et al, _Advances_in_Cryptology:_Proceedings_Crypto_82_,
+    pp. 61-79, Plenum Press, 1983.
+
+[2] Rivest, Shamir, and Adleman, "A Method for Obtaining Digital Signatures
+    and Public-Key Cryptosystems", MIT Lab for Computer Science, Technical
+    Memo number LCS/TM-82, April 1977.
+
+[3] Alexi, Chorr, Goldreich, and Schnorr, "RSA/Rabin bits are 1/2 + 
+    1/poly(log N) Secure", IEEE Symposium on the Foundations of Computer
+    Science, volume 25, pp. 449-457, 1984.

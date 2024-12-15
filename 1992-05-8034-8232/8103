@@ -1,0 +1,69 @@
+Path: msuinfo!caen!sol.ctr.columbia.edu!usc!wupost!waikato.ac.nz!aukuni.ac.nz!kcbbs!kc
+Newsgroups: sci.crypt
+Subject: Re: PEM exposes DES initialization vecto
+Message-ID: <26384.1319223941@kcbbs.gen.nz>
+From: peterg@kcbbs.gen.nz (Peter Gutmann)
+Date: 11 May 92 07:19:44 GMT
+Organization: Kappa Crucis Unix BBS, Auckland, New Zealand
+Lines: 60
+
+In message <2a0bf2a3@windsor.a92104.sai.com> a hypnotically-implanted
+    suggestion made Mark Windsor (mark@windsor.a92104.sai.com) write:
+
+>The RSA-encrypted DES key, and the initialization vector, are put into
+>headers at the front of the message so that it can be decrypted.  The
+>initialization vector is in cleartext form.
+>
+>Does exposing the IV weaken the encryption?  It seems to me that the IV
+>could have been packed into the RSA packet along with the DES key and
+>RSA-encrypted in one step.  Would doing this add any security, or doesn't
+>it matter that the IV is exposed?
+
+I don't think it should matter - remember that the use of the IV is to hide
+patterns in the data (in the same way that CBC or CFB mode is preferred
+over ECB mode).  However if the IV is always the same initially, then the
+first block of two identical messages encrypted with the same password will
+be the same, allowing traffic analysis.  Referring to a recent posting I
+made on CFB mode:
+
+>Take the following example, two files '1' and '2':
+>
+>1: Deposit $1000 in my account.
+>2: Deposit $2000 in my account.
+>
+>When encrypted with NSEA in CFB mode and nonrandom IV (I just happened to
+>have it handy :-) the results are the ciphertext files 'c1' and 'c2':
+>
+>            D  e  p  o  s  i  t      $  1  0  0  0     i  n
+>               m  y     a  c  c  o   u  n  t  .
+>
+>c1: 000000: 97 A6 71 8C 0F 37 BA 13  A6 5E EE 86 64 31 C0 F6
+>    000010: D1 54 CD AC DA 74 EB 97  B3 C2 CB CD 06
+>
+>c2: 000000: 97 A6 71 8C 0F 37 BA 13  A6 5D EE 86 64 31 C0 F6
+>    000010: 55 3A EF C3 E3 49 3F 43  E2 71 BB E8 9C
+>
+
+Now if you knew '1' and 'c1' you could make a pretty good guess at the
+contents of 'c2'.  Again from that posting:
+
+>This weakness occurs if the same IV is always used, and is avoided by
+>using a random IV for each encryption.   The avalanche effect of the
+>cipher thus ensures that even the first block is completely different.
+
+In CBC mode, the encryption works as follows (pN is plaintext block N, cN
+is ciphertext block N):
+
+    IV (+) p1 -> [DES] -> c1
+
+    c1 (+) p2 -> [DES] -> c2
+
+Note that c1, c2, ... are known to an attacker.  Now call the IV 'c0'.
+Does it matter if the attacker knows c0?  Not really - if they don't know
+c0 they can just use c1, c2, ... for an attack.  Hiding c0 is of little
+use - it's main purpose is to mask patterns/stop traffic analysis.
+
+Peter.
+--
+    pgut1@cs.aukuni.ac.nz || peterg@kcbbs.gen.nz || peter@nacjack.gen.nz
+                           (In order of preference)

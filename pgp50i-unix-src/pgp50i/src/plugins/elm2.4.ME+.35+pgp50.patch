@@ -1,0 +1,316 @@
+diff -ru elm2.4.ME+.34/melib/pgp_decode.c elm2.4.ME+.34-pgp50/melib/pgp_decode.c
+--- elm2.4.ME+.34/melib/pgp_decode.c    Sun Aug  3 02:27:52 1997
++++ elm2.4.ME+.34-pgp50/melib/pgp_decode.c      Mon Aug 18 00:40:56 1997
+@@ -173,10 +173,7 @@
+     else
+       cmd[0] = '\0';
+     strfcat(cmd,pgp_path, sizeof cmd);
+-    strfcat(cmd," -f +verbose=0", sizeof cmd);
+-    strfcat(cmd, " +KEEPBINARY=OFF", sizeof cmd);
+-    if (usepass || opts == PGP_SIGNED_MESSAGE)
+-      strfcat(cmd, " +batchmode", sizeof cmd);
++    strfcat(cmd,"v -f +verbose=0 +batchmode", sizeof cmd);
+     _exit (system_call(cmd,0));        
+   }
+   
+diff -ru elm2.4.ME+.34/src/pgp.c elm2.4.ME+.34-pgp50/src/pgp.c
+--- elm2.4.ME+.34/src/pgp.c     Sun Aug  3 02:27:52 1997
++++ elm2.4.ME+.34-pgp50/src/pgp.c       Mon Aug 18 00:32:55 1997
+@@ -21,8 +21,10 @@
+ char pgp_passphrase[STRING];
+ int pgp_expires;
+ 
+-/* the column in which the userid begins in the 'pgp -kv' command output */
+-#define PGP_USERID_OFFSET 30
++/* the column in which the userid begins in the 'pgpk -l' command output */
++/* 4 is a hack so that we get the leading space:*/
++#define PGP_USERID_OFFSET 4
++#define PGP_KEYID_OFFSET  10
+ 
+ 
+ /* 'n' is the key we are looking for.  'k' is the list of possible matches
+@@ -68,6 +70,8 @@
+   char buf[STRING], address[STRING], *c, **keys=0, *pc, userpart[STRING];
+   int i=0, keys_len=0, keys_max=0, return_val=0, start=0;
+   FILE *p;
++  char pgpk_path[SLEN], keyid[11] = "\0";
++;
+ 
+   if (!name || !target)
+     return(-1);
+@@ -120,8 +124,10 @@
+       dup (fd[1]);
+       close (fd[1]);
+ 
+-      execl(pgp_path, 
+-           pgp_path,"+verbose=0", "+language=en", "-kv", c, (char *)0);
++      sprintf(pgpk_path, "%sk", pgp_path);
++      execl(pgpk_path, 
++           pgpk_path,"+verbose=0", "+language=en", "+batchmode", 
++           "-l", c, (char *)0);
+ 
+       tmp = errno;
+       perror(pgp_path);
+@@ -138,29 +144,58 @@
+ 
+     while (fgets(buf, STRING, p) != NULL) {
+       /* see if we've reached the beginning of the key listings... */
+-      if (!start && strncmp(buf, "pub", 3)==0)
++      if (!start && (strncmp(buf, "pub", 3)==0) || 
++         (strncmp(buf, "sec", 3) == 0))
+          start=1;
+ 
+       if (start) {
+        int Len;
+ 
+-       /* if we've read all the keys, stop here */
+-       if (buf[0] != 'p' && buf[0] != ' ')
+-         break;
+-
+-       if (keys_len == keys_max)
+-         keys = (char**)DynamicArray(keys, sizeof(char*), &keys_max, 5);
+-       
+-       pc = rindex(buf, '\n');
+-       if (!pc) /* this shouldn't happen! */
+-         continue;
+-       *pc = '\0';
++       /*Things we're interested in:  "pub", "sec", "uid".
++        *We're not interested in anything else, and especially we're
++        *not interested in "pub@" or "sec@", which are disabled, or
++        *"ret", which are revoked.
++        */
++       if(strncmp(buf, "pub", 3) == 0 ||
++          strncmp(buf, "sec", 3) == 0) {
++         if(buf[3] != '@') {
++           pc = buf + PGP_KEYID_OFFSET;
++           strcpy(keyid, "0x");
++           memcpy(&keyid[2], pc, 8);
++           keyid[10] = '\0';
++         }
++         else {
++           keyid[0] = '\0';
++         }
++       }
++       else {
++         if(keyid[0]) {
++           if(strncmp(buf, "uid", 3) == 0) {
++             
++             if (keys_len == keys_max)
++               keys = (char**)DynamicArray(keys, sizeof(char*), &keys_max, 5);
+        
+-       pc = buf + PGP_USERID_OFFSET;
+-       Len = strlen(pc)+1;
+-       keys[keys_len] = (char*)safe_malloc(Len);
+-       strfcpy(keys[keys_len], pc, Len);
+-       ++keys_len;
++             pc = rindex(buf, '\n');
++             if (!pc) /* this shouldn't happen! */
++               continue;
++             *pc = '\0';
++             
++             pc = buf + PGP_USERID_OFFSET;
++             Len = strlen(pc)+sizeof(keyid)+1;
++             keys[keys_len] = (char*)safe_malloc(Len);
++             strfcpy(keys[keys_len], keyid, sizeof(keyid));
++             strfcat(keys[keys_len], pc, Len);
++             ++keys_len;
++           }
++           else {
++             if(strncmp(buf, "sub", 3) != 0) {
++               keyid[0] = '\0';
++             }
++           }
++         }
++         else {
++         }
++       }
+       }
+     }
+     pclose(p);
+@@ -181,12 +216,13 @@
+     }
+   }
+ 
+-  if (keys_len == 1) /* perfect match! */
+-    get_address_from(keys[0], target);
++  if (keys_len == 1) /* perfect match! */ {
++    strfcpy(target, keys[0], 11); /*Get the keyID from the front*/
++  }
+   else if (keys_len > 1) { /* ask the user which, if any, s/he meant */
+     c = PGPSelectKey(name, keys, keys_len);
+-    if (c)
+-      get_address_from(c, target);
++    if (c) 
++      strfcpy(target, c, 11); /*Get the keyID from the front of the string*/
+     else {
+       target[0] = '\0';
+       return_val = -1;
+@@ -300,22 +336,25 @@
+     strfcat(buf, buf2, sizeof buf);
+   }
+   strfcat(buf, pgp_path, sizeof buf);
++  if (opts & PGP_MESSAGE)
++    strfcat(buf, "e", sizeof buf);
++  else
++    if (opts & PGP_SIGNED_MESSAGE)
++      strfcat(buf, "s", sizeof buf);
++
+   if (metoo)
+     strfcat(buf, " +encrypttoself=on", sizeof buf);
+   if (usepgppass)
+     strfcat(buf, " +batchmode", sizeof buf);
+   if (opts & PGP_SIGNED_MESSAGE)
+     strfcat(buf," +clearsig=on", sizeof buf);
++  if ((opts & PGP_SIGNED_MESSAGE) && (opts & PGP_MESSAGE))
++    strfcat(buf, " -s", sizeof buf);
+ 
+-  strfcat(buf, " +verbose=0 -atw", sizeof buf);
+-
+-  if (opts & PGP_SIGNED_MESSAGE)
+-    strfcat(buf, "s", sizeof buf);
+-  if (opts & PGP_MESSAGE)
+-    strfcat(buf, "e", sizeof buf);
++  strfcat(buf, " +verbose=0 -at +force", sizeof buf);
+ 
+   if (pgp_askpgpsig && (opts & PGP_SIGNED_MESSAGE)) {
+-    strfcat(buf, "u ", sizeof buf);
++    strfcat(buf, "-u ", sizeof buf);
+     strfcat(buf, sig, sizeof buf);
+   }
+ 
+@@ -326,7 +365,7 @@
+      no-no's */
+   if (opts & PGP_MESSAGE)
+     for (i=0; i<id_len; i++) {
+-      strfcat(buf, " '", sizeof buf);
++      strfcat(buf, " -r '", sizeof buf);
+       strfcat(buf, id_array[i], sizeof buf);
+       strfcat(buf, "'", sizeof buf);
+     }
+@@ -350,7 +389,7 @@
+     Raw(ON);
+   
+   if (st == 0) { /* pgp returns zero upon success */
+-    /* copy the file into it's final destination */
++    /* copy the file into its final destination */
+     sprintf(buf, "%s.asc", filename);
+ #ifdef RENAME
+     if (rename(buf, filename) < 0) {
+@@ -420,6 +459,7 @@
+   char userid[SLEN], pgpkey[SLEN], tmpfil[STRING], cmd[STRING], subj[STRING];
+   int status;
+   int need_redraw = FALSE;
++  char buf[VERY_LONG_STRING];
+ 
+   userid[0] = '\0';
+   pgpkey[0] = '\0';
+@@ -447,66 +487,34 @@
+     return(TRUE);
+   }
+   sprintf(tmpfil, "%selm.%d", temp_dir, getpid());
+-  
+-  argv[argc++] = pgp_path;
+-  argv[argc++] = "+verbose=0";
+-  argv[argc++] = "-kxa";
+-  argv[argc++] = pgpkey;
+-  argv[argc++] = tmpfil;
+-  argv[argc++] = NULL;
+ 
+-  ret = start_run(&RS,SY_NOTTY,argv,-1,-1);
++  *buf = '\0';
++  strfcat(buf, pgp_path, sizeof buf);
++  strfcat(buf, "k +force +batchmode -x ", sizeof buf);
++  strfcat(buf, pgpkey, sizeof buf);
++  strfcat(buf, " -o ", sizeof buf);
++  strfcat(buf, tmpfil, sizeof buf);
++
++  error("Running PGP...");
++  if(!system_call(buf, 0)) {
++    error("Running PGP... Done.");
++    strcpy(included_file, tmpfil);
++    /* set the default subject for this message */
++    sprintf(subj, "PGP public key for %s", pgpkey);
++    
++    pgp_status = PGP_PUBLIC_KEY;
++    
++    /* Now send the message off! */
++    send_msg ("", "", subj, 0, 0);
++    
++    unlink (included_file); /* make sure to clean up. */
++    included_file[0] = '\0';
++    pgp_status = 0; /* reset */
++  }
++  else {
++    error ("pgp returned a non-zero value!");
++  }
+ 
+-  if (ret) {
+-    int exit_code;
+-    ret = run_already_done(&RS,&exit_code);
+-    if (0 == ret) {
+-      error("Running PGP...");
+-      fflush(stdout);
+-      ret = wait_end(&RS,&exit_code);
+-    }
+-    if (ret < 0) {
+-      error1("%.30s fail: Signal?",argv[0]);
+-      return TRUE;
+-    } else if (ret > 0) {
+-      if (RS.errno)
+-       error2("Failed: %.30s: %.40s",
+-              argv[0],error_description(RS.errno));
+-      else if (exit_code) {
+-       char buffer[90];
+-       sprintf(buffer,"pgp returned error status %d",exit_code);
+-       error(buffer);
+-       return TRUE;
+-      } else {
+-       error("Running PGP... Done.");
+-       sprintf(included_file, "%s.asc", tmpfil);
+-      }
+-    } else {
+-      error2("%.30s lost: %.40s",
+-                    argv[0],error_description(RS.errno));
+-      return TRUE;
+-    }
+-  
+-  } else {
+-    if (RS.errno)
+-      error2("Failed: %.30s: %.40s",
+-            argv[0],error_description(RS.errno));
+-    else
+-      error1("Can't start %.30s",argv[0]);
+-    return TRUE;
+-  }
+-
+-  /* set the default subject for this message */
+-  sprintf(subj, "PGP public key for %s", pgpkey);
+-
+-  pgp_status = PGP_PUBLIC_KEY;
+-
+-  /* Now send the message off! */
+-  send_msg ("", "", subj, 0, 0);
+-
+-  unlink (included_file); /* make sure to clean up. */
+-  included_file[0] = '\0';
+-  pgp_status = 0; /* reset */
+   return(TRUE);
+ }
+ 
+@@ -533,7 +541,7 @@
+   fclose(fpout);
+ 
+   argv[argc++] = pgp_path;
+-  argv[argc++] = "+verbose=0";
++  argv[argc++] = "k +verbose=0 +batchmode -a ";
+   argv[argc++] = tempfile;
+   argv[argc++] = NULL;
+   
+@@ -542,7 +550,7 @@
+     int exit_code;
+     wait_end(&RS,&exit_code);
+   }
+-  unlink(tempfile);
++  /*  unlink(tempfile);*/
+   return TRUE;
+ }

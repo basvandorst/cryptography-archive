@@ -1,0 +1,293 @@
+                                                                22 October 1995
+
+                               Announcement
+                            by James L. Massey     
+                         of a 40-Bit KEY SCHEDULE
+                          for the cipher SAFER
+                   (Secure And Fast Encryption Routine).
+
+        In response to requests, we have designed a version of SAFER
+(Secure And Fast Encryption Routine) to accomodate a 40-bit user-selected
+key and to encrypt particularly fast.  Before describing this new cipher,
+which we will call SAFER SK-40, we will briefly review its antecedents
+SAFER K-64, SAFER K-128, SAFER SK-64 and SAFER SK-128.  As with all its
+antecedents, SAFER SK-40 is a non-proprietary cipher that to the best of
+our knowledge is free for use by anyone without violation of any
+proprietary rights.
+
+        The original version of "SAFER" was called SAFER K-64 to emphasize
+that the user-selected key was 64 bits long.  This cipher was introduced in
+the following paper:
+
+J. L. Massey, "SAFER K-64: A Byte-Oriented Block-Ciphering Algorithm," pp.
+1-17 in Fast Software Encryption (Ed. R. Anderson), Lecture Notes in
+Computer Science No. 809.  New York: Springer, 1994.
+        
+        A 128 bit key schedule for SAFER, which has the desirable property
+that, when the the two halves of the key are identical, the subkeys
+produced by this key schedule coincide with those produced by the key
+schedule for SAFER K-64, was proposed by the Special Projects Team of the
+Ministry of Home Affairs, Singapore.  The designers of this key schedule
+relinquished all proprietary rights to this key schedule, which we then
+accepted as the key schedule for SAFER K-128.  Except for the different
+subkeys produced by their key schedules, SAFER K-64 and SAFER K-128 encrypt
+in exactly the same way.  SAFER K-128 was announced in the following paper:
+
+J. L. Massey, "SAFER K-64: One Year Later," presented at the K. U. Leuven
+Workshop on Algorithms, Leuven, Belgium, 14-16 December, 1994, and to
+appear in Fast Software Encryption II (Ed. B. Preneel), to be published by
+Springer-Verlag in the Lecture Notes in Computer Science Series, 1995.
+
+        Lars Knudsen suggested a modification to the earlier key schedules
+for SAFER that removes certain weaknesses found by himself and by Sean
+Murphy.
+Knudsen gave us his written assurance that he relinquishes all proprietary
+rights to these modified key schedules and we then adopted them for use
+with SAFER.  We called the ciphers with the new key schedules SAFER SK-64
+and SAFER SK-128, where the "SK" stands for "Strengthened Key schedule".   
+These ciphers were announced last month by us in an e-mail announcement
+[please request this announcement if you have not already received it.
+
+
+        SAFER SK-40 differs from its predecessors only in the key schedule.
+ The user chooses bytes K1(1), K1(2), K1(3), K1(4) and K1(5) of the
+first-round key K1.  This first-round key is expanded to nine-bytes by
+computing the following four redundant bytes:
+K1(6) = K1(1) xor K1(3) xor 129.
+K1(7) = K1(1) xor K1(4) xor K1(5) xor 66.
+K1(8) = K1(2) xor K1(3) xor K1(5) xor 36.
+K1(9) = K1(2) xor K1(4) xor 24.
+These rules have the desirable effect of causing two different five-byte
+user-selected keys to expand to nine-byte keys that differ in at least
+three bytes.  As in the SK-64 key schedule, there is a further rotation
+within bytes of the nine-byte key before it is added to a "key bias" to
+produce a round subkey.  The eight bytes selected for addition to the "key
+bias" are selected from the nine-byte expanded key on a rotating basis,
+i.e., first bytes 1,2,3,4,5,6,7,8 are used, then bytes 2,3,4,5,6,7,8,9 are
+used, then bytes 3,4,5,6,7,8,9,1 are used, etc.
+
+        Extensive differential cryptanalysis of SAFER suggests that 5
+rounds are enough to guarantee that the attack by differential
+cryptanalysis would require as many encryptions as an exhaustive key search
+on a 40-bit key, i.e., about 2^{40} encryptions would be required, but that
+4 rounds might not guarantee this.  Thus, we have chosen 5 rounds for SAFER
+SK-40.
+ 
+        Attached to this announcement are TURBO PASCAL programs for SAFER
+SK-40, together with examples of encryption to assist interested persons in
+checking their own implementations of these ciphers.  These TURBO PASCAL
+programs constitute the official description of the cipher SAFER SK-40.
+                 TURBO PASCAL PROGRAM FOR SAFER SK-40
+
+PROGRAM SAFER_SK40_cipher;
+
+VAR a1, a2, a3, a4, a5, a6, a7, a8, b1, b2, b3, b4, b5, b6,
+    b7, b8: byte;
+    k: ARRAY[1..11,1..8] OF byte; k1: ARRAY[1..9] OF byte;
+    logtab, exptab: ARRAY[0..255] OF integer; i, j, n, flag: integer;
+
+PROCEDURE mat1(VAR a1, a2, b1, b2: byte);
+BEGIN
+  b2:= a1 + a2;
+  b1:= b2 + a1;
+END;
+
+PROCEDURE invmat1(VAR a1, a2, b1, b2: byte);
+BEGIN
+  b1:= a1 - a2;
+  b2:= -b1 + a2;
+END;
+
+BEGIN
+  {This portion of the program computes the powers of the primitive
+   element 45 of the finite field GF(257) and stores these numbers
+   in the table "exptab".  The corresponding logarithms to the base
+   45 are stored in the table "logtab".}
+  logtab[1]:= 0;
+  exptab[0]:= 1;
+  FOR i:= 1 TO 255 DO
+  BEGIN
+    exptab[i]:= (45 * exptab[i - 1]) mod 257;
+    IF exptab[i] < 256 THEN logtab[exptab[i]]:= i;
+  END;
+  exptab[128]:= 0;
+  logtab[0]:= 128;
+
+  flag:= 0;
+  REPEAT
+    BEGIN
+      writeln;
+      writeln('Enter plaintext in 8 bytes (a byte is an integer');
+      writeln('between 0 and 255 incl.) with spaces between bytes');
+      writeln('then hit CR.');
+      readln(a1, a2, a3, a4, a5, a6, a7, a8);
+      writeln('Enter a key in 5 bytes then hit CR.');
+      readln(k[1,1],k[1,2],k[1,3],k[1,4],k[1,5]);
+      k1[1]:= k[1,1]; k1[2]:= k[1,2]; k1[3]:= k[1,3];
+      k1[4]:= k[1,4];  k1[5]:= k[1,5];
+
+      {The four redundant bytes of the key K1 are now computed.}
+      k[1,6]:= k[1,1] xor k[1,3] xor 129;  k1[6]:= k[1,6];
+      k[1,7]:= k[1,1] xor k[1,4] xor k[1,5] xor 66;  k1[7]:= k[1,7];
+      k[1,8]:= k[1,2] xor k[1,3] xor k[1,5] xor 36;  k1[8]:= k[1,8];
+      k1[9] := k[1,2] xor k[1,4] xor 24;
+
+      writeln;
+      writeln('PLAINTEXT is ', a1:8,a2:4,a3:4,a4:4,
+                               a5:4,a6:4,a7:4,a8:4);
+      writeln('The KEY is   ', k1[1]:8,k1[2]:4,k1[3]:4,k1[4]:4,k1[5]:4);
+      writeln('Extended K1 is', k1[1]:7,k1[2]:4,k1[3]:4,k1[4]:4,
+                                k1[5]:4,k1[6]:4,k1[7]:4,k1[8]:4,k1[9]:4);
+
+      {The next instructions implement the key schedule
+       needed to derive keys K2, K3, ... K11 from the 5 byte input key.}
+      FOR n:= 2 TO 11 DO
+      BEGIN
+        {Each byte of the  key K1 is further left rotated by 3.}
+        FOR j:= 1 TO 9 DO k1[j]:= (k1[j] shl 3) + (k1[j] shr 5);
+        FOR j:= 1 TO 8 DO
+        BEGIN
+          {The key bias is added here to the further right rotated K1.}
+          k[n,j]:= k1[((j+n-2) mod 9) + 1] + exptab[exptab[9*n+j]];
+        END;
+      END;
+
+      {The 5 rounds of encryption begin here.}
+      FOR i:= 1 TO 5 DO
+      BEGIN
+        {Key 2i-1 is mixed bit and byte added  to the round input.}
+        a1:= a1 xor k[2*i-1,1]; a2:= a2  +  k[2*i-1,2];
+        a3:= a3  +  k[2*i-1,3]; a4:= a4 xor k[2*i-1,4];
+        a5:= a5 xor k[2*i-1,5]; a6:= a6  +  k[2*i-1,6];
+        a7:= a7  +  k[2*i-1,7]; a8:= a8 xor k[2*i-1,8];
+
+        {The result now passes through the nonlinear layer.}
+        b1:= exptab[a1]; b2:= logtab[a2];
+        b3:= logtab[a3]; b4:= exptab[a4];
+        b5:= exptab[a5]; b6:= logtab[a6];
+        b7:= logtab[a7]; b8:= exptab[a8];
+
+        {Key 2i is now mixed byte and bit added to the result.}
+        b1:= b1  +  k[2*i,1]; b2:= b2 xor k[2*i,2];
+        b3:= b3 xor k[2*i,3]; b4:= b4  +  k[2*i,4];
+        b5:= b5  +  k[2*i,5]; b6:= b6 xor k[2*i,6];
+        b7:= b7 xor k[2*i,7]; b8:= b8  +  k[2*i,8];
+
+        {The result now enters the linear layer.}
+        mat1(b1, b2, a1, a2);
+        mat1(b3, b4, a3, a4);
+        mat1(b5, b6, a5, a6);
+        mat1(b7, b8, a7, a8);
+
+        mat1(a1, a3, b1, b2);
+        mat1(a5, a7, b3, b4);
+        mat1(a2, a4, b5, b6);
+        mat1(a6, a8, b7, b8);
+
+        mat1(b1, b3, a1, a2);
+        mat1(b5, b7, a3, a4);
+        mat1(b2, b4, a5, a6);
+        mat1(b6, b8, a7, a8);
+
+        {The round is now completed!}
+        writeln('after round',i:2,a1:8,a2:4,a3:4,a4:4,
+                                  a5:4,a6:4,a7:4,a8:4);
+      END;
+
+      {Key 11 is now mixed bit and byte added to produce the
+       final cryptogram.}
+      a1:= a1 xor k[11,1]; a2:= a2  +  k[11,2];
+      a3:= a3  +  k[11,3]; a4:= a4 xor k[11,4];
+      a5:= a5 xor k[11,5]; a6:= a6  +  k[11,6];
+      a7:= a7  +  k[11,7]; a8:= a8 xor k[11,8];
+      writeln('CRYPTOGRAM is', a1:8,a2:4,a3:4,a4:4,
+                               a5:4,a6:4,a7:4,a8:4);
+      writeln;
+      writeln('DECRYPTION');
+       {Key 11 is now mixed bit and byte subtracted from input
+        as specified in the input transformation for decryption.}
+      a1:= a1 xor k[11,1]; a2:= a2  -  k[11,2];
+      a3:= a3  -  k[11,3]; a4:= a4 xor k[11,4];
+      a5:= a5 xor k[11,5]; a6:= a6  -  k[11,6];
+      a7:= a7  -  k[11,7]; a8:= a8 xor k[11,8];
+
+      FOR i:= 1 TO 5 DO
+      BEGIN
+        {The input first passes through the inverse linear layer.}
+        invmat1(a1, a2, b1, b3);
+        invmat1(a3, a4, b5, b7);
+        invmat1(a5, a6, b2, b4);
+        invmat1(a7, a8, b6, b8);
+
+        invmat1(b1, b2, a1, a3);
+        invmat1(b3, b4, a5, a7);
+        invmat1(b5, b6, a2, a4);
+        invmat1(b7, b8, a6, a8);
+
+        invmat1(a1, a2, b1, b2);
+        invmat1(a3, a4, b3, b4);
+        invmat1(a5, a6, b5, b6);
+        invmat1(a7, a8, b7, b8);
+
+        {Key 12-2i is mixed byte and bit subtracted from the result.}
+        a1:= b1  -  k[12-2*i,1]; a2:= b2 xor k[12-2*i,2];
+        a3:= b3 xor k[12-2*i,3]; a4:= b4  -  k[12-2*i,4];
+        a5:= b5  -  k[12-2*i,5]; a6:= b6 xor k[12-2*i,6];
+        a7:= b7 xor k[12-2*i,7]; a8:= b8  -  k[12-2*i,8];
+
+        {The result now passes through the inverse nonlinear layer.}
+        a1:= logtab[a1]; a2:= exptab[a2];
+        a3:= exptab[a3]; a4:= logtab[a4];
+        a5:= logtab[a5]; a6:= exptab[a6];
+        a7:= exptab[a7]; a8:= logtab[a8];
+
+        {Key 11-2i is mixed bit and byte subtracted from result.}
+        a1:= a1 xor k[11-2*i,1]; a2:= a2  -  k[11-2*i,2];
+        a3:= a3  -  k[11-2*i,3]; a4:= a4 xor k[11-2*i,4];
+        a5:= a5 xor k[11-2*i,5]; a6:= a6  -  k[11-2*i,6];
+        a7:= a7  -  k[11-2*i,7]; a8:= a8 xor k[11-2*i,8];
+
+        {The round is now completed!}
+        writeln('after round',i:2,a1:8,a2:4,a3:4,a4:4,
+                                  a5:4,a6:4,a7:4,a8:4);
+      END;
+      writeln('PLAINTEXT is ', a1:8,a2:4,a3:4,a4:4,
+                               a5:4,a6:4,a7:4,a8:4);
+      writeln;
+      writeln('Type 0 and CR to continue or -1 and CR to stop run.');
+      read(flag);
+    END
+  UNTIL flag < 0;
+END.
+
+                EXAMPLES OF ENCRYPTION WITH SAFER SK-40
+
+PLAINTEXT is        1   2   3   4   5   6   7   8
+The KEY is        231  16   0   8   0
+Extended K1 is    231  16   0   8   0 102 173  52   0
+after round 1      74  34  15 223  42  57 123  63
+after round 2     104  59  95  82 106 157 105 195
+after round 3     201   5 202   0 230 176  64  63
+after round 4     125  81 110  26  35  89  92  28
+after round 5      37  74  23   9 112 210 143  97
+CRYPTOGRAM is      66 222 120  35 138 245 208  83
+
+PLAINTEXT is        8   7   6   5   4   3   2   1
+The KEY is         64   8  32  16 135
+Extended K1 is     64   8  32  16 135 225 149 139   0
+after round 1      56 204   6   4 192 156  85 189
+after round 2      82 160 167 111  11  11 216 214
+after round 3      40 106  50 173 193 191 136 117
+after round 4      10  39 213 193  98 168 148 184
+after round 5     118 110  14 145 173  81 155 189
+CRYPTOGRAM is      19  10 113 154 116 110 177 143
+
+PLAINTEXT is        1   2   3   4   4   3   2   1
+The KEY is        135  40  32  48  64
+Extended K1 is    135  40  32  48  64  38 181 108   0
+after round 1     176 218 107 107 148   6 192 197
+after round 2      83  64  79 115  72 171   6 103
+after round 3     136  43 194 163 100   5  17 136
+after round 4     111 208 179  80  60 102  22  10
+after round 5     230 193 159 140 137 238 105 219
+CRYPTOGRAM is     139  93  10 182  99  19 184 233

@@ -1,0 +1,128 @@
+From msuinfo!agate!sprite.berkeley.edu!shirriff Sun Apr 24 19:28:13 1994
+Path: msuinfo!agate!sprite.berkeley.edu!shirriff
+From: shirriff@sprite.berkeley.edu (Ken Shirriff)
+Newsgroups: sci.crypt
+Subject: Differential cryptanalysis of REDOC III
+Date: 24 Apr 1994 00:25:17 GMT
+Organization: University of California, Berkeley
+Lines: 115
+Distribution: na
+Message-ID: <2pce9d$b8e@agate.berkeley.edu>
+NNTP-Posting-Host: treason.berkeley.edu
+
+I've been looking at Wood's REDOC III encryption algorithm in "Applied
+Cryptography".  It looks to me like the algorithm is weak with respect to
+differential cryptanalysis.  The rest of this message explains the attacks
+I've developed.
+
+To summarize the algorithm, it first creates a table of 256 10-byte key
+entries and 2 10-byte masks.  Call these K[n] and M[n].
+The algorithm makes two passes.  In each pass:
+    It xors the first byte of the data and the mask to get a table index.
+    It takes the key and xors it with the data (except for the first byte).
+    It selects a key based on the second byte and the mask.
+    It xors the key with the data (except for the second byte).
+    And so on, up to the last byte of the block.
+(Applied Cryptography has a more detailed explanation and the code.)
+
+The first differential cryptanalysis depends on a "weak key".
+Let K[n][0] be byte 0 of key n, and K[n][9] be the last byte.
+If there are indices m and n such that:
+m xor n = K[m][0] xor K[n][0] = K[m][9] xor K[n][9]
+then I call it a "weak key".  (About half the keys are weak in this sense.)
+
+Now, consider two data blocks D[0] and D[1], that differ only in the last
+byte by (m xor n).
+Everything will happen the same for D[0] and D[1] up until the last step of
+pass 1.  At this point, the different byte will result in a different key
+selection from the table.
+There is 1 chance in 256 that the last step of pass 1 with D[0] will use K[m],
+selected from the last byte of the modified D[0].
+There is 1 chance in 256 that the first step of pass 2 with D[0] will use
+K[n], selected from the first byte of modified D[0].
+If these events happen, then the last step of pass 1 with D[1] will use
+K[n], because the difference in the last byte will still be m xor n.
+Then, because K[m][0] xor K[n][0] = m xor n, the first step of pass 2 will
+use K[m].
+The result is that with D[0], the two steps use K[m] and K[n], while with
+D[1] the steps use K[n] and K[m].  These will cancel out each other except
+the first and last byte.  (I.e. these two steps have just xor'd with K[m]
+and K[n] except for the first and last bytes, so the order they were used in
+won't matter.)  At this stage, the first bytes will differ by m xor
+n.  Since the original last bytes differed by m xor n, they now will be
+identical.  Thus, the keys selected from this point on will be the same.
+
+Thus, the results will be that D[0] and D[1] yield identical results except
+that the first byte differs by m xor n.  The information this gives us is
+that there are two keys separated by distance m xor n satisfying the
+condition that the first bytes differ by m xor n and the last bytes differ
+by m xor n.
+
+The cost to determine this information is about 65536/2 chosen plaintexts:
+Fix the data except for the last byte and try the 256 possible last bytes.
+If you get a collision on the encrypted data (excepting the first byte),
+you've found the week key.  Each trial of 256 has 2 possibilities in 65536
+of working: besides the K[m]K[n]/K[n]K[m], a similar cancellation works for
+K[m]K[m]/K[n]K[n].
+
+Thus, for about half the keys, differential cryptanalysis reveals a relation
+between two key entries after about 32K trials.
+
+The second differential cryptanalysis attack is similar to the above, except
+it uses cancellation of key entries satisfying:
+m xor n = K[m][0] xor K[n][0]
+Each key table contains about 256 relations of this sort.
+
+Under differential cryptanalysis, the same cancellation as above will
+happen, except the last bytes will not end up identical but will differ by
+K[m][9] xor K[n][9] xor m xor n, after the first step of the second pass.
+This will not affect the algorithm until the last step of the second pass.
+With D[0], the final key used will be K[p], for some p, but for D[1], the
+final key will be K[q], where p xor q = K[m][9] xor K[n][9] xor m xor n.
+Call the results of encrypting D[0]: E[0][0], ..., E[0][9].
+Then we end up with:
+E[1][0] = E[0][0] xor m xor n xor K[p][0] xor K[q][0]
+(i.e. the first byte of encrypting D[1] differs by m xor n as above, but
+with the added effect of using K[q] instead of K[p])
+E[1][1] = E[0][1] xor K[p][1] xor K[q][1]
+...
+E[1][8] = E[0][8] xor K[p][8] xor K[q][8]
+E[1][9] = E[0][9] xor m xor n xor K[m][9] xor K[n][9].
+Note that p = E[0][9] xor M[1][9] and q = E[1][9] xor M[1][9] since the last
+keys are selected from the last byte xor'd with the mask.
+
+Thus if we xor the results of encrypting D0 and D1, we get:
+byte 0: m xor n xor K[p][0] xor K[q][0]
+byte 1: K[p][1] xor K[q][1]
+byte 2: K[p][2] xor K[q][2]
+...
+byte 8: K[p][8] xor K[q][8]
+byte 9: m xor n xor K[m][9] xor K[n][9] 
+	= p xor q
+
+Therefore, if we find two differential pairs that match in the middle bytes,
+then we know the results of xoring keys p and q.  By finding enough of these
+pairs, we can solve for the entire key table except for one undetermined
+line and except for the unknown mask.  This gives us almost the entire
+table, and if the table is generated algorithmically from a smaller key, it
+should be possible to determine the entire table.
+
+There are several ways of implementing this attack, with time-space
+tradeoffs.  One way is to try 256 values for the last byte and then generate
+the 65536 xor pairs and enter them into a hash table.  This is then repeated
+until enough collisions occur.  This minimizes the number of plaintexts
+required, but requires a very large hash table.
+A second method is to fix m xor n and enter only the 256 xor pairs with this
+difference into the hash table.  For a fixed m,n there will be about 2 in 65536
+pairs that properly cancel, as in the previous section.  Since p xor q is
+fixed by m and n, there are only 256 possible valid entries.  Thus about
+2^23 chosen plaintexts are sufficient to recover almost the entire key
+table.
+
+In conclusion, because REDOC III combines data with the key entries in a
+linear manner and because it only contains two passes, REDOC III is subject
+to a differential cryptanalytic attack.  With a relatively small number of
+chosen plaintexts, almost the entire key table can be recovered.
+
+Ken Shirriff			shirriff@cs.Berkeley.EDU
+

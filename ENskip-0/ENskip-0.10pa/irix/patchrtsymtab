@@ -1,0 +1,31 @@
+#!/bin/sh
+
+# Add prototype and symbol entry for pffindproto if not already in rtsymtab
+# This is needed so loadable SKIP kernel module can use it.
+
+RTSYMTAB=/var/sysgen/master.d/rtsymtab
+
+if [ "X`grep pffindproto ${RTSYMTAB}`" = "X" ]; then
+  sed -e '/schednetisr()/a\
+\
+/* Added for SKIP (cschneid Thu Jul 27 01:24:02 MT  1995) */\
+#include <sys/protosw.h>\
+extern struct protosw *pffindproto();\
+extern struct ifqueue ipintrq;\
+#include <sys/sysinfo.h>\
+#include <sys/ksa.h>\
+extern struct ksa ksa;
+/"schednetisr"/a\
+\
+	/* sys/protosw.h, for SKIP (cschneid Thu Jul 27 01:24:02 MT  1995) */\
+	{(long) &pffindproto,   "pffindproto"},\
+	{(long) &ipintrq,	"ipintrq"},\
+	{(long) &ksa,		"ksa"},' ${RTSYMTAB} >${RTSYMTAB}.new
+
+  mv ${RTSYMTAB} ${RTSYMTAB}.original
+  echo "Original ${RTSYMTAB} moved to ${RTSYMTAB}.original"
+  mv ${RTSYMTAB}.new ${RTSYMTAB}
+  chmod 444 ${RTSYMTAB}
+else
+  echo "$0: Nothing to be done..."
+fi

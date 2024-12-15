@@ -1,0 +1,102 @@
+#!/bin/sh
+# anon.mail: script to assist using the anonymous remailers
+# Karl Barrus <elee9sf@menudo.uh.edu>
+# last updated 07/02/93
+
+#declare remailers
+# no encrypted remailing requests
+mail1=nowhere@bsu-cs.bsu.edu
+mail2=hh@cicada.berkeley.edu
+mail3=hh@pmantis.berkeley.edu
+mail4=hh@soda.berkeley.edu
+mail5=00x@uclink.berkeley.edu
+# full service
+mail6=hal@alumni.caltech.edu
+mail7=ebrandt@jarthur.claremont.edu
+mail8=phantom@mead.u.washington.edu
+mail9=remailer@rebma.mn.org
+mail10=elee7h5@rosebud.ee.uh.edu
+mail11=hfinney@shell.portal.com
+mail12=remail@tamsun.tamu.edu
+mail13=remail@tamaix.tamu.edu
+mail14=remailer@utter.dis.org
+mail15=remailer@entropy.linet.org
+# special
+mail16=remail@extropia.wimsey.com
+
+if [ $# != 3 ]
+then
+	echo "Usage: $0 <file> <destination address> <remailer number>"
+	echo " 1: $mail1 "
+	echo " 2: $mail2 "
+	echo " 3: $mail3 "
+	echo " 4: $mail4 "
+        echo " 5: $mail5 "
+        echo " 6: $mail6 "
+        echo " 7: $mail7 "
+        echo " 8: $mail8 "
+	echo " 9: $mail9 "
+        echo "10: $mail10 "
+        echo "11: $mail11 "
+	echo "12: $mail12 "
+	echo "13: $mail13 "
+	echo "14: $mail14 "
+        echo "15: $mail15 "
+        echo "16: $mail16 "
+	exit 1
+fi
+
+message=$1
+dest=$2
+
+case "$3"
+in
+  1) remail=$mail1;      encflag=none ;;
+  2) remail=$mail2;      encflag=none ;;
+  3) remail=$mail3;      encflag=none ;;
+  4) remail=$mail4;      encflag=none ;;
+  5) remail=$mail5;      encflag=none ;;
+  6) remail=$mail6;      encflag=""   ;;
+  7) remail=$mail7;      encflag=""   ;;
+  8) remail=$mail8;      encflag=""   ;;
+  9) remail=$mail9;      encflag=""   ;;
+ 10) remail=$mail10;     encflag=""   ;;
+ 11) remail=$mail11;     encflag=""   ;;
+ 12) remail=$mail12;     encflag=""   ;;
+ 13) remail=$mail13;     encflag=""   ;;
+ 14) remail=$mail14;     encflag=""   ;;
+ 15) remail=$mail15;     encflag=""   ;;
+ 16) remail=$mail16;     encflag="s"  ;;
+  *) echo "Error, invalid choice."; exit 1 ;;
+esac
+
+#temporary files
+t1=.anon1
+t2=.anon2
+
+echo "::" > $t1
+echo "Request-Remailing-To: $dest" >> $t1
+echo "" >> $t1
+
+if [ "$encflag" = none ] #remailer doesn't support encrypted headers
+then
+  cat $t1 $message > $t2
+else                     #remailer does support encrypted header
+  if [ "$encflag" = s ]  #remailer is "special" - text must be encrypted 
+  then                   #  along with header
+    cat $message >> $t1
+    pgp -ea $t1 $remail 2>/dev/null 1>/dev/null
+    mv $t1.asc $t2
+  else                   #header may be formed, and text appended later
+    pgp -ea $t1 $remail 2>/dev/null 1>/dev/null
+    echo "::" > $t2
+    echo "Encrypted: PGP" >> $t2
+    echo "" >> $t2
+    cat $t1.asc $message >> $t2
+  fi
+fi
+
+mail -s "anonymous mail" $remail < $t2
+echo "Anonymous mail sent to $dest via $remail!"
+
+rm -rf ${t1}* ${t2}*

@@ -1,0 +1,94 @@
+This is version 0.11 of 'pfx'. A utility/library to process netscape certificate
+export format (PFX). Read the COPYRIGHT file for conditions of use.
+
+The only change in this version over 0.1 is that it now uses RC2-40 for the
+authsafe. This should stop Netscape complaining about unsupported algorithms
+when it imports a certificate generated with pfx.
+
+The utility can be used in one of two ways.
+
+1. Import.
+
+usage is pfx [options]
+
+where: [options] is one or more of the following
+
+-in file.p12	 PFX file to read (default stdin).
+-out file.pem	 file to output to (default stdout).
+-noout		 don't output any certificates or keys just say if decryption
+		 was OK.
+-nokeys		 don't output any private keys.
+-print_certs	 output all certificates.
+-des		 encrypt private keys with DES.
+-des3		 encrypt private keys with triple DES (default).
+-idea		 encrypt private keys with idea.
+-nodes		 don't encrypt private keys.
+
+The default is to output a certificate and the private key of that certificate.
+
+You will be prompted for an import password. This is the password you used in
+netscape to export the certificate.
+
+If any encryption is used then the pass phrase will be prompted for.
+
+2. Export.
+
+usage is pfx -export -name NAME [options]
+
+NAME is the certificate name (this appears in the listbox in Netscape) this
+option is mandatory with -export .
+
+-in file.pem	 PEM file to read certificate from (default stdin).
+-out file.p12	 file to output to (default stdout).
+-inkey file.pem	 file to read private key from if not same as certificate.
+-chain		 add a complete chain of certificates (default just one).
+-certfile c.pem  add all the certificates in c.pem .
+
+If the input private key is encrypted a pass phrase is prompted for.
+
+It will also ask you to supply an export password. This is the password
+you need to tell netscape when importing the certificate.
+
+The export option always adds at least one private key and the corresponding
+certificate. If -chain is used it verifies the input certiticate and (if
+successful) it adds all the certificates of any CAs needed up to the root
+CA. -certfile allows additional CA files to be added.
+
+If the netscape-cert-type CA bit is set in any of the additional certificates
+then Netscape adds them as untrusted CAs. I find this a much easier way to
+add a CA when a certificate is added. All you then need to do is to trust
+them by using the security->signers options. You can add additional CAs like
+this too, using the -certfile option.
+
+Comments.
+
+1. It appears to be possible to import certificates with 1024 bit RSA keys into
+Netscape. According to Netscape Crop. this is within ITAR because Netscape
+isn't generating the keys. The certificates also seem to work fine.
+2. If you use certificates for email then the netscape-cert-type client bit
+needs to be set. 
+3. All additional CAs need their CA bit set in netscape-cert-type otherwise
+they are ignored.
+4. The value used for netscape-cert-type is in ssleay.cnf:
+CA bit : 0x04
+Client : 0x80
+Server : 0x40
+This is modified when you use 'ca' (and thus CA.sh) to sign a request. I don't
+think this can be modified with 'req' for a self signed certificate at
+present. For more details see the ca-kludge.doc file.
+5. x509 has an omission which scrambles the netscape-cert-type field. To fix
+this add the line:
+X509v3_add_netscape_extensions();
+after the apps_startup(); line and recompile. You can then see this field with
+x509 -noout -text <cert.pem
+6. If you do find a file it apparently wont decrypt it may not be pfx's fault.
+If it says things like "Decrypted Authsafe OK" but has X509 errors SSLeay may
+not like the certificate.
+
+My thanks go to Jim Spring of Netscape Corp for supplying me with the key
+generation info (and test vectors) and Eric Young for SSLeay (without which
+none of this would be possible ...).
+
+Comments and bug reports are welcomed.
+
+Steve. shenson@bigfoot.com

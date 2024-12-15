@@ -1,0 +1,370 @@
+NAME
+
+	noiz -- a simple package for accumulating and dispensing
+		cryptographically-strong noise, using MD5 as 
+		a stirring function
+
+ANTICOPYRIGHT
+
+	Anticopyright (A) 1995 Henry Strickland <strick@yak.net>
+	This package is placed this package in the public domain.
+
+	Because this package is free, there is no warranty 
+	for it whatsoever.  Caveat hacker.
+
+	This is alpha-quality software.  It seemed to work for
+	me, but it may not do what I say it does.
+
+	The MD5 implementation is by Colin Plumb (1993), 
+	and is also in the public domain.
+
+
+SYNOPSIS
+
+	noizinit
+
+		creates the file /etc/noiz
+
+
+	noizstir < noise-source
+
+		stirs the noise-source into /etc/noiz
+
+
+	noizout < noise-source > output-noise
+
+		produces 16 bytes of noise, for applications to use
+
+
+	noizspin > output-time
+
+		prints a somewhat-random number, with several bits of
+		entropy.
+
+
+FILES
+
+	/etc/noiz       a binary file containing 256 bytes of noise
+			state.   That's 2048 bits of entropy, assuming
+			it has been stirred with that much entropy.
+
+
+
+DESCRIPTION
+
+	noizinit        creates /etc/noiz and initializes it with bytes
+			0, 1, 2, 3, ... 255.
+
+			It must be stirred several times with noizstir
+			before it is ready to be used by noizout.
+
+
+	noizspin        Set an alarm for 1 second.  Using an unsigned
+			long, count until the alarm is received, and
+			print the count, in ascii, as a decimal number,
+			followed by a newline.
+
+
+	noizstir        changes the noise ("stirs" it) in /etc/noiz,
+			based on prior contents of /etc/noiz, current
+			time, pid, ppid, and input bytes read from
+			standard input.
+
+			The standard input may be empty (as in
+
+				noizstir < /dev/null
+
+			) or may be some system-generated noise (as in
+
+				ps uaxg | noizstir
+				ls -li /tmp/ | noizstir
+				netstat -s | noizstir
+
+			) or you may use the "noizspin" command which
+			was designed especially for this purpose:
+
+				noizspin | noizstir
+
+	noizout         Produces 16 bytes of random noise, based on the
+			contents of /etc/noiz, current time, pid, ppid,
+			and input bytes read from standard input.   The
+			output is 16 raw binary bytes; if you want some
+			kind of ascii encoding, you must convert the
+			output.  Piping the output into "od -x" is
+			useful for debugging.
+
+			Unlike noizstir, noizout does not change
+			/etc/noiz.  You may use it without empty
+			standard input, but it is better to feed it
+			some extra noise.  The noizspin command is good
+			for this:
+
+				noizspin | noizout 
+
+			The bytes emitted from noizout do not reveal
+			the contents of /etc/noiz.  In fact, no command
+			does, so all users can share /etc/noiz.
+
+			Because noizout always stirs current time, pid,
+			and ppid into its output, even this command,
+			repeated many times without running noizstir,
+			will generate fairly high-entropy random
+			output:
+
+				noizout < /dev/null
+				
+
+
+DIAGNOSTICS
+
+	All four programs print one line to stderr and exit with a
+	nonzero status if they cannot read or write /etc/noiz and they
+	need to.
+
+	Otherwise the programs execute without writing to stdout, and
+	they exit with status zero.
+
+
+
+RECOMMENDED INSTALLATION
+
+	You should probably be root to do the "make install".  You may
+	use "make BIN=/etc install" to put the four binaries into the
+	/etc/ directory instead of /usr/local/bin/.
+
+	/etc/noiz	owner root 
+			group kmem
+			mode 660     (not publically readable or writable)
+
+	/usr/local/bin/noizinit
+			owner root
+			group kmem
+			mode 550	(no special permissions)
+					(only execute at install time)
+
+	/usr/local/bin/noizstir
+			owner root
+			group kmem
+			mode 2555	(setgid kmem)
+					(anyone can execute)
+
+	/usr/local/bin/noizout
+			owner root
+			group kmem
+			mode 2555	(setgid kmem)
+					(anyone can execute)
+
+	/usr/local/bin/noizspin
+			owner root
+			group kmem
+			mode 555	(no special permissions)
+					(anyone can execute)
+
+
+	For your crontab:
+
+		* * * * * /usr/local/bin/noizspin | /usr/local/bin/noizstir
+
+		This will stir the /etc/noiz with a few bits of noise
+		per minute.
+
+		You may put it in the crontab for root, or for daemon,
+		or users themselves may do it.
+
+
+EXAMPLE SESSION
+
+		gwarn#
+initialize	gwarn#
+/etc/noiz	gwarn#
+		gwarn#
+		gwarn# /usr/local/bin/noizinit
+show initial	gwarn#
+contents 	gwarn#
+		gwarn# od -x /etc/noiz
+		0000000  0001 0203 0405 0607 0809 0a0b 0c0d 0e0f
+		0000020  1011 1213 1415 1617 1819 1a1b 1c1d 1e1f
+		0000040  2021 2223 2425 2627 2829 2a2b 2c2d 2e2f
+		0000060  3031 3233 3435 3637 3839 3a3b 3c3d 3e3f
+		0000100  4041 4243 4445 4647 4849 4a4b 4c4d 4e4f
+		0000120  5051 5253 5455 5657 5859 5a5b 5c5d 5e5f
+		0000140  6061 6263 6465 6667 6869 6a6b 6c6d 6e6f
+		0000160  7071 7273 7475 7677 7879 7a7b 7c7d 7e7f
+		0000200  8081 8283 8485 8687 8889 8a8b 8c8d 8e8f
+		0000220  9091 9293 9495 9697 9899 9a9b 9c9d 9e9f
+		0000240  a0a1 a2a3 a4a5 a6a7 a8a9 aaab acad aeaf
+		0000260  b0b1 b2b3 b4b5 b6b7 b8b9 babb bcbd bebf
+		0000300  c0c1 c2c3 c4c5 c6c7 c8c9 cacb cccd cecf
+		0000320  d0d1 d2d3 d4d5 d6d7 d8d9 dadb dcdd dedf
+		0000340  e0e1 e2e3 e4e5 e6e7 e8e9 eaeb eced eeef
+		0000360  f0f1 f2f3 f4f5 f6f7 f8f9 fafb fcfd feff
+		0000400
+		gwarn#
+spin some 	gwarn#
+random numbers	gwarn#
+with noizspin	gwarn#
+		gwarn# noizspin
+		3082293
+		gwarn# noizspin
+		3025490
+		gwarn# noizspin
+		3077496
+		gwarn# noizspin
+		2985100
+		gwarn# noizspin
+		3047690
+		gwarn# noizspin
+		3082529
+		gwarn# noizspin
+		3063415
+/etc/noiz	gwarn#
+is unchanged	gwarn#
+until stirred	gwarn#
+		gwarn# od -x /etc/noiz
+		0000000  0001 0203 0405 0607 0809 0a0b 0c0d 0e0f
+		0000020  1011 1213 1415 1617 1819 1a1b 1c1d 1e1f
+		0000040  2021 2223 2425 2627 2829 2a2b 2c2d 2e2f
+		0000060  3031 3233 3435 3637 3839 3a3b 3c3d 3e3f
+		0000100  4041 4243 4445 4647 4849 4a4b 4c4d 4e4f
+		0000120  5051 5253 5455 5657 5859 5a5b 5c5d 5e5f
+		0000140  6061 6263 6465 6667 6869 6a6b 6c6d 6e6f
+		0000160  7071 7273 7475 7677 7879 7a7b 7c7d 7e7f
+		0000200  8081 8283 8485 8687 8889 8a8b 8c8d 8e8f
+		0000220  9091 9293 9495 9697 9899 9a9b 9c9d 9e9f
+		0000240  a0a1 a2a3 a4a5 a6a7 a8a9 aaab acad aeaf
+		0000260  b0b1 b2b3 b4b5 b6b7 b8b9 babb bcbd bebf
+		0000300  c0c1 c2c3 c4c5 c6c7 c8c9 cacb cccd cecf
+		0000320  d0d1 d2d3 d4d5 d6d7 d8d9 dadb dcdd dedf
+		0000340  e0e1 e2e3 e4e5 e6e7 e8e9 eaeb eced eeef
+		0000360  f0f1 f2f3 f4f5 f6f7 f8f9 fafb fcfd feff
+		0000400
+		gwarn#
+so stir it,	gwarn#
+with some	gwarn#
+random input	gwarn#
+		gwarn# noizspin | noizstir
+		gwarn# od -x /etc/noiz
+		0000000  b695 3c73 7a0c 73e0 b37b 55f5 e6cf 2dec
+		0000020  1fa7 1544 890e a039 6a21 e2ec 4669 35ea
+		0000040  a9d8 1175 0dd9 9742 fd6a 1501 9039 1d73
+		0000060  2b0e 0864 93e8 63bf 4a63 3398 b63c ef77
+		0000100  2534 cd7e 0e79 fb56 5f53 bcc5 5b68 968d
+		0000120  910e bbf4 e222 03b2 13d8 908c e508 74a8
+		0000140  d056 fb99 ea7f dddb 9b2f c654 4cd0 1384
+		0000160  8899 3507 1dbb c367 43f1 9806 17e0 8780
+		0000200  95f7 af5a 7a78 92e0 126c 4f2d 3721 a5ee
+		0000220  4a12 f7c3 3186 febb 3ea8 f048 4fd1 41b8
+		0000240  812f 1d43 66a7 8e2d 7ca4 cddb 39c6 6b5f
+		0000260  9a8c 646b c511 304b eb9b b235 46da 5d2e
+		0000300  ec53 5816 c742 e92d 2468 8579 302d d932
+		0000320  2f45 03fb 4f2c ff10 b84d 15a5 8e46 8e84
+		0000340  ff12 0d68 26a3 10c2 87b5 4ebc 3b59 afa2
+		0000360  2bb2 bb64 371e 2f99 b108 c7d5 42eb 68c9
+		gwarn#
+		gwarn#
+now emit some 	gwarn#
+16-byte		gwarn#
+high-entropy	gwarn#
+output and 	gwarn#
+display it	gwarn#
+with od -x	gwarn#
+		gwarn# noizspin | noizout | od -x
+		0000000  be7b 81f9 744c 2dca e36d a6c6 9394 7bf2
+		0000020
+		gwarn# noizspin | noizout | od -x
+		0000000  1cea b243 2b0e 55c3 7630 886c 3be3 d03f
+		0000020
+		gwarn# noizspin | noizout | od -x
+		0000000  6887 864d b4fc 40e6 7eb1 0d9e 6b47 f148
+		0000020
+		gwarn#
+demonstrate	gwarn#
+high-entropy	gwarn#
+output even	gwarn#
+without noise	gwarn#
+input and 	gwarn#
+without 	gwarn#
+stirring	gwarn#
+		gwarn#
+		gwarn# noizout < /dev/null | od -x
+		0000000  e54f 67a6 52ec 3d61 ddfd 1208 5f52 fead
+		0000020
+		gwarn# noizout < /dev/null | od -x
+		0000000  6472 5f9e fe81 fcab bca8 6d22 2400 0d0a
+		0000020
+		gwarn# noizout < /dev/null | od -x
+		0000000  2df4 9d73 ddc2 5aa4 10c6 59b8 e31c efda
+		0000020
+		gwarn# noizout < /dev/null | od -x
+		0000000  7f64 6671 957e b4aa ae4b 8fd8 7e90 601e
+		0000020
+		gwarn# noizout < /dev/null | od -x
+		0000000  2d8e 522c 700a 5367 d67f dae3 0977 0689
+		0000020
+
+
+
+ALGORITHMS
+
+   Let the syntax X[i..j] represent a subrange of an array X.
+   Let the syntax X[] represent the entire array X.
+
+   Let the array Noiz[0..15][0..15] represent the 256 bytes of /etc/noiz
+   Let the array Noiz[r] represent the rth row (16 bytes) of Noiz
+
+   Let the array Input[] represent bytes read from standard input
+
+   Let the syntax  MD5( x, y, z... )  represent the MD5 hash of the 
+   concatenation of the arguments x, y, z...
+
+
+
+   Algorithm of "noizstir":
+
+	read Noiz[][] from /etc/noiz
+
+	read Input[] from standard input
+
+	In_hash[0..15] := MD5(  Noiz[][], 
+				Input[],
+				time, 
+				pid,
+				ppid,
+				and some extra stuff from sloppy buffering
+			     );
+
+	FOR r := 0 TO 15
+
+	    Out_hash[0..15] := MD5(	Noiz[r],
+					In_hash[0..15],
+					In_hash[0..r]
+	    		   	  );
+
+	    Noiz[r] := Noiz[r] BITWISE_XOR Out_hash[];
+
+	NEXT r
+
+	write Noiz[][] to /etc/noiz
+
+
+
+   Algorithm of "noizout"
+
+	read Noiz[][] from /etc/noiz
+
+	read Input[] from standard input
+
+	Out_hash[0..15] := MD5(  Noiz[][], 
+				 Input[],
+				 time, 
+				 pid,
+				 ppid,
+				 and some extra stuff from sloppy buffering
+			      );
+
+  	write Out_hash[] to standard output 
+
+
+
+
+END $Header: /mvp/fjord/strick/yaxen/noiz-0.5/RCS/noiz.doc,v 1.6 95/02/07 15:35:37 strick Exp Locker: strick $

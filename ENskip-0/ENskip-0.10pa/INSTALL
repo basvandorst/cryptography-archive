@@ -1,0 +1,399 @@
+
+Content
+=======
+
+1. Installing ENskip
+2. Configuring the ENskip daemon
+3. How to test ENskip
+4. Troubleshooting
+5. Shutdown/ Startup
+6. Uninstalling ENskip
+
+
+1. Installing ENskip
+====================
+
+To install ENskip you simply type 'make'.  The ENskip 'Makefile' tries
+to dynamically figure out what kind of machine and operating system
+you are using. It makes a simple guess and is pretty picky about different
+system versions.
+
+If you have a machine and operating system directly supported by ENskip,
+follow these steps to install it on your system:
+
+  1. Login as root or type 'su' to change to root priviledges.
+  2. Type 'make'. (If the auto-configuration fails but your system is on the
+     list given to you, type 'make <your system>'.
+  3. Wait for the compilation to finish
+  4. Type 'make install'. This will need root priviledges.
+  5. Edit the daemon's configuration file /etc/skipd.conf
+     according to your needs. See the next chapter for a 
+     detailed description how to configure the skip daemon.
+  6. Reboot to activate ENskip.
+
+Note: You can stop ENskip by typing '/etc/init.d/skip stop' or
+      '/usr/local/skip/rc.skip stop'. Replace 'stop' with 'start' to
+      start ENskip again. After you modified /etc/skipd.conf, you can send
+      the skipd process a SIGHUP to reinitialize (Use 'ps' to find the
+      process and 'kill -HUP' to send the signal). The new configuration
+      will be active immediately.
+
+Note 2: To simplify installation while retaining maximum compatibility,
+        ENskip installs itself in the standard startup procedure of
+        the system. This can cause small holes in the coverage of packet
+        transmission during the system startup. Modify the startup process
+        manually to get rid of this problem.
+
+
+Some hints: (Please take them with a grain of salt :-)
+
+What if you don't have root priviledges on the machine?
+- It's simple, you cannot install ENskip.
+
+What if you can't compile ENskip?
+- If you are sure what system you are using and 'make <your system>' does not
+  work: Bad luck. Refer to PLATFORMS about systems ENskip was tested on.
+- NetBSD: ENskip needs some kernel include files and expects /sys to point to
+  the kernel sources. If it can't find some include files, make a softlink
+  from /sys pointing to your kernel sources.
+
+What if the compilation does not finish?
+- Wait.
+
+What if 'make install' failed?
+- Ensure you have root priviledges. Figure out how to install it yourself.
+
+What if the machine does not boot properly after installing ENskip?
+- You have been warned. Try booting in single user mode or from the net
+  or your cd-rom. You can remove /etc/rc2.d/???skip or /usr/local/skip/rc.skip
+  to prevent ENskip from being activated at boot time.
+
+What if the message 'NFS Server not responding' appears even though other
+machines CAN communicate with the server?
+- Remember not to enable ENskip in /etc/skipd.conf for machines not capable
+  dealing with it, i.e. not having installed ENskip. Especially not your
+  NFS server :-)
+
+List of files installed by ENskip depending on architecture:
+All:
+/etc/skipd.conf			# Configuration file for skipd
+
+Solaris 2.4 and IRIX 5.3:
+/dev/skip			# Device for user/kernel communication
+/etc/init.d/skip		# Start/stop script. See 'Note:' above.
+/opt/skip/skipd			# ENskip daemon. Mandatory!
+/opt/skip/skip_attach		# Attach ENskip to interface with given IP.
+/opt/skip/skip_detach		# Detach ENskip from interface with given IP.
+/opt/skip/skip_stat		# Print statistics about ENskip
+/opt/skip/skip_addkey		# For test/debug purposes only
+/opt/skip/Makefile		# 'make uninstall' to remove ENskip from system
+
+Solaris 2.4:
+/etc/rc2.d/S01skip		# Link to /etc/init.d/skip. Start at boot time.
+/etc/rc2.d/K01skip		# Link to /etc/init.d/skip. Stop at shutdown.
+/usr/kernel/drv/skip		# Loadable ENskip kernel module.
+/usr/kernel/drv/skip.conf	# Kernel module configuration.
+...				# Various files modified by add_drv command.
+
+IRIX 5.3:
+/etc/config/skip		# chkconfig skip on/off: enable/disable start
+/etc/rc2.d/S31skip		# Link to /etc/init.d/skip. Start at boot time.
+/etc/rc2.d/K31skip		# Link to /etc/init.d/skip. Stop at shutdown.
+/opt/skip/skip			# Loadabke ENskip kernel module.
+
+NetBSD and Nextstep:
+/etc/rc.local			# MODIFIED to execute /usr/local/skip/rc.skip
+/usr/local/skip/rc.skip		# Start/stop script. See 'Note:' above.
+/usr/local/skip/skipd		# ENskip daemon. Mandatory!
+/usr/local/skip/skip_attach	# Attach ENskip to interface with given IP.
+/usr/local/skip/skip_detach	# Detach ENskip from interface with given IP.
+/usr/local/skip/skip_stat	# Print statistics about ENskip
+/usr/local/skip/skip_addkey	# For test/debug purposes only
+/usr/local/skip/Makefile	# 'make uninstall' to remove ENskip from system
+
+NetBSD:
+/usr/local/skip/skiplkm.o	# Loadable ENskip kernel module.
+
+Nextstep:
+/usr/local/skip/skip_reloc	# Loadable ENskip kernel module.
+
+
+2. Configuring the ENskip daemon
+================================
+
+With no flags, the skip daemon reads its configuration from the file
+/etc/skipd.conf when it starts up and whenever it receives a hangup
+signal. All entries described by the configuration file will be stored
+in the daemon's secondary cache.
+Every time the daemon receives a lookup request from the kernel module,
+it searches its cache for the given IP address. If an entry is found,
+it will be fed into the primary cache (in the kernel). Otherwise a default
+entry (template) will be inserted.
+
+Flags are:
+
+  -c file
+          Use alternate configuration file. By default the file
+          /etc/skipd.conf is used.
+
+  -v
+          Go into verbose mode.
+          All lookup requests will be printed on stdout.
+
+  -f
+          Flush primary cache and exit.
+          WARNING: If you do this, and no skipd is running, no network
+          traffic will be possible anymore. This may be fatal if you use NFS
+          or are logged in via a remote site.
+
+Entries in the configuration file begin with an IP address followed
+by a colon. To change or set the default entry specify the keyword
+'default' instead of the IP address. The entries consist of several
+processing options that may be set. They are all of the format:
+
+  option = value
+
+Where appropriate, more than one value can be given to an option
+(see the example below).
+The current default value is used for all options that are not
+specified.
+Lines with a leading '#' are interpreted as comments.
+To simplify the administration of the configuration file, entries may
+also start with 'ignore:'. In this case the entire entry is parsed but
+not inserted in the seconady cache.
+
+Options are:
+
+  input enskip mode = { NONE | TCP | UDP | ICMP | OTHER | ALL }
+          This option defines which IP packets received from an attached
+          network should be converted to IPSP/IP (skip) packets.
+          (This option currently does not make any sense)
+
+  output enskip mode = { NONE | TCP | UDP | ICMP | OTHER | ALL }
+          The same as above for forwarded or locally sent IP packets.
+
+  enskip SAID = { NONE | CRYPT | AUTH | SEQ | COMP }
+          If an IP packet is converted to an IPSP/IP packet, because
+          it matches one of the above defined enskip modes, the specified
+          skip operation(s) will be applied.
+
+  Kp algorithm = DES | RC2 | RC4 40 | RC4 128 | 3DES 2 | 3DES 3 | IDEA
+          The algorithm used for packet encryption. This option is only
+          used with the CRYPT operation. RC2 is not (yet?) implemented.
+
+  Kij algorithm = DES | 3DES 2 | 3DES 3 | IDEA
+          Sets the packet key encryption algorithm (only block ciphers).
+          The Kij algorithm and the Kp algorithm must be set if you are using
+          either the CRYPT or AUTH processing mode.
+
+  ICV algorithm = MD5
+          The algorithm that provides authentication. Must be given
+          in AUTH mode. MD5 is the only one that is supported.
+
+  input deskip mode = NONE | DESKIP
+          With this option you determine whether an IPSP/IP packet should
+          be converted back to an IP packet on input or not. If you specify
+          NONE, no IPSP/IP packets will be processed.
+
+  output deskip mode = NONE | DESKIP
+          The output case of the above, applied on locally sent or
+          forwarded IPSP/IP packets.
+
+  input deskip policy = { NONE | CRYPT | AUTH | SEQ | COMP }
+          If an incoming IPSP/IP packet is not processed with all the
+          given modes, it will be discarded.
+
+  output deskip policy = { NONE | CRYPT | AUTH | SEQ | COMP }
+          The same for outgoing packets.
+
+  manual secret = "any unguessable secret" | hex number
+          A manually configured shared secret. Either Diffie-Hellman
+          (see below) or manual keying can be used in future versions,
+          but in this release only manual keying is supported. In the first
+          form the secret is hashed before use to map longer sequences to
+          the needed amount of bytes and thus satisfy the key length of the 
+	  Kij algorithm. A hex number is directly used as a shared secret 
+	  without translation. In that case, provide enough data.
+
+  secret key = hex number
+          Secret Diffie-Hellman key of the local host. The hexadecimal
+          number needs to have an even number of digits and a leading '0x'.
+          (Not yet used)
+
+  public key = hex number
+          The statically configured Diffie-Hellman public key of the
+          other host. (Not yet used)
+
+  base = integer
+          Base of Diffie-Hellman calculation. (Not yet used)
+
+  modulus = hex number
+          Modulus used in calculations. (Not yet used)
+
+  flags = { NONE | NO_KEY | VALID_KEY | ENCAPS }
+          If NO_KEY is set the entry contains no valid shared secret and
+          packets will be sent without being processed by skip. Or you
+          set VALID_KEY which is the opposite.
+          Additionally you may set the ENCAPS flag that causes the kernel
+          to operate in network layer mode. In network layer mode the whole IP
+          packet will be processed and encapsulated in a IPSP/IP
+          datagram. On the other hand in transport layer mode, only the data
+          portion of an IP packet will be treated.
+
+  ttl = integer
+          Time-to-live in seconds for entries in the primary cache.
+          The entry's time-to-live value is incremented by one each
+          time the entry is referenced and decremented by five every
+          five seconds by the primary cache. If the time-to-live value
+          drops below zero the entry will be removed from the cache.
+
+  maxttl = integer
+          The time-to-live value (see above) never exceeds this limit.
+          If both ttl and maxttl are set to zero, the entry will remain
+          in the primary cache forever.
+
+  key change time = integer
+  key change bytes = integer
+          The lifetime of a transient packet key Kp given in seconds,
+          and as the maximal number of encrypted data bytes.
+
+  input filter before = NONE | IP | IPSP
+  output filter before = NONE | IP | IPSP
+          Filter applied to received/ sent packets before processing.
+          IPSP means that all IPSP/IP packets will be discarded.
+          All others packets filtered, if IP is set.
+
+  input filter after = NONE | IP | IPSP
+  output filter after = NONE | IP | IPSP
+          Filter applied to successfully processed packets.
+
+  lookuphosts = { address }
+          Servers for public keys. Not yet used.
+
+
+Example daemon configuration file of an end system:
+
+#
+# ENskip daemon configuration file
+# Lines starting with a # are comments
+#
+
+# default entry
+# (also used as template for succeeding entries)
+default:
+	# Never enskip IP packets.
+        output enskip mode = NONE
+        input enskip mode = NONE
+
+	# Encrypt packets with RC4 (128 bit key length) and
+	# authenticate them afterwards with the MD5 algorithm.
+	# Normal DES is used to encrypt the transient key.
+        enskip said = CRYPT AUTH
+        Kp algorithm = RC4 128
+        Kij algorithm = DES
+        ICV algorithm = MD5
+
+        output deskip mode = NONE
+        input deskip mode = DESKIP
+        output deskip policy = NONE
+        input deskip policy = NONE
+
+	# Shared secret
+        manual secret = "Open Sesame"
+#       secret key = 0x0123456789abcdefABCDFE
+#       public key = 0x0123456789abcdefABCDEF
+#       base = 2
+#       modulus = 0x123456789a
+	# Process packets in network (encapsulation) mode.
+	# BUT: By default do no processing.
+        flags = NO_KEY ENCAPS
+
+	# Initial lifetime of entry is 60 seconds, which can be increased
+	# up to two minutes.
+        ttl = 60
+        maxttl = 120
+
+	# Change transient key every 30 seconds and/ or
+	# after encryption of 16Kb data.
+        key change time = 30
+        key change bytes = 16384
+
+	# We filter anything except IPSP/IP datagram after
+	# processing on input because the TCP/IP stack cannot
+	# handle them anyway (Warning: Disabling this filter can
+        # cause an infinite loop in the irix and netbsd implementation).
+        output filter before = NONE
+        input filter before = NONE
+        output filter after = NONE
+        input filter after = IPSP
+
+#       lookuphosts = 127.0.0.1 123.45.123.45
+
+# SKIP hosts with their specific configuration
+# This IP address is purely coincidental and does not exist
+192.42.172.1:
+	# We process only UDP and TCP packet and send them in transport mode.
+	output enskip mode = TCP UDP
+        manual secret = "Open LocalNet"
+        flags = VALID_KEY
+
+# This IP address is purely coincidental and does not exist
+192.42.172.2:
+	# A very paranoiac configuration: All outgoing IP packet will be
+	# processed and only encrypted & authenticated IPSP/IP packets
+	# are accepted on input.
+	output enskip mode = ALL
+        Kp algorithm = 3DES 3
+        Kij algorithm = 3DES 3
+	input deskip policy = CRYPT AUTH
+	manual secret = "PARANOID"
+	flags = VALID_KEY ENCAPS
+	input filter before = IP
+	output filter after = IP
+
+# IP address of ktik18.ethz.ch
+129.132.66.33:
+	# Experimental ENskip host ktik18.ethz.ch
+	# Only valid till end of August 95
+	# Try ping ktik18.ethz.ch to see if the machine still exists
+	# telnet ktik18.ethz.ch only works if you are running ENskip and
+	# have this configuration entry. A login prompt should appear.
+	output enskip mode = TCP UDP OTHER
+        manual secret = "Experimental ENskip site"
+        flags = VALID_KEY ENCAPS
+
+3. How to test ENskip
+=====================
+
+The Swiss Federal Institute of Technology in Zurich (ETHZ) provides an ENskip 
+endsystem reachable from the Internet: ktik18.ethz.ch (129.132.66.33).
+The system will encrypt and authenticate all IP traffic except ICMP, so you
+might be able to check if the host is reachable using the UNIX command ping(1).
+
+An appropriate entry for this machine is found in the default skip daemon
+configuration file.
+
+4. Troubleshooting
+==================
+
+To detect wrong configurations run the skip_stat tool to query error counters
+and statistics.
+In the bad case you cut the connection to your nfs servers, boot the
+machine in single user mode and run a 'make unboot' in the
+installation directory (A 'make boot' undoes this action). Afterwards
+proceed to the multiuser mode and the ENskip software will not be launched
+at boot time.
+
+5. Shutdown/ Startup
+====================
+
+The ENskip software can be stopped or started while system is running.
+Launch /usr/local/rc.skip (BSD) or /etc/init.d/skip (SysV) script
+with start/ stop as argument to do so.
+
+6. Uninstalling ENskip
+======================
+
+Simply type 'make uninstall' in the installation directory to uninstall
+the complete ENskip software.
+

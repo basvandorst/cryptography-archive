@@ -1,0 +1,339 @@
+NOISE.SYS (Version 0.5.5-Beta) - Technical Info
+
+
+Warning: This file is still under construction. A detailed explanation of
+        the driver's innards is forthcoming...  If you have any questions
+        please E-mail me at <wlkngowl@unix.asb.com>
+
+
+NOISE.SYS API (Version 0.5.3 and later)
+--------------------------------------------------------------------------
+Note: A proprosed API for NOISE.SYS v0.5.2 was distributed to a few people,
+      however it differs from the actual implementation.
+
+      For now NOISE.SYS uses Interrupt 32h for the API.  If no conflicts
+      with other programs arise, this will not change.  The AMIS specif-
+      ication was chosen so that a move to Int 2Dh is easier, if it seems
+      necessary... but it also allows developers of other TSRs or drivers
+      to use Int 32h if they adhere to the AMIS spec.
+
+An IOCTL (IO-Control) read from the /dev/random device will return the
+following record:
+
+  Offset        Size    Description
+
+   0            2       szControlOut    Size of control record
+   2            4       IdTag == 'noiz' Identifier Tag
+   6            2       Version
+   8            1       Interrupt       (00h if none)
+   9            1       Function        (in AH register)
+  10            4       Far call entry  (00000000h if none)
+  14            ?                       Reserved
+
+  Other fields may be defined in the source code, but they are subject
+  to changes in future versions.
+
+  Note that the Id Tag differs from earlier versions (pre-0.5.3)
+  because the API is not backward compatible.  Earlier versions
+  of the API (using IOCTL writes) will not be supported.
+
+  Default values for Interrupt and Function are 32h and 6Eh.
+
+----------326E-------------------------------
+INT 32 - NOISE.SYS Version 0.5.3+ API
+        AH = 6Eh ('n') (function id)
+        AL = subfunction (See INT 32/AX=6E00h)
+Return: CF set on error
+           AL = error codes returned by the API
+                00h = subfunction not supported
+                FBh = random pool is empty
+                FCh = quality of sample to too low
+                FDh = too many processes using the API or driver
+                FEh = subfunction is disabled in the current build
+                FFh = ok
+	CF clear if successful
+Notes: INT 32 is only a proposed interface for NOISE.SYS. Use the controller
+        read (IOCTL READ) from the RANDOM device to determine the interrupt
+        and function Id used by the driver, since future versions may use the
+        Alternate Multiplex Interrupt Service (AMIS) at Int 2Dh.
+       Assume that unspecified registers (other than DS:SI) may be trashed.
+SeeAlso: INT 2D/AMIS
+----------326E00-----------------------------
+INT 32 - NOISE.SYS - INSTALLATION CHECK
+        AH = 6Eh
+        AL = 00h
+Return:
+        AL = installation status
+                00h = not installed
+                FFh = installed
+        CX = Version (ie, 0123h = Version 1.2.3)
+        DX:DI -> AMIS signature string
+----------326E01-----------------------------
+INT 32 - NOISE.SYS - GET PRIVATE API ENTRY POINT
+        AH = 6Eh
+        AL = 01h
+Return:
+        AL = entry point status
+                00h = no entry point
+                FFh = entry point present in DX:BX
+        DX:BX -> far call entry point to API
+----------326E02-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 02h
+Return:
+        AL = 00h
+----------326E03-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 03h
+Return:
+        AL = 00h
+----------326E04-----------------------------
+INT 32 - NOISE.SYS - GET INTERRUPT HOOK LIST
+        AH = 6Eh
+        AL = 04h
+        BL = ignored
+Return:
+        AL = status
+                00h = unimplemented
+                04h = DX:BX -> interrupt hook list
+                FEh = subfunction disabled
+Note: the hook list array ends with API interrupt (usually 32h) although
+        it will differ if the API is installed at another interrupt
+----------326E05-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 05h
+Return:
+        AL = 00h
+----------326E06-----------------------------
+INT 32 - NOISE.SYS - GET DEVICE DRIVER HEADER
+        AH = 6Eh
+        AL = 06h
+Return:
+        AL = number of device drivers in NOISE.SYS chain
+                02h = default (for RANDOM and URANDOM devices)
+        AH = AMIS device driver flags (set to 00h for now)
+        DX:BX -> first device in chain
+Note: this function is a proposed addition to the AMIS standard
+        and is subject to change
+----------326E07-----------------------------
+INT 32 - NOISE.SYS - Unused but reserved for AMIS
+        AH = 6Eh
+        AL = 07h through 0Fh
+Return:
+        AL = 00h
+Note: These functions are reserved for future use in the AMIS standard
+----------326E10-----------------------------
+INT 32 - NOISE.SYS - STATUS CHECK
+        AH = 6Eh (function id)
+        AL = 10h
+Return: CF set on error
+           AL = error codes returned by the API
+                FDh = too many processes using the API
+	CF clear if successful
+        AL = status
+                FFh = ok
+        BH = number of processes using the API
+        CX = number of random bytes waiting
+        DX = maximum possible bytes waiting
+                if CX=DX, the pool is full
+Notes: this subfunction is a convenient way to check the driver if any
+        fresh bytes are waiting in the output pool.
+SeeAlso: INT 32,AH=6Eh
+----------326E11-----------------------------
+INT 32 - NOISE.SYS - GET ENTROPY ESTIMATE
+        AH = 6Eh (function id)
+        AL = 11h
+Return: CF set on error
+           AL = error codes returned by the API
+                00h = subfunction not supported
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        EBX = estimated bit count (See notes)
+        CL = FRACBITS (number of fractional bits)
+        EDX = low 32-bits of total number of samples added
+Notes: the estimated number of fresh random bits is equal to
+        (EBX >> FRACBITS) + ((EBX & ((1 << FRACBITS)-1) / (1 << FRACBITS))
+----------326E12-----------------------------
+INT 32 - NOISE.SYS - ADD SAMPLE FROM FAST TIMER
+        AH = 6Eh  (function id)
+        AL = 12h
+Return: CF set on error
+           AL = error code
+                FCh = quality of sample is too low
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes waiting
+----------326E13-----------------------------
+INT 32 - NOISE.SYS - ADD 16-BIT SAMPLE TO RANDOM POOL
+        AH = 6Eh (function id)
+        AL = 13h
+        DX = sample
+Return: CF set on error
+           AL = error code
+                FCh = quality of sample is too low
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes waiting
+----------326E14-----------------------------
+INT 32 - NOISE.SYS - GET FLAGS
+        AH = 6Eh  (function id)
+        AL = 14h
+Return:
+        BX = flags
+        CX = settable flags mask
+Note: later versions may use EBX and ECX if needed.
+
+Defined flags:
+        0001h = Windows is active
+        0002h-0020h = reserved
+        0040h = clock drift sampling
+        0080h = video retrace drift sampling
+        0100h = network access sampling (reserved)
+        0200h = CD-ROM access sampling (reserved)
+        0400h = DOS spinner
+        0800h = DOS exec() and exit() sampling
+        1000h = mouse sampling
+        2000h = disk sampling (Int 13h)
+        4000h = keystroke timings
+        8000h = hardware RNG (reserved)
+----------326E15-----------------------------
+INT 32 - NOISE.SYS - SET FLAGS
+        AH = 6Eh  (function id)
+        AL = 15h
+        BX = flags
+Return:
+        BX = flags
+Note: invalid flags are ignored, however it's best to mask out unsettable
+        flags from the value of CX returned by subfunction 14h
+----------326E16-----------------------------
+INT 32 - NOISE.SYS - READ URANDOM BYTES
+        AH = 6Eh  (function id)
+        AL = 16h
+        CX = number of bytes
+        ES:DI -> buffer
+Return: CF set on error
+           AL = error code
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes read
+----------326E17-----------------------------
+INT 32 - NOISE.SYS - READ RANDOM BYTES
+        AH = 6Eh  (function id)
+        AL = 17h
+        CX = number of bytes
+        ES:DI -> buffer
+Return: CF set on error
+           AL = error code
+                FBh = random pool is empty
+                FDh = too many processes using the API
+                FEh = subfunction is disabled
+	CF clear if successful
+        CX = number of random bytes read
+
+
+
+
+Unsorted References
+--------------------------------------------------------------------------
+
+        Baresel, Andre and Craig Jackson. 1995. "Soundblaster Programming
+          Information."  Version 0.90.  Online.  Internet.
+          <URL ftp://oak.oakland.edu/SimTel/msdos/sound/sblast09.zip>
+
+        Brown, Ralf. 1995. "MS-DOS Interrupt List".  Online (many sites).
+
+        -----. nd. "Alternate Multiplex Interrupt Specification (AMIS)."
+          v3.5. np. and v3.5.9 (Pers. corr.).
+
+        "DOS Programmer's Reference" 2nd Edition.  Terry Dettmann and Jim
+          Kyle, Eds.  Que Books.  1989.
+
+        Dunford, Chris. 1991. "IBM's Interrupt-Sharing Protocol." np.
+
+        Kyle, Jim. 1990. "Loading Device Drivers from the DOS Command
+          Line." Dr. Dobb's Journal.  November 1991. pp. 30-42, 90-98.
+          (See also the "Undocumented DOS" by the same author.)
+
+        Petzold, Charles. "Programming Windows". Microsoft Press.
+          Macmillan/Penguin. 1990.
+
+
+
+        Eastlake, D, S. Crocker and J. Schiller. 1994.  RFC-1750.
+          "Randomness Recommendations for Security." December 1994.
+
+        Elliott, Paul. "rng_810.zip" OS/2 driver for CALNET/Newbridge
+          RNG-810 card.
+
+        Ellison, Carl <cme@tis.com> and Burt Kaliski <burt@rsa.com>. 1995.
+          "P1363: Appendix E -- Cryptographic Random Numbers."  Draft V1.0.
+          November 11, 1995. Online.  Internet.
+          <URL http://www.clark.net/pub/cme/P1363/ranno.html>
+
+        FIPS PUB 180-1. 31 May 1994. "The Secure Hash Standard."
+
+        Gutmann, Peter. 1992.  Source code for "shs.c" and "shsdrvr.c".
+
+        Jenkins, Bob. 1994. "A tester of random number generators." from
+          a post to sci.crypt, July 13, 1995.
+
+        Lendl, Otmar. 1996. "Pseudorandom number generation package" v1.3.
+          Online. Internet. <URL ftp://random.mat.sbg.ac.at/pub/software/>.
+
+        Levin, Michael, Marvin Minsky, and Roland Silver.  1965.  "One the
+          Effective Definition of 'Random Sequence'."  Online.  Internet.
+          <URL http://www.swcp.com/artvark/random/random.html>.
+
+        Marsaglia, George. 1996. "DIEHARD: a battery of tests of randomness.
+          (Source C files, Jan 3 1996)"
+
+          See also "DIEHARD". Online. Internet.
+          <URL http://stat.fsu.edu/~geo/diehard.html>
+
+        Maurer, Ueli M. 1990. "A Universal Statistical Test for Random Bit
+          Generators."  Advances in Cryptology - CRYPTO '90, Proceedings.
+          Springer-Verlag, Berlin, New York.
+
+        Mitchell, D.P., Jack Lacy, and Matt Blaze. 1995.  Source code for
+          "truerand".
+
+          There is a similar truerand() implementation by Phil Karn as well.
+          "truerand" uses CPU clock-drift sampling as a source of entropy.
+
+        Pickover, Clifford A. 1995. "Random number generators: pretty good
+          ones are easy to find."  The Visual Computer (1995) 11:369-377.
+
+          This article discusses some interesting visual methods for testing
+          pseudo-RNGs such as "noise spheres".  A utility that plots a noise
+          sphere written in Turbo Pascal is available at ftp.funet.fi in the
+          /pub/crypt/random directory.  Implementations in C, X-Windows and
+          and Java exist.
+
+          See also Pickover, 1995. "Keys to Infinity."
+
+        Ritter, T. 1991. "The Efficient Generation of Cryptographic
+          Confusion Sequences." Cryptologia. 15(2): 81-139. Online. Internet.
+          <URL http://www.sys.uea.ac.uk/~rs/ritter.html>
+
+        Rivest, Ron. 1992. RFC-1321.  "The MD5 Message Digest Algorithm."
+
+        Schneier, Burce. 1994.  "Applied Cryptography."  New York: John
+          Wiley and Sons, Inc. (Second edition, 1995.)
+
+        "Selected Bibliography of Random Number Generation, Analysis, and
+          Use."  Online.  Internet.
+          <URL http://rainbow.rmii.com/~comscire/QWBIB.html> (21 Mar 1996)
+
+        Theodore T'so. 1995. Source code to /dev/random ("random.c") for
+          Linux, Version 0.95 (4-Nov-95).
+
+        Wagner, David. "Randomness resources for Dr. Dobb's Journal readers."
+          Online.  Internet.
+          <URL http://http.cs.berkeley.edu/~daw/netscape-randomness.html>.
+

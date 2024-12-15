@@ -1,0 +1,132 @@
+QCrack, v0.9 - Copyright (c) 1995, The Crypt Keeper
+
+------------------------------------------------------------------------------
+
+[QCRACK] ------------------------===========================================**
+
+QCrack is meant to be a first line defensive manuever for SysAdmins.  Often,
+users choose poor passwords.  They want soemthign easy to remember and 
+often these words will find their way into large dictionaries.  The problem
+with dictionary attacks are that encryption data is lost.  Cracker Jack
+subverts this problem somewhat by storing the Hash:PW string in a hidden
+file called, "JACK.POT" - allowing an "instant" crack on many password files
+once this has been built.  However, these passwords might be on many systems,
+except with different salt's, requiring an admin to recrack the passwords
+anyways, and there is little benefit.  
+
+QCrack attempts to solve this problem, somewhat, at the expensive of storage.
+QCrack takes a file with a special format (produced by QInit; see later)
+which contains the first two bytes of an encrypted password at a particular
+offset into the file which is directly proporsional to the salt of that
+hash.  What that means is that you get impressive cracking speeds for an
+exchange of disk space.  The only caveat other than disk space is that the
+file needs to be built, which can be expensive.  More on this below.
+
+QCrack is a suggested alternative to forcing users to use passwords like
+"h23ui@;F" or other random, difficult to memorize passwords.  This can 
+keep users bugging the sysadmin constantly asking for their password.
+
+Others force /usr/bin/passwd to check the entered password in a list of words
+(usually /usr/dicts/words), and check that first.  This list is often
+either out of date, or non existant!!
+
+[QINIT] -------------------------===========================================**
+
+QInit is where all the time is spent - once.  QInit generates a hash table
+where each entry corresponds to a salt value and contains the first two
+bytes of the hash.  Each password becomes about 4K worth of data, so this
+file gets large quickly.  A file with 5000 words can be expected to be
+20 MB of disk.  This makes it important to have both, a lot of disk space,
+and a very select dictionary.  Included, a file called, "cpw" is a list
+containing what I consider to be "good" words for the typical account.  I
+have had zero hits with this file on some password files, and I have also
+had almost a 30% hit rate on others.  
+
+Someone interested in making some money might be able to generate a moderate
+dictionary (say, 70000 words or so) and burn a CDROM.  This would allow 
+cracking at nearly the speed that data could be read from the CD.  The
+I/O speed seems to be the main block in speed.  
+
+I experimented a bit with a time/data size on my system.  Storing only one
+byte of the password was about 80% slower than storing two.  Storing three
+was only marginally faster (about 10%) and the file grows in size about
+33%.  This didn't seem like it was worth it, while the tradeoff of 100%
+size increase for an 80% speedup did seem worthwhile. 
+
+So, how do you use it?  Well, it is a filter - which makes increasing the
+dictionary easy.  A common use might be to build a very small dictionary
+(such as the cpw file included), and execute:
+qinit < cpw > cpw.hash
+This creates (after some time!) a file called "cpw.hash".  It's best not to
+mess with the file once it is created, since you can cause some pretty
+severe sync errors if you modify it in a bad way.  If you want to add
+words, you could then append to cpw.hash, something like:
+qinit < new-words >> cpw.hash
+
+[QEXT] --------------------------===========================================**
+
+Real simple utility; this just creates a standard wordlist out of a 
+data file from qinit.  Provide the name of the data file on the command
+line; output is to stdout.
+
+[GENERAL] -----------------------===========================================**
+
+Once the dictionary has been built with QInit, the rest of it is up to you.
+It never again needs to be built.  Stick it onto your favorite tape.  Or
+keep a small one lying around on your hard disk if you have the space 
+for it.  After this, you can rnu qcrack on any password file and get
+nearly instant cracking results.  My 486 cracked a conglomeration of
+22000 accounts with a 4500 word dictionary in only 10 minutes.  That has
+a throughput of nearly 165000 c/s, far more than any convential cracking
+software could ever obtain.  
+
+QCrack has a few general options.  It's syntax is:
+qcrack [-bns] <passwordfile> <hashfile>
+
+the dash options (-bns) are optional.
+-n tells QCrack *not* to try each login with the a password equivalent to
+the account's login id's.  These are tested while loading the password
+file, so it will be noticeably slower when parsing the password file.
+
+-b tells QCrack to beep each time an account is hit.  This makes it a little
+more entertaining to watch.
+
+-s tells QCrack to supress parsing messages.  
+
+Multiple options can be specified with only a single dash; multiple dashes
+will confuse the command line parser if separated with spaces.  Basically,
+this means to use:
+qcrack -ns passwd hash 
+and *NOT*
+qcrack -n -s passwd hash
+
+Output from QCrack is somewhat weird.  
+Parsing messages, beeps (^G), status, and similar such information is
+all output to stderr.  Any accounts which are cracked are put to stdout.
+Two common uses therefore would be (under tcsh):
+
+qcrack mypasswdfile cpw.hash > mypasswdfile.hit
+or
+qcrack mypasswdfile cpw.hash >& mypasswdfile.hit
+
+The first will allow the one who exec's qcrack to see things like status,
+parsing messages, etc.
+
+The second will throw these messages into the file.  Be careful to check and
+see if any accounts were cracked in the parsing messages.  If there was one
+cracked, then it will be in the middle of the parsing messages.  The
+-s option will supress the parsing messages, and eliminate this problem.
+
+I spent a bit of time optimizing the fcrypt routines for both applications.
+They originally got about 700 c/s on my system, and I moved the general
+fcrypt up to about 900, and the fcrypt used in qinit gets about 1000. 
+If you can make it go faster, I'd love to hear.  If you throw in a new
+hash engine, I'd like to hear about that, too, and what kind of results
+or improvements you've obtained.  I did not try to write this code in any
+fancy way, so it is pretty kludgy.  This project started off just as an
+experiment, and I thought that others might find it useful.  If you don't,
+then you can go ahead and forget about it; sorry for wasting your time.
+
+Finally, if you need to contact me, you can send me email as
+tck@bend.ucsd.edu
+

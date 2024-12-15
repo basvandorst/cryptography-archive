@@ -1,0 +1,152 @@
+#
+# config/post.in
+#
+# Copyright (C) 1996,1997 Pretty Good Privacy, Inc.  All rights reserved.
+#
+# Written by:	Derek Atkins <warlord@MIT.EDU> and Colin Plumb
+#
+# $Id: post.in,v 1.35.2.4.2.2 1997/07/16 11:57:36 colin Exp $
+#
+
+# Recursively perform operations on all POSTSUBDIRS
+all check clean depend headers install very-clean distribution-common-src\
+distribution-freeware-src-internal::
+	@if test 'x$(POSTSUBDIRS)' != x; then \
+		for i in $(POSTSUBDIRS)''; do \
+			echo Making $@ in $(SUB)$$i ; \
+			(cd $$i; $(MAKE) $(MFLAGS) SUB=$(SUB)$$i/ $@) \
+					|| exit 1; \
+		done \
+	else :; \
+	fi
+
+# Install all SHAREDHDRS into the public header directory, PRIVHDRS into
+# the private interface directory
+headers::
+	@if test 'x$(SHAREDHDRS)' != x; then \
+		echo Linking $(SHAREDHDRS) to public include ; \
+		for i in $(SHAREDHDRS)''; do \
+			if $(TEST_L) $(buildinc)/$$i; then \
+				$(RM) $(buildinc)/$$i ; \
+			else :; \
+			fi ; \
+			if test ! -f $(buildinc)/$$i; then \
+				$(LN_S) \
+..$(dir_suffix)/$(top_srcdir)$(dir_suffix)/$$i \
+	$(buildinc) ; \
+			else :; \
+			fi; \
+		done \
+	else :; \
+	fi
+	@if test 'x$(PRIVHDRS)' != x; then \
+		echo Linking $(PRIVHDRS) to private include ; \
+		if test ! -d ../include; then mkdir ../include; fi; \
+		for i in $(PRIVHDRS)''; do \
+			if $(TEST_L) ../include/$$i && test \
+				`(cd ../include; pwd)` != \
+				`(cd $(top_srcdir)$(dir_suffix); pwd)`; then \
+				$(RM) ../include/$$i ; \
+			else :; \
+			fi ; \
+			if test ! -f ../include/$$i; then \
+				$(LN_S) $(top_srcdir)$(dir_suffix)/$$i \
+					../include ; \
+			else :; \
+			fi; \
+		done \
+	else :; \
+	fi
+
+# Install PUBHDRS, INSTALLLIBS, and INSTALLPROGS into the appropriate
+# locations
+install::
+	if test 'x$(PUBHDRS)' != x; then \
+		if test ! -d $(DESTDIR)$(includedir); then \
+			mkdir -p $(DESTDIR)$(includedir); \
+		fi; \
+		for i in $(PUBHDRS)''; do \
+			$(INSTALL) -m 644 $(srcdir)/$$i \
+					  $(DESTDIR)$(includedir); \
+		done \
+	else :; \
+	fi
+	if test 'x$(INSTALLLIBS)' != x; then \
+		if test ! -d $(DESTDIR)$(libdir); then \
+			mkdir -p $(DESTDIR)$(libdir); \
+		fi; \
+		for i in $(INSTALLLIBS)''; do \
+			$(INSTALL) -m 644 $$i $(DESTDIR)$(libdir); \
+		done \
+	else :; \
+	fi
+	if test 'x$(INSTALLPROGS)' != x; then \
+		if test ! -d $(DESTDIR)$(bindir); then \
+			mkdir -p $(DESTDIR)$(bindir); \
+		fi; \
+		for i in $(INSTALLPROGS)''; do \
+			$(INSTALL) -m 755 $$i $(DESTDIR)$(bindir); \
+		done \
+	else :; \
+	fi
+
+# Remove appropriate things
+clean do-clean::
+	$(RM) *.o *~ *.bak core DONE LIBDONE
+
+# Remove clean and PROG  as well
+very-clean:: do-clean
+	$(RM) $(PROG)
+
+# Add the files we want to ship into the manifest
+distribution-common-src::
+	@if test '$(DO_DISTRIBUTION_COMMON_SRC)' = 1; then \
+	ls *.[ch] Makefile.in *.asm *.s | \
+		sed "s;\(.*\);$(THIS_DIR)/$(SUB)\1;" >> \
+		$(top_srcdir)/MANIFEST ; \
+	else :; \
+	fi
+	@DO_DISTRIBUTION_COMMON_SRC=1
+
+depend::
+	@if test 'x$(SRCS)' != x; then \
+		sed -e '/^#### DO NOT DELETE this line$$/,$$d' Makefile > \
+				Makefile.new ; \
+		echo "#### DO NOT DELETE this line" >> Makefile.new ; \
+		$(DEPEND) $(CFLAGS) $(SRCS) >> Makefile.new ; \
+		$(MV) Makefile.new Makefile ; \
+	else :; \
+	fi
+
+# Compile library objects, OBJS.  Requires OBJS and "all:: DONE"
+DONE:: $(OBJS)
+	@if test x'$(OBJS)' = x && test -r $@; then :; \
+	else \
+		(set -x; echo $(OBJS) > $@) \
+	fi
+
+# Compile subdirectories files, $(LIBDONE) into LIBDONE.  Requires
+# LIBDONE and "all:: LIBDONE"
+LIBDONE: $(LIBDONE)
+	$(RM) $@
+	for i in $(LIBDONE); do \
+		j=`echo $$i | sed -e 's;/[^/]*$$;;'` ; \
+		sed -e "s;^\([^ ]\);$$j/\1;" -e "s; \([^ ]\); $$j/\1;g" \
+		< $$i >> $@; \
+	done
+
+# Compile program, PROG
+$(PROG): $(OBJS) $(DEPLIBS) $(LOCALDEPLIBS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LIBS) $(LOCALLIBS)
+
+# Build a library, LIBTARGET, based on LIBTDEPS.  Requires LIBTDEPS be
+# either DONE or LIBDONE
+$(LIBTARGET):	$(LIBTDEPS)
+	$(RM) $@
+	$(AR) cru $@ `cat $(LIBTDEPS)`
+	$(RANLIB) $@
+	$(RM) ../$@
+	$(LN_S) ..$(dir_suffix)/$@ ../
+
+# GNU make feature: If there's an error building a target, remove it
+.DELETE_ON_ERROR:

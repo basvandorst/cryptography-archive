@@ -1,0 +1,546 @@
+% Arithmetic in Global Fields - A User's Guide
+% Copyright (C) 1990 Kevin R. Coombes and David R. Grant
+% Distributed under the terms of the GNU General Public License as
+% published by the Free Software Foundation, without any warranty.
+% See the COPYRIGHT notice with this distribution for details.
+%
+% layout
+%
+\magnification = \magstep1
+%
+\font\title = cmssbx10 scaled \magstep2
+\font\subtitle = cmss10 scaled \magstep1
+%
+\newcount\secno
+\secno=0
+\def\section#1\par{\vskip0pt plus .2\vsize\penalty-250
+    \vskip0pt plus-.2\vsize\bigskip\vskip\parskip
+    \advance\secno by 1 \message{#1}
+   \centerline{\bf \the\secno:\enspace #1}\nobreak\smallskip}
+%
+\def\*{\begingroup\tt}
+\def\@{\endgroup}
+%
+% text
+%
+\vglue 1.0 truein
+
+\centerline{\title Arithmetic in Global Fields}
+\smallskip
+\centerline{\subtitle A library of C functions for global fields}
+\medskip
+\centerline{\subtitle Kevin R. Coombes and David R. Grant}
+
+\vskip 1.0 truein
+
+\centerline{\bf Introduction}
+\smallskip
+Any algebraic number theorist knows that there is no essential
+difference between the ring of integers and the ring of polynomials in
+one variable over a finite field. The purpose of this document is to
+describe a library of C functions which provides a common interface for
+doing computations with arbitrary-precision integers (or rational
+numbers) or with arbitrary degree polynomials (or rational functions)
+over finite fields.
+
+The most elementary things that must be done to use this package
+(after installation) are:
+\item{(i)} \*\#include\@ the appropriate header file. This consists of
+exactly one of the files \*integer.h\@, \*polynomial.h\@,
+\*fraction.h\@, \*rational.h\@, or \*quadratic.h\@. We have adopted
+the convention that ``fraction'' refers to rational numbers, and
+``rational'' refers to rational functions. At this time, arithmetic in
+quadratic extensions is confined to the rings of integers in fields of
+the form ${\bf Q}(\sqrt{D})$ where $D$ is an integer whose absolute
+value is sufficiently small to fit into a \*short\@.
+\item{(ii)} Before performing any operations, run the routine
+\*Initial($p$)\@, where $p$ is the characteristic of the ring. The
+main thing accomplished by this routine is the initialization of
+certain storage areas needed during the computations.
+
+\section Basic Arithmetic Operations
+
+The type of an arbitrary precision integer or arbitrary degree
+polynomial over a finite field is the same as ``pointer to unsigned
+short''. Thus, the library functions which carry out the basic
+arithmetic operations: 
+\*\obeylines
+Zadd(a, b)
+Zsub(a, b)
+Zmult(a, b)
+\@
+
+\noindent are all defined so that their arguments and return values
+are of type  \*unsigned short *\@. These routines return, repectively,
+the sum, difference, and product of \*a\@ and \*b\@.
+
+Division is somewhat more complicated. It is declared as
+\*\obeylines
+unsigned short *Zdivalg(a, b, r)
+unsigned short *a, *b, *r;
+\@
+
+\noindent The return value is the quotient of \*a\@ by \*b\@. If the pointer
+\*r\@ is not \*NULL\@, then the remainder is stored at that
+location. It is the programmer's responsibility to ensure that enough
+space is available to hold all the digits of the
+remainder. The conventions adopted for the quotient and remainder of
+the division algorithm are: (i) The quotient of two polynomials is
+always a monic polynomial. (ii) The remainder when dividing two
+integers always has the same sign as the dividend \*a\@. (iii) The
+relation $a = bq+r$ is guaranteed to be satisfied.
+
+Both the ring of integers and the ring of polynomials are Euclidean;
+that is, the euclidean algorithm can be used to compute greatest
+common divisors. The routine which implements this is
+\*\obeylines
+void Zgcd(a, b, g, aa, bb)
+unsigned short *a, *b, *g, *aa, *bb;
+\@
+
+\noindent The greatest common divisor of \*a\@ and \*b\@ is stored at
+\*g\@; the quotients \*a/g\@ and \*b/g\@ are stored at \*aa\@ and \*bb\@,
+respectively. The user must make sure that enough space exists at
+these locations to store the answers. The conventions used are that
+the greatest common divisor of two polynomials is always monic, and
+the greatest common divisor of two integers is always positive.
+
+There are two different versions of each of these functions---one for
+integers and one for polynomials. They have a common interface, and
+the external definitions needed to use any of them are contained in
+the header file \*Ztools.h\@. A file which only uses the basic
+operations can do so by \*\#include\@'ing this header; it must be linked
+with the correct library at compile time. The library of integer
+functions is called \*libZ.a\@; the library of polynomial functions is
+called \*libP.a\@. The distribution includes some test files to
+illustrate how programs can be written to work regtardless of whether
+integers or polynomials are used.
+
+For example, suppose a program to use these routines is contained in
+the file \*foo.c\@. Two different executable routines can be
+maintained by the commands
+\*\obeylines
+cc -Iincdir -Llibdir foo.c -lZ -o foo\_Z
+cc -Iincdir -Llibdir foo.c -lP -o foo\_P
+\@
+\noindent where the header files are contained in the directory
+\*incdir\@ and the libraries are stored in the directory \*libdir\@.
+
+\section Integer and Polynomial Utilities
+
+Additional utilities have been provided to make it easier to deal with
+the integer and polynomial routines described above. These utilities
+are kept in yet another library, \*libU.a\@. Most of them
+are implemented as a single routine which takes a ``toggle'' as one of
+its arguments to determine whether or not the other arguments
+represent integers or polynomials. In order to be able to write
+programs which don't explicitly access this toggle, header files are
+provided which define macros to handle this. The usual method of
+writing code which uses any of these routines is to put
+\*\obeylines
+\#ifdef INTEGERS
+\#include ``integer.h''
+\#elif defined POLYNOMIALS
+\#include ``polynomial.h''
+\#else
+some line to make the compiler complain
+\#endif
+\@
+\noindent at the top of the file. The header files \*integer.h\@ and 
+\*polynomial.h\@ automatically include the common part of the
+interface; namely, \*Ztools.h\@. In order to maintain two versions of
+a program which uses these utilities, they must be compiled with the
+lines 
+\*\obeylines
+cc -DINTEGERS -Iincdir -Llibdir foo.c -lZ -lU -o foo\_Z
+cc -DPOLYNOMIALS -Iincdir -Llibdir foo.c -lP -lU -o foo\_P
+\@
+
+\medskip\noindent The declarations of the integer and polynomial
+utilities are:
+
+\*\obeylines
+char Zeq(a, b);
+unsigned short *a, *b;
+\qquad
+char Zlessoreq(a, b);
+unsigned short *a, *b;
+\qquad
+unsigned short Size(a);
+unsigned short *a;
+\qquad
+unsigned short *Constant(l)
+long l;
+\qquad
+void Shcopy(a, b)
+unsigned short *a, *b;
+\qquad
+\@
+
+The first two routines are boolean functions which compare \*a\@ and
+\*b\@. They return a non-zero value for true and the value zero for
+false. True means that $a=b$ or $a\le b$, respectively.
+
+The utility \*Size()\@ determines the number of digits occupied by an
+integer; it throws away any high-order zeros. If you
+don't mind wasting a little space, calls to \*Size()\@ can be replaced
+by using the fact that the first location occupied by a very long
+integer or polynomial is at least as big as the value returned by
+\*Size()\@. It is generally used
+when determining how much space is needed to store some integer or
+polynomial which is about to be copied into some safe location. The
+utility \*Shcopy()\@ does the copying; it copies the 
+contents of the integer or polynomial \*a\@ into the location pointed
+to by \*b\@. The programmer must take care to ensure that enough space
+is available; \*Shcopy()\@ doesn't care, and will blindly go on
+copying and destroying data if you haven't provided enough space. One
+of the most common uses of \*Shcopy()\@ is to put the value of some
+constant in a safe place. The utility \*Constant()\@ takes as its
+input a \*long\@ whose absolute value must fit into an \*unsigned short\@;
+it returns an integer or polynomial correctly formatted to be
+compatible with the multi-precision routines. However, \*Constant()\@
+continually re-uses the same storage locations. The next call will
+write over the data. So, one usually invokes this in the form
+\smallskip
+\*\obeylines
+unsigned short One[3];
+Shcopy(Constant(1), One);
+\@
+\smallskip
+\noindent Note that integer constants, as explained below in the section on
+storage, actually require three unsigned shorts to hold the data. The
+ratio of useful information to number of storage locations improves as
+the size of the numbers increases (fortunately).
+
+\section Input and Output
+
+The desire to keep input and output uniform for both integers and
+polynomials, combined with an attempt to conserve space, has lead to
+an unusual requirement for the entering of integers. To avoid this
+embarrassing disclosure as long as possible, we begin by discussing
+polynomials. Polynomials are entered and output as a string of
+coefficients separated by white space; the coefficients of the highest
+degree terms are entered first, and the constant term is entered last.
+Polynomials can be continued onto the next line by using the character
+\*\&\@ as the last character of a line. An unusual convention is that
+all non-digits entered are treated as white space. This convention is
+adopted to be compatible with the output routines, and to make it
+easier to search and save relevant lines from a long output file. For,
+the output routine will usually write lines of the form
+
+\*\obeylines
+mypoly = 1 2 3 4 1 2 3 4 1 2 3 4 \&
+(more mypoly) 1 2 3 4
+\@
+
+Such lines can be conveniently picked out by searching for the name
+\*mypoly\@, and can be used as the input for another program that uses
+this package without any modification.
+
+The input routine is declared as:
+\smallskip
+\*\obeylines
+char Collect(msg, a)
+char *msg;
+unsigned short *a;
+\@
+\smallskip
+\noindent and the output routine by
+\smallskip
+\*\obeylines
+void Showme(msg, a)
+char *msg;
+unsigned short *a;
+\@
+The function \*Collect()\@ will store the input in the location
+pointed to by \*a\@. It is the user's responsibility to ensure that
+enough space is available. There is a limit to the number of
+coefficients that can be entered in a single polynomial; currently,
+that limit is set at 1024. If it becomes necessary to increase this,
+you must change the value of the constant \*MAXDIGIT\@ in the file
+\*collect.c\@ and recompile the utility library. The output routine
+\*Showme()\@ has no such limitations. For both functions, the
+parameter \*msg\@ is a string describing the input or output.
+
+In addition, the output routine comes in a flavor amenable to the use
+of a file other than the standard one for output. The routine is
+called \*Fshowme(fp, msg,a)\@, and the first parameter is a pointer to
+an open \*FILE\@ where the output should be written.
+
+And now for integers. No provision has yet been made for decimal input
+or output. In order to use the same routines, we have chosen to
+represent integers in the base 65536, which is the size of an
+\*unsigned short\@ on our machine. They are entered as for
+polynomials, as digits to this base which are separated by white
+space, with the most significant digit entered first and the least
+signifigant digit entered last. In addition, they can be preceeded by
+an optional sign, and continued on the following line using the
+ampersand \*\&\@. The routines which do input and output have the same
+declarations.
+
+\section Rational Numbers and Rational Functions
+
+There is a library \*libQ.a\@ of functions to do rational arithmatic
+with either 
+integers or polynomials. These routines are written so that they only
+refer to functions defined in \*Ztools.h\@, and thus can be compiled
+without explicit reference to either integers or polynomials. However,
+before being used they must be linked with the correct library.
+Moreover, most applications which use these routines will also use
+some utilities that need to know whether integers or polynomials are
+intended. Thus, the standard method is similar to that suggested
+before. If you want to be able to maintain a file \*foo.c\@ that works
+with either integers or polynomials, you have to include code along
+the lines of
+\*\obeylines
+\#ifdef FRACTIONS
+\#include ``fraction.h''
+\#elif defined RATIONALS
+\#include ``rational.h''
+\#else
+panic
+\#endif
+\@
+\smallskip
+\noindent and compile with one of the lines 
+\smallskip
+\*\obeylines
+cc -DFRACTIONS -Iincdir -Llibdir foo.c -lQ -lZ -lU -o foo\_Z
+cc -DRATIONALS -Iincdir -Llibdir foo.c -lQ -lP -lU -o foo\_P
+\@
+\smallskip
+
+\noindent All the rational function routines are written to use the
+obvious structure, defined as 
+\*\obeylines
+typedef struct $\{$
+\qquad unsigned short *num;
+\qquad unsigned short *den;
+$\}$ ratl;
+\@
+\smallskip\noindent Thus, the functions 
+\smallskip
+\*\obeylines
+Qadd(a,b)
+Qsub(a,b)
+Qminus(a)
+Qmult(a,b)
+Qdiv(a,b)
+Qinv(a)
+\@
+\smallskip\noindent all take parameters of type \*ratl\@ and return an
+answer of the same type. They return, unsurprisingly, the sum,
+difference, negative, product, quotient, and reciprocal, respectively,
+of their arguments. There is also a boolean function \*Qeq(a,b)\@
+which returns a \*char\@ which has a non-zero value if and only if its
+arguments represent the same fraction or rational function.
+
+A similar collection of utilities exists to support rational
+operations; these are all contained in the standard utility library
+\*libU.a\@. These utilities are
+\smallskip\*\obeylines
+char Inratl(msg, r, s);
+char *msg;
+ratl r;
+short s;
+\qquad
+void Ratshowme(msg, r)
+char *msg;
+ratl r;
+\qquad
+ratl Ratconst(l)
+long l;
+\qquad
+void Ratcopy(a,b)
+ratl a,b;
+\@
+\medskip
+The input routine \*Inratl()\@ makes use of \*Collect()\@ to read in
+the numerator and denominator of a rational structure separately.
+these will be stored in \*r\@. To permit shortcuts for the frequent
+occasions when the inputs are actually integers even though the
+computations will make use of rationals, the parameter \*s\@ is
+provided to convey this infomation. This parameter can only
+legitimately take on the values \*INTEG\_IN\@ or \*FRAC\_IN\@ which are
+\*\#define\@d in the header file \*myinput.h\@.
+
+The output routine \*Ratshowme()\@ uses the standard integer output
+routine \*Showme()\@ to write out a rational structure in two parts.
+It also has a file oriented version \*FRatshowme(fp, msg, r)\@, whose
+first parameter is a pointer to an open \*FILE\@ on which the output
+is to be written.
+
+The routine \*Ratconst()\@ returns a rational structure representing
+the integer \*l\@. It has the same drawbacks as the function
+\*Constant()\@ in that it re-uses storage, and so its value should be
+copied to a safe place using \*Ratcopy()\@. The latter, in turn, is
+equally unsafe, in that it will overwrite data if you have not made
+sure that the second argument contains enough available space to hold
+all the data in its first argument.
+
+\section Quadratic Number Fields
+
+There is also a library \*libD.a\@ for doing arbitrary precision
+computations in the ring of integers of a quadratic number field. This
+package is not implemented for polynomials at this time, and it only
+works for the rings of integers in a field of the form ${\bf
+Q}(\sqrt{D})$ where the absolute value of $D$ is sufficiently small
+that it will fit in an \*unsigned short\@. In order to use this
+routine, you must (i) include the proper header file via the command
+\*\#include ``Dstruct.h''\@, and (ii) link with the libraries
+\*libD.a\@, \*libZ.a\@ and \*libU.a\@ at compile time.
+
+These routines make use of a structure declared as
+\*\obeylines
+typedef struct quad {
+\qquad  unsigned short *alpha;
+\qquad  unsigned short *beta;
+} quad;
+\@
+Each element of type \*quad\@ represents an integer of the form
+$\alpha + \beta\omega$ where $\omega$ is either $(1+\sqrt{D})/2$ or
+$\sqrt{D}$ depending on whether or not $D$ is congruent to 1 modulo
+$4$.
+
+The available routines are
+\smallskip\*\obeylines
+Dadd(a,b)
+Dsub(a,b)
+Dminus(a)
+Dmult(a,b)
+\@
+\smallskip\noindent each of which takes \*quad\@s as arguments and
+returns them as answers. They compute (you guessed it) the sum,
+difference, negative, and product of their argument, respectively.
+There is also a boolean function \*Deq(a,b)\@ as with the other pieces
+of the package. Finally, there is a function
+\*\obeylines
+unsigned short *Norm(a)
+quad a;
+\@
+which returns the very long integer which is the norm of the quadratic
+integer \*a\@.
+
+No provision has been made as yet for separate input and output
+routines; these must be done using the integer utilities. There are
+also no functions that do division, compute g.c.d.'s. or do rational
+arithmetic with these numbers.
+
+\section Storage
+
+The basic decision on how to store the data was made based on the
+desire to be able to treat integers and polynomials in a similar
+manner. The first applications made of these functions were limited
+primarily by space, so compact storage was made a premium. Thus, the
+following system was decided upon: Data is stored as an array of
+unsigned shorts, in little-endian order. Thus, the type of a
+polynomial or arbitrary precision integer is the same as ``pointer to
+unsigned short''. The value immediately pointed to is the offset of
+the most significant digit or the highest coefficient. In the case of
+polynomials, this value is one more than the degree. In the case of
+integers, it is actually two more than the number of actual digits;
+this occurs because the most significant digit is reserved as a
+signbit, and so it is required to have one of the values 0 (for
+positive) or \*NEGSIGNBIT\@ (for negative). An integer is written base
+$2^{16} = 65536$ in order to make the most efficient use of space.
+
+The next storage-related decision was that the user of the library
+should have to spend a minimal amount of time worrying about it. Thus,
+the basic routines automatically maintain a block of storage in which
+to do scratch computations, and, when necessary, create the space
+needed to store their return values. In order to do this and still cut
+down on the number of calls to \* malloc()\@ and \* free()\@, the
+following method was adopted. The program maintains a linked list of
+storage blocks, each of which is called a \*warehouse\@. A
+\*warehouse\@ is a structure defined as follows: 
+
+\*\obeylines
+typedef struct warehouse $\{$
+\qquad unsigned short *array;
+\qquad int nextin;
+\qquad unsigned depth;
+\qquad struct warehouse *newer;
+$\}$ warehouse;
+\@
+
+\noindent The element \*array\@ in a \*warehouse\@ is a pointer to an
+array containing a number of \*unsigned short\@'s equal to the value
+of \*depth\@. The element \*nextin\@ is the offset from the beginning
+of the array of the next available open space. When the warehouse gets
+full, \*nextin\@ is set equal to $-1$, and a new warehouse is created
+and linked into the end of the list; \*newer\@ points to the next
+warehouse.
+
+The principal routines which manipulate warehouses are declared by 
+\*\obeylines
+warehouse *makeWH(howbig)
+unsigned howbig;
+\qquad
+unsigned short *capture(where, howmany)
+warehouse where;
+unsigned howmany;
+\qquad
+void release(where, mark)
+warehouse *where;
+unsigned short *mark;
+\@
+
+Whenever one of the routines that performs integer arithmetic needs
+space either for a scratch computation or to store its answer, it
+calls the function \*capture()\@ to get storage space from the
+warehouse. The warehouses used in these computations are defined by
+the call to \*Initial()\@ which must take place before any operations
+on arbitrary length integers or polynomials can be performed. The
+\*Initial()\@ routine, among other things, calls \*makeWH()\@ which
+\*malloc()\@s and initializes a \*warehouse\@. Then \*capture()\@ gets
+space for the requested number of \*unsigned short\@s out of the
+\*warehouse\@, creating a new one if the old one doesn't have enough
+room. When you can safely discard some intermediate computations and
+recover some space, you call \*release()\@, which resets \*nextin\@ to
+be the offset of the location pointed to by the \*mark\@, and
+\*free()\@s any extra \*warehouse\@s.
+
+
+\section Defects
+
+It is clear that there should be a routine \*Zcmp(a, b)\@ which
+returns positive, zero, or negative values depending on whether \*a\@
+is greater than, equal to, or less than \*b\@.
+
+It is equally clear that provision should be made for the decimal
+input and output of arbitrarily long integers.
+
+\section Installation
+
+It should be possible to do the entire installation simply by typing
+\*make\@ in the parent directory where this package was placed. Some
+things that you might want to change are (i) the conventions involving
+where the \*\#include\@ files eventually get stored, to make them
+available for general users applications, (ii) the conventions for
+where libraries get installed, if your \*C\@ compiler does not support
+the \*-L\@ option, (iii) the definition of \*CFLAGS\@, and, most
+importantly, (iv) the definition of \*ARCH\@ which depends heavily on
+the fact that this program was developed on a Sun workstation in an
+environment that included both Sun3 and Sun4 machines.
+
+\vskip 1.0truein
+
+{\obeylines
+Kevin R. Coombes
+Department of Mathematics
+University of Michigan
+Ann Arbor MI 48109
+\enspace
+kevin@math.lsa.umich.edu
+\enspace
+\enspace
+David R. Grant
+Department of Mathematics
+University of Colorado
+Boulder, CO 80309
+\enspace
+grant@boulder.colorado.edu
+}
+
+\end
+

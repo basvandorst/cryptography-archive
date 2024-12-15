@@ -1,0 +1,462 @@
+From: pgut01@cs.aukuni.ac.nz (Peter Gutmann)
+Newsgroups: sci.crypt
+Subject: A standard encryption library (Long)
+Date: 23 May 1995 14:22:20 GMT
+Organization: University of Auckland
+Lines: 450
+Sender: pgut01@cs.aukuni.ac.nz (Peter Gutmann)
+Message-ID: <3psr2s$dib@net.auckland.ac.nz>
+NNTP-Posting-Host: cs26.cs.auckland.ac.nz
+X-Newsreader: NN version 6.5.0 #3 (NOV)
+
+
+
+Notes
+ 
+1. This is a pre-release version of the library.  Although it's rather long,
+   I'm posting it here rather than in alt.sources since I think the sci.crypt
+   readership will be able to do more with it at the moment.
+ 
+2. Only a Unix makefile is included to save bandwidth.  The final version will
+   include extras like the .rc and .def files needed for the Windows and OS/2
+   DLL's, and various other odds and ends.
+ 
+3. Some older versions of gcc seem to choke on the endianness test used in
+   crypt.h
+ 
+4. The docs are currently a bit skimpy.  Treat crypt.h as supplementary
+   documentation.
+ 
+5. Currently only MDC/SHS encryption is implemented, I'm hoping people will add
+   their own favourite algorithms as plug-in modules.
+ 
+After much procrastinating I'm finally ready to release the initial version of
+my encryption library.  I wrote this in response to random requests I keep
+seeing in various newsgroups for encryption libraries, usually with no
+responses.  This library provides a (hopefully) universal interface to all
+kinds of conventional-key encryption algorithms in an easy-to-use manner. The
+library is broken up into two parts:
+ 
+  1. Routines to query the library capabilities.
+  2. Routines to perform the en/decryption.
+ 
+Requirements for a Standard Encryption Library
+----------------------------------------------
+ 
+ - It should be idiot-proof.
+ 
+   It's quite difficult to implement insecure encryption using this code
+   without actually trying.
+ 
+ - It should provide extensive error checking.
+ 
+   Each parameter and function call is checked for errors before any actions
+   are performed, with error reporting down to the level of individual
+   parameters.
+ 
+ - It should be portable.
+ 
+   The library is written entirely in ANSI C, with hooks for certain
+   OS-specific oddities such as Windows/OS/2 dynamic link libraries.  The only
+   external routines used are ones from <string.h> and one call from <time.h>.
+ 
+ - It should be extendable.
+ 
+   The library provides the capability to add encryption capabilities at
+   runtime (currently only partially implemented, since the interface is
+   somewhat messy - you need to pass in about 15 parameters to do it).
+ 
+ - It should be free of silly restrictions.
+ 
+   This software is distributed as copyrighted freeware, with copyrights on
+   individual encryption modules being held by the contributing authors.  You
+   are free to use the code in any way you want, with the following
+   restrictions:
+ 
+     If you make any changes to the code, you should send a copy of the
+     changes to the author or authors to allow them to integrate the
+     changes into the code.  This is to allow a central consistent version
+     to be maintained.
+ 
+     If you use the library as part of a product, you should offer a copy
+     to the author or authors of the library routines you are using.  This
+     is to let the authors know that their work is being usefully applied.
+ 
+     Any commercial software you create with this code may not be merely a
+     set or subset of the encryption libraries.  This is to stop people
+     adding their own wrappers and selling it as "their" encryption product.
+ 
+   These terms are pretty much identical the the library GPL, which seem to be
+   about the least restrictive usage terms around apart from outright public
+   domain software.
+ 
+ - It should be buzzword-complete.
+ 
+   The library is written in C, but is basically laid out as a C++ class
+   library.  It can work as a static library, a shared library, or a dynamic
+   link library.  It'll even work under Windows.
+ 
+Library Basics
+--------------
+ 
+Like the standard C file I/O libraries which work with FILE objects, this
+library works with an "encryption context" of type CRYPT_INFO.  To encrypt
+data, you create an encryption context, load a user key into it, en/decrypt
+data, and destroy it when you've finished.  This concept lends itself to
+implementation either as a C++ class or as C routines.  Throughout this
+document all examples are given in C, translation to C++ is a simple step.
+ 
+The overall library structure is as follows:
+ 
+                                 Library core     Plug-in
+                                                  modules
+                               +---------------+-----------+
+                               |               |  MDC/SHS  |
+                               |               +-----------+
+                    /      \   |     Crypt     |    DES    |
+       User       /   ----   \ |               +-----------+
+     Programs     \   ----   / |    Library    |   3DES    |
+                    \      /   |               +-----------+
+                               |      API      |   IDEA    |
+                               |               +-----------+
+                               |               |  others   |
+                               +---------------+-----------+
+ 
+The library API servers as an interface to a range of plug-in encryption
+modules which allow encryption algorithms to be added in a fairly transparent
+manner.  The standardised API allows any of the algorithms and modes supported
+by the library to be used with a minimum of coding effort.  As such the main
+function of the library is to provides a standard, portable, easy-to-use
+interface between the underlying encryption routines and the user software.
+ 
+Portability
+-----------
+ 
+All data made accessible through the library API is in big-endian format.  The
+library automatically takes care of endianness conversion to the form used by
+the local system in a manner invisible to the end user.
+ 
+All code is plain ANSI C, with no machine or OS-specific functions or calls
+being used.
+ 
+Creating/Destroying Encryption Contexts
+---------------------------------------
+ 
+When you create an encryption context, you must specify the encryption
+algorithm and mode you want to use for that context.  The encryption algorithms
+and modes are given in the crypt.h file, and are updated along with the library
+itself.  For example, to create and destroy an encryption context for DES in
+CBC mode, you would use the following code:
+ 
+  CRYPT_INFO cryptInfo;
+ 
+  initCryptContext( &cryptInfo, CRYPT_ALGO_DES, CRYPT_MODE_CBC );
+ 
+  /* Perform en/decryption */
+ 
+  endCryptContext( &cryptInfo );
+ 
+The initCryptContext() and endCryptContext() take care of issues like
+initialization, memory management, and erasure of data after use.
+ 
+Loading Keys into Encryption Contexts
+-------------------------------------
+ 
+Once an encryption context has been created, you need to load a key into it.
+This is done with the loadCryptContext() function.  For example to load the key
+"Secret key" into the previously-created encryption context you would use:
+ 
+  loadCryptContext( &cryptInfo, "Secret key", 10 );
+ 
+You can also load an IV into the context, although for encryption you would
+usually you'd leave this to the library to perform automatically.  To load an
+IV you would use:
+ 
+  loadIV( &cryptInfo, iv, ivSize );
+ 
+To retrieve an IV which has been generated by the library you would use:
+ 
+  retrieveIV( &cryptInfo, iv );
+ 
+The loadCryptContext(), loadIV(), and retrieveIV() functions take care of
+issues like initialization, memory management, and endianness conversion and
+key setup.
+ 
+Encrypting/Decrypting Data
+--------------------------
+ 
+Now that the encryption context and (if necessary) IV are set up, you're ready
+to encrypt or decrypt data.  To encrypt a block of data with:
+ 
+  encryptBuffer( &cryptInfo, buffer, length );
+ 
+or:
+ 
+  decryptBuffer( &cryptInfo, buffer, length );
+ 
+If a block encryption mode is being used, these functions will recognise as
+call with length == 0 as a courtesy call to indicate that this is the last
+block and take whatever special action is necessary for this case.
+ 
+[Problem: If the data expands, what do we do?]
+ 
+Extended Initialization
+-----------------------
+ 
+The initCryptContext() has a companion function initCryptContextEx() which may
+be used to perform an extended, algorithm-specific initialisation.  The second
+parameter passed to the function is an algorithm-dependant structure used to
+specify extra information to be used in the initalisation.  These structures
+have the name CRYPT_INFO_<algorithm_name>, and are laid out as follows:
+ 
+Structure CRYPT_INFO_MDCSHS:
+ 
+  /* The number of iterations used during the key setup process triggered
+     by a loadCryptContext() call.  Using a high value (500 or more) will
+     greatly slow down password-guessing attacks by making the key setup
+     process painfully slow.  Values in the range of 50-100 are recommended
+     for most systems */
+  int keySetupIterations;
+ 
+Error Checking
+--------------
+ 
+Each function in the library performs extensive error checking (although this
+has been left out in the following example for readability).  The file test.c,
+included with the crypt library, includes better error handling than the short
+examples below.
+ 
+For functions which complete with no error, the library will return CRYPT_OK.
+For functions which complete with some form of error internal to the library
+itself, the library will return CRYPT_ERROR (this situtation should never occur
+and should be reported to the library authors).
+ 
+If there is a problem with a parameter passed to a library function, the
+library will return one of CRYPT_BADPARM1 ... CRYPT_BADPARM15 depending on the
+parameter in error, or simply CRYPT_BADPARM if it cannot resolve the exact
+parameter error type.
+ 
+General resource and programming errors are flagged by the return values
+CRYPT_NOMEM for a lack of memory, CRYPT_NOTINITED if you try to use an
+encryption context hasn't been initialised yet or which has been destroyed,
+CRYPT_INITED when you try to re-initialise an encryption context or re-load an
+encryption key, CRYPT_NOALGO or CRYPT_NOMODE if the requested encryption
+algorithm or mode is unavailable, CRYPT_NOKEY if the encryption key hasn't been
+loaded into an encryption context, and CRYPT_NOIV if the IV hasn't been loaded
+into an encryption context.
+ 
+The macro's isStatusError() and isStatusOK() can be used to determine whether a
+return value denotes an error condition, for example:
+ 
+  int status;
+ 
+  status = initCryptContext( &cryptInfo, CRYPT_ALGO_IDEA, CRYPT_MODE_CFB );
+  if( isStatusError( status ) )
+      /* Perform error processing */
+ 
+Examples
+--------
+ 
+The following examples have had error checking removed for readability.  See
+the test code TEST.C for an example with full error checking.
+ 
+To encrypt a buffer using DES in CFB mode with the password 0x12345678ABCDEF:
+ 
+  CRYPT_INFO cryptInfo;
+  BYTE key[] = { 0x12, 0x34, 0x56, 0x78, 0xAB, 0xCD, 0xEF };
+ 
+  /* Load the key, encrypt the buffer (the IV is automatically generated
+     if we don't specify one, it can be obtained with retrieveIV()), and
+     destroy the encryption context */
+  initCryptContext( &cryptInfo, CRYPT_ALGO_DES, CRYPT_MODE_CFB );
+  loadCryptContext( &cryptInfo, key, sizeof( key ) );
+  encryptBuffer( &cryptInfo, buffer, length );
+  destroyCryptContext( &cryptInfo );
+ 
+To hash an arbirtrary-size passphrase down to the one used by a particular
+cryptosystem (in this case 3DES) using MDC/SHS:
+ 
+  CRYPT_QUERY_INFO cryptQueryInfo;
+  CRYPT_INFO cryptInfo;
+  BYTE key[ 100 ];
+  int keySize, ivSize;
+ 
+  /* Find out how long we can make the key */
+  queryAlgoModeInformation( CRYPT_ALGO_3DES, CRYPT_MODE_CBC,
+                            &cryptQueryInfo );
+  keySize = cryptQueryInfo->maxKeySize;   /* Use all we can */
+  ivSize = cryptQueryInfo->ivSize;
+ 
+  /* Encrypt a null data block using a null IV with the passphrase as the
+     key.  This works vaguely like the Unix password encryption except
+     that we don't have a salt (which would be the IV) */
+  memset( key, 0, keySize );
+  initCryptContext( &cryptInfo, CRYPT_ALGO_MDCSHS, CRYPT_MODE_CFB );
+  loadCryptContext( &cryptInfo, passphrase, strlen( passphrase ) );
+  loadIV( &cryptInfo, key, ivSize );
+  encryptBuffer( &cryptInfo, key, keySize );
+  destroyCryptContext( &cryptInfo );
+ 
+To encrypt a file using 3DES in CBC mode with the key generated in the previous
+example:
+ 
+  BOOLEAN firstTime = TRUE;
+ 
+  /* Load the previously-generated key */
+  initCryptContext( &cryptInfo, CRYPT_ALGO_3DES, CRYPT_MODE_CBC );
+  loadCryptContext( &cryptInfo, key, keySize );
+ 
+  /* Copy the data across, encrypting as we go */
+  while( ( size = fread( buffer, 1, BUFSIZE, inFile ) ) != 0 )
+      {
+      /* Encrypt the data in the buffer */
+      encryptBuffer( &cryptInfo, buffer, length );
+ 
+      /* If it's the first block, retrieve the IV and prepend it to the
+         output data  */
+      if( firstTime )
+          {
+          CRYPT_QUERY_INFO cryptQueryInfo;
+          BYTE iv[ 100 ];
+          int ivSize;
+ 
+          /* Find out how long the IV we're using is */
+          queryContextInformation( &cryptInfo, &cryptQueryInfo );
+          ivSize = cryptQueryInfo->ivSize;
+ 
+          /* Retrieve the IV and write it to the output file */
+          retrieveIV( &cryptInfo, iv );
+          fwrite( iv, 1, ivSize, outFile );
+ 
+          firstTime = FALSE;
+          }
+ 
+      /* Write the encrypted data to the output file */
+      fwrite( buffer, 1, size, outFile );
+      }
+ 
+  /* Since CBC is a block cipher, we perform a courtesy close call to let
+     the encryption routines handle the last block */
+  encryptBuffer( &cryptInfo, buffer, 0 );
+ 
+/* Problem: What happens to the last block? */
+ 
+  destroyCryptContext( &cryptInfo );
+ 
+A longer usage example including proper error checking and with various other
+test routines can be found in the file test.c included with the code.
+ 
+Querying the Encryption Library Capabilities
+--------------------------------------------
+ 
+The previous examples showed the use of the queryAlgoModeInformation() and
+queryContextInformation() calls to retrieve information about the
+characteristics of a particular algorithm as implemented by the encryption
+library.  There are four such calls in total, of which two query the existence
+of an implementation of an algorithm or algorithm/mode combination, and two
+return information about the implementation.
+ 
+The library can be interrogated about the existence of a particular encryption
+algorithm or algorithm and encryption mode combination with:
+ 
+  status = queryAlgoAvailability( algorithm );
+ 
+or:
+ 
+  status = queryModeAvailability( algorithm, mode );
+ 
+In addition to requesting information on the availability of an encryption
+algorithm and mode, you can request extra information to be returned in a
+CRYPT_QUERY_INFO structure with:
+ 
+  status = queryAlgoModeInformation( algorithm, mode, &cryptQueryInfo );
+ 
+or
+ 
+  status = queryContextInformation( &cryptInfo, &cryptQueryInfo );
+ 
+with the former being used to request information on a given algorithm/mode
+combination and the latter being used to request information about the
+encryption context being used.
+ 
+The CRYPT_QUERY_INFO structure contains the following fields:
+ 
+  /* The encryption algorithm, encryption mode, and general algorithm name
+     as an ASCII string */
+  CRYPT_ALGO cryptAlgo;
+  CRYPT_MODE cryptMode;
+  char *algoName;
+ 
+  /* The algorithm block size in bytes, the minimum, recommended, and
+     maximum key size in bytes, and the minimum, recommended, and maximum
+     IV size in bytes */
+  int blockSize;
+  int minKeySize;
+  int keySize;
+  int maxKeySize;
+  int minIVsize;
+  int ivSize;
+  int maxIVsize;
+  
+  /* The algorithm speed relative to a block copy operation.  This value
+     ranges from 1 ... MAX_SPEED, or CRYPT_ERROR if no speed rating is
+     available */
+  int speed;
+ 
+Plug-In Module Implementation
+-----------------------------
+ 
+These notes are rather brief since there is a lot of ground to cover, and the
+easiest way to see what is required is to look at the crypt.c code and the
+way it interfaces to the MDC/SHS code, which may be regarded as a standard
+implementation of a plug-in module.  Basically, implementors must provide the
+following services in their plug-in modules:
+ 
+int initFunction( CRYPT_INFO *cryptInfo );
+ 
+  Initialise the appropriate private CRYPT_INFO fields.
+ 
+int initExFunction( CRYPT_INFO *cryptInfo, void *cryptInfoEx );
+ 
+  Initialiase the appropriate private CRYPT_INFO fields based on the extended
+  information given in the second parameter.
+ 
+int endFunction( CRYPT_INFO *cryptInfo );
+ 
+  Clear the appropriate private CRYPT_INFO fields.
+ 
+int initKeyFunction( CRYPT_INFO *cryptInfo );
+ 
+  Initialise the internal key based on the user key.  Typically this might
+  perform one or more of the following:
+ 
+    Hash the user key down to the size of the key used by the algorithm
+ 
+    Perform some type of key schedule operation
+ 
+    Perform endianness conversion for the current operating environment
+ 
+    Load the key into external crypto hardware.
+ 
+  For algorithms with asymmetric internal keys, both an encryption and a
+  decryption key will have to be generated as a crypt context may be used for
+  encryption or decryption.
+ 
+int initIVFunction( CRYPT_INFO *cryptInfo );
+ 
+  Initialise the IV.  Typically this might perform one or more of the
+  following:
+ 
+    Perform endianness conversion for the current operating environment
+ 
+    Load the IV into external crypto hardware.
+ 
+int encryptFunction( CRYPT_INFO *cryptInfo, void *buffer, int length );
+int decryptFunction( CRYPT_INFO *cryptInfo, void *buffer, int length );
+ 
+  Encrypt/decrypt a block of data based on the algorithm and keying information
+  in CRYPT_INFO.  Some algorithms may require special handling for the last
+  block (eg block truncation in CBC) so both routines should recognise a call
+  with length = 0 to indicate the end of the encrypted data block.  
+
+

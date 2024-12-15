@@ -1,0 +1,87 @@
+Welcome to my multiprecision math library!  I'm a little bit proud
+of it, particularly its speed.  If you have a machine for which
+assembly-language subroutines are available (you can probably guess
+from the filename), it will go even faster.  Instructions for
+building the library with assembly subroutines are included later.
+
+Barring that, on many machines using GCC, the GNU C compiler, helps
+the speed significantly, because it not only supports "long long"
+64-bit data types, but it can perform operations on them in line.
+Many compilers that support "long long" are rather inefficient when
+working with them.
+
+For a general description of the library and its organization, see
+bn.doc.  I'm very curious what you all think of it.  One thing I tried
+to do was to comment it better than most, although that is more apparent
+earlier, when I didn't know what I was doing, than later, when I was
+used to it and could read the code.
+
+I can't put a full number theory course in the comments, so there
+are some parts that are just going to be confusing unless you
+have background.  Here's how I suggest judging it: if you stare
+at the code for a while, and figure out what's going on, but think
+that it was harder than necessary, send me mail explaining how you
+think it could be made easier.  If you never manage to figure it out,
+then assume that it's something you never learned in school and
+it's not my job to teach you.
+
+But really, I can't stop you from saying whatever you want.  If you'd
+like to send some comments, good or bad, send me some mail.
+-- 
+	-Colin <colin@nyx.cs.du.edu>
+
+
+** How to compile an assembly-language version of the bignum library
+
+
+Assembly primitives replace some of the functions in the lbn??.c files
+(Where ?? is 00, 16, 32, or 64, as appropriate) with faster routines.
+The math library is designed to facilitate this sort of replacement.
+
+Suppose we are compiling for the mythical "DLX" processor.  Then there
+will be a file, called lbndlx.c, lbndlx.s or lbndlx.asm (depending
+on the convention for assembly source files on DLX platforms) which
+contains the code.  This must be assembled and linked into the library.
+
+There will also be an lbndlx.h file, which includes declarations for
+the DLX primitives, and preprocessor definitions to prevent the
+C equivalents in lbn??.c from being compiled as well.
+
+This file must be included in the lbn.h file, and that is done using
+the BNINCLUDE macro.  On the compiler command line, add the option
+"-DBNINCLUDE=lbndlx.h".  This will force lbn.h to #include "lbndlx.h".
+
+
+If a machine supports only one word size, such as the DEC Alpha, this is
+all that is needed.  Just compile the 64-bit math library, add "lbnalpha.s"
+to the source files, and -DBNINCLUDE=lbnalpha.h.
+
+
+Many machines, however, support multiple word sizes.  The Intel 80x86
+and Motorola 680x0 family support 16 or 32 bits, depending on the
+processor model, and the PowerPC and MIPS platforms support 32 or
+64 bits, depending on the model.  Note that it is the size of the
+largest NxN->2N multiply which determines the size.  Thus, the 68000
+uses a 16-bit word size because the largest multiply result it can
+produce is 32 bits, and the SPARC v9 architecture uses a 32-bit word
+size because the largest multiply result it can produce is 64 bits.
+
+The only machines for which this is currently implemented are the 80x86
+and 680x0 families.  In this case, you must include *two* versions of
+the math library core routines (lbn??.c and bn??.c), the appropriate
+assembly primitives, and a bndlx.c file which *replaces* bninit??.c.
+The bndlx.c file must somehow test the machine to determine the word
+size, and call the appropriate bnInit??() function.
+
+For the 8086, both 16- and 32-bit assembly primitives, and a testing
+function (not386()) are in the lbn8086.asm file.  (The lbn80386.asm
+file is for the 80386 in flat model, which is 32-bit only.)
+For the 680x0, the 16-bit primitives are in lbn68000.c (along with
+an "is68020()" function which returns non-zero if 32-bit routines
+can be called) and the 32-bit primitives are in lbn68020.c.
+You may use only one or the other, or include the bn68000.c file which
+selects between the two.
+
+Other assembly primitives which are implemented are the Intel 960
+primitives (lbn960jx.s), PowerPC (lbnppc.c), and Intel 80386 flat-model,
+all 32 bits.

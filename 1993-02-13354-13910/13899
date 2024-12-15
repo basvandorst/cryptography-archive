@@ -1,0 +1,100 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!spool.mu.edu!uunet!nntp.telebit.com!phr
+From: phr@telebit.com (Paul Rubin)
+Subject: Secure Timestamps (Re: US Treasury to use digital signatures)
+In-Reply-To: a_rubin@dsg4.dse.beckman.com's message of 26 Feb 93 18:56:18 GMT
+Message-ID: <PHR.93Feb27032541@napa.telebit.com>
+Sender: news@telebit.com
+Nntp-Posting-Host: napa
+Organization: Telebit Corporation; Sunnyvale, CA, USA
+References: <C2vG8o.5Mv@panix.com> <1mdkmh$6kr@transfer.stratus.com>
+	<1993Feb25.105036.1@zodiac.rutgers.edu>
+	<a_rubin.730752978@dsg4.dse.beckman.com>
+Date: Sat, 27 Feb 1993 11:25:41 GMT
+Lines: 85
+
+In article <a_rubin.730752978@dsg4.dse.beckman.com> a_rubin@dsg4.dse.beckman.com (Arthur Rubin) writes:
+
+   In <1993Feb25.105036.1@zodiac.rutgers.edu> leichter@zodiac.rutgers.edu writes:
+
+   >There's some very nice work by two people at Bell Labs (whose
+   >names I can't recall, and I don't have the papers here) on how to
+   >efficiently produce unforgeable digital timestamps.  This is a
+   >much trickier problem than it first appears to be, but they have a
+   >nice solution.  Given timestamps, we can then require that
+   >messages be not just signed but dated.
+
+   Who sets the "clock" in the device?
+
+There's no device; since I haven't seen the method here I'll describe
+it below.  It's a clever technique but unfortunately patented.
+The way I describe it below, the timestamp will have a granularity
+of 1 week, but obviously you can change the parameters as needed.
+It will also take up to 1 week to actually get a timestamp for
+a particular message.
+
+The idea is that you have a continuing stream of messages that need
+to be timestamped.  So you have a timestamp server (not a TRUSTED server,
+just a server), and when you want a timestamp, you send the server
+the MD5 of your message.  The server collects all the MD5's it
+receives from now til Saturday.  It then builds a binary tree with
+the following rules:
+	- The leaf nodes are labelled with the MD5's sent in as
+	  timestamp requests.
+	- Non-leaf nodes are labelled with 
+		MD5 (CONCAT (left_child, right_child)).
+Thus, the height of the tree is the log_2 of the number of requests
+received for the week, i.e. always reasonably small.  The server
+cannot reconstruct the original messages since it only gets MD5's.
+
+Now (it's still Saturday), for each request M, the server sends to
+M's requestor the node labels of M's immediate sibling (call this M1),
+M's parent's immediate sibling (call this M2), etc., all the way up
+to the immediate sibling of M's ancestor that is immediately below
+the root (call this MR).  This list of node labels is the timestamp,
+and it is again a reasonably short string (length prop. to height of tree).
+
+Now knowing M and M1, the requestor can compute the label of M's
+parent.  Knowing M's parent and M2, it can compute M's grandparent.
+And so on, all the way up to the root.  Now, since the root label was
+originally computed as a function of *all* the leaf nodes, in a way
+that using a different value for *any* of the leaf nodes would have
+resulted in a totally different root label (because it's a
+cryptographic hash), the root label could not be calculated without
+first knowing the labels of all the leaf nodes.  So we know that all
+the messages corresponding to those leaf nodes existed before the root
+node was calculated.  Knowing the value of the root node, one can
+verify that any message M predated the root node by recomputing the
+root value from the timestamp and comparing the recomputed value with
+the known value.
+
+The only remaining problem is how you get a known root node value that
+you know existed as of a particular date.  But the root node value is
+just one a single number!  So (remember it's Saturday) the server just
+sends the root label the New York Times to be published in a
+classified ad in the Commercial and Legal Notices of the nationwide
+Sunday edition of the paper.  Thus, it will shortly show up in
+libraries and newsstands, all over the world, be microfilmed, etc.
+Basically no one can ever retract its publication or claim it was
+published on a different date without worldwide mass hypnosis and
+searching out every copy of that issue of the Sunday NYT ever printed.
+Obviously, for "every week" you can substitute "every minute" or
+"every year" and for "New York Times" substitute "broadcast over SCA
+subcarrier" or "carve in Mt. Rushmore", etc.
+
+The stuff about the NYT ad is not hypothetical, it's what Bellcore
+actually does.  If you pick up any recent Sunday NYT and look in the
+classified ad section, you'll actually find a Bellcore ad containing a
+random-looking hexadecimal number signed "Bellcore".  (In the talk I
+went to, the speaker actually held a copy of the NYT up in front of
+the audience and said the ad was there, but when I went up to look at
+it afterwards it was a Wednesday paper.  He goes around giving the
+same talk a lot and normally uses a real Sunday paper as a prop, but
+didn't have one that time so he faked it).
+
+Side story: apparently Bellcore had a lot of trouble getting the NYT
+to publish the weekly ads.  Seems the NYT doesn't like to published
+ads not written in plain language, because they're afraid of printing
+drug smuggling codes.  The researchers had to get an NYT reporter who
+had written a Science Times article about the technique to intervene
+with the classified ad dept...

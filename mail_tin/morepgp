@@ -1,0 +1,41 @@
+#!/usr/local/perl
+
+# written by jason steiner, jsteiner@anwsun.phya.utoledo.edu, Jan 1993
+#
+# if you use or make improvements to this program i would appreciate
+# copies of your modifications & your PGP public key.
+
+$|=1;
+$topgp=0;
+$logname = $ENV{'LOGNAME'};
+$pager='/usr/ucb/more';
+$pager = $ENV{'PAGER'} if ($ENV{'PAGER'});
+open (PAGER, "|$pager") || die "cannot open pipe to $pager\n";
+while (<STDIN>) {
+    if (!$topgp) {print PAGER;}
+    if (!$topgp && m/^-----BEGIN PGP .*-----/) {
+        $topgp = 1;
+        close PAGER;
+        $tmpfile = "/tmp/.pgp.$$.$logname";
+        unlink($tmpfile);
+        open (TMPFILE, ">$tmpfile") || die "cannot open $tmpfile for output\n";
+    }
+    if ($topgp) {
+        print TMPFILE $_;
+        if (m/^-----END PGP .*-----/) {
+            $topgp = 0;
+            close TMPFILE;
+            $clrfile = "/tmp/.clr.$$.$logname";
+            `pgp $tmpfile -o $clrfile`;
+            open (PAGER, "|$pager") || die "cannot open pipe to $pager\n";
+            open (CLEAR, "<$clrfile");
+                        print PAGER "-----BEGIN PGP TEXT-----\n";
+            while (<CLEAR>) { print PAGER; }
+            close CLEAR;
+            unlink($clrfile);
+            unlink($tmpfile);
+            print PAGER "-----END PGP TEXT-----\n";
+        }
+    }
+}
+close PAGER;

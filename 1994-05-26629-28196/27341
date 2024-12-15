@@ -1,0 +1,82 @@
+Path: msuinfo!agate!howland.reston.ans.net!pipex!uknet!EU.net!uunet!mnemosyne.cs.du.edu!nyx10.cs.du.edu!not-for-mail
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Newsgroups: sci.crypt
+Subject: Re: 2 practical cryptography questions about a secure-drive type system
+Date: 11 May 1994 09:10:11 -0600
+Organization: /usr/lib/news/organi[sz]ation
+Lines: 71
+Message-ID: <2qqsgj$6bq@nyx10.cs.du.edu>
+References: <2qiu5f$9bj@vixen.cso.uiuc.edu>
+Keywords: BLOWFISH, ECB, CFB, known plaintext
+
+In article <2qiu5f$9bj@vixen.cso.uiuc.edu>,
+Nicolas S Dade <nd8067@ehsn4.cen.uiuc.edu> wrote:
+>
+>I am fooling around with encrypting a small partition on my harddrive. I
+>have written a device driver that decrypts and encrypts sectors as they are
+>read and written. It uses, at the moment, the BLOWFISH algorithm because
+>the author was so kind as to post it here. However any similar encryption
+>scheme could be plugged in in place of BLOWFISH. (FEAL or IDEA, for
+>example)
+>
+>While writing this and watching it run, I have come up against two
+>questions on which I would like some advice.
+
+I'd suggest taking a look at SecureDrive or Peter Gutmann's SFS.  Both
+are pretty careful about their crypto.  The way SFS computes its IV
+is particularly interesting.
+
+>Question 1:
+>
+>In an effort to improve the security of my device driver, I would like to
+>salt the encryption of each sector with a sector dependant salt. This way
+>sectors that contain the same plaintext would have different ciphertext.
+>However I do not see how to go from the sector number, a small integer (as
+>small a range as 0 to 1759 on a DSDD floppy), and the large key (160 bits
+>in the case of BLOWFISH), to a block sized (?) salt (64 bits in the case of
+>BLOWFISH). Would encrypting the sector number (padded with plenty of zeros,
+>mind you) with the key be considered sufficient?
+
+Put the sector number into the IV.  It should be mostly random (unique
+per encrypted volume), but add in the sector number.  If you're using CBC,,
+a little more homogenization couldn't hurt, since the IVs are then highly
+predictable.
+
+>And question 2:
+>
+>The sectors used by the filesystem for directories, file headers, links,
+>etc... aren't used to the utmost by the filesystem. The unused bytes are
+>set to zero by the filesystem, and constitute a great deal of known
+>plaintext (at least 300 out of 512 bytes in the case of hardlinks). In
+>addition, when a directory is not very full or file is not very long, its
+>header sector contains zeros in the empty hash slots or data block numbers.
+>This can give me a run of up to 288 zero bytes in a row.
+>
+>I would like the ciphertext of these filesystem sectors to hide the long
+>sequences of zeros in the plaintext because I would like to hide the
+>approximate length of the file and the approximate number of objects in a
+>directory. Therefore using the cipher in ECB mode is undesirable because a
+>block of 0's in the plaintext (8 zero bytes in BLOWFISH) always enciphers
+>to the same ciphertext, allowing the attacker to pick out where most the
+>zeros were in the plaintext. However using a feedback mode gives the
+>attacker more information about the key. For example if I use CFB then
+>instead of knowing E(0), the attacker knows E(x),E(E(x)),E^3(x),...,E^n(x),
+>x = ciphertext in the position of the first zero block in the plaintext,
+>and n = length of run of zero blocks.
+>
+>This known plaintext has bothered me enough that I now use 2 keys, one for
+>filesystem sectors, and the other for the file data sectors. This way the
+>known plaintext in the filesystem sectors doesn't affect the security of
+>the data in the files.** However I would still like a more elegant
+>solution.
+
+In brief, don't worry about it.  These days, a few megabytes of known
+plaintext is a minimum assumption.  It's certainly better than using ECB
+which reveals a heck of a ot about the plaintext without having to
+worry about decryption.  If you want better, try the scrambler polynomial
+technique of SFS, or omething a little bit stronger.
+
+But you really shouldn't use ECB.  The situations where ECB is useful are
+few and far between, and encryption of bulk data isn't one of them.
+-- 
+	-Colin

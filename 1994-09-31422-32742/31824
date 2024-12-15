@@ -1,0 +1,106 @@
+Newsgroups: sci.crypt,alt.security.pgp
+Path: msuinfo!agate!library.ucla.edu!csulb.edu!nic-nac.CSU.net!usc!math.ohio-state.edu!cis.ohio-state.edu!magnus.acs.ohio-state.edu!csn!csus.edu!netcom.com!wje
+From: wje@netcom.com (William J. Evans)
+Subject: Re: HELP PLZ: Books for a beginner?
+Message-ID: <wjeCvy8Mv.JxK@netcom.com>
+Followup-To: sci.crypt,alt.security.pgp
+Organization: NETCOM On-line Communication Services (408 261-4700 guest)
+X-Newsreader: TIN [version 1.2 PL1]
+References: <33fqph$7cm@hobbes.cc.uga.edu> <znr778170747k@brax.se> <OuzOkKO2YrX4071yn@kaiwan.com>
+Date: Sun, 11 Sep 1994 05:01:41 GMT
+Lines: 93
+Xref: msuinfo sci.crypt:31824 alt.security.pgp:20453
+
+Wandervogel (rfrank@kaiwan.com) wrote:
+: Applied Cryptography - Protocols, Algorithms, and Source Code in C
+: Bruce Schneier
+: ISBN 0-471-59756-2
+: John Wiley & Sons, Inc.
+: Professional, Reference and Trade Group
+: 605 Third Avenue, New York, N.Y. 10158-0012
+
+_Applied Cryptography_ is good in some areas, perhaps bad in others.
+ 
+I liked the parts which discuss protocols.  What I was really looking
+forward to, though, was seeing algorithms described in sufficiently gory
+detail that I could sit down and code stuff.
+ 
+The first thing one must ask when relying on a book to describe algorithms
+is: "How reliable are these descriptions?"
+ 
+I only dug briefly into the meat of the book.  I looked over the DES algorithm
+in chapter 10, and found these words:  "The initial permutation and the
+corresponding final permutation do not affect DES's security.  Since this
+bit-wise permutation is dfficult in software (although it is trivial in
+hardware), many software implementations of DES leave out both the initial and
+final permutations.  While this new algorithm is no less secure than DES, it
+does not follow the DES standard and should not be called DES."
+ 
+Oho, I said to myself.  Since Mr. Schneier didn't personally write the DES
+code at the back of the book, could it be that the code cheerfully drops the
+beginning and ending permutations?  The only way to find out was to dive into
+the (um, rather poorly commented) code and see.
+ 
+And I found the initial permutation code: the first paragraph in desfunc().  I
+didn't know that that's what the paragraph did, since there was no comment, so
+I decided to go through the paragraph with 64 clearly labeled bits and paper
+and pen to see what happened.
+ 
+It turns out that I could make that paragraph match the description on page
+226 by making four assumptions.
+ 
+First:  In the text's description of the algorithm, he doesn't clearly label
+how he numbers the 64 bits.  Since bit 64 appears in Table 10.1 and bit 0 does
+not, clearly he numbers the bits origin 1.  But beyond that, what?  The only
+way I could make it work was to assume that the most significant bit of the
+lowest-addressed byte (the byte that would appear "first" in an 8-byte
+message) is bit 1 and so on.  There are other ways of numbering bits; a quite
+common one is to number the bits in each byte so that the least significan
+bit is the lowest-numbered bit.
+ 
+Second:  He says that the initial permutation transposes bit 1 to bit 58.  The
+only way I could make the C code look right was to assume that he meant the
+opposite: that bit 58 is transposed to bit 1.  This was a scary assumption,
+because cryptography is at the heart of what he does for a living, and I
+haven't really pursued crpytography with any seriosity.  But I was
+reassured when I turned to Biham and Shamir's _Differential Cryptanalysis of
+the Data Encryption Standard_.  Their book has the same table that appears in
+_Applied Cryptography_, as Table A.1.  They say, "Each location corresponds to
+an output bit, and contains the number of the input bit which is copied into
+that location."  This disagrees with Mr. Schneier's description, but agrees
+with the C code in his book.
+ 
+Third:  In the initial permutation paragraph in the code, the three
+occurrences of ">" (greater than) should be ">>" (right shift).  It's an error
+I make in my own code more frequently than I'd care to admit, so I tend to
+look for it in other peple's code as well.  But the implication is serious:
+if one publishes code, one should take a _working_ program and copy the
+source by machine, not by hand, into a form which the publisher can use.
+Otherwise, who can rely on it?
+ 
+Fourth:  The last statement in that paragraph of C code rotates "leftt" to th
+left by one bit, wrapping around.  It should instead rotate "right" to the
+right by one bit, wrapping around.
+ 
+What's really scary is that this is the _only_ code I have examined in the
+book, other than a 5-second glance at the final permutation to see that it
+didn't include any unfortuitous < or >.  I'm afraid to look at any more code.
+ 
+What impressed me was the validation sets at the end of the DES code.  But
+were those sets developed with buggy code?  How do I know they are correct?
+Do I have to understand every wrinkle of the algorithm (using Biham and Shamir
+to verify Mr. Schneier's description of the algorithm), and then do the
+encoding with paper and pencil before trusting the validaion sets to validate
+the software?
+ 
+None of these errors were things I was setting out to find.  They just hit m
+in the head.  I haven't seriously started reading the book from cover to cover
+yet.  But at this rate I may not take the time.
+
+One might point out that I should have the courtesy of communicating these
+points to Mr. Schneier himself.  I did so at the end of June, and have not
+yet received a reply.
+ 
+I find the book fascinating but perhaps unreliable.
+ 
+-- Bill Evans

@@ -1,0 +1,476 @@
+From msuinfo!agate!spool.mu.edu!olivea!sgigate!sgi!wdl1!nebula!koontzd Thu Jun 24 20:37:22 1993
+Newsgroups: alt.privacy.clipper,sci.crypt
+Path: msuinfo!agate!spool.mu.edu!olivea!sgigate!sgi!wdl1!nebula!koontzd
+From: koontzd@nebula.lrcs.loral.com (David Koontz )
+Subject: $30M for 1 day DES solution (was NSA computing power)
+Message-ID: <1993Jun24.215222.16514@wdl.loral.com>
+Originator: koontzd@nebula
+Sender: news@wdl.loral.com
+Organization: Loral Rolm Computer Systems
+Distribution: usa
+Date: Thu, 24 Jun 1993 21:52:22 GMT
+Lines: 161
+Xref: msuinfo alt.privacy.clipper:962 sci.crypt:17532
+
+>From: wcs@anchor.ho.att.com (Bill Stewart +1-908-949-0705)
+>In article <C8wLqC.Doz@eis.calstate.edu> belliot@eis.calstate.edu (Brett Elliott
+>) writes:
+>   I would like to know just how much computing power the NSA has.  Sorry
+>   if this info. has already been posted.  With enough MIPS, rsa could
+>   be chopped and diced.
+
+>Well, it's probably between 10**12 and 10**15 IPS, where I'm being
+>deliberately vague about what an "instruction" is; some are floating
+>point instructions on big-memory machines, others are 1-bit
+>instructions in small-local-memory SIMD arrays, and lots of stuff in between.
+>10**15 is about 2**50, and is likely to be a very high estimate.
+>
+>There are a couple of designs using current technology that would let
+>you build a DES-breaker to find DES keys in about a day for about $30M,
+>which comes to about $10K/key assuming some plausible amortization.
+
+Mark Riordan (mmr@sccs3.cl.msu.edu) has a postscript image of a paper found by
+anonymous ftp - ripem.msu.edu:/pub/crypt/docs/des-break.ps.Z.  This
+appears to be where the $30M figure comes from.
+
+The title is 
+
+    Using Content-Addressable Search Engines to Encrypt and Break DES
+    -----------------------------------------------------------------
+
+			Peter C. Wayner
+		    Computer Science Department
+		       Cornell University
+			Ithaca NY 14853
+
+
+Its a particular implementation using single bit processors clumped on a
+chip.  The postscript file had no dates (something common in technical
+papers).  The newest date anywhere in the document was found in a 
+header in the postscript file (1991).
+
+Errors:
+
+2.2 Computing the S-boxes
+-------------------------
+
+On page 4 S boxes are "...described as eight functions that take 6 out of the 
+32 bits <of the R block> and return four."  
+
+Actually what happens is that the R block is expanded to 48 bits through the 
+use of the Expansion (E) permutation and XORed with 48 key bits selected from
+the 56 bit key.  The resulting 48 bits are taken 6 bits at a time and applied
+as input to the eight S box functions which return 4 bits each.
+
+"These eight s-boxes can be further simplified into 32 functions that map
+six bits to one bit..."  (to clarify the following)
+
+2.3 Handling the Key
+--------------------
+
+Page 5:
+
+"When the result of one of the 32 functions is computed it must be XOR-ed
+with the key and then passed to the adjacent word to be XOR-ed with the
+appropriate bit."
+
+For encryption a round of DES is computed as:
+
+	Rn = Ln-1 XOR (P(SBOXES(E(Rn-1) XOR Kn)));
+	Ln = Rn-1;
+
+Where the Expansion permutation is operated on Rn-1:  E(Rn-1).  The 
+expansion permutation outputs 48 bits.
+
+The result is XOR-ed with the selected Key for round n:  E(Rn-1) XOR Kn.
+(48 bits of scheduled Key)
+
+The result is used as input to the S-boxes: SBOXES(E(Rn-1) XOR Kn).
+8 S-boxes with 6 bits of input, 4 bits of output from each S-box.
+
+The result is put permuted by P: P(SBOXES(E(Rn-1) XOR Kn))
+32 bits in 32 bits out.
+
+The above four steps are collectively known as f(R,K).  The result
+is XOR-ed with Ln-1.
+
+
+On page 6 where the statement is made:
+
+"There are 56 key bits, but only 32 of them are used during each
+of the 16 different rounds."   
+
+In fact, 48 of the 56 key bits are used in each round.  
+
+2.4 The Total Cost
+------------------
+
+The above errors are bound to affect the clock calculations and resulting
+performance figures.  Possibly the key size would require the number
+of processors to increase.  The number given for a 1024 processor chip
+is 31.2 M bits per second for DES encryption.  This would almost
+certainly be derated to fix the problems pointed out above.
+
+Having only looked at the paper briefly I figured that a dedicated hardware
+implementation of DES could be much faster and/or cheaper.
+
+How fast can a HW implementation of DES go?
+-------------------------------------------
+
+Using superscalar techniques DES can be implemented in a 120K gate ASIC
+with a throughput of 75M Blocks (600 Mbytes) per second.  It would be very
+likely that you would want to add hooks and whistles for using in brute
+force attacks possibly trading off bus bandwidth (and package pins) for
+comparators and incrementing key registers.
+
+600 Mbytes x 8 bits yields 4800 Mbits per second:
+
+    75 MHz clock
+    Scheduled keys 
+	(a 56 bit bus with  two 48 bit tap offs and a 2:1 mux for every round)
+    16 rounds worth of XORs and Sboxes (80 XOR gates X 16)
+    16 sets of L and R pipeline registers
+    done in submicron
+
+To operate the FAST DES chip as a brute force key trial device might require
+a key pipeline (56 bit register x 16).  Also meet in the middle modifications
+would be desirable breaking the 16 rounds into two 8 round segments with
+a comparator between them.
+
+Even conservatively its around 160 times faster than the coherent processor
+implementation (after fixing above problems).  I would estimate the cost
+of such a chip to be in the $200 range in low volumes, compared to 
+$100 for a 1024 processor coherent chip.
+
+A proper breaker-DES chip could accept a broadcast cipher/plaintext pair,
+and perhaps through the use of strapping pins, subdivide the key space
+for search by specifying the starting point for a key counter.   Likewise
+this subdivision could be carried into the DES chip architecture to reduce
+key space variable size.
+
+The main requirement for outside control, until a match is found is to
+insure the chip is operating.  Periodically the chips could be interrupted
+which could cause a Built In Self Test (BIST).
+
+When one finds a solution it could generate an interrupt to the 
+host/dispatcher.  Protocols would be required to switch to a backup chips
+and back annotate the key space the failed chip was operating on since
+the last diagnostic.
+
+Keep in mind that the key space is smaller than the symbol domain and 
+collisions will occur.  
+
+The cost should be on the order of 60 to 80 times cheaper than the quoted
+(and unverified)  $30M.  (After all the FAST DES chip doesn't exist yet)
+
+I think there might be better single bit processor utilization organizations
+than presented in the the paper.  Initial and Inverse Initial Permutations
+could ignored by permutting the cipher/plaintext pairs exactly once. 
+Emulatiing a byte slice implementation such as the Fairchild 9414-[1-4]
+chip set might fit better as far as performance.  Performance optimization
+may swing the balance back to the coherent processors, and ya the soft
+nature of something programmable is nice, although anything you target
+it against is bound to have increased complexity, and hence run slower.
+In three years all the fast DES chips would be something of oddities,
+while the computer system would be simply outdated.
+
+From msuinfo!agate!howland.reston.ans.net!noc.near.net!uunet!digex.com!access!pcw Mon Jun 28 13:26:10 1993
+Path: msuinfo!agate!howland.reston.ans.net!noc.near.net!uunet!digex.com!access!pcw
+From: pcw@access.digex.net (Peter Wayner)
+Newsgroups: alt.privacy.clipper,sci.crypt
+Subject: Re: $30M for 1 day DES solution (was NSA computing power)
+Date: 25 Jun 1993 13:25:29 -0400
+Organization: Express Access Online Communications, Greenbelt, MD USA
+Lines: 159
+Distribution: usa
+Message-ID: <pcw.741027259@access>
+References: <1993Jun24.215222.16514@wdl.loral.com>
+NNTP-Posting-Host: access.digex.net
+Xref: msuinfo alt.privacy.clipper:974 sci.crypt:17562
+
+koontzd@nebula.lrcs.loral.com (David Koontz ) writes:
+
+
+>Errors:
+
+>2.2 Computing the S-boxes
+>-------------------------
+
+>On page 4 S boxes are "...described as eight functions that take 6 out of the 
+>32 bits <of the R block> and return four."  
+
+>Actually what happens is that the R block is expanded to 48 bits through the 
+>use of the Expansion (E) permutation and XORed with 48 key bits selected from
+>the 56 bit key.  The resulting 48 bits are taken 6 bits at a time and applied
+>as input to the eight S box functions which return 4 bits each.
+
+If you play with the bits a bit, you'll notice that the expansion function
+just duplicates 16 of the bits to turn 32 into 48. The purpose is to 
+get some cross block mixing of bits. But it is still possible to say
+that an sbox takes 6 of the 32 bits as input and point to them 
+by number in the R block. 
+
+Bruce Schneier writes in his book, "For each four-bit input block,
+the first and fourth bits represent two bits of the output block, while 
+the second and third bits represent one bit of the output block....
+Although the output block is larger than the input block, there
+is only only input block that can generate a specific output
+block."
+
+>2.3 Handling the Key
+>--------------------
+
+Yes, there is an error when I mention that only 32 key bits
+are used each round. The correct answer is 48. But this
+doesn't change the cost of doing the encryption. Why?
+Because the key bits are "compiled" into the instructions
+for computing each sbox of each round. 
+
+Without going into details, you can reduce each sbox calculation
+in each round to the process of taking 6 bits from the current
+R block, xoring them with 6 bits from the 56 key bits and then
+computing some boolean function that will return the four bits
+that emerge from the sbox. We could simply do the xor explicitly,
+or we could just flip all of the functions in the boolean function.
+If bit 5 was going to be xor'ed with key bit 7, then the value
+of the bit will be flipped if the key bit is 1. Well, if it 
+is, we can either including an explicit XOR command in the 
+computation phase or we can screw around with the boolean function
+that computes the sbox here. If key bit 7 is one, then we just
+replace every occurance of Rblock bit 5 with NOT(Rblock bit 5).
+This doesn't add any extra operations, however, because the
+boolean functions are processed by table lookups. 8 bits are
+fed to the CAM and it uses three bits to look up the answer in
+these 8 bits. 
+
+>2.4 The Total Cost
+>------------------
+
+>The above errors are bound to affect the clock calculations and resulting
+>performance figures.  Possibly the key size would require the number
+>of processors to increase.  The number given for a 1024 processor chip
+>is 31.2 M bits per second for DES encryption.  This would almost
+>certainly be derated to fix the problems pointed out above.
+
+I don't believe that the one error will change any of the estimates
+I made in the paper. I should emphasize, though, that the numbers
+in the paper are just estimates. They are based on a careful paper
+analysis-- not a working implementation. (I blame the fab line.)
+
+Incidentally, the rate is 31Mb/second for _one_ chip. It can
+max out at 200Mb/sec for multiple chips if there is enough
+data to fill up many chips in parallel. This is a reasonable
+assumption in this case because the chips are first and
+foremost cool memory chips. System designers are likely to 
+add multiple ones to each machine. 
+
+>Having only looked at the paper briefly I figured that a dedicated hardware
+>implementation of DES could be much faster and/or cheaper.
+
+>How fast can a HW implementation of DES go?
+>-------------------------------------------
+
+>Using superscalar techniques DES can be implemented in a 120K gate ASIC
+>with a throughput of 75M Blocks (600 Mbytes) per second.  It would be very
+>likely that you would want to add hooks and whistles for using in brute
+>force attacks possibly trading off bus bandwidth (and package pins) for
+>comparators and incrementing key registers.
+
+>600 Mbytes x 8 bits yields 4800 Mbits per second:
+
+>    75 MHz clock
+>    Scheduled keys 
+>	(a 56 bit bus with  two 48 bit tap offs and a 2:1 mux for every round)
+>    16 rounds worth of XORs and Sboxes (80 XOR gates X 16)
+>    16 sets of L and R pipeline registers
+>    done in submicron
+
+>To operate the FAST DES chip as a brute force key trial device might require
+>a key pipeline (56 bit register x 16).  Also meet in the middle modifications
+>would be desirable breaking the 16 rounds into two 8 round segments with
+>a comparator between them.
+
+>Even conservatively its around 160 times faster than the coherent processor
+>implementation (after fixing above problems).  I would estimate the cost
+>of such a chip to be in the $200 range in low volumes, compared to 
+>$100 for a 1024 processor coherent chip.
+
+$30 and cheaper in volume. 
+
+>A proper breaker-DES chip could accept a broadcast cipher/plaintext pair,
+>and perhaps through the use of strapping pins, subdivide the key space
+>for search by specifying the starting point for a key counter.   Likewise
+>this subdivision could be carried into the DES chip architecture to reduce
+>key space variable size.
+
+>The main requirement for outside control, until a match is found is to
+>insure the chip is operating.  Periodically the chips could be interrupted
+>which could cause a Built In Self Test (BIST).
+
+>When one finds a solution it could generate an interrupt to the 
+>host/dispatcher.  Protocols would be required to switch to a backup chips
+>and back annotate the key space the failed chip was operating on since
+>the last diagnostic.
+
+>Keep in mind that the key space is smaller than the symbol domain and 
+>collisions will occur.  
+
+>The cost should be on the order of 60 to 80 times cheaper than the quoted
+>(and unverified)  $30M.  (After all the FAST DES chip doesn't exist yet)
+
+I'm sure that someone will be able to build much faster implementations 
+using specially designed chips. The proliferation of ASICs makes it 
+much easier than before. But, programmability still has a way to go.
+Projects like SPLASH may change people's minds about this. 
+
+>I think there might be better single bit processor utilization organizations
+>than presented in the the paper.  Initial and Inverse Initial Permutations
+>could ignored by permutting the cipher/plaintext pairs exactly once. 
+>Emulatiing a byte slice implementation such as the Fairchild 9414-[1-4]
+>chip set might fit better as far as performance.  Performance optimization
+>may swing the balance back to the coherent processors, and ya the soft
+>nature of something programmable is nice, although anything you target
+>it against is bound to have increased complexity, and hence run slower.
+>In three years all the fast DES chips would be something of oddities,
+>while the computer system would be simply outdated.
+
+I would like to point out that the Content-Addressable Memory that
+formed the backbone of my paper can also be used very easily for
+graphics problems, computational geometry problems, data-base problems
+and compression problems. I think it is conceivable that we will
+see memory like it in workstations before the end of the century.
+
+
+
+
+If anyone else has any questions or comments about the paper,
+I would love to hear them. You can reach me via e-mail at
+pcw@access.digex.com.
+
+
+From msuinfo!uwm.edu!math.ohio-state.edu!usc!elroy.jpl.nasa.gov!ames!sgi!wdl1!nebula!koontzd Mon Jun 28 17:03:03 1993
+Newsgroups: sci.crypt,alt.privacy.clipper
+Path: msuinfo!uwm.edu!math.ohio-state.edu!usc!elroy.jpl.nasa.gov!ames!sgi!wdl1!nebula!koontzd
+From: koontzd@nebula.lrcs.loral.com (David Koontz )
+Subject: Re: $30M for 1 day DES solution
+Message-ID: <1993Jun28.200130.10554@wdl.loral.com>
+Originator: koontzd@nebula
+Sender: news@wdl.loral.com
+Organization: Loral Rolm Computer Systems
+Distribution: usa
+Date: Mon, 28 Jun 1993 20:01:30 GMT
+Lines: 111
+Xref: msuinfo sci.crypt:17629 alt.privacy.clipper:991
+
+Subject: Re: $30M for 1 day DES solution
+
+I agree with Peter that the use of CAM technology  is very sign-
+ificant, closing the gap between  hardware  and  software imple-
+mentations  from  a factor of 1-2 thousand to 100 or so.  Even I 
+can readily  see applications  in  real  cryptanalysis.   Didn't 
+Xylinx come out with a programmable chip that had 64 bit  lookup
+cells for logic blocks?
+
+Anyway, the point being that $30M is on the high side.  DES should
+certainly be secure for privacy or tactical applications.
+
+>from pcw@access.digex.net (Peter Wayner)
+
+>Without going into details, you can reduce each sbox calculation
+>in each round to the process of taking 6 bits from the current
+>R block, xoring them with 6 bits from the 56 key bits and then
+>computing some boolean function that will return the four bits
+>that emerge from the sbox. We could simply do the xor explicitly,
+>or we could just flip all of the functions in the boolean function.
+
+Something similar is done in a Dave Feldmeier LR block  organized
+crypt(3).   The key is set up in a table and altered by the salt,
+switching key bits to match E bits that are switched by the salt.
+The  SboxP[] table (64 kbytes) also has entries swapped where the
+E bits should have been swapped (first  12  for  third  12  bits)
+according to 12 bits of salt.
+
+The idea of eliminating the E(R) XOR K  for  input  to  the  sbox
+seems  to  have  limited application in software implementations.
+Fast DES implementations typically use 64 Kbytes of Sbox  tables,
+and would be multiplied by 16, as sboxes are made unique for each
+round by the round key.  64 Kbytes x 16 = 1/4 Mbyte, not  fitting
+in  cache  gracefully.   A  software  implementation with smaller
+Sboxes typically has the P permutation folded  into  sboxes,  and
+uses  a L/R block orgranized as two 32 bit values.  You trade off
+two 32 bit XOR operations for increasing  the  sbox  size  to  64
+Kbytes.
+
+Discrete DES implementations in  hardware  oddly  enough  benefit
+from  dropping  the  number  of  XOR gates from 80 to 32, and the
+difference in size (64 versus 1024  words)  is  not  particularly
+signficant  in  terms  of  ROM  or RAM (smaller devices not being
+available).  The area savings is about 20 percent.
+
+So how do you translate an sbox by the key?   Copy  the  original
+sbox(ROM) to a round-unique sbox(RAM) by XORing the source addess
+with the key.  For compiling  sboxes  into  code,  this  has  the
+effect  of  changing all the minterms (which are dependant on the
+input).
+
+The problem Peter has with where to store key bits  for  a  brute
+force  attack  machine doesn't sound real easy.  There are 40 key
+bits share between adjacent rounds and the distance between where
+they   are   used   is   not  uniform  one  round  to  the  next.
+Interestingly enough the superscalar  DES  (16  rounds  worth  of
+hardware)  could  still  operate  at  4800  Mbits/second  (75 MHz
+clock), but couldn't switch keys fast enough  to  be  used  as  a
+brute force machine, when using recompiled sboxes by this method.
+The fastest you could switch keys would be: 512 clocks.
+
+(64 words/sbox (by 32 bits) X 16 rounds / 2 (64 bit bus))
+
+A prudent manufacturer could produce a VeryFastDES chip that  had
+the origional sboxes in ROM, accepted the key in one 64 bit word,
+and copied the 16 rounds worth of sboxes  from  ROM,  xoring  the
+destination  address  with  key bits for that sbox in that round.
+This would only  cost  48  XOR  gates  and  some  key  scheduling
+hardware.
+
+For those not willing to accept the commutative  nature  of  XOR:
+--------------------ubiquitous cut-line ---------------
+/* sboxk.c
+ *		shows that SBOX(E(R) XOR K) is equivalent to
+ *			SBOXK(E(R)) for an S box transformed by key
+ */
+
+static int  S1[64] =   { 14, 4,13, 1, 2,15,11, 8, 3,10, 6,12, 5, 9, 0, 7,
+			  0,15, 7, 4,14, 2,13, 1,10, 6,12,11, 9, 5, 3, 8,
+			  4, 1,14, 8,13, 6, 2,11,15,12, 9, 7, 3,10, 5, 0,
+			 15,12, 8, 2, 4, 9, 1, 7, 5,11, 3,14,10, 0, 6,13 };
+
+main ()
+{
+int input;
+int src, dst;
+int S1K[64];
+int key = 0x1c;
+int mismatches = 0;
+
+    for (src = 0; src < 64;src++) { 	/* compile key into sbox */
+        dst = (key^src)&0x3f; /* limit to 6 bits */
+	S1K[dst] = S1[src];
+    }
+
+    for (input = 0; input < 64; input++) { /* compare S1[i XOR k] to S1K[i] */ 
+        if (S1[(input^key)&0x3f] != S1K[input]) {
+            printf("Mismatch @ %2d, S1[i^key] = %x, S1K[i] = %x\n",input,
+            		S1[(input^key)&0x3f],S1K[input]);
+            mismatches++;
+        }
+        else
+            printf(".");
+    }
+    printf("\nnumber of mismatches: %d\n",mismatches);
+    exit(0);
+}
+
+
+
+
+

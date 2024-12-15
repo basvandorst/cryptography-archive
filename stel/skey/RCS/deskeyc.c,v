@@ -1,0 +1,251 @@
+head	1.7;
+access;
+symbols;
+locks
+	vince:1.7; strict;
+comment	@ * @;
+
+
+1.7
+date	95.04.22.09.56.56;	author vince;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	95.04.22.09.47.01;	author vince;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	95.04.18.12.08.40;	author vince;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	95.04.15.09.58.25;	author vince;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	95.04.14.16.51.41;	author vince;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	95.04.14.14.29.44;	author vince;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	94.12.08.18.00.33;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.7
+log
+@automatic
+@
+text
+@/*
+	This code is by MJR. See README.MJR.
+	Small changes by vince
+*/
+
+#include <stdio.h>
+#ifdef HASSTDLIB
+#include <stdlib.h>
+#else
+#include <sys/types.h>
+#endif
+#include <string.h>
+#ifdef	__MSDOS__
+#include <dos.h>
+#else	/* Assume BSD unix */
+#include <fcntl.h>
+#endif
+#include "md4.h"
+#include "des.h"
+#include "skey.h"
+
+extern	char	*getenv();
+
+/* Crunch a key:
+ * DES decrypt the user's pad file and then crank it through MD4 and
+ * collapse to 64 bits. This is defined as the user's starting key.
+ */
+int
+deskeycrunch(result,seed,passwd)
+char *result;	/* 8-byte result */
+char *seed;	/* Seed, any length */
+char *passwd;	/* Password, any length */
+{
+	MD4_CTX md;
+	char *padfile;
+	char desobuf[BUFSIZ];
+	char desibuf[BUFSIZ];
+	des_key_schedule ks;
+	des_cblock kk;
+	char iv[8];
+	FILE *desfd;
+	int i;
+	/**/ 
+	unsigned long	buffer[4];
+
+	if((padfile = getenv("SKEYPADFILE")) == (char *)0) {
+		fprintf(stderr,"No SKEYPADFILE in environment\n");
+		return(-1);
+	}
+
+	if((desfd = fopen(padfile,"r")) == (FILE *)0) {
+		perror(padfile);
+		return(-1);
+	}
+
+	des_string_to_key(passwd, (des_cblock *)kk);
+	des_set_key((des_cblock *)kk, ks);
+	bzero(passwd,strlen(passwd));
+	bzero(kk,sizeof(kk));
+	bzero(iv,sizeof(iv));
+
+	/* decrypt our pad file and MD4 it */
+	MD4Init(&md);
+	while((i = fread(desibuf,1,64,desfd)) >= 8) {
+		if(i % 8 != 0)
+			i = i - (i % 8);
+		des_cbc_encrypt((des_cblock *)desibuf, (des_cblock *)desobuf,
+				i, ks, (des_cblock *)iv, DES_DECRYPT);
+		MD4Update(&md,(unsigned char *)desobuf, i);
+	}
+	fclose(desfd);
+	if(i < 0) {
+		perror("read");
+		return(-1);
+	}
+
+	MD4Final((unsigned char *)buffer,&md);
+
+	/* Fold result from 128 to 64 bits */
+	buffer[0] ^= buffer[2];
+	buffer[1] ^= buffer[3];
+
+	memcpy(result,(char *)buffer,8);
+	return 0;
+}
+@
+
+
+1.6
+log
+@automatic
+@
+text
+@d1 5
+@
+
+
+1.5
+log
+@automatic
+@
+text
+@d38 1
+a38 1
+
+a74 5
+	/*
+	md.buffer[0] ^= md.buffer[2];
+	md.buffer[1] ^= md.buffer[3];
+	*/
+
+@
+
+
+1.4
+log
+@automatic
+@
+text
+@a11 3
+/*
+#include <sgtty.h>
+*/
+@
+
+
+1.3
+log
+@automatic
+@
+text
+@d12 1
+d14 1
+@
+
+
+1.2
+log
+@automatic
+@
+text
+@d52 2
+a53 2
+	des_string_to_key(passwd,kk);
+	des_set_key(kk,ks);
+d63 2
+a64 1
+		des_cbc_encrypt(desibuf,desobuf,i,ks,iv,DES_DECRYPT);
+@
+
+
+1.1
+log
+@auto
+@
+text
+@a17 5
+#if (defined(__MSDOS__) || defined(MPU8086) || defined(MPU8080) \
+ || defined(vax) || defined (MIPSEL))
+#define	LITTLE_ENDIAN	/* Low order bytes are first in memory */
+#endif			/* Almost all other machines are big-endian */
+
+d30 1
+a30 1
+	MDstruct md;
+d40 2
+d58 2
+a59 2
+	/* decrypt our pad file and MD5 it */
+	MDbegin(&md);
+d64 1
+a64 1
+		MDupdate(&md,(unsigned char *)desobuf,8 * i);
+d72 2
+d75 1
+d78 1
+d80 4
+a83 19
+#ifdef	LITTLE_ENDIAN
+	/* Only works on byte-addressed little-endian machines!! */
+	memcpy(result,(char *)md.buffer,8);
+#else
+	/* Default (but slow) code that will convert to
+	 * little-endian byte ordering on any machine
+	 */
+	for(i=0;i<2;i++){
+		register long tmp;
+		tmp = md.buffer[i];
+		*result++ = tmp;
+		tmp >>= 8;
+		*result++ = tmp;
+		tmp >>= 8;
+		*result++ = tmp;
+		tmp >>= 8;
+		*result++ = tmp;
+	}
+#endif
+@

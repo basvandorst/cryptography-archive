@@ -1,0 +1,114 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!math.ohio-state.edu!sdd.hp.com!portal!hfinney
+From: hfinney@shell.portal.com (Hal)
+Subject: Re: Oblivious Transfer for Certified Mail
+Message-ID: <CJ74xA.Ew@unix.portal.com>
+Sender: news@unix.portal.com
+Nntp-Posting-Host: jobe.shell.portal.com
+Organization: Portal Communications Company
+References: <huff-010194111841@edhuff.dial.net.nyu.edu>
+Date: Thu, 6 Jan 1994 07:03:09 GMT
+Lines: 102
+
+huff@mcclb0.med.nyu.edu (Edward J. Huff) writes:
+
+>In _Applied Cryptography_, page 98, Bruce Schneier gives an "oblivious
+>transfer" protocol which apparently requires disclosure of both of Alice's
+>messages before Bob can be certain that Alice has not cheated by sending
+>one message twice. "After the protocol is complete and both possible
+>results of the transfer are known, Alice must give Bob her private keys so
+>that he can verify that she did not cheat.  After all, she could have
+>encrypted the same message with both keys in step (4)."
+
+>He also mentions that there are other protocols, but I don't have easy
+>access to the publications.
+
+>On page 103, he gives a "Digital Certified Mail" protocol which requires an
+>oblivious transfer protocol that does not make the above disclosure, since
+>it must be "complete" (so that Bob knows that Alice has not cheated) at a
+>point where it is still necessary that Bob not know both messages.
+
+>Can someone give an oblivious transfer protocol which is suitable for use
+>with this Digital Certified Mail protocol?
+
+I think the flaw you have pointed out applies to Schneier's contract
+signing protocol on page 101, as well as to the certified mail
+protocol.  It appears that the protocol does not work, that either
+party can cheat.  The protocol, as Schneier describes it, goes as
+follows:
+
+1) Alice and Bob both randomly select 200 DES keys, grouped in pairs.
+There is nothing special about the pairs; they are just grouped that way for
+the protocol.
+
+2) Alice and Bob both generate 100 pairs of messages, Ln and Rn: "This is the
+left half of my nth signature" and "This is the right half of my nth
+signature," for example.  The identifier, n, runs from 1 to 100.  The
+messages will probably also include a digital signature of the contract, as
+defined previously, and a timestamp.  The contract is considered signed if the
+other party can produce both halves, Ln and Rn, of a single signature pair.
+
+3) Alice and Bob both encrypt their message pairs in each of the DES key
+pairs, the left message with the left key in the pair and the right message
+with the right key in the pair.
+
+4) Alice and Bob send each other their pile of 200 encrypted messages, making
+sure the other knows which messages are which halves of which pairs.
+
+5) Alice and Bob send each other every key pair, using the oblivious transfer
+protocol for each pair.  That is, Alice sends Bob either the key used to
+encrypt the left message, or the key used to encrypt the right message,
+independently, for each of the 100 pairs.  Bob does the same.  They can
+either alternate sending halves, or one can send 100 and then the other - it
+doesn't matter.  Now both Alice and Bob have one key in each key pair, but
+neither knows which halves the other one has.
+
+6) Alice and Bob both decrypt the message halves they can, using the keys
+they received.  They make sure that the decrypted messages are valid.
+
+7) Alice and Bob send each other the first bits of all 200 DES keys.
+
+8) Alice and Bob repeat step (7) for the second bits of all 200 DES keys, the
+third bits, and so on, until all the bits of all the DES keys have been
+transferred.
+
+9) Alice and Bob decrypt the remaining halves of the message pairs and the
+contract is signed.
+
+OK, so the flaw, as pointed out by Edward Huff, comes in step 5.  Alice
+can cheat by running each oblivious transfer, not with the left and right
+halves of each key pair, but making the two messages the same, for example
+running the OT with two copies of the left half of each key pair.  In other
+words, instead of obliviously transferring Lkey and Rkey, she obliviously
+transfers Lkey and Lkey.
+
+By definition of oblivious transfer, Bob receives only one of the two
+messages, and he receives no information about the other message.  This
+means that he cannot recognize this cheat; he receives Lkey, but if he
+were able to know that Alice's other message were also Lkey, that would mean
+that he got some information about the unsent message, violating the
+definition of oblivious transfer.  So in a true oblivious transfer there
+is no way for the receiver to know whether the sender sent two copies of
+the same message.
+
+Alice proceeds with her cheat in steps 7 and 8, sending correct DES bits
+for the left halves of the keys, but bogus bits for the right halves.
+Bob will not detect the cheat since the bits Alice sends match the bits
+in the key halves that he received.  It's not until step 9 that Bob
+discovers that his right key halves are useless, and Alice's cheat is
+successful.
+
+(Actually, Alice would not send only left halves for all n, since Bob
+would notice this.  Instead she would randomly run the oblivious transfer
+with either Lkey,Lkey or Rkey,Rkey for different values of n, remembering
+which she had sent for each n, and sending good bits for that key half and
+bogus bits for the other half.)
+
+The only way I can see around this is to have a variant on the oblivious
+transfer, one which lets the receiver determine whether the two messages
+being transferred (of which he receives only one) were identical.  This
+non-standard type of OT is what Edward Huff was asking about, but I don't
+know if such a thing exists.
+
+Hal Finney
+hfinney@shell.portal.com

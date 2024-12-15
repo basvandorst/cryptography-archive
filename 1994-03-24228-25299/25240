@@ -1,0 +1,110 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!vixen.cso.uiuc.edu!uchinews!lily.spc.uchicago.edu!klmwkreb
+From: klmwkreb@lily.spc.uchicago.edu (Werner Krebs)
+Subject: Software Key Escrow _is_ Possible
+Message-ID: <1994Mar30.042357.20226@midway.uchicago.edu>
+Keywords: Clipper, software key escrow
+Sender: news@uchinews.uchicago.edu (News System)
+Organization: University of Chicago
+Date: Wed, 30 Mar 1994 04:23:57 GMT
+Lines: 99
+
+
+One of the stated reasons for keeping the Clipper algorithm secret
+is that it would otherwise be possible for
+bogus Clipper chips to be manufactured. I've thought about it, and
+it isn't completely true. It _is_ possible to do secure key escrow in
+software or in hardware using a completely disclosed algorithm based
+on an asymmetric code such as RSA and a symmetric code such as IDEA.
+I show this below. I'm not an expert in cryptography, and
+it's not a terribly clever algorithm. It only works if one
+side is willing to enforce the "voluntary" key escrow, but it
+could be done in a difficult-to-modify widespread hardware of software
+implementation. IMHO, it's another argument against Clipper.
+
+
+Pseudo-Practical Published RSA/IDEA Secure Key Escrow System
+
+As someone already pointed out,
+it's possible to just send your RSA keys to the government.
+The idea here is that the recipient's algorithm checks whether or
+not you are "voluntarily" complying with the key escrow. With a
+sufficiently fast RSA implementation the whole thing could be done
+in hardware.
+
+Key Registration Process
+------------------------
+
+1. Benevolent Unit of Government (referred to as "BUG" afterwards, the
+Clipper specs I think call this a "LEA": Law Enforcement Agency. :-)
+generates, say, one 3000-bit "family" RSA key and widely publishes the
+public key, which is used in all implementations.
+
+2. User generates, say, 3000-bit RSA user key and requests key escrow with
+the BUG. The BUG assigns user a 32-bit User ID (UID, I don't know what
+the Clipper specs call it.) It then uses it's private key to sign a, say,
+32-bit hash of the user's UID and the user's public key. This generates
+the BUG-signed token, a rather long chunk which is
+transmitted at the start of the escrowed session. The BUG then
+records the UID, public, and private keys for posterity. [It is
+trivial to split up the private keys into multiple pieces by simply
+XOR'ing it with a random number].
+
+Escrowed Session
+----------------
+
+First the BUG-signed token is transmitted. This just informs the
+recipient of the public key corresponding to the UID. The recipient checks
+the BUG's signature on the public key to make sure that the public key's
+signature is really escrowed. If the signature is bad the algorithm stops and
+assumes the sender is not really compiling with voluntary key escrow.
+Otherwise, the recipient records the sender's public key for future use.
+
+Next, the sender sends the standard token, which contains the
+user's 32-bit User ID plus the, say, 128-bit session key, for, say
+the IDEA cipher, which is encrypted using the sender's public key.
+This results in a 160 bit token which is computed once and then
+memorized by both sender and recipient until the current session key is
+changed.
+
+The recipient checks the UID to make sure it is the correct one for
+the public-key token it received at the start of the session. Next,
+the first time it receives the encrypted key it uses the public
+key to encrypt its own copy of the session key, and checks that the
+two are equal. If they are, then the sender has correctly encrypted
+the session key using the sender's public key. The recipient then
+simply memorizes the standard token to ensure it does not change when
+the sender performs the required re-transmit of the session key. Otherwise,
+the recipient aborts the algorithm.
+
+Shortly after the BUG begins intercepting the sender's transmission, it
+receives the standard token during one of the frequent re-transmissions.
+This gives the BUG the UID. The BUG then acquires the public and private
+keys from escrow that correspond to the UID. Since the BUG now knows
+the RSA private key, it can correctly decrypt the session keys that
+were encrypted using the sender's public key. This gives the BUG the
+IDEA session keys, and it can now listen in on the transmission.
+
+An outsider who does not have access to the key escrow cannot obtain
+the session keys without direct cryptanalysis of either the IDEA cipher or
+by breaking the RSA encryption of the session keys, which are assumed hard.
+[Of course, this makes the encryption no stronger than the weakest of
+either RSA or IDEA, which raises the question of why anyone would
+want to do this in the first place. :-)]
+
+I admit this was mostly an academic exercise. In practice, even with
+fast hardware there would be a significant delay at the start of the
+Clipper session as the RSA encryptions are performed, unless the
+RSA key sizes are significantly reduced. It also has the disadvantage
+over Clipper that it gives everybody the UID (in effect, serial number) of 
+the user's algorithm. In the current proposal for Clipper, this is
+only done if you know the government's family key. On the other hand,
+it in effect has the BUG certify everyone's public key, which is very
+useful for authentication. It's trivial to modify the above algorithm
+to do public-key encryption _and_ very strong authentication without
+significantly affecting the startup time. It is therefore possible
+to implement a more or less practical secure key escrow system
+using a published algorithm.
+
+-- 
+Werner Krebs <w-krebs@uchicago.edu>

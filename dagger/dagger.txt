@@ -1,0 +1,248 @@
+From: ritter@io.com (ritter)
+Newsgroups: sci.crypt
+Subject: The Dagger Cipher Design (long)
+Date: 14 Oct 1995 16:53:53 -0500
+Organization: Illuminati Online
+Distribution: usa
+Message-ID: <45pbhh$70q@pentagon.io.com>
+NNTP-Posting-Host: pentagon.io.com
+
+
+ This is a description of my Dagger cipher.  Dagger is specifically
+ intended to trade off defined-plaintext strength to gain very high
+ speed ciphering.
+
+ Feel free to comment on the design.
+
+
+ Background
+
+ More than two years ago, I was asked by a large organization to
+ design a super-fast software cipher for a corporate network.
+
+ The cipher was to operate at the LAN data-transport level, since
+ this would avoid the need to modify a large number of higher-level
+ products from different vendors.  This particular organization was
+ very well acquainted with the risk and costs of information loss
+ and the costs of day-to-day operation.  The staff was eager to
+ accept a weaker (but fast) cipher than I was willing to provide.
+
+ The design issues were:
+
+    1. data-transport-level ciphering,
+    2. speed, and (last and least)
+    3. strength.
+
+ The staff was aware of, and requested, my Dynamic Substitution
+ technology.  The hope was to provide something better than the
+ usual trivial stream cipher.
+
+ Note that, at the data-transport level, communication frames (or
+ packets) can arrive out-of-sequence.  Thus, each frame must in
+ some sense be ciphered "the same way."  In the context of a stream
+ cipher, this leads to "re-origination," which is normally
+ considered a Very Bad Thing.
+
+
+ Design Construction
+
+ But if a stream cipher will be forced to re-originate, we can
+ question the usual practice of using a complex RNG to produce a
+ "strong" confusion sequence:  Since the sequence must always
+ start out the same way, there seems little point in repeatedly
+ using an RNG to produce that value.  OK, suppose we instead use
+ an "RNG table" to hold confusion data: what can we do with this?
+
+ Certainly, under these conditions, a conventional stream-cipher
+ design (with an exclusive-OR combiner) would quickly fall to a
+ known-plaintext attack.
+
+ Suppose we use Dynamic Substitution instead of exclusive-OR:
+ Well, this still leaves The Opponent with direct access to the
+ substitution and full information about RNG table stepping.  By
+ analyzing the ciphertext from messages with different initial
+ values, the initial substitution perhaps can be recovered, and
+ then The Opponent can start to easily accumulate the confusion
+ sequence in the RNG table.
+
+ But now suppose we use *two* combiners: Dynamic Substitution and
+ then exclusive-OR.  (We now need two bytes from the RNG table
+ for each byte ciphered.)  This creates an intermediate ciphering
+ value (between the two combiners) hidden from The Opponent.  We
+ can use this as the index distance to the "next" element in the
+ RNG table.  (This is like ciphertext feedback, but this feedback
+ value is not externally-available ciphertext.)  The intermediate
+ ciphering value will vary the confusion sequence based on the
+ unique data in each frame.
+
+
+ Operation
+
+ First, an initialization phase hashes a key value, and eventually
+ fills the RNG table with nonlinearized random values.  Some unused
+ values are used to shuffle the original substitution state.
+
+      For each frame, the saved original substitution state (and the
+      "current" RNG table pointer) is copied into the working dynamic
+      table storage.
+
+           For each plaintext byte, the byte is first substituted
+           through the dynamic table.  Then the "current" two-byte
+           RNG table entry is accessed, and one byte is used to
+           exclusive-OR the substituted value, producing ciphertext.
+           The other RNG byte is used to permute the dynamic table.
+           The value between the combiners is then used to advance
+           the RNG entry pointer to the next "current" index.
+
+
+ Strength
+
+ An extremely interesting aspect of this design is to illuminate
+ the strength provided by Dynamic Substitution.  With a conventional
+ additive combiner, the design does not withstand known-plaintext
+ attack.  With Dynamic Substitution, apparently it does.
+
+
+ Defined-Plaintext
+
+ Suppose The Opponent has messages with all possible first byte
+ values:  This opens an opportunity to define the substitution
+ (with some constant exclusive-OR offset).
+
+ Then suppose, for some first byte, The Opponent has messages with
+ all possible second byte values:  This will define the slightly-
+ changed substitution (with some different exclusive-OR constant).
+ The two elements changed in the substitution will be the first
+ plaintext byte (which is known) and the formerly "hidden" confusion
+ value; this is a way to expose the hidden value.  (Then, since the
+ vast majority of the substitution will be unchanged, it should be
+ easy to find the exclusive-OR difference value.)
+
+ In the same way, one could proceed to develop the various RNG
+ table confusion and offset (difference) values.  With a small
+ table, eventually we get all table elements and break the cipher.
+
+ With a 4k-element (8KB) table, a 50 percent break must identify at
+ least 2k separate elements.  ("At least," because there would seem
+ to be no way to avoid finding already-found elements, so there will
+ be a lot of duplicate work.)  Thus, a 50 percent break requires
+ *at least* 2k substitution scans to identify two changed values.
+ Each scan will involve testing (on average) half the substitution,
+ and most tests must be separate messages.  This is 2**11 * 2**7 or
+ 2**18 separate messages.  Of course if the messages are ASCII, we
+ can reduce the average number of tests (perhaps 8:1) by checking the
+ most-likely characters first.  This is now at least 2**15 or only
+ 32K messages.  Thus, we conclude that the cipher does not withstand
+ a substantial *defined* -plaintext attack.
+
+ Is it true that a cipher which does not withstand defined-plaintext
+ has no worth?  Can it get no respect at all?  Must every cipher fit
+ into every possible application?
+
+ Note that a defined-plaintext attack is not normally a factor for
+ local storage or end-to-end ciphering.  Moreover, defined-plaintext
+ implies the ability to submit a message which will be ciphered
+ under a fixed unknown key.  But the overall communications system
+ could limit the number of messages under a single key, or change
+ keys frequently, either of which would end the attack.  The system
+ also can use separate keys for each user, which would make such an
+ attack either meaningless or a side-effect of user password
+ security, which has various other ramifications.  In a LAN
+ environment, we would normally assume that session keys will be
+ distributed by a central server (under a main key for each node).
+
+
+ Known-Plaintext
+
+ It is unclear whether or not an effective known-plaintext attack
+ even exists, let alone how expensive it would be.  Such an attack
+ would be particularly interesting as there would likely be no way
+ to design the rest of the system to avoid known-plaintext.
+
+
+ Speed
+
+ Paper cycle-counts of optimized assembly-language inner loops show
+ about 27 cy/Byte for encipher, and 40 cy/Byte for decipher on a 486.
+ Thus, in-memory ciphering could exceed 2.5MB/sec on a 100 MHz
+ machine.  Actual buffered file enciphering -- RAMdisk to RAMdisk
+ under 16-bit DOS -- measures at about 620 KB/sec on a 486DX2/50.
+
+ Clearly, adding inner-loop cycles for cipher-time RNG operations
+ will have a significant effect on speed.
+
+ High speed buys a lot:
+
+    1.  Mainly, high speed is often the difference between ciphering
+        and not ciphering (because of the overhead).
+
+    2.  High speed also buys the ability to multiple-cipher the data.
+        This can directly address many actual or presumed weaknesses
+        in the cipher and still be faster than slow alternatives.
+
+    3.  High speed also frees CPU cycles for additional, more
+        intensive ciphering alternatives on particular messages.
+
+ Only a high-speed cipher can intrude upon normal operations to the
+ least extent possible.
+
+
+ Implications
+
+ The Penknife e-mail cipher was constructed after this design, and
+ uses a similar combining structure, with a nonlinearized RNG.  This
+ may make the defined-plaintext attack harder, but the real problem
+ is stream-cipher re-origination:
+
+ For example, one could make these ciphers much stronger, and not
+ much slower, by making the second combining stage a selection
+ among (say) 16 Dynamic Substitutions, as is done in the Cloak2
+ stream cipher.  But this would be over 4K of dynamic state which
+ would have to be reset (copied) for every new frame.  As usual,
+ there is an inherent conflict in these ciphers between speed and
+ strength, and this especially the case for stream-cipher
+ re-origination.  Each re-origination presents a state-recovery
+ overhead which can get expensive.
+
+ Penknife is considerably slower than Dagger, but nobody
+ complained about Penknife ciphering speed.  This is as I would
+ expect, because individual user computers are less heavily loaded
+ than central servers.  I expect this situation to get worse before
+ it gets better.  That is, I believe the market for LAN and Internet
+ bandwidth is growing substantially faster than technology can
+ increase available bandwidth at an acceptable cost.  This is a
+ significant motivation for high speed ciphering.
+
+
+ Summary
+
+
+    Advantages
+
+    * Very high speed
+
+    * Could operate at the data-transport level
+
+    * Directly handles variable-size data with zero expansion
+
+    * Resists known-plaintext attack
+
+
+    Potential Disadvantage
+
+    * Falls to defined-plaintext (that is, the application or the
+      rest of the system must prevent this sort of attack)
+
+
+ Details
+
+ The design of the DAGGER cipher (with graphics), and the detailed
+ use of the software cipher engine, is disclosed in more detail on
+ my web page.  If anyone has any problems accessing that page, or
+ if the HTML does not work for them, they should send me email.
+
+ ---
+ Terry Ritter  Ciphers by Ritter  http://www.io.com/~ritter
+
+
+

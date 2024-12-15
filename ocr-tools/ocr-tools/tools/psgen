@@ -1,0 +1,324 @@
+#!/usr/bin/perl
+#
+# psgen -- Postscript generator for code portion of source books
+#
+# Reads in a list of files/dirs from <filelist>, runs munge on each of
+# them, and generates a single postscript file to stdout.  The page numbers
+# for each file/dir are put into the file <pagenums>.
+#
+# usage: psgen [ options... ] <filelist> <pagenums> <volume #>  > foo.ps
+#			-l<firstLogicalPage>
+#			-p<firstPhysicalPage>
+#			-f<font>
+#			-D<defs> (passed to yapp)
+#			-P<productNumber>
+#			-o<mungedOutFile>
+#			-e				(auto edit errors)
+#
+# $Id: psgen,v 1.18 1997/11/13 21:44:16 colin Exp $
+#
+
+$bookRoot = $ENV{"BOOKROOT"} || ".";
+$toolsDir = "$bookRoot/tools";
+$psDir = "$bookRoot/ps";
+$editor = $ENV{"EDITOR"} || "vi";
+
+# Configuration settings - external file names
+$mungeProg = "$toolsDir/munge";
+$yappProg = "$toolsDir/yapp";
+$preambleFile = "$psDir/prolog.ps";
+$tempFile = "/tmp/psgen-$$";
+
+# Parse arguments
+$firstLogPage = $firstPhysPage = 0;
+$productNumber = 1;
+$font = "OCRB";
+$autoEdit = 0;
+while ($#ARGV >= 0 && $ARGV[0] =~ /^-/)
+{
+	$_ = shift @ARGV;
+	if (/^--$/)
+	{
+		last;
+	}
+	elsif (/^-l(\d+)$/)
+	{
+		$firstLogPage = $1;
+	}
+	elsif (/^-p(\d+)$/)
+	{
+		$firstPhysPage = $1;
+	}
+	elsif (/^-f(.+)$/)
+	{
+		$font = $1;
+	}
+	elsif (/^-D(.+)$/)
+	{
+		$yappDefs .= " " . $_;
+	}
+	elsif (/^-P(\d+)$/)
+	{
+		$productNumber = $1;
+	}
+	elsif (/^-o(.+)$/)
+	{
+		$mungedOutFile = $1;
+	}
+	elsif (/^-e$/)
+	{
+		$autoEdit = 1;
+	}
+	else
+	{
+		&Error("Unrecognized option: '$_'");
+	}
+}
+$fileListFile = shift @ARGV || die "Missing file list argument (arg 1)";
+$pageNumFile = shift @ARGV || die "Missing page number file argument (arg 2)";
+$volume = shift @ARGV || die "Missing volume number argument (arg 3)";
+
+# Determine initial page numbers
+{
+	my $nextLogPage = 1;
+	my $nextPhysPage = 3;
+	my $volNum = 0;		# Which volume's page numbers we're reading
+
+	if ($volume > 1)
+	{
+		open(OLDPAGENUMS, "<$pageNumFile") || die;
+		while (<OLDPAGENUMS>)
+		{
+			if (/^Volume\s+(\d+)$/)
+			{
+				$volNum = $1;
+			}
+			elsif (/^Next:\s+(\d+)\s*$/ && $volNum == $volume - 1)
+			{
+				$nextLogPage = $1;
+			}
+		}
+		close(OLDPAGENUMS);
+	}
+	else
+	{
+		unlink($pageNumFile);
+	}
+	$firstLogPage = $nextLogPage if ($firstLogPage == 0);
+	$firstPhysPage = $nextPhysPage if ($firstPhysPage == 0);
+}
+
+# Names of PostScript operators invoked.  These are the interface
+# between this file and the $preambleFile.
+$oddPageStartPS = "OddPageStart";
+$evenPageStartPS = "EvenPageStart";
+$oddPageEndPS = "OddPageEnd";
+$evenPageEndPS = "EvenPageEnd";
+$dirPagePS = "DirPage";
+# This is short because it's emitted every line
+$linePS = "L";
+
+# Handle an error from munge.
+# A result of 0 means to retry, 1 means to exit
+sub MungeError
+{
+	my $result = 1;
+
+	open(FILEH, "<$tempFile") || die;
+	while (<FILEH>)
+	{
+		print STDERR;
+		if (/ in (.*) line (\d+)$/)
+		{
+			my ($fileName, $lineNumber) = ($1, $2);
+
+			if ($autoEdit)
+			{
+				my @statResult = stat($fileName);
+				my $oldMTime = $statResult[9];
+
+				system("'$editor' '+$lineNumber' '$fileName' 1>&2");
+				@statResult = stat($fileName);
+				$result = ($statResult[9] == $oldMTime);
+				last;
+			}
+		}
+	}
+	close(FILEH);
+	unlink($tempFile) || die "Couldn't unlink $tempFile";
+	return $result;
+}
+
+sub CopyFileToPS
+{
+	local $fileName = $_[0];
+	local $args = "'-I$psDir' '-Dfont=$font'";
+	local $_;
+
+	$args .= $yappDefs;
+	open(FILEH, "$yappProg $args '$fileName' |") || die;
+	while (<FILEH>)
+	{
+		print PSOUT $_;
+	}
+	close(FILEH) || exit(1);
+	1;
+}
+
+# Wrap a string in parens as required by PostScript, with proper quoting.
+sub StringPS
+{
+	local $str = $_[0];
+
+	$str =~ s/([\\()])/\\$1/g;
+	"(" . $str . ")";
+}
+
+# Emit a start of page.  The Postscript DSC %%Page: header 
+# (followed by logical page number, then physical) and
+# the top-of-page function (which is passed the page number as a string)
+sub PageStartPS
+{
+	local $pageNum = $_[0];
+
+	"%%Page: " . ($pageNum + $firstLogPage) . " " .
+				 ($pageNum + $firstPhysPage) . "\n" .
+		&StringPS($pageNum + $firstLogPage) .
+		((($pageNum + $firstLogPage) % 2) ? $oddPageStartPS
+										  : $evenPageStartPS) . "\n";
+}
+
+sub PageEndPS
+{
+	local $pageNum = $_[0];
+
+	((($pageNum + $firstLogPage) % 2) ? $oddPageEndPS : $evenPageEndPS) . "\n";
+}
+
+# Save the page number to a table-of-contents file
+sub SavePageNum
+{
+	local ($fileName, $pageNum) = @_;
+
+	print PAGENUMS ($pageNum + $firstLogPage), ": $fileName\n";
+}
+
+# The main code.
+
+open(PSOUT, ">-") || die;
+open(FILELIST, "<$fileListFile") || die;
+open(PAGENUMS, ">>$pageNumFile") || die;
+if ($mungedOutFile ne "")
+{
+	open(MUNGEDOUT, ">$mungedOutFile") || die;
+}
+
+print PAGENUMS "Volume $volume\n";
+
+&CopyFileToPS($preambleFile);
+
+$fileNumber = 0;
+$pageNum = 0;	# This is 0-based, since it is added to $first{Log,Phys}Page
+$enable = 0;
+
+while (<FILELIST>)
+{
+	/^([VDTB])(\S*)\s+(.*)/ || die "Illegal file list line $.";
+
+	local ($fileType, $options, $arg) = ($1, $2, $3);
+
+	if ($fileType eq "V")
+	{
+		@args = split(/\s+/, $arg);
+		if ($enable = ($args[0] == $volume))
+		{
+			$defaultTabWidth = int($args[1]);
+		}
+	}
+	elsif ($fileType eq "D")
+	{
+		next unless $enable;	# Do nothing if we're in the wrong volume
+		$dirName = $arg;
+		&SavePageNum($dirName, $pageNum);
+		print PSOUT &PageStartPS($pageNum);
+		print PSOUT &StringPS($dirName), $dirPagePS, "\n";
+		print PSOUT &PageEndPS($pageNum);
+		$pageNum++;
+	}
+	else
+	{
+		my $done = 0;
+
+		$fileNumber++;
+		$fileName = $arg;
+		next unless $enable;	# Do nothing if we're in the wrong volume
+		&SavePageNum($fileName, $pageNum);
+		$quotedFileName = $fileName;
+		$quotedFileName =~ s/'/\\'/g;
+		$tabWidth = ($options =~ /(\d)/) ? $1 : $defaultTabWidth;
+		$args = ($fileType eq "B") ? "-b" : "";
+		$args .= " -$tabWidth -p$productNumber -f$fileNumber";
+		while (!$done)
+		{
+			if (open(FILE, "$mungeProg $args '$quotedFileName' 2>$tempFile |"))
+			{
+				$line = <FILE>;
+				print MUNGEDOUT $line;
+
+				while ($line ne "")
+				{
+					print PSOUT &PageStartPS($pageNum);
+
+					while ($line ne "" and $line !~ /^\f/)
+					{
+						chop $line;
+						print PSOUT &StringPS($line), $linePS, "\n";
+						$line = <FILE>;
+						print MUNGEDOUT $line;
+					}
+					$line =~ s/^\f//;
+
+					print PSOUT &PageEndPS($pageNum);
+					$pageNum++;
+				}
+
+				if (close(FILE))
+				{
+					$done = 2;
+				}
+				else
+				{
+					$done = &MungeError();
+				}
+			}
+			else
+			{
+				$done = &MungeError();
+			}
+		}
+		if ($done == 1)
+		{
+			die;
+		}
+	}
+}
+
+# Print PostScript DSC trailer with the correct number of pages
+print PSOUT "%%Trailer\n%%Pages: ", $pageNum, "\n%%EOF\n";
+
+print PAGENUMS "Pages: ", $pageNum, "\n";
+print PAGENUMS "Next: ", ((($pageNum+1) & ~1) + $firstLogPage), "\n";
+
+close(PAGENUMS) || die;
+close(FILELIST) || die;
+close(PSOUT) || die;
+
+if ($mungedOutFile ne "")
+{
+	close(MUNGEDOUT) || die;
+}
+
+#
+# vi: ai ts=4
+# vim: si
+#

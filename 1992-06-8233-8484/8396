@@ -1,0 +1,163 @@
+Path: msuinfo!caen!sdd.hp.com!samsung!uunet!mcsun!sun4nl!alchemy!accucx!nevries
+From: nevries@accucx.cc.ruu.nl (Nico E. de Vries)
+Newsgroups: sci.crypt
+Subject: IBM-PC random generator, source included
+Message-ID: <2673@accucx.cc.ruu.nl>
+Date: 22 Jun 92 19:40:06 GMT
+Organization: Academic Computer Centre Utrecht
+Lines: 154
+
+Hi,
+
+I have to give up. I hoped the number of requests for my random
+generator would fade away a bit but the oposite is true. Therefore
+here I post the source. Its on the bottom of this posting. 
+
+It is a hardware based random generator (the hardware is the IBM-PC)
+based on the jitter of crystals. To be able to "measure" it two crystals
+are needed. Some extra tricks are needed to convert the partly deterministic
+results of this fase to completely undeterministic data.
+
+The generator generates 128 bits/second.
+
+I welcome all comments, complaints, suggestions etc.
+
+Nico E. de Vries
+_ _
+O O  USENET nevries@cc.ruu.nl  FIDO 2:281/708.1  COMPUSERVE "soon" (tm)
+ o   This text reflects MY opinions, not that of my employer BITECH.      
+\_/  This text is supplied 'AS IS', no waranties of any kind apply.      
+     Don't waste your time on complaining about my hopeless typostyle.
+
+"Unfortunately, the current generation of mail programs do not have checkers
+ to see if the sender knows what he is talking about" (A.S. Tanenbaum)
+
+------
+
+Source has been compiled with BC++ 3.0.
+
+===
+
+// RANDOM.C
+// (C) 1992 BITECH, Nico de Vries, all rights reserved.
+//
+// BITECH and Nico de Vries are not responsible for any damages resulting
+// from use of this program. Use it AS IS or don't use it.
+//
+// Use of this source or derivates of this source is allowed only
+//   - if this head is not changed in any way
+//   - the SOURCE is not sold in any way
+//   - if the name BITECH is not used in the executable or its docs
+//   - something like "random number generator by Nico de Vries" is mentioned
+//     in the executable or its docs
+//   - if BITECH/Nico de Vries, is notified of its use in a specific program
+//   - in case of commercial use at least $100 is donated to Greenpeace
+//   - BITECH/Nico de Vries gets improvements/problem reports
+//   - improved versions can be used by BITECH/Nico de Vries without
+//     restrictions
+//
+// The main goal of this routine is to allow for better and more reliable
+// data encryption "for the masses". Please keep this in mind when using
+// the routine.
+
+#include <dos.h>
+#include <stdlib.h>
+
+// onld interrupt handler
+static void interrupt (*vivOld)(void);
+
+// needed to make clock run OK
+static int iIntCtr;
+
+// storage for temporary information
+static volatile int iActive;
+static volatile unsigned uCtr;
+static int iPtr;
+static unsigned puArray[32];
+
+static void interrupt Handler (void){
+   // 0.86 ms timeslice
+   outportb (0x43,0x36);
+   outportb (0x40,0x0);
+   outportb (0x40,0x04);
+
+   if (iActive){
+      if (iPtr==32){
+         iActive=0;
+         iPtr=0;
+      } else {
+         puArray[iPtr] = uCtr;
+         iPtr++;
+      }
+   }
+
+   if (++iIntCtr==64){
+      (*vivOld)(); // 18.2 times per second call
+      iIntCtr=0;
+   }else
+      outportb (0x20, 0x20);
+}
+
+// remove handler
+void RemHan (void){
+   disable();
+   setvect (0x08, vivOld);
+   enable();
+
+   // set timer to 18.2 times/second
+   outportb (0x43,0x36);
+   outportb (0x40,0);
+   outportb (0x40,0);
+}
+
+// install handler
+void InstHan (void){
+   disable();
+   vivOld = getvect (0x08); // timer
+   setvect (0x08, Handler);
+   enable();
+}
+
+// generate true random number
+unsigned long Random (void){
+   int i,j;
+   unsigned long res=0;
+   unsigned long tmp;
+   InstHan();
+   // to be on the safe side we intialize uCtr with the timer
+   uCtr = peek(0x40,0x6c) & 0xFF;
+
+   // repeat 8 times to change random "bursts" into random numbers
+   for (j=0;j<8;j++){
+      iActive=1;
+      while (iActive){
+         while (uCtr) uCtr--;
+         uCtr = 0xFF;
+      }
+      for (i=0;i<32;i++)
+         tmp = (tmp<<1) ^ (puArray[i] & 1);
+      res^=tmp;
+   }
+   RemHan();
+   return res;
+}
+
+#if 1 // TEST SOFTWARE
+
+void main (void){
+   int i,j;
+   unsigned long r;
+   printf ("RANDOM [1.0] 'generates 16 true random numbers'\n");
+   printf ("(C) Copyright 1992, All rights reserved, BITECH.\n");
+   printf ("'AS IS' use allowed\n");
+   printf ("BITECH is not responsible for any damages resulting from use of this program.\n\n");
+   for (i=0;i<16;i++){
+      r = Random();
+      printf ("%08lX ",r);
+      for (j=0;j<32;j++){
+         printf ("%d",(r&(1L<<(31-j)))!=0);
+      }
+      printf ("\n");
+   }
+}
+#endif

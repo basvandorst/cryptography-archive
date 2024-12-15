@@ -1,0 +1,133 @@
+This is version 1.4 of CFS.
+
+ * The author of this software is Matt Blaze.
+ *              Copyright (c) 1992, 1993, 1994, 1995 by AT&T.
+ * Permission to use, copy, and modify this software without fee
+ * is hereby granted, provided that this entire notice is included in
+ * all copies of any software which is or includes a copy or
+ * modification of this software and in all copies of the supporting
+ * documentation for such software.
+ *
+ * This software is subject to United States export controls.
+ *
+ * THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
+ * WARRANTY.  IN PARTICULAR, NEITHER THE AUTHORS NOR AT&T MAKE ANY
+ * REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
+ * OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.
+
+Release notes and general installation instructions are in the 
+file "notes.ms".  Use troff -ms to format and print notes.ms.
+READ notes.ms BEFORE YOU TRY TO INSTALL CFS.
+
+Instructions for people who can't stand the idea of reading release notes:
+
+To install from scratch:
+
+1a) Read notes.ms
+
+1b) Make sure you're running NFS with SunOS or BSD.  Good luck if you have
+something else.
+
+1c) Make sure that you understand that this is completely unsupported
+software.  We can't help you install it or configure it.  We also can't
+help you or be in any way responsible if CFS obliterates your files beyond
+recognition.  Remember,  this software comes from The Telephone Company.
+Unfortunately, getting CFS running requires that you understand
+the basics of how NFS works, and, if you're using an even slightly
+different platform, how to configure software to run in your environment.
+
+1d) Edit the Makefile for your local configuration.  Make will fail if you
+don't do this.
+
+2) Type "make cfs".
+
+2a) If it doesn't compile, it's probably because you didn't follow
+step 1 all the way through.  In particular, if you have Linux, you might
+have a broken version of rpcgen, which you'd already know about had you 
+actually read the Makefile.
+
+2b) If make failed midway through and you want to try diffrent options,
+be sure to "make clean" after any edit of the Makefile.
+
+3) Become root, and type "make install_cfs".  Make sure /usr/local/etc
+exists first.  For Solaris 2.x, make sure /usr/ucb is before /usr/sbin
+in your path, otherwise you'll pick up the wrong version of install.  E.g.: 
+	PATH=/usr/ucb:$PATH export PATH
+
+4) Create the cfs bootstrap mount point:
+	# mkdir /null
+	# chmod 0 /null
+
+5) Add this line to /etc/exports:
+
+	/null localhost
+
+5a) For Solaris 2.x, do the following instead:
+   Add this line to the end of /etc/dfs/dfstab:
+	share -F nfs -o rw=localhost -d "cfs directory" /null
+   Then type either "shareall" or:
+	share -F nfs -o rw=localhost -d "cfs directory" /null
+
+6) mkdir /crypt (or whatever you want to call the cfs mount point).
+
+7) Add this to the end of /etc/rc.local (some place after you have
+mountd started).  Note that mount might live in /sbin or /bin instead
+of /etc:
+
+if [ -x /usr/local/etc/cfsd ]; then
+    /usr/local/etc/cfsd && \
+        /etc/mount -o port=3049,intr localhost:/null /crypt
+fi
+
+7a) Some platforms that support TCP versions of NFS require that you specify
+that CFS uses old-style NFSv2 and UDP.  For example, under BSDI and FreeBSD,
+you need to add "nfsv2" and, sometimes, "-U" to the mount options:
+
+if [ -x /usr/local/etc/cfsd ]; then
+    /usr/local/etc/cfsd && \
+        /sbin/mount -o nvsv2,-U,port=3049,intr localhost:/null /crypt
+fi
+
+Solaris 2.x users will need to add "vers=2,proto=udp" to the list of
+mount options.
+
+7b) On some platforms (especially BSDI), you will get better CFS
+performance with a smaller mount blocksize, e.g.:
+
+if [ -x /usr/local/etc/cfsd ]; then
+    /usr/local/etc/cfsd && \
+       /sbin/mount -o nfsv2,-U,port=3049,rsize=2048,wsize=2048,intr localhost:/null /crypt
+fi
+
+8) Run the commands in step 7 by hand to get CFS started now.  You may
+have to run "exportfs -a" and/or /etc/rpc.mountd first if you aren't
+already running an NFS server, but future reboots will take care of this
+automatically.
+
+9) If any of this fails, go back and read notes.ms.
+
+Notes:
+
+Some systems (e.g., Solaris, Irix, etc.) don't use /etc/rc as the
+startup file or have different formats on some of the mount commands.
+The basic idea, however, is the same: configure your system so that
+when it boots it first starts mountd (with something exported to
+localhost), then starts cfsd, and finally mounts cfsd at the /crypt
+mountpoint.  See README.irix for step-by-step Irix instructions (which
+may help with other SysV systems, too).
+
+If you already have CFS, this version may not be compatible with the
+encryption format used by your old copy.  If you have encrypted directories
+created under previous versions of cfs that you want to save, tar them
+out to a plaintext file under your existing cfsd prior to installing
+the new version.  See the README.history file for backward compatibility
+details.
+
+To install a new version, first cdetach any directories in the cfs mount
+point (/crypt/*).  Then (as root) do a make install_cfs, and restart cfsd. 
+You need not unmount and remount /crypt, although you may see a few stale
+file handle errors in any processes with open references to /crypt.
+
+For information on ESM, see README.esm.
+
+Problems -> cfs@research.att.com.  But READ THE MANUAL first.

@@ -1,0 +1,38 @@
+#!/bin/sh
+self=`basename $0`
+path=`dirname $0`
+tool="modify"
+perl="perl"
+if [ "$1" = "" ]
+then
+    echo
+    echo "Usage: $self <filename> [<filename>]*"
+    echo
+    echo "This utility tries to upgrade your Perl application(s) \"<filename>\""
+    echo "from \"Bit::Vector\" version 4.x to \"Bit::Vector\" version 5.0."
+    echo
+else
+    file="$path/$tool"
+    if [ ! -f "$file" ]
+    then
+        file=`which $tool`
+        if [ ! -f "$file" ]
+        then
+            echo
+            echo "$self: unable to find perl script \"$tool\"!"
+            echo
+            exit 1
+        fi
+    fi
+    tool="$file"
+    for file in "$@"
+    do
+        if [ -f "$file" ]
+        then
+            echo "$self: upgrading \"$file\" using \"$tool\"..."
+            $perl $tool 's/to_ASCII/to_Enum/g;s/from_ASCII/from_Enum/g;s/to_String/to_Hex/g;s/(\$.+?)\s*->\s*from_string\s*\((.+?)\)/( eval { $1->from_Hex($2); !\$\@; } )/g;s/(\$.+?)\s*->\s*lexorder\s*\((.+?)\)/($1->Lexicompare($2) <= 0)/g;s/(\$.+?)\s*=\s*Bit::Vector\s*->\s*new_from_String\s*\((.+)\)\s*;/$1 = Bit::Vector->new(length($2)<<2); $1->from_Hex($2);/g' $file
+        else
+            echo "$self: unable to find file \"$file\"!"
+        fi
+    done
+fi

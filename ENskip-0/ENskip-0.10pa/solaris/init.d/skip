@@ -1,0 +1,71 @@
+#!/bin/sh
+
+# Start/stop SKIP for Solaris 2.4
+
+INSTALLDIR=/opt/skip
+SKIPD=$INSTALLDIR/skipd
+SKIP_ATTACH=$INSTALLDIR/skip_attach
+SKIP_DETACH=$INSTALLDIR/skip_detach
+
+killproc() {		# kill the named process(es)
+	pid=`/usr/bin/ps -e |
+	     /usr/bin/grep $1 | /usr/bin/grep -v grep |
+	     /usr/bin/sed -e 's/^  *//' -e 's/ .*//'`
+	[ "$pid" != "" ] && kill $pid
+}
+
+attach_interfaces() {	# Attach to all interfaces we find
+	interfaces=`/usr/bin/netstat -ni | /usr/bin/grep '\.' | /usr/bin/grep -v lo | /usr/bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		/bin/echo "attaching skip to interfaces:\c"
+		for i in $interfaces; do
+			/bin/echo " $i\c"
+			$SKIP_ATTACH >/dev/null $i
+		done
+		/bin/echo "."
+	else
+		/bin/echo "No interfaces for skip found."
+	fi
+}
+
+detach_interfaces() {	# Detach from all interfaces we find
+	interfaces=`/usr/bin/netstat -ni | /usr/bin/grep '\.' | /usr/bin/grep -v lo | /usr/bin/awk '{ print $4 }'`
+
+	if [ "$interfaces" != "" ]; then
+		/bin/echo "detaching skip from interfaces:\c"
+		for i in $interfaces; do
+			/bin/echo " $i\c"
+			$SKIP_DETACH >/dev/null $i
+		done
+		/bin/echo "."
+	else
+		/bin/echo "No interfaces for skip found."
+	fi
+}
+
+case "$1" in
+
+'start')
+	if [ -x $SKIPD ]; then
+		/bin/echo "starting skip daemon\c"
+		$SKIPD > /dev/console 2>&1 &
+		/bin/echo "[$!]."
+
+		attach_interfaces
+	else
+		/bin/echo "skip daemon '$SKIPD' not found."
+	fi
+	;;
+
+'stop')
+	detach_interfaces
+	killproc skipd
+	/usr/sbin/modunload -i `/usr/sbin/modinfo | /usr/bin/grep skip | /usr/bin/awk '{ print $1 }'`
+	;;
+
+*)
+	/bin/echo "Usage: $0 { start | stop }"
+	;;
+
+esac

@@ -1,0 +1,1823 @@
+
+                     TRUMP  --  A  Fast  Reliable
+                       Transport  Protocol  for
+                         Distributed  Systems
+
+                              W.  Toomey
+
+		 Computer Science Department Report CS1/93
+
+                     Department of Computer Science
+                           University College
+                    The University of New South Wales
+                    Australian Defence Force Academy
+                             Canberra, ACT
+
+                              Abstract
+
+
+This paper details the design of a high-speed lightweight reliable message
+transport protocol designed for distributed systems.  This protocol is
+still in the design stages, and this report describes the protocol design
+as at November, 1992.
+
+
+Warren Toomey, e-mail:  wkt@csadfa.cs.adfa.oz.au
+
+
+Contents
+
+
+1  Introduction                                                       2
+
+
+2  Protocol Requirements for High-Speed Networks                      3
+
+
+3  Communication Needs of Distributed Systems                         3
+   3.1 Communication Endpoint Naming Transparency  : : : : : : : : :  4
+   3.2 Endpoint Migration  : : : : : : : : : : : : : : : : : : : : :  4
+   3.3 Endpoint Grouping  : : : : : : : : : : : : : : : : : :  : : :  4
+   3.4 Message-Based Endpoint Communication  : : : : : : : : : : : :  5
+   3.5 Remote Procedure Call-Based Endpoint Communication : : :: : :  6
+   3.6 Stream-Based Endpoint Communication  : : : : : : : : : : : :   7
+   3.7 Communication Security : : : : : : : : : : : : : : : : : :  :  7
+
+
+4  Previous Protocols                                                 8
+   4.1 VMTP : : : : : : : : : : : : : : : : : : : : : : : : : : :  :  8
+   4.2 NETBLT  : : : : : : : : : : : : : : : : : : : : : : : : : : : 10
+   4.3 XTP  : : : : : : : : : : : : : : : : : : : : : : : : : : :  : 11
+   4.4 RRDP : : : : : : : : : : : : : : : : : : : : : : : : : : : :  13
+
+
+5  Overview of TRUMP                                                 15
+   5.1 Implicit and Explicit Connection Setup and Teardown  : : : :  17
+   5.2 Selective Retransmission and Groups  : : : : : : : : : : :  : 18
+   5.3 Qualities of Service  : : : : : : : : : : : : : : : : : : : : 19
+   5.4 Dynamic Fragmentation and MTU  : : : : : : : : : : : : : :  : 19
+   5.5 Flow Control and Throughput  : : : : : : : : : : : : : : :  : 20
+   5.6 Unacknowledged Data : : : : : : : : : : : : : : : : : : : : : 21
+   5.7 Integration with Traditional and New Communication Systems  : 21
+   5.8 Security  : : : : : : : : : : : : : : : : : : : : : : : : : : 21
+   5.9 Multicast  : : : : : : : : : : : : : : : : : : : : : : : :  : 22
+
+
+6  Unicast Connection Setup                                          22
+
+
+7  Unicast Data Transmission                                         23
+   7.1 Receiver Operation  : : : : : : : : : : : : : : : : : : : : : 24
+   7.2 Sender Operation : : : : : : : : : : : : : : : : : : : : :  : 25
+
+
+8  Unicast Connection Teardown                                       27
+
+
+9  Unicast Abnormal Connection Termination                           28
+
+
+10 Protocol Headers                                                  29
+
+
+11 Unicast Protocol Headers                                          30
+   11.1Unicast Connection Setup  : : : : : : : : : : : : : : : : :   31
+   11.2Unicast Special Acknowledgment  : : : : : : : : : : : : : : : 33
+   11.3Unicast Data Transmission Header  : : : : : : : : : : : : : : 35
+   11.4Unicast Data Acknowledgment Header  : : : : : : : : : : : : : 37
+   11.5Unicast Connection Close Header   : : : : : : : : : : : : : : 39
+
+
+12 Timers and Timer Considerations                                   39
+
+
+13 Security                                                          40
+
+
+14 Conclusion                                                        40
+
+
+15 Acknowledgments                                                   41
+
+
+Glossary
+
+
+These terms are used throughout this technical report.
+
+
+Communication endpointThe implementation-dependent data structure that is
+     used to handle communication between communicating entities.
+     Endpoints are usually referenced by a unique communication endpoint
+     identifier.
+
+Go Back N AcknowledgmentA method of data acknowledgment where the first
+     loss of data is indicated.  Upon receipt of this acknowledgment, a
+     Sender must retransmit all data from the point of first loss on.
+     Compare Selective Acknowledgment and Selective Retransmission.
+
+InterfaceA connection to a network.  Routers have two or more interfaces,
+     each one connecting to a different network.
+
+Lightweight protocolDoering et al.  [Doeringer et al 90] describes a
+     lightweight protocol as one wherein considerable effort is made to
+     shorten the length of the instruction path for data transmission and
+     reception in the case where no errors occur, and generally to minimise
+     the overhead for communication.
+
+Maximum Transmission Unit, MTUComer [Comer 88] defines the MTU as the
+     largest amount of data that can be transferred across a given physical
+     network.  I define the MTU of the underlying network as the smallest
+     MTU of all the physical networks between the sender and the receiver.
+
+Octet Eight bits of data.
+
+ReceiverThe instantiation of TRUMP which is receiving a message from the
+     sender.
+
+Round Trip Time, RTTComer [Comer 88] defines round trip time as a measure
+     of delay between two machines.  It consists of the total time taken
+     for a single packet or datagram to leave one machine reach the other
+     and return.
+
+Router A computer that is attached to two or more networks, and routes
+     packets between these networks.
+
+Sender The instantiation of TRUMP which is sending a message to the
+     receiver.
+
+Selective AcknowledgmentA method of data acknowledgment where only the
+     data that has been lost is indicated as such.  Compare Go Back N
+     Acknowledgment.
+                                  1
+
+
+Selective retransmissionA method of retransmission in the face of network
+     errors where only that data which has been lost is retransmitted.
+
+Traditional protocolA protocol designed when network error rates were much
+     higher and network bandwidths were much lower than they are now.
+
+Transfer layerA transfer layer is a communication layer which subsumes
+     both the network and transport layers.
+
+
+
+1   Introduction
+
+
+Traditional transport protocols such as TCP and TP4 were not designed to be
+used in distributed systems; they also fail to support the high speeds and
+low error rates of current high speed networks such as FDDI. Various
+protocols, such as VMTP [Cheriton 86] [Cheriton & Williamson 89],
+NETBLT [Clark et al 87] and XTP [Sanders & Weaver 90] have suggested ways
+of supporting distributed systems and/or high speed networks.  However,
+none of them have fully supported both distributed systems and high-speed
+networks.
+   This report outlines the structure of TRUMP1, a transport protocol that
+meets most of the requirements for high speed networks and distributed
+systems, for explicit connection setup, and multicast, which is still being
+designed.
+   The requirements for high-speed protocols and the communication needs of
+Distributed Systems are discussed in Sections 2 and 3.  Section 4 describes
+the previous protocols that have attempted to satisfy these needs.  An
+overview of TRUMP is given in sections 5 to 7.2.  Detailed information on
+the headers and algorithms of TRUMP are detailed in sections 10 to 13.
+
+
+
+2   Protocol  Requirements  for  High-Speed  Networks
+
+
+In a seminal paper, La Porta and Schwartz [La Porta & Schwartz 91]
+identified the properties and qualities of transport protocols designed for
+high speed networks These requirements are:
+
+
+   o A protocol design should facilitate parallel processing and real-time
+     processing of packets at high rates.  It should be possible to
+     implement the protocol in VLSI or using special dedicated processors.
+
+   o A protocol may be optimised by subsuming several protocol layers into
+_____one.___________________
+  1Reliable Unicast and Multicast Message Transport Protocol
+
+
+                                  2
+
+
+   o A protocol should be flexible enough to support all applications, and
+     provide users with selective functionality.
+
+   o The design philosophy should be aimed at high throughput, with a
+     simple receiver design.
+
+   o A protocol should provide implicit and explicit connection setup,
+     message and stream operation, and multicast facilities.
+
+   o A protocol should use fixed packet formats (including fixed sized
+     headers), with checksums in trailers.
+
+   o Error detection and recovery should be separated from flow control.
+
+   o Error correction should be done by selective retransmission.
+
+   o Fewer timers should be used than in traditional transport protocols.
+
+   o Extremely large amounts of unacknowledged data should be tolerated, in
+     order to maintain high throughput.
+
+
+
+3   Communication  Needs  of  Distributed  Systems
+
+
+Distributed Systems have very distinct communication needs.  These are
+explained in the following subsections.
+
+
+
+3.1   Communication Endpoint Naming Transparency
+
+One of the goals for Distributed Systems is communication transparency:  a
+communicating entity should not need to know the location of itself or
+other entities, and communication between these entities should be the same
+regardless of their locations.
+   This is made more complicated by the fact that entities under
+Distributed Systems may migrate from machine to machine.  Therefore, each
+entity needs communication endpoints that have names which are both
+independent of the address/identity of the machine where the entity is
+currently residing, and also unique over the entire Distributed System.
+   Most communication protocols do not give this sort of transparency.
+They use a network name which is unique for each machine on the network.
+Distributed Systems that use these protocols must create a unique logical
+name for each communication endpoint, and perform name resolution in order
+to map this logical name to the network name of the machine upon which the
+endpoint is currently residing.
+   Protocols designed for distributed systems provide endpoint names which
+are independent of any machine's network name.
+                                  3
+
+
+3.2   Endpoint Migration
+
+As mentioned in the previous section, communicating entities and their
+associated endpoints may migrate from machine to machine in Distributed
+Systems; this often occurs to help balance the CPU load across the system.
+Protocols designed for distributed systems need to be able to locate
+endpoints in the face of migration, and also to deal with the
+unavailability of an endpoint while it is being migrated.
+
+
+
+3.3   Endpoint Grouping
+
+In Distributed Systems, communication often occurs between two or more
+endpoints in a set of M endpoints.  Examples include the communication
+between endpoints in a conference, or a set of servers providing the same
+service.
+   In order to provide this communication paradigm, protocols must provide
+
+
+   o a method of uniquely naming a group of endpoints;
+
+   o services that allow the creation and destruction of endpoints in a
+     particular endpoint group, or
+
+   o services that allow an endpoint to join and leave a particular
+     endpoint group, and
+
+   o services that allow information to be exchanged with some or all
+     endpoints in an endpoint group.
+
+
+In the general case, the endpoints in the group are at arbitrary network
+locations, and thus to allow the endpoint layer to exchange information
+amongst the group members, the Data-link and Network layers must provide
+multicasting or broadcasting, and the transport layer must be able to use
+multicasting or broadcasting to deliver information to the members of an
+endpoint group.
+   Surprisingly, a transport layer can offer several types of multicast
+service.  I define the following types of multicast reliability:
+
+
+0+ Information sent from one endpoint will reach zero or more members of
+     the endpoint group.  This is also known as unreliable
+     multicast/broadcast.
+
+1+ Information sent from one endpoint will reach one or more members of the
+     endpoint group.  This is useful when, for example, a client process
+     wishes information from a service which is provided by several
+     servers; if at least one server receives the request and responds, the
+     client will be satisfied.
+                                  4
+
+
+N+ Information sent from one endpoint will reach at least N members of the
+     endpoint group.
+
+M Information sent from one endpoint will reach all the members of the
+     endpoint group.  This is also known as reliable multicast/broadcast.
+
+
+
+3.4   Message-Based Endpoint Communication
+
+Communication in Distributed Systems usually follows a message-based
+paradigm:  small amounts of information in the form of messages are passed
+between endpoints at arbitrary intervals.  This is in contrast to the
+communication paradigm of the OSI Reference Model, which is stream-based.
+   Messages in Distributed Systems also tend to be small.
+[Kaashoek et al 91] states that the 50% of the Remote Procedure Calls (see
+below) in Amoeba are less than 32 bytes long, and that only 0.002% are
+bigger than 16Kbytes.  A message-based transport layer in a Distributed
+System must therefore keep protocol information overhead below the mean
+message size.
+   It has been recognised by [cite someone] that there are three main types
+of message-based reliability:
+
+
+At Most OnceA message sent from one endpoint will be received at most once
+     by the destination endpoint.  This is also known as unreliable message
+     passing.
+
+At Least OnceA message sent from one endpoint will be received at least
+     once by the destination endpoint, and possibly twice or more.
+
+Exactly OnceA message sent from one endpoint will be received exactly once
+     by the destination endpoint.  This is also known as reliable message
+     passing.
+
+
+   Transport protocols designed for Distributed Systems should support
+these types of message reliability.
+
+
+
+3.5   Remote Procedure Call-Based Endpoint Communication
+
+Distributed Systems are typically built around the client-server paradigm.
+In this paradigm, a communicating entity, known as the client, requests
+another entity, the server, to perform some work on its behalf.  This
+request is sent as a message to the server from the client.  The client
+then waits for the server to return a response message indicating that the
+operation was successful or otherwise.  The communication mechanism thus
+employed by the client-server paradigm, is known as Remote Procedure Call
+or RPC [Birrel & Nelson 84].
+                                  5
+
+
+   It is still yet to be determined if the RPC should be considered just a
+Presentation layer technique, using message-based communication at the
+Transport layer, or if the RPC mechanism needs to be implemented at the
+Transport layer.  It has been implemented by message passing by a
+Presentation layer [Kaashoek et al 91], and also as a true RPC at the
+Transport layer [Gerrity et al 90].  Further research into this area needs
+to be undertaken before this issue can be resolved.
+
+
+
+3.6   Stream-Based Endpoint Communication
+
+Although message-passing and RPC are the dominant methods of communications
+in Distributed Systems, reliable/unreliable stream-based methods of
+communication can be used when a large stream of information must be
+transmitted, or when some form of connection needs to be created.
+Traditional communication techniques can be used here, or the stream can be
+treated as an arbitrarily large message.
+
+
+
+3.7   Communication Security
+
+The requirement for communication security is not limited to Distributed
+Systems.  However, the client/server approach in Distributed Systems can
+make them more vulnerable to forgery and eavesdropping.  To minimise this
+risk, security measures should be added to protocols designed for
+Distributed Systems.
+   The problem is, which layers should be chosen to implement these
+measures:  all or some, and if the latter, which ones?
+   Security measures are impractical at the Application level, as this
+would force all applications to use their own security methods; most
+applications would prefer the security measures be transparent to their
+work.  The Presentation layer is also not a good choice, as it deals mainly
+with the transformation of data and services.
+   The Session layer would seem to be a good choice.  Here, communication
+can be made secure (by encryption etc.)  and this can also be done on an
+endpoint-endpoint basis, allowing applications to have endpoints
+communicating with different levels of security.
+   The Network layer also seems suitable for security measures.  Here,
+communication can be made secure on a machine-machine basis.  The Data-link
+layer, on the other hand, is unsuitable, especially when communication is
+occurring at the Network level and higher.  Security would not extend past
+the Local Area Network.
+   Security measures at the physical level are of course a good idea, in
+order to prevent physical tampering with network components.
+
+
+
+                                  6
+
+
+4   Previous  Protocols
+
+
+As mentioned in the introduction, no existing transport protocol provides
+adequate support for both high-speed networks and Distributed Systems.
+This section briefly summarises the features of these protocols, and lists
+their deficiencies in supporting high-speed networks and Distributed
+Systems.
+
+
+
+4.1   VMTP
+
+VMTP was one of the first protocols designed to address the communication
+problems of Distributed Systems.  The original version was described in
+[Cheriton 86]; this was refined, and described in
+[Cheriton & Williamson 89].
+   Cheriton et al.  found three major deficiency categories in traditional
+transport protocols:  performance, naming and functionality.  Current
+transport protocol do not provide good performance for transaction-oriented
+communication because of the overhead of connection setup and tear-down.
+They also suffer from overruns and do not react to errors efficiently.
+Also, the naming mechanism provided is also not suitable for process
+migration, mobile hosts, and even hosts with multiple network addresses
+(multi-homed hosts) are awkward to handle.  Finally, the protocols do not
+support multicast, datagram services, security, or various other
+communication services required by Distributed Systems; all that is
+provided is pair-wise, streamed, reliable data exchange.
+Solving these deficiencies guided the design of VMTP.
+   VMTP provides transport communication between entities via message
+transactions of the request-response type.  Multicast is available, as well
+as a `datagram' service where no response is required.  A stream mode is
+also available.
+   The network entities are identified by 64-bit identifiers that are
+unique and independent of any network address.  The latter allows entities
+to migrate, and also simplifies the handling of mobile and multi-homed
+hosts.  A portion of the entity identifier space is reserved for
+identification of multicast groups.  VMTP itself provides a management
+protocol for creating, querying and modifying these groups.  Identifiers
+are allocated by selecting an identifier at random, and broadcasting the
+identifier.  If responses to the broadcast indicate the identifier is
+already in use, the process begins again.
+   VMTP uses a 40-byte fixed-size header, followed by a data segment of
+zero of more bytes.  The header has a small amount of room for data, to
+allow efficient message passing of small amounts of data.  Messages passed
+to VMTP are given a transaction identifier, and broken up into groups of
+data, each containing up to 32 blocks of 512 bytes each.  Packets are then
+
+
+
+                                  7
+
+
+formed and transmitted with N blocks per packet (e.g., 2 blocks for
+Ethernet).  The header on each packet contains the number of blocks in the
+packet, the block offset in the group, and the group offset within the
+message, and the transaction identifier.
+   Responses to the message are paired to the client entity identifier and
+the transaction identifier, giving a single identifier for the
+request-response communication, which simplifies protocol processing.
+   The client transmits its request, and waits for a response.  If none is
+forthcoming, it retransmits the request until no response is received
+within some number of retransmissions.
+   The server receives a request, processes it, and sends a response back
+to the client.  After the response is sent, the transaction structures are
+retained to recognise delayed request duplicates.  When the client receives
+the response, it re-uses the transaction identifier when it next sends a
+request to the same server; thus the transaction record is similar to the
+connection record in TCP. If the client becomes idle or shifts attention to
+another server, this record can be reclaimed.
+   VMTP has a number of other optimisations.  A new request from client to
+server acknowledges the response to the last request.  The server can
+request an immediate acknowledgment of its response.  The server can also
+flag the response as `idempotent' -- any retransmission of the response is
+handled by redoing the request processing.  This is useful even when the
+operation is not idempotent, for example, network time service.
+   The protocol uses only one timer per client with an outstanding
+transaction, regardless of the number of packets in that transaction.
+Expiration of the timer either retransmits the request, the last packet of
+the request, or aborts the transaction.  A timeout at the server causes
+either a retransmission of the response, or the discarding of the
+transaction record.
+   Error recovery is handled by selective retransmission.  A VMTP receiver
+returns a 32-bit bitmask per transaction group received to the sender; this
+prompts retransmission of the missing packets.  Cheriton et al.  state that
+VMTP recovers very quickly even when the probability of packet loss is 0.5.
+   Flow control is achieved at the sender by examining the selective
+retransmission bitmask.  For example, if the receiver requests
+retransmission of every fourth packet, the sender can reasonably increase
+the interpacket gap to lower the output rate.  This interpacket gap can be
+periodically reduced when no packet loss occurs to ensure maximum
+throughput.  This algorithm improves the performance when speed mismatches
+between client and server arise.  This was observed in communications
+between two machines of very different transmit/receive rates.
+
+   While VMTP goes a long way to support Distributed Systems, it does not
+meet all of the requirements for high-speed networks.  In particular, the
+
+
+
+                                  8
+
+
+flow control method used in VMTP is tied to the indication of errors at the
+receiver.  La Porta and Schwartz [La Porta & Schwartz 91] indicate that
+this is a bad way of implementing flow control, as it only alleviates
+receiver buffer overflow, and does not help network congestion at all.
+
+
+
+4.2   NETBLT
+
+Clark, Lambert and Zhang[Clark et al 87] describe NETBLT, a high throughput
+transport protocol which works well over networks with high error rates and
+high delays.  They examine the effect of large round trip times on error
+recovery and flow control.
+   Clark et al.  believe that using windows both as flow control and to
+increase throughput leads to a conflict:  either the window size is too
+small for a high throughput, or too large to have any effect on the data
+rate.  Also, as windows are used for error recovery, this effectively ties
+the flow control and error recovery together.  Error recovery based on
+round trip timers suffer problems of fluctuating round trip time, giving
+either unneeded retransmissions or slow error detection.
+   They conclude:
+
+
+   o Windows and timers behave poorly in synchronising sender/receiver
+     state.  A better mechanism than cumulative acknowledgments and timers
+     are needed.
+
+   o Flow control must be independent of error recovery.  Mixing them makes
+     flow control susceptible to errors and delays.
+
+   o The goal of flow control is to match sender's and receiver's speed.
+
+
+   Their implemented protocol, NETBLT, uses new techniques for error
+recovery and flow control.  NETBLT breaks large messages into packets, and
+send groups of packets (or buffers) to the destination.  The buffer size is
+negotiated when the message connection begins.  The receiver returns a
+selective acknowledgment indicating lost packets.  The receiver keeps the
+packet loss timer, and uses it to detect missing packets.  Acknowledgments
+accumulate in control packets sent by the receiver, and thus can be sent
+several times (depending on the round trip time), so the sender doesn't
+need any timers.
+   Flow control is achieved by the receiver measuring the burst period of a
+received buffer and sending the burst period and buffer size to the sender.
+The sender then adjusts it output rate to this value.
+   NETBLT copes with high delays by keeping the amount of unacknowledged
+data as high as possible; this allows it to maintain throughput over a high
+delay network.
+
+                                  9
+
+
+   Clark et al.  note that support from the network layer for flow control
+information would greatly aid in the initial estimation of connection
+throughput.
+
+   NETBLT improves the support for high-speed networks, but does not
+provide any support for Distributed Systems.
+
+
+
+4.3   XTP
+
+XTP is a lightweight transfer protocol designed for high-speed networks
+[Sanders & Weaver 90].  It was designed to be implemented in VLSI hardware.
+Sanders et al.  believe that by streamlining the protocol, combining the
+transport and network layers and using the increased speed and parallelism
+available in hardware, XTP can fully utilise the resources in a high-speed
+network.
+   XTP provides reliable transmission of data in an inter-networked
+environment on a real-time basis; that is, the processing time for a packet
+is no more than the transmission time.
+   XTP uses error, flow and rate control mechanisms similar to VMTP and
+NETBLT, and also supports multicast.  Its state machine is designed to
+facilitate parallel execution of address translation, connection setup,
+flow control, rate control, error control and system interfacing.
+   There are two packet types in XTP; one carries data and the other
+control information.  Both have a common header format and common trailer
+format.  Between them is either a data segment, or a control segment.  The
+header specifies the packet type, and the amount of data or control
+information after the header.  The trailer contains checksums and flags;
+the latter are used to control state changes, such as connection shutdowns
+or acknowledgment requests.  The header also has 8 octets for the
+transmission of out of band data.  The data segment contains message data.
+The control segment contains the receiver's error, flow and rate control
+parameters.
+   XTP provides both a virtual circuit and datagram service.  A minimum of
+three packets must be exchanged to set up a connection, pass data and close
+the connection for a virtual circuit:  a minimum of two packets must be
+exchanged to pass a datagram, and this transport service is less reliable
+than the three-packet handshake.
+   XTP uses selective retransmission for its error recovery mechanism.  The
+receiver returns as an acknowledgment a set of up to 16 lost data gaps for
+each burst of packets received from the sender; the sender then retransmits
+the gaps.  The sender sets a timeout when it expects an acknowledgment; if
+the timer expires, it assumes the acknowledgment has been lost, and sends a
+control packets containing an acknowledgment request.  Similarly, the
+receiver sets a timeout used in connection management; if this timer
+                                  10
+
+
+expires and no new packets have been received from the sender, the
+connection is closed.
+   A buffer reservation mode is available, similar to the allocation
+control mechanisms in VMTP and NETBLT. During connection setup, the
+receiver informs the sender of the buffer size it has allocated.  During
+data transmission, the sender must pause when it has transmitted that
+amount of data, until the receiver returns a new buffer reservation.
+   The rate control in XTP is based on inter-packet spacing.  The receiver
+returns two rate control parameters in its control packets:  RATE, the
+maximum number of octets the receiver will accept per second, and BURST,
+the maximum number of octets the receiver will accept per burst of packets.
+The sender uses these values to insert appropriate gaps between packets it
+sends to that receiver.  Initially, the receiver's RATE and BURST
+parameters are unknown; the sender must use default values for these
+parameters.
+   Two checksums are used, one for the data between header and trailer, and
+the other for the header and trailer.  The checksum algorithm has been
+designed for speed and VLSI compatibility.  Received packets with bad
+checksums are discarded.
+   As well as using data/control packets to estimate round trip time, XTP
+has a SYNC control packet:  when sent to a receiver, it elicits an ECHO
+control packet from the receiver back to the sender.  This allows a more
+precise method of determining round trip time than schemes based on
+timeouts.
+   Within XTP, each endpoint of a connection must be able to uniqely
+identify its peer.  The first two packets in a connection exchange the real
+network address of each endpoint, plus a 32-bit key which is used from then
+on to identify each endpoint.  This allows XTP to work over several
+different network address formats, while using a fixed-length identifier in
+most packets.  If the network identifier is less than 32-bits, XTP also
+provides a direct addressing mode which uses the real network identifier
+instead of the key.
+
+   As with NETBLT, XTP is designed for high-speed networks, but does not
+provide any support for Distributed Systems.
+
+
+
+4.4   RRDP
+
+RRDP is a reliable transport protocol designed for Distributed Systems,
+using IP as the Network Protocol.  Originally sketched by Goscinski and
+Williams [Goscinski & Williams 89], the protocol was refined by Goscinski
+and Zhu [Goscinski & Zhu 90], and finally extended and implemented as part
+of the RHODOS distributed operating system [Goscinski et al 91].
+   RRDP is message-based, with messages being sent between communication
+                                  11
+
+
+endpoints that have 32-bit identifiers.  Messages can be sent with one of
+three qualities of service:
+
+
+At Most OnceThe message will be received at most once, i.e unreliably.
+
+At Least OnceThe message will be received error free at least once.
+     Duplicate messages are possible.
+
+Exactly OnceThe protocol ensures that the message is received error free,
+     with no duplications.
+
+
+   Call setup is implicit in RRDP; every packet sent from the sender to the
+receiver contains data.  Call shutdown, however, is explicit.  The last
+packet in the message is identified as such, and when an acknowledgment for
+this packet arrives from the receiver, the sender issues a release packet
+to terminate the connection.
+   Selective acknowledgment and retransmission is the error recovery method
+used in RRDP. The sender fragments messages and transmits a group of up to
+8 packets to the receiver; each packet in the group is identified by a
+common group number, a common message number, and a number indicating the
+position of the packet in the group.  The last packet in the group is
+indicated as such; after receiving this packet, the receiver sends an
+acknowledgment back to the sender indicating which packets in the group
+were successfully received.
+   If some packets were lost from a group, the lost packets from that group
+are retransmitted using the same group number and position within the group
+as before.
+   There is only one message per group.  Message reassembly is done using
+the fact that message fragments are ordered by increasing group number and
+increasing packet position within each group.  An RRDP sender can have
+multiple messages in transit to multiple destinations, but only one message
+in transit to each destination.
+   RRDP uses three timers to recover from lost packets.  After a group is
+sent, the sender sets a timer for reception of the group's acknowledgment.
+If this timer expires before the acknowledgment arrives, the sender can
+either retransmit the entire group, or send a query packet for that group
+to the receiver, prompting the receiver to return an acknowledgment.
+   The receiver in turn sets a timer when the first packet of a group
+arrives.  If the timer expires before the last packet of the group arrives,
+the last packet is assumed to have been lost and the acknowledgment for the
+group is returned to the sender.
+   A third timer is used for at-least-once and exactly-once messages.  Once
+the acknowledgment for the last group of the message has been sent, the
+receiver sets a timer for reception of the sender's release packet.  If
+
+                                  12
+
+
+this expires before the release packet arrives, the release packet is
+assumed to have been lost, and the connection is implicitly shutdown.
+   An acknowledgment optimisation is employed when RRDP is working with the
+higher communication layers in the RHODOS system.  The acknowledgment for
+the last group is not sent; instead this is delayed and combined with the
+higher level acknowledgment of complete message reception to minimise the
+number of control packets, especially when messages are small.
+   Migration of communication endpoints is supported by RRDP by the use of
+a reject packet, sent by the receiver instead of the first group's
+acknowledgment; this indicates that the endpoint is currently involved in
+migration, with information about the next IP location of the endpoint.
+
+   As with VMTP, RRDP supports Distributed Systems but not high-speed
+networks.  There is no flow control, which is a major shortcoming for all
+networks.  The large number of timers used in the protocol increases the
+amount of processing needed per message.  RRDP does not transmit to a
+receiver between the end of a group and that group's acknowledgment,
+effectively preventing high throughput on networks with large round trip
+time.  Finally, with only one message per group, this leads to the problem
+of an acknowledgment packet for every data packet, when messages are small,
+as they usually are in Distributed Systems (cf.  Section 2).
+
+
+
+5   Overview  of  TRUMP
+
+
+TRUMP is a message-based transport protocol that has been designed to use
+the good ideas of VMTP, NETBLT, XTP and RRDP, while avoiding their
+shortcomings.  It features:
+
+
+   o Variable sized groups, giving variable acknowledgment rates, from 1
+     acknowledgment per data packet, to 1 acknowledgment per 16 data
+     packets.
+
+   o Selective acknowledgment and retransmission on a group basis.
+
+   o Multiple messages per group to the same destination.
+
+   o One timer only per message during data exchange, which is in the
+     sender.  This makes TRUMP less susceptible to varying round trip time.
+
+   o Explicit and implicit connection setup and connection teardown.
+
+   o Rate-based flow control, which matches the sender's rate to the
+     receiver's input rate and the network's throughput, whichever is
+     lower.
+
+
+                                  13
+
+
+   o An infinite `window' size; the sender can transmit all of a message
+     before any of the acknowledgments have arrived.  This ensures high
+     throughput.
+
+   o Dynamic fragmentation.  TRUMP is designed to be the sole layer that
+     performs fragmentation, even in the face of varying MTU of the
+     underlying network.
+
+   o Support for future network layers that can provide information about
+     the underlying network, such as round trip time, maximum transmission
+     unit and throughput.
+
+   o Up to 16 possible types of transport header/data encryption.  The
+     first octet of each TRUMP header indicates the encryption used on the
+     rest of the header and the data.
+
+
+   TRUMP is a lightweight transport protocol that transports messages from
+one communication endpoint (the source) to another (the destination).  Flow
+control and error recovery are available independently:
+        _________________________________________________________
+        |_Flow_Control|Error_Recovery_|________Use_______________|
+        |      No     |     No        |Unreliable burst mode     |
+        |     Yes     |     No        |Real-time communications  |
+        |             |               |where data loss is        |
+        |             |               |acceptable (e.g.  video)  |
+        |     Yes     |    Yes        |Reliable communications   |
+        |_____________|_______________|with_congestion_avoidance_|
+
+This simple unidirectional message passing2 allows higher layers to provide
+bidirectional message passing, remote procedure calls and streams (i.e
+virtual circuits).
+   TRUMP does not need an explicit call setup; this is to avoid the
+overhead of call setup in Distributed Systems where the message size is
+often small.  Instead, call setup is implicit, and every datagram sent from
+the source to the destination contains data which is part of the message.
+Thus, the minimum packet exchange to pass a message is 2 packets:  one from
+the source containing the data, and the other from the destination
+containing an acknowledgment.  Each message is acknowledged:  however,
+acknowledgment packets usually acknowledge more than one packet.
+   Explicit connection setup and teardown is provided by TRUMP. This allows
+negotiation of connection privileges and initial flow control values.
+   TRUMP is designed to be used in traditional communication systems, for
+example, as a transport layer in the TCP/IP protocol suite.  It is also
+____________________________2
+   Protocols such as TCP and TP4 associate two data streams between a pair of
+connected endpoints; one in each direction.
+
+
+
+                                  14
+
+
+able to work together with new distributed-oriented network layers such as
+FLIP [Toomey 92] to form the basis of a sophisticated distributed
+communication subsystem.
+   Because TRUMP transmits unidirectionally, the following sections discuss
+the protocol from the point of view of a sender sending a message to a
+receiver.
+
+
+
+5.1   Implicit and Explicit Connection Setup and Teardown
+
+TRUMP allows both implicit and explicit connection setup and teardown.  For
+small messages (such as client-server interactions), implicit connection
+setup is employed:  the sender begins transmission of the data packets
+containing the message; the receiver creates the data structures needed to
+reassemble and deliver the message after reception of the first data
+packet.  If the receiver cannot accept the message for any reason, it
+returns a special acknowledgment packet indicating failure of the implicit
+connection.  Otherwise, it begins to return acknowledgments of successful
+packet reception.
+   With explicit connection setup, the sender initiates the connection by
+transmitting a connection setup packet to the receiver.  The receiver
+returns an acknowledgment to this packet permitting or denying the
+connection.  The receiver's acknowledgment also contains initial flow
+control data that the sender can use for data transmission.  When a
+successful connection acknowledgment arrives, the sender may commence
+transmission of the message.
+
+
+   Implicit connection teardown is normally used in TRUMP: when the last
+acknowledgment for a message arrives at the sender, both the sender and
+receiver assume that the connection is over.  The receiver implementation
+may retain the message's data structures for a period in order to catch any
+duplicate or delayed packets from the message.
+   Explicit connection teardown can be selected by the sender, or by the
+receiver if explicit connection setup was used.  If chosen by both sides,
+the sender must acknowledge the last acknowledgment for a message from the
+receiver; this informs the receiver that the connection has been terminated
+by the sender.
+
+
+
+5.2   Selective Retransmission and Groups
+
+Error detection and recovery is performed using selective retransmission:
+Messages passed to TRUMP are fragmented dynamically, and transmitted in
+groups of up to 16 fragments.  The last fragment in each group is marked as
+such.  If a fragment is the last fragment of a message, it is marked as
+such.
+
+
+
+                                  15
+
+
+   Each group is acknowledged by the receiver, indicating which fragments
+have been lost.  Lost fragments are retransmitted by the sender, along with
+previous groups whose acknowledgments have not been received from the
+receiver.  The latter is used to sustain throughput, as sending a query
+packet to `obtain' lost acknowledgments would delay the sender by one round
+trip time.  Because each fragment contains a message identification and the
+position of the fragment in the message, a group can contain fragments of
+up to 16 messages.
+   The group size is dynamic, and can vary from 1 to 16 fragments per
+group.  This size is mainly dependent upon the errors reported by the
+receiver; the group size is lowered until the error rate decreases, and is
+then incremented slowly.
+
+
+
+5.3   Qualities of Service
+
+TRUMP provides three qualities of service:  unreliable burst
+communications, real-time communications and reliable communications.  With
+all three qualities, a TRUMP receiver reassembles the message from its
+constituent fragments, reordering fragments and discarding duplicates as
+necessary.  In the unreliable burst mode, the receiver does not return
+acknowledgments to the sender; it does so in the other two modes.
+   A TRUMP sender only retransmits lost fragments for messages being sent
+in the reliable mode.  This implies that for unreliable and real-time
+communications, the receiver may receive a correctly-ordered message with
+sections missing.  Here the receiver can pass the fragments received `as
+is' to upper communication layers.
+   The characteristics for each service quality are shown in the following
+table.
+  ____________________________________________________________________
+  |_Service_Quality|Receiver_ACKs|Sender_Retransmits|`Holey'_Messages_|
+  |     Burst      |     No      |       No         |       Yes       |
+  |    Real-Time   |    Yes      |      No          |       Yes       |
+  |____Reliable____|____Yes______|______Yes_________|_______No_______ |
+
+
+5.4   Dynamic Fragmentation and MTU
+
+Messages are not totally fragmented before grouping and message
+transmission.  Instead the transport protocol keeps a current Maximum
+Transmission Unit (or MTU) value for the underlying network between the
+source and destination, and uses this to fragment the remainder of the
+message to form a group.  This MTU is updated from information passed on by
+the network layer.
+   The protocol is designed to do all the fragmentation and reassembly in
+the communication subsystem, using the MTU gained from the network layer.
+                                  16
+
+
+However, it will work over traditional network layers such as IP, which is
+unable to determine the MTU of the underlying network, by using a static
+value (such as 576 bytes), or a heuristic function.  If the MTU used by
+TRUMP is bigger than the MTU of the underlying network between the source
+and destination, IP will fragment and reassemble TRUMP's datagrams
+transparently.
+
+
+
+5.5   Flow Control and Throughput
+
+In TRUMP, flow control is separated from error detection and recovery.
+Data is also transmitted continuously, rather than stopping transmission to
+wait for acknowledgments which will take one round trip time to arrive, and
+will slow down throughput.
+   This approach does not ensure high throughput, as uncontrolled
+transmission of large amounts of data may congest the network or the
+receiver, and lower throughput dramatically.  Therefore, TRUMP employs flow
+control to match the output rate of the sender with the input rate of the
+receiver.  Flow control is accomplished by determining overall throughput
+and by throttling the sender's output.
+   Overall throughput is determined by the receiver timing the speed at
+which packets arrive from the sender.  This measurement is returned to the
+sender in acknowledgment packets as the average inter-packet interval.  If
+the underlying network has a low bandwidth, then packets will arrive at the
+receiver with a high inter-packet interval.  Similarly, if the receiver is
+dropping packets because they arrive too fast, the measured inter-packet
+interval will also be high.
+   Sender output throttling is achieved by having the sender throttle its
+output to match the packet arrival rate at the receiver.  The sender must
+insert a time delay between transmitted packets to ensure the sending rate
+is greater than or equal to the measured arrival rate at the receiver.
+
+   Flow control is performed on a sender/receiver basis, and a sender may
+use the transmission delay interval for one receiver to transmit packets to
+other receivers, if the delay is great enough.
+   The initial inter-packet interval for a particular receiver is obtained
+from the network layer, which may predict a value heuristically, or use a
+packet exchange to determine the value.  If explicit connection setup is
+employed, the receiver can return appropriate initial flow control values
+to the sender during the connection setup.
+
+
+   The scheme above is enhanced by a second flow control measurement, the
+available buffers value.  This value, returned by the receiver to the
+sender, indicates the number of back-to-back packets the receiver can
+receive from the sender.  The sender can transmit ``bursts'' of packets to
+                                  17
+
+
+the receiver, and then place one large inter-burst interval between bursts
+to the receiver, ensuring that the average inter-packet interval is no
+greater than that desired by that receiver.
+
+
+
+5.6   Unacknowledged Data
+
+Unlike traditional transport protocols such as TCP or TP4, there is no
+protocol-defined ``window size'', i.e.  no limit on the amount of
+unacknowledged data at the sender.  Theoretically, all fragments of a large
+message could be sent before any acknowledgment packets arrive from the
+receiver.  Any limit on the amount of unacknowledged data is
+implementation-dependent.
+
+
+
+5.7   Integration with Traditional and New Communication Systems
+
+TRUMP has been designed to integrate with both traditional and distributed
+communication systems.  In order to achieve this, TRUMP's headers allow
+communication endpoint identifiers to be 0-, 16-, 32- or 64-bits in size.
+A TRUMP implementation can choose to support one or more of these
+identifier sizes.
+   TRUMP is also designed to form a transfer layer3 with a modified version
+of the distributed-oriented network protocol FLIP. This allows initial MTU
+and throughput to be determined, as well as throughput.  FLIP itself is
+designed to provide support for Distributed Systems and mobile
+communication endpoints.  This meld of two layers also decreases overall
+header size and minimises redundant information.
+
+
+
+5.8   Security
+
+TRUMP's headers provide for the encryption of both the data and the
+transport protocol headers themselves.  Currently, DES encryption is
+available on a per fragment basis, with a key negotiated between source and
+destination endpoints.  Six other encryption options could be added in the
+future.  Messages could also be encrypted in total before the transport
+layer, and packets could be encrypted at the link layer.
+
+
+
+5.9   Multicast
+
+Currently only roughly sketched, TRUMP will provide the following forms of
+multicast:
+
+
+0+ Zero or more multicast receivers will receive the message; in other
+     words, unreliable multicast.
+____________________________3
+   A layer which subsumes both the network and transport layers.
+
+
+
+                                  18
+
+
+1+ One or more multicast receivers will receive the message; this can be
+     used to obtain service from one of a pool of servers.
+
+N+ At least N receivers in a multicast group will receive the message.
+
+M All M receivers in a multicast group will receive the message.
+
+
+Obviously, the network layer must provide either a multicast or broadcast
+facility.
+
+
+
+6   Unicast  Connection  Setup
+
+
+TRUMP provides both implicit and explicit setup of data exchange
+connections.  A connection is explicitly setup when a sender sends a
+UNI_SYN packet, which is answered by a UNI_SACK packet from the receiver, as
+in Figure 1.
+
+                  Figure 1:  Explicit Connection Setup
+
+
+                                  19
+
+
+   The UNI_SACK packet indicates to the sender if the connection has been
+successful, and if not why not.  Explicit connection teardown can also be
+selected by the sender or receiver with fields in each of the UNI_SYN and
+UNI_SACK packets.
+   If the sender chooses to initiate an explicit connection setup, it must
+set a timer to indicate whether or not the receiver is reachable.  The
+value of the timer is implementation-dependent and not specified by the
+TRUMP protocol.
+
+
+   If connection setup is not chosen, explicit connection setup cannot be
+chosen by either side, and the implicit connection begins with the
+transmission of data.
+
+
+
+7   Unicast  Data  Transmission
+
+
+Data transmission in TRUMP is characterised by a sender sending groups of
+packets to the receiver, which usually returns acknowledgment packets back
+to the sender, one per group, as shown in Figure 2.
+
+
+                      Figure 2:  Data Transmission
+                                  20
+
+
+The transmission of data can be divided into those operations performed by
+the receiver, and those performed by the sender.
+
+
+
+7.1   Receiver Operation
+
+The receiver is totally driven by packets received from other machines.  It
+must check the checksums on received packets, acknowledge groups of data
+fragments once they arrive, reorder packets and reassemble the message from
+them, and determine the input packet arrival rate.
+   Upon receipt of a packet, the receiver must calculate and check the
+checksums of the header and data.  If the header checksum is invalid, the
+packet is discarded.  If the data checksum is invalid, the data fragment is
+marked as corrupt, and discarded.
+   When a receiver receives a fragment from a group of which it has no
+knowledge, it builds an acknowledgment packet describing the group.  As
+further fragments of the group arrive, these are marked as correctly
+received.  Corrupt fragments, or fragments which fail to arrive, are marked
+as not received, and given an error identifier.  When the last fragment in
+a group arrives, the acknowledgment packet is returned to the sender, with
+the error identifiers.
+   If a new group from a sender begins to arrive, and there are still one
+or more outstanding groups (i.e.  groups whose last packet did not arrive),
+the receiver immediately returns acknowledgments for those outstanding
+groups.  Thus, no timer is needed to prompt acknowledgment return.  The
+situation where the sender has no more data to transmit is described in the
+next section.
+   If a receiver is providing flow control information for the sender, it
+has other work to do.  As packets in a group arrive, they are timestamped.
+When the group is finished, the average inter-packet interval is calculated
+(by subtracting the timestamps of the first and last packets, and dividing
+by the number of packets) and placed in the acknowledgment packet before
+its return to the sender.
+   Finally, the data fragments from the groups are reassembled by the
+receiver.  According to the implementation, fully or partially received
+messages are passed to higher protocol layers.
+
+
+
+7.2   Sender Operation
+
+The sender is driven by:
+
+
+   o Messages passed to it from higher layers,
+
+   o Acknowledgment packets from receivers, and
+
+   o Timeouts on unacknowledged data.
+
+
+
+                                  21
+
+
+   Messages passed from higher layers to a TRUMP sender also specify the
+source and destination communication endpoints (and network addresses), and
+the type of message service required (as described in the Overview).  If
+the sender has no round trip time, maximum transmission unit and throughput
+information about the network to the destination, it asks the network layer
+to provide this information.
+   With this information, the sender begins to fragment the message, and
+group the fragments together.  Each fragment in the group is transmitted,
+with the current inter-packet delay between each fragment to limit the
+throughput to match the underlying network and the destination receiver.
+   Fragmentation, grouping and transmission continues until either there is
+no data left to send to the receiver, or an implementation-defined amount
+of unacknowledged data is reached.  Once this occurs, a timer (known as the
+round-trip timer) is set.  If this expires, the last group is retransmitted
+and the timer reset.  Eventually, if no acknowledgment packets arrive from
+the receiver, the sender deems the receiver to be unavailable.  If one or
+more acknowledgments arrive, the sender returns to normal transmission
+mode, or goes on to connection teardown if there are no outstanding packets
+to transmit.  This is shown in Figure 3.
+                     Figure 3:  The Round-Trip Timer
+   The value of the round-trip timer should be related to the
+round-trip time as measured by the sender, e.g.  T1 = k * RTT, where k is a
+constant such as 1:5.  If the timer expires, the
+next timer value should be a function F of the previous value, e.g.  Tn+1 =
+K * Tn for exponential backoff, where K is a constant such as 2.  After N
+timeouts, the sender deems the receiver to be unreachable and indicates an
+
+
+
+                                  22
+
+
+error to the higher communication layers.  The values for k, K, and N are
+implementation-dependent.
+
+
+   Acknowledgment packets from the receiver:
+
+
+   o Turn the timer off if it was set,
+
+   o Change the current group size,
+
+   o Update the current round trip time, maximum transmission unit and
+     inter-packet interval, and
+
+   o Cause selective retransmissions to occur, if needed.
+
+
+   If there are unacknowledged groups that were transmitted before the
+group for which an acknowledgment has arrived, they are retransmitted in
+the order in which they were originally transmitted.
+   An acknowledgment from the receiver indicates which data fragments were
+received, and which were not received; it also holds the measured
+inter-packet interval, and error identifiers indicating, if some fragments
+were not received, why not.  Data fragments that were received can be
+discarded by the sender.  If the error identifiers indicate that a message
+cannot be received, the message and any message fragments are discarded,
+and the higher layers informed.
+   If data fragments were not received because they were lost or corrupt,
+they must be retransmitted.  They can form the basis of one of more new
+groups to be transmitted to the receiver, possibly also populated with
+previously untransmitted data fragments.
+   The group size will change as errors occur; however the exact algorithm
+has not yet been determined.  In general, the group size will go down in
+the face of large errors, and increase when the error rate is small.  The
+group size will also be influenced by the desired packet buffers value
+returned by the receiver in acknowledgments.
+
+
+
+8   Unicast  Connection  Teardown
+
+
+The last packet of data from the sender is marked as such, and indicates
+the end of data.  Data exchange is considered to be complete if the
+receiver has received all data packets, and the sender has received
+acknowledgments for all data packets.
+   At the point where a TRUMP receiver implementation has all portions of a
+message, it sets a close timer which is used to detect further packets for
+the connection:  these might have been caused by a loss of acknowledgments
+from receiver to sender.  The receiver should acknowledge further packets
+from the sender to complete the data exchange.  Once the close timer
+
+
+
+                                  23
+
+
+expires, the receiver assumes data exchange is complete, and can release
+its internal structures as required.  This is an implicit connection
+teardown.  The value of the timer is implementation-dependent and not
+specified by the TRUMP protocol.
+   If explicit connection teardown was requested by either side and once
+the sender has all acknowledgments, it sends a UNI_CLOSE packet to the
+receiver.  If/when this is received, the receiver can formally close the
+connection as if the shutdown timer above had expired.  This is shown in
+Figure 4.
+
+
+                 Figure 4:  Explicit Connection Teardown
+
+
+
+9   Unicast  Abnormal  Connection  Termination
+
+
+At any stage during the exchange of data, a receiver may abnormally
+terminate the exchange and close the connection.  This is done by returning
+to the sender a UNI_SACK packet indicating the reason for connection
+termination.  All new packets from that connection will then be discarded
+by the receiver.  Upon receipt of the UNI_SACK packet, a TRUMP sender
+discontinues the data exchange, marks the connection as closed if
+necessary, and informs higher communications layers of the error.
+   A receiver implementation is permitted to retransmit the UNI_SACK packet
+several times if data packets for the connection continue to arrive.
+
+
+
+                                  24
+
+
+Sender implementations must cope with the receipt of several UNI_SACK
+packets for the same connection.
+
+
+
+10   Protocol  Headers
+
+
+The following sections describe the current protocol headers.  All
+multi-octet fields in TRUMPs headers are stored in big-endian format.  All
+diagrams are 4 octets wide.  For fields where not all the possible values
+are enumerated, the undefined values are currently invalid and reserved for
+future use.
+
+
+   All TRUMP headers have the first two fields, Version and Type, in
+common, as shown in Figure 5.
+
+
+
+              Figure 5:  Common Fields in all TRUMP Headers
+   The Version field indicates what version of TRUMP created the packet,
+and indicates the format of the rest of the packet.  The Type field
+indicates the type of packet.  Both of these two fields are broken into
+subfields, as follows.
+The Version field has three subfields:
+
+
+   o The version field (most significant 3 bits) holds the version of the
+     transport protocol.  The current TRUMP version is 1.  Future versions
+     of TRUMP will have higher version numbers.
+
+   o The endpoint size field (2 bits) identifies the size of the endpoint
+     identifiers.  The four values are:
+
+     0Size of zero, i.e the transport protocol uses the network addresses
+        as endpoint identifiers.  This, for example, is used when FLIP is
+        the network layer.
+
+
+                                  25
+
+
+     1Endpoint identifiers are 16-bits in size.  This allows TRUMP to be
+        integrated into the TCP/IP protocol suite, where endpoints are
+        16-bits in size.
+
+     2Endpoint identifiers are 32-bits in size.
+
+     3Endpoint identifiers are 64-bits in size.
+
+     These latter two are designed for use in distributed systems.
+
+   o The format of the header and following data (least significant 3
+     bits).  This is predominately used to allow for encryption of
+     transport protocol packets.  Currently, only two values out of the
+     eight possible are defined:
+
+     0The header and data are in plain-text.
+
+     1The header and data are encrypted by DES, using a key negotiated by
+        the source and destination endpoints.  The method of key
+        negotiation is not a part of the TRUMP protocol.
+
+TRUMP implementations may choose to support any number of the 256 possible
+values of Version.
+
+
+The Type field has two subfields:
+
+type The type of header (most significant 5 bits), enumerated below.
+
+subtypeThis field is used to extend the meaning of the type subfield, and
+     the defined values are enumerated below.
+
+
+
+11   Unicast  Protocol  Headers
+
+
+Unicast data transport is performed by five packets types in TRUMP. These
+packet types are:
+
+01 -- UNI_SYNInitiate an explicit connection.
+
+02 -- UNI_SACKAcknowledge an explicit connection, or indicate an abnormal
+     disconnection.
+
+03 -- UNI_DATATransport data from the source to the destination.
+
+04 -- UNI_ACKAcknowledge data from the source.
+
+05 -- UNI_CLOSEExplicitly close connection.
+
+   Some packet types use the subtype subfield to pass extra information.
+For those packets that do not, the subtype subfield must be zero.
+Undefined bits must be made zero.
+
+
+
+                                  26
+
+
+UNI_SYNBit 0:  If on, indicates connection teardown will be explicitly done
+     with a final UNI_CLOSE packet.
+
+UNI_SACKBit 0:  If on, indicates connection teardown must be explicitly
+     done with a final UNI_CLOSE packet.
+
+     Bit 1:  If on, indicates that two extra fields, Desired buffers and
+     Desired Interval, will occur after the Message-Id field.
+
+UNI_ACKBit 1:  If on, indicates that two extra fields, Desired buffers and
+     Desired Interval, will occur after the Group Bitmap field.
+
+
+
+11.1   Unicast Connection Setup
+
+Explicit connection setup in TRUMP is performed by transmission of a
+UNI_SYN packet from source to destination, acknowledged by a UNI_SACK from
+destination to source.  This exchange passes the message identification,
+source and destination port, and type of connection teardown to the
+destination, and returns flow control information or a connection failure
+error to the source.
+   The UNI_SYN packet has the fields as shown in Figure 6:
+
+
+                Figure 6:  Unicast Connection Setup Header
+
+Message-IdThe 16-bit message identifier for the connection.
+
+ChecksumA 16-bit checksum calculated over the fields in the header.  This
+     is calculated using the algorithm described in [Braden et al 88].
+
+
+                                  27
+
+
+   As with many TRUMP packets, the Source Port and Destination Ports are
+variable-sized, from zero- to 64-bits (Figure 7).  If used in the UNI_SYN
+header, they occur after the Message-Id field.
+                     Figure 7:  Optional Port Fields
+
+
+11.2   Unicast Special Acknowledgment
+
+Explicit connection setup in TRUMP is acknowledged by a UNI_SACK packet.
+This packet is also used to abnormally terminate a message transmission
+(i.e an established connection).
+
+
+
+                                  28
+
+
+   The UNI_SACK packet has the fields as shown in Figure 8:
+
+
+
+             Figure 8:  Unicast Special Acknowledgment Header
+
+Message-IdThe message identifier for which this is a special
+     acknowledgment.
+
+Desired BuffersThe number of desired packet buffers per data burst -- see
+     the UNI_ACK subsection below.
+
+Desired Packet IntervalThe desired packet interval for data bursts -- see
+     the UNI_DATA subsection below.  data burst -- see the UNI_ACK
+     subsection below.
+
+Error Indication of any error that has occurred.  Defined values are:
+
+     00No error has occurred.
+
+
+     01The destination port doesn't exist.
+
+     02The destination port is currently unavailable.
+
+
+
+                                  29
+
+
+     03The source port doesn't have enough privileges for the connection.
+
+     04The source machine doesn't have enough privileges for the
+        connection.
+
+
+     05The destination port has been destroyed.
+
+     06The destination cannot continue the connection.
+
+
+     07The destination TRUMP implementation cannot cope with the requested
+        port size.
+
+     08The destination TRUMP implementation cannot cope with the requested
+        encryption scheme.
+
+ChecksumA 16-bit checksum calculated over the fields in the header.  This
+     is calculated using the algorithm described in [Braden et al 88].
+
+
+   The Desired Buffers and Desired Packet Interval fields are optional
+depending upon the value of the subtype subfield.
+
+
+
+11.3   Unicast Data Transmission Header
+
+The UNI_DATA packet is used to transport data from the source to the
+destination (Figure 9).
+
+
+                                  30
+
+
+               Figure 9:  Unicast Data Transmission Header
+The UNI_DATA header has the following fields:
+
+
+Quality of ServiceThe quality of service required by the message (or
+     fragment of message) in the data part of the packet (4 bits).  The
+     following types of service are defined:
+
+     0 -- At Most OnceThe message is sent, but the sender does not care if
+        it arrives safely at the destination.  There is no flow control
+        and no error detection.
+
+     1 -- Exactly OnceThe message is delivered correctly to the receiver
+        with no errors or duplicates.  Both flow control and error
+        detection are used.
+
+     2 -- Real TimeThe message is sent to the receiver, but no error
+        correction is provided; thus, lost or corrupted packets are not
+        retransmitted.  Flow control, however, is used.  This is designed
+        for real time transmission of large messages (e.g.  video) where
+        it is more appropriate not to retransmit lost data.
+
+End of GroupThe bit corresponding to decimal value 128 in the Quality of
+     Service field is used to indicate that the fragment with this header
+     is the last fragment in the group Group.
+
+End of MessageThe bit corresponding to decimal value 64 in the Quality of
+     Service field is used to indicate that the fragment with this header
+     is the last fragment in the message Message-Id.
+
+Gseq The sequence of the the packet in the current group.  Values range
+     from 0 to 15.
+
+Group The group number of the current group of packets being transmitted.
+     Messages are fragmented and their fragments grouped for transmission;
+     acknowledgments from the receiver occur a group at a time.  Note that
+     not all the fragments in a group need be from the same message.
+     However, the fragments do need to be destined for the same receiver.
+
+Message-IdThe message to which the data fragment in the packets belongs.
+
+Mseq The sequence of the data fragment in its message; this allows messages
+     to be up to 232 * MTU in size.
+
+Ports Optional source and data ports occur here.
+
+
+
+                                  31
+
+
+Header ChecksumA 16-bit checksum calculated over the fields in the header.
+     This is placed at the end of the header to allow the calculation of
+     the checksum by both the receiver and sender to be done while the
+     header is being received or sent.  This is calculated using the
+     algorithm described in [Braden et al 88].
+
+Data The data in the packet.  Ideally, the size of the network header,
+     transport header and data should not exceed the minimum packet size of
+     the network between the sender and receiver.  This can be achieved
+     when the network layer can obtain this information.
+
+Data ChecksumA 16-bit checksum calculated over the data.  It is placed
+     after the data for the same reasons as the header checksum.  This is
+     calculated using the algorithm described in [Braden et al 88].
+
+
+
+11.4   Unicast Data Acknowledgment Header
+
+The UNI_ACK packet is used to acknowledge data from the source (Figure 10).
+
+
+
+              Figure 10:  Unicast Data Acknowledgment Header
+
+                                  32
+
+
+The UNI_ACK header has the following fields:
+
+
+Group The group for which this is the acknowledgment.
+
+Group BitmapA bitmap indicating which packets in the group were received
+     correctly.  If the packet whose Gseq is n was received correctly, the
+     bit 2n will be set on, otherwise it will be reset.
+
+Desired Packet BuffersThe number of packets that the source should
+     transmit back-to-back (i.e with no delay between packets).  If this
+     number is greater than 1, the source will send bursts of packets to
+     the destination.
+
+Desired Packet IntervalThe interval between packets desired by the
+     receiver.  The receiver can use this to prevent buffer overflow, and
+     it can also measure the packet interval of packets from the sender,
+     and return the measure to allow the sender to match its output flow to
+     that of the network.  The field is a 16-bits wide floating point
+     number, with 12-bits of mantissa M and 4-bits
+     of exponent E, such that the field has the value M * 8E in picoseconds
+     (10-12 seconds).  Thus 0 equals 0 seconds, 1 equals 10-12 seconds and
+     0xffff equals 14408 seconds.
+
+     If the source is sending bursts of packets to the destination, it must
+     place an appropriate interval between each burst so that the average
+     packet interval is the same as this value.
+
+Header ChecksumThe 16-bit checksum over the header.  This is calculated
+     using the algorithm described in [Braden et al 88].
+
+
+
+11.5   Unicast Connection Close Header
+
+The UNI_CLOSE packet is used to explicitly close a finished message (i.e a
+completed connection) (Figure 11).  This allows the destination to remove
+data structures that it might have kept in order to detect delayed, out of
+sequence, or duplicate packets.
+
+
+               Figure 11:  Unicast Connection Close Header
+
+                                  33
+
+
+The UNI_CLOSE header has the following fields:
+
+
+Message-IdThe message identifier for which this is a connection shutdown
+     packet.
+
+
+
+12   Timers  and  Timer  Considerations
+
+
+For every message sent from a source communication endpoint to a
+destination endpoint, there is only one critical timer.  This is the
+round-trip timer in the sender, and is only set when there are no more
+groups to send to the destination.  No other timers are needed for the
+protocol to work, as the sender transmits packets to the destination
+continuously until there are none left, or an implementation-defined
+``window'' of unacknowledged data is reached.
+   There are two other implementation-dependent timers.  The connection
+timer is set by a sender when it initiates an explicit connection.  If the
+timer expires before the sender obtains a UNI_SACK packet, the sender deems
+the destination to be unreachable.  The value for the timer should be
+related to the round-trip time, if this is known, or to some pre-defined
+constant.
+   The only other time, the close timer, is set by a receiver after it has
+a complete message, and has returned its last UNI_ACK to the sender.
+Because the receiver cannot determine the round-trip time, this timer
+cannot be related to the round-tip time.  Instead the timer should be set
+to a large constant, so as to give the receiver a good chance of detecting
+all further packets for the connection by the sender.
+
+
+
+13   Security
+
+
+Security of the message being transported is often needed, and no one
+security method is suitable for every application.  Therefore, TRUMP allows
+for up to 16 different types of message encryption.  In fact, TRUMP also
+allows for the encryption of both the header and data in every TRUMP
+packet, except for the first octet, to allow determination of the type of
+encryption employed.
+   Currently, only two encryption methods are defined, one of which is no
+encryption (i.e plaintext packets).  The seconds encryption method is DES
+block-mode encryption of the header and data in a packet (i.e every octet
+except for the first octet), using a key known to both the sender and
+receiver machine.  Methods for key exchange and key negotiation are not
+part of the TRUMP protocol.
+
+
+                                  34
+
+
+14   Conclusion
+
+
+The trend in current transport protocol design is to provide streamlined
+protocol architectures for high-speed networks, or to provide
+connectionless message-based protocol architectures for Distributed
+Systems.  However, no protocol has been designed to suit both.
+   TRUMP is a message-based transport protocol suitable for Distributed
+Systems and high-speed networks, drawing on the features from previous
+protocols such as VMTP, NETBLT, XTP and RRDP, such as selective
+acknowledgment, flow control, connectionless and connection-based data
+transport, an infinite window size, minimal use of timeouts, dynamic
+fragmentation, packet encryption, and several qualities of data transport..
+   TRUMP is still in the design stage, and is expected to be refined,
+implemented, verified, and have real-life performance measurements taken.
+One necessary feature, reliable multicast, is yet to be designed.
+
+
+
+15   Acknowledgments
+
+
+I would like to thank my supervisors George Gerrity and Andrzej Goscinski
+for their suggestions and criticisms of the drafts of this technical
+report.
+
+
+                                  35
+
+
+References
+
+
+[Birrel & Nelson 84]     A. Birrel and B. Nelson.      Implementing Remote
+                         Procedure Calls.     ACM Transactions on Computer
+                         Systems, 2(1):39--59, February 1984.
+
+[Braden et al 88]        R. T. Braden, D. A.
+                         Borman, and C. Partridge.  Computing the Internet
+                         Checksum, RFC 1071, September 1988.
+
+[Cheriton & Williamson 89]D. Cheriton
+                         and C. Williamson.    VMTP as the Transport Layer
+                         for High-Performance Distributed Systems.    IEEE
+                         Communications Magazine, pages 37--44, June
+                         1989.
+
+[Cheriton 86]            D. Cheriton.   VMTP: A Transport Protocol for the
+                         Next Generation
+                         of Communication Systems.   In Proceedings of the
+                         SIGCOMM '86 Symposium:  Communications
+                         Architectures & Protocols, pages 406--415, 11
+                         West 42nd street, New York, NY. 10036., August
+                         1986. Association for Computing Machinery.   Held
+                         at Stowe, Vermont.
+
+[Clark et al 87]         D. Clark, M. Lambert, and L. Zhang.
+                         NETBLT: A High Throughput Transport Protocol.  In
+                         Proceedings of the SIGCOMM '87 Symposium:
+                         Frontiers in Computer Communications Technology,
+                         pages 353--359, 11 West 42nd street, New York,
+                         NY. 10036., August 1987. Association for
+                         Computing Machinery. Held at Stowe, Vermont.
+
+[Comer 88]               D. Comer.         Internetworking with TCP/IP --
+                         Principles, Protocols and Architecture.
+                         Prentice-Hall, 1988.
+
+[Doeringer et al 90]     W. A. Doeringer, D. Dykeman, M. Kaiserwerth,
+                         B. W. Meister, H. Rudin, and R. Williamson.     A
+                         Survey of Light-Weight Transport Protocols for
+                         High-Speed
+                         Networks.    IEEE Transactions on Communications,
+                         38(11):2025--2039, November 1990.
+
+[Gerrity et al 90]       George Gerrity, Andrzej Goscinski, Jadwiga
+                         Indulska,
+                                  36
+
+
+                         and Warren Toomey.  Interprocess Communication in
+                         RHODOS.    Technical Report CS90/6, Department of
+                         Computer Science, University College, University
+                         of New South Wales, Canberra, March 1990.
+
+[Goscinski & Williams 89]A. Goscinski and B. Williams.  The Development of
+                         the Reliable Datagram Protocol for RODOS.
+                         Technical Report CS89/7, Department of Computer
+                         Science, University College, University of New
+                         South Wales, Canberra, March 1989.
+
+[Goscinski & Zhu 90]     A. Goscinski and
+                         W. Zhu.  The Development and Performance Study of
+                         the RHODOS Reliable Datagram Protocol (RRDP).  In
+                         Proceedings of the 10th International Conference
+                         on Computer Communication. Narosa Publishing
+                         House, 1990. Held in New Delhi, India.
+
+[Goscinski et al 91]     Andrzej Goscinski, Jadwiga
+                         Indulska, Peter Reynolds, and Warren Toomey.  The
+                         Development of the RHODOS Network
+                         Manager.   Technical Report CS91/8, Department of
+                         Computer Science, University College, University
+                         of New South Wales, Canberra, February 1991.
+
+[Kaashoek et al 91]      M. Frans Kaashoek, Robbert van Renesse, Hans
+                         van Staveren, and Andrew S. Tanenbaum.   FLIP: An
+                         Internetwork Protocol for Supporting Distributed
+                         Systems.    Technical report, Vrjie Universiteit,
+                         Amsterdam, The Netherlands, June 1991. IR-251.
+
+[Karn & Partridge 87]    P. Karn and C. Partridge.    Improving Round-Trip
+                         Time Estimates in Reliable Transport
+                         Protocols.  In Proceedings of the ACM SIGCOMM-87,
+                         pages 2--7, 11 West 42nd street, New York, NY.
+                         10036., August 1987. Association for Computing
+                         Machinery. Held at Stowe, Vermont.
+
+[La Porta & Schwartz 91] T. F. La Porta and M. Schwartz.    Architectures,
+                         Features, and Implementation
+                         of High-Speed Transport Protocols.   IEEE Network
+                         Magazine, pages 14--22, May 1991.
+
+[Sanders & Weaver 90]    R. M. Sanders and
+                         A. C. Weaver.  The Xpress Transfer Protocol (XTP)
+                         -- A Tutorial.  In Proceedings of the SIGCOMM '90
+
+
+
+                                  37
+
+
+                         Symposium:  Communications Architectures &
+                         Protocols, pages 67--80, 11 West 42nd street,
+                         New York, NY. 10036., September
+                         1990. Association for Computing Machinery.   Held
+                         at Philadelphia, Pennsylvania.
+
+[Toomey 92]              W. Toomey.      A Method of Congestion Control in
+                         Connectionless Packet-Based Networks.   Technical
+                         Report In preparation., Department of Computer
+                         Science, University College, University of New
+                         South Wales, Canberra, 1992.
+
+                                  38
+

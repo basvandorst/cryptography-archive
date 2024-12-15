@@ -1,0 +1,218 @@
+Path: msuinfo!caen!math.ohio-state.edu!sol.ctr.columbia.edu!CUNYVMS1.GC.CUNY.EDU!DLV
+From: dlv@CUNYVMS1.GC.CUNY.EDU (Dimitri Vulis, CUNY GC Math)
+Newsgroups: sci.crypt
+Subject: Maurer's test for one-time pads
+Date: 2 Dec 1993 08:41:25 GMT
+Organization: Computer Center, CUNY Graduate School, New York NY 10036
+Lines: 207
+Message-ID: <2dk9nl$efe@sol.ctr.columbia.edu>
+Reply-To: dlv@CUNYVMS1.GC.CUNY.EDU
+NNTP-Posting-Host: cunyvms1.gc.cuny.edu
+
+Folks,
+
+I am currently slaving on stream ciphers. :-( My mentor, Michael Anshel, has
+kindly pointed out to me the article "A Universal Statistical Test for Random
+Bit Generators" by Ueli M. Maurer in Brassard's _Journal of Cryptology_, vol. 5
+(1992), pp. 89--105. The test is very clever and easy to implement --- too good
+to be true, perhaps? I have, in fact, implemented it in C (see below).
+
+We compute the parameter "fTU" (a PASCAL program for this is given in Maurer's
+article) and see how many standard deviations it is away from the expected
+value of fTU for a truly random sequence. A "good" one should not be more than
+a couple of sigmas away, correspondind to a rejection rate of 1e-3 or less.
+Indeed, 3 otps I tested fall within 1/3 sigma.
+
+I don't understand enough statistics to judge how good this test is. Has anyone
+who understands the underlying statistics looked at the article? (besides the
+referees :)? If an otp generator shows a good rho, can we still be missing some
+defect that a serial / run / autocorr / some other test would detect?
+
+With this uncertainty in mind, I'd like to share my C code with the community
+to test other pseudo-random number generators. The program comes with no
+warranty. (Indeed, posting code is a good way to check for bugs :) It works
+when int=long and may not work when int=short.
+
+I've tried a variety of otps that I FTP'd from simtel20 with Q=3000 and
+K=600000 (a truly random sequence has fTU=7.18367, sigma=0.00140344):
+
+otp generator         fTU          y           rho
+IBM C++ rand          7.00461      127.587     0
+Another LC            6.99874      131.767     0
+Nowatzyk's xrand      7.21394      21.5748     0
+Maier/R250            7.1832       0.329929    0.741454
+Marsaglia/Zaman/James 7.18394      0.193274    0.846745
+Marsaglia/Zaman/ULTRA 7.1837       0.0245892   0.980383
+
+Varying the seed affects the statistics a little: e.g., the FSU ULTRA numbers
+were gotten with rinit(1,1), while rinit(1234567,7654321) gives fTU=7.18434.
+
+I'll e-mail the complete C codes for the otp generators I used upon request.
+
+/*
+
+Maurer's test for a random number generator
+
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+int main(void);
+
+/*
+this routine returns random bytes
+*/
+#ifdef __IBMC__
+_Inline
+#endif
+void rndinit(void);
+#ifdef __IBMC__
+_Inline
+#endif
+unsigned char rndgetbyte(void);
+
+/*
+
+We produce a stream of random bits. We look at them in blocks of L
+bits at a time. Maurer uses 8-bit bytes  s_n, recommends 6 <= L <= 16.
+
+*/
+
+#define L 8
+/* 2**L */
+#define vv 256
+
+int main(void) {
+/*
+the count of s_n's random bytes
+*/
+long n=1;
+/*
+fTU is the average \log_2(a_n),
+where a_n is the number of bytes since the previous occurrence of the
+same value. a_n = n for first occurrence (hopefully skipped using Q below)
+*/
+double fTU=0.0;
+/*
+Every time we obtain a random byte, we save its position n here,
+so we can computer a_n, the number of bytes since last occurence
+*/
+static long lastseen[vv];
+/*
+the number of bytes to skip before computing
+compute the average, hoping that all possible byte values will
+occur and lastseen will be non-zero. M recommends Q >= 10 * 2**L.
+*/
+long Q;
+/*
+the number of bytes to use to compute fTU.
+M recommends K as large as possible >= 1000 * 2**L
+*/
+long K;
+/*
+E(L) is the expected value of fTU for a truly random sequence
+*/
+#define E 7.1836656
+/*
+V(L) is the variance of a_n for a truly random sequence (from M; table below)
+*/
+#define V 3.238
+/*
+If you decide to change L:
+L       E               V
+6       5.2177052       2.954
+7       6.1962507       3.125
+8       7.1836656       3.238
+9       8.1764248       3.311
+10      9.1723243       3.356
+11      10.170032       3.384
+12      11.168765       3.401
+13      12.168070       3.410
+14      13.167693       3.416
+15      14.167488       3.419
+16      15.167379       3.421
+*/
+/*
+c(L,K) from M (13)
+*/
+double C;
+/*
+standard deviation of a truly random sequence from M (14)
+*/
+double sigma;
+/*
+fTU's distance in sigmas from the expected value
+*/
+double y;
+/*
+rho is the rejection rate, the probability that a sequence is bad
+*/
+double rho;
+
+unsigned char r;
+
+printf("Enter Q>=%-7ld:",10L*vv);   fflush(stdout); scanf("%ld",&Q);
+printf("Enter K>=%-7ld:",1000L*vv); fflush(stdout); scanf("%ld",&K);
+
+C=0.7-0.8/L+(1.6+12.8/L)*pow(K,-4.0/L); /* (13) */
+/* M: C close to 0.6 for L=8 */
+sigma=C*pow(V/K,0.5);           /* (14) */
+/* M: grows as 1/\sqrt{K} */
+
+/* initialize lastseen to 0 */
+memset((void*)lastseen,0,sizeof(lastseen));
+
+rndinit();
+
+for (; n<Q+K; n++) {
+ r=rndgetbyte();
+ if (n>Q)
+  fTU+=log(n-lastseen[r]);
+ lastseen[r]=n;
+ }
+
+/* compute the average and convert from natural log to log_2 */
+fTU/=K*log(2.0);
+y=fabs((fTU-E)/sigma);
+
+rho=erf(-y/sqrt(2.0))+1;
+
+printf("fTU=%lg, %lg*%lg from  e.v. %lg, rho=%lg --- %s\n",
+fTU,y,sigma,E,rho,
+(rho < 0.0001 ? "unacceptable" :
+(rho < 0.001 ?  "marginal" :
+"acceptable")));
+
+return(0);
+}
+
+/*
+Use C library's pseudo-random number generator
+*/
+
+void rndinit(void)
+{
+srand(1);
+}
+
+unsigned char rndgetbyte(void) {
+static unsigned state=0;
+static int rrr;
+
+if (state^=1) {
+ rrr=rand();
+ return(unsigned char)(rrr & 0xff);
+ }
+else
+ return(unsigned char)((rrr>>8) & 0xff);
+}
+
+Dimitri Vulis
+CUNY GC Math
+DLV@CUNYVMS1.BITNET DLV@CUNYVMS1.GC.CUNY.EDU
+
+Disclaimer: my Usenet postings don't necessarily represent anyone's views,
+especially my own and/or CUNY's.

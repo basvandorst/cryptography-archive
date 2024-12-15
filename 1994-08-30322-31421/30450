@@ -1,0 +1,357 @@
+Newsgroups: sci.crypt,alt.sources
+Path: msuinfo!agate!ames!enews.sgi.com!wdl1!mail!are107.lds.loral.com!hahn
+From: hahn@newshost.lds.loral.com  (Karl Hahn)
+Subject: Letter Usage Analysis Program (C-code)
+Message-ID: <940803075135@are107.lds.loral.com>
+Nntp-Software: PC/TCP NNTP
+Lines: 343       
+Sender: news@lds.loral.com
+Reply-To: hahn@lds.loral.com
+Organization: Loral Data Systems
+Date: Wed, 3 Aug 1994 12:51:35 GMT
+Xref: msuinfo sci.crypt:30450 alt.sources:10758
+
+Somebody requested this yesterday on sci.crypt.  This code is ANSI-C,
+and will run on DOS or UNIX provided you have an ANSI-C compiler
+(sorry, old K&R compilers won't work).  Counts letter usage and percent,
+doubled letter usage and percent, leading letter usage and percent,
+trailing letter usage and percent, and two letter combinations (digraphs).
+
+#	This is a shell archive.
+#	Remove everything above and including the cut line.
+#	Then run the rest of the file through sh.
+#----cut here-----cut here-----cut here-----cut here----#
+#!/bin/sh
+# shar:    Shell Archiver
+#	Run the following text with /bin/sh to create:
+#	letcount.c
+# This archive created: Wed Aug 03 07:47:40 1994
+sed 's/^X//' << \SHAR_EOF > letcount.c
+X#include <stdio.h>
+X#include <stdlib.h>
+X
+Xtypedef unsigned int  word;
+Xtypedef unsigned char byte;
+Xtypedef unsigned long lword;
+X
+X#define APOSTROPHE 27
+X#define BLANK      28
+X#define DASH       29
+X
+X#define ALPHASIZE  32
+X
+Xbyte sym2alpha[] = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ' -##";
+X
+X
+Xbyte alpha2sym( byte alpha )
+X{
+X   if ( alpha >  0x80 ) return 0;
+X
+X   if ( alpha >= 'a'  ) alpha -= ' ';
+X
+X   if ( alpha == '-'  ) return DASH;
+X
+X   if ( alpha == ' '  ) return BLANK;
+X   if ( alpha == '\n' ) return BLANK;
+X   if ( alpha == '\t' ) return BLANK;
+X   if ( alpha == '.'  ) return BLANK;
+X   if ( alpha == ','  ) return BLANK;
+X   if ( alpha == '!'  ) return BLANK;
+X   if ( alpha == '?'  ) return BLANK;
+X   if ( alpha == ';'  ) return BLANK;
+X   if ( alpha == ':'  ) return BLANK;
+X   if ( alpha == '"'  ) return BLANK;
+X   if ( alpha == '('  ) return BLANK;
+X   if ( alpha == ')'  ) return BLANK;
+X
+X   if ( alpha == '\'' ) return APOSTROPHE;
+X
+X   if ( alpha < 'A'   ) return 0;
+X
+X   if ( alpha > 'Z'   ) return 0;
+X
+X   return 1 + alpha - 'A';
+X}
+X
+X
+Xlword lettercount[ALPHASIZE];
+Xlword digraphcount[ALPHASIZE][ALPHASIZE];
+Xlword doublelet[ALPHASIZE];
+X
+X
+Xint main( int nargs, char *cargs[] )
+X{
+X   FILE *infile, *outfile;
+X   byte newblivit, oldblivit, spareblivit, anotherblivit;
+X   lword totalcount=0, initcount=0, endcount=0, doublecount=0, cmpcount, count;
+X
+X   if ( nargs < 2 )
+X   {
+X      printf( "letcount infile [outfile]\n"
+X              "\n"
+X              "   if no oufile given, output to screen\n" );
+X
+X      exit(0);
+X   }
+X
+X   infile = fopen( cargs[1], "r" );
+X   if ( infile == 0 )
+X   {
+X      printf( "%s not found\n", cargs[1] );
+X      exit(-1);
+X   }
+X
+X   if ( nargs < 3 )
+X   {
+X      outfile = stdout;
+X   }
+X   else
+X   {
+X      outfile = fopen( cargs[2], "r" );
+X      if ( outfile != 0 )
+X      {
+X         printf ( "%s already exists\n", cargs[2] );
+X         exit(-2);
+X      }
+X
+X      fclose( outfile );
+X
+X      outfile = fopen( cargs[2], "w" );
+X      if ( outfile == 0 )
+X      {
+X         printf( "couldn't open %s for output\n", cargs[2] );
+X      }
+X   }
+X
+X   for ( newblivit = 0; newblivit < ALPHASIZE; newblivit++ )
+X   {
+X      lettercount[newblivit] = 0;
+X      doublelet[newblivit] = 0;
+X
+X      for ( oldblivit = 0; oldblivit < ALPHASIZE; oldblivit++ )
+X      {
+X         digraphcount[newblivit][oldblivit] = 0;
+X      }
+X   }
+X
+X   newblivit = BLANK;
+X
+X   while ( 1 )
+X   {
+X      spareblivit = oldblivit;
+X
+X      oldblivit = newblivit;
+X
+X      newblivit = fgetc( infile );
+X
+X      if ( feof( infile ) ) break;
+X
+X      newblivit = alpha2sym( newblivit );
+X
+X      if ( newblivit != 0 )
+X      {
+X         if ( newblivit != BLANK ) totalcount++;
+X         lettercount[newblivit]++;
+X
+X         if ( (newblivit == oldblivit) && (newblivit != BLANK) )
+X         {
+X            doublecount++;
+X            doublelet[newblivit]++;
+X         }
+X
+X         if ( ( oldblivit == BLANK ) && ( newblivit != BLANK ) &&
+X              ( newblivit != 0 ) )
+X         {
+X            initcount++;
+X         }
+X
+X         if ( ( oldblivit != BLANK ) && ( newblivit == BLANK ) &&
+X              ( oldblivit != 0 ) )
+X         {
+X            endcount++;
+X         }
+X
+X         if ( oldblivit != 0 )
+X         {
+X            digraphcount[newblivit][oldblivit]++;
+X         }
+X      }
+X      else
+X      {
+X         oldblivit = spareblivit;
+X      }
+X   }
+X
+X   fprintf( outfile, "Total letter count = %7ld\n\n", totalcount );
+X
+X   fprintf( outfile, "Letter use frequencies:\n" );
+X
+X   for ( newblivit = 0; newblivit < ALPHASIZE-3; newblivit++ )
+X   {
+X      for ( oldblivit = 0, spareblivit = 0, cmpcount = 0;
+X            oldblivit < ALPHASIZE;
+X            oldblivit++ )
+X      {
+X         if ( lettercount[oldblivit] > cmpcount )
+X         {
+X            cmpcount = lettercount[oldblivit];
+X            spareblivit = oldblivit;
+X         }
+X
+X      }
+X
+X      lettercount[spareblivit] = 0;
+X
+X      if ( ( spareblivit != BLANK ) && (spareblivit <= DASH) &&
+X           ( spareblivit != 0 ) && (cmpcount != 0) )
+X      {
+X         fprintf( outfile, "%c:  %7ld   %3ld.%1ld\%\n",
+X                  sym2alpha[spareblivit],
+X                  cmpcount,
+X                  cmpcount*100 / totalcount,
+X                  (cmpcount*1000 / totalcount) % 10 );
+X      }
+X   }
+X
+X   fprintf( outfile, "\nTotal doubled letter count = %7ld\n\n", doublecount );
+X
+X   fprintf( outfile, "Doubled letter frequencies:\n" );
+X
+X   for ( newblivit = 0; newblivit < ALPHASIZE-3; newblivit++ )
+X   {
+X      for ( oldblivit = 0, spareblivit = 0, cmpcount = 0;
+X            oldblivit < ALPHASIZE;
+X            oldblivit++ )
+X      {
+X         if ( doublelet[oldblivit] > cmpcount )
+X         {
+X            cmpcount = doublelet[oldblivit];
+X            spareblivit = oldblivit;
+X         }
+X
+X      }
+X
+X      doublelet[spareblivit] = 0;
+X
+X      if ( ( spareblivit != BLANK ) && (spareblivit <= DASH) &&
+X           ( spareblivit != 0 ) && (cmpcount != 0) )
+X      {
+X         fprintf( outfile, "%c%c:  %7ld   %3ld.%1ld\%\n",
+X                  sym2alpha[spareblivit],
+X                  sym2alpha[spareblivit],
+X                  cmpcount,
+X                  cmpcount*100 / doublecount,
+X                  (cmpcount*1000 / doublecount) % 10 );
+X      }
+X   }
+X
+X   fprintf( outfile, "\nTotal initial letters = %7ld\n", initcount );
+X   fprintf( outfile, "Initial letter frequencies:\n" );
+X
+X   for ( newblivit = 0; newblivit < ALPHASIZE-3; newblivit++ )
+X   {
+X      for ( oldblivit = 0, spareblivit = 0, cmpcount = 0;
+X            oldblivit < ALPHASIZE;
+X            oldblivit++ )
+X      {
+X         if ( digraphcount[oldblivit][BLANK] > cmpcount )
+X         {
+X            cmpcount = digraphcount[oldblivit][BLANK];
+X            spareblivit = oldblivit;
+X         }
+X
+X      }
+X
+X      digraphcount[spareblivit][BLANK] = 0;
+X
+X      if ( ( spareblivit != BLANK ) && (spareblivit <= DASH) &&
+X           ( spareblivit != 0 ) )
+X      {
+X         fprintf( outfile, "%c:  %7ld   %3ld.%1ld\%\n",
+X                  sym2alpha[spareblivit],
+X                  cmpcount,
+X                  cmpcount*100 / initcount,
+X                  (cmpcount*1000 / initcount) % 10 );
+X      }
+X   }
+X
+X
+X
+X
+X   fprintf( outfile, "\nTotal ending letters = %7ld\n", endcount );
+X   fprintf( outfile, "Ending letter frequencies:\n" );
+X
+X   for ( newblivit = 0; newblivit < ALPHASIZE-3; newblivit++ )
+X   {
+X      for ( oldblivit = 0, spareblivit = 0, cmpcount = 0;
+X            oldblivit < ALPHASIZE;
+X            oldblivit++ )
+X      {
+X         if ( digraphcount[BLANK][oldblivit] > cmpcount )
+X         {
+X            cmpcount = digraphcount[BLANK][oldblivit];
+X            spareblivit = oldblivit;
+X         }
+X
+X      }
+X
+X      digraphcount[BLANK][spareblivit] = 0;
+X
+X      if ( ( spareblivit != BLANK ) && (spareblivit <= DASH) &&
+X           ( spareblivit != 0 ) && (cmpcount != 0) )
+X      {
+X         fprintf( outfile, "%c:  %7ld   %3ld.%1ld\%\n",
+X                  sym2alpha[spareblivit],
+X                  cmpcount,
+X                  cmpcount*100 / initcount,
+X                  (cmpcount*1000 / initcount) % 10 );
+X      }
+X   }
+X
+X   fprintf( outfile, "\nTop 250 digraphs:\n" );
+X
+X   for ( count = 0; count < 250; count++ )
+X   {
+X      for (newblivit = 0, spareblivit = 0, anotherblivit = 0, cmpcount = 0;
+X           newblivit < ALPHASIZE;
+X           newblivit++ )
+X      {
+X         for ( oldblivit = 0; oldblivit < ALPHASIZE; oldblivit++ )
+X         {
+X            if ( digraphcount[newblivit][oldblivit] > cmpcount )
+X            {
+X               cmpcount = digraphcount[newblivit][oldblivit];
+X               spareblivit = newblivit;
+X               anotherblivit = oldblivit;
+X            }
+X         }
+X      }
+X
+X      digraphcount[spareblivit][anotherblivit] = 0;
+X
+X      if ( cmpcount != 0 )
+X      {
+X         fprintf ( outfile, "%c%c:   %ld\n",
+X                   sym2alpha[anotherblivit],
+X                   sym2alpha[spareblivit],
+X                   cmpcount );
+X      }
+X   }
+X
+X}
+SHAR_EOF
+#	End of shell archive
+exit 0
+
+
+
+--
+|         (V)              |  "Tiger gotta hunt.  Bird gotta fly.
+|   (^    (`>              |   Man gotta sit and wonder why, why, why.
+|  ((\\__/ )               |   Tiger gotta sleep.  Bird gotta land.
+|  (\\<   )   der Nethahn  |   Man gotta tell himself he understand."
+|    \<  )                 |  
+|     ( /                  |                Kurt Vonnegut Jr.
+|      |                   |  
+|      ^           hahn@lds.loral.com
+

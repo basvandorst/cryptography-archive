@@ -1,0 +1,294 @@
+diff --context -r crypto/rsa/rsa.h ../SSLeay-0.8.1.new/crypto/rsa/rsa.h
+*** crypto/rsa/rsa.h	Fri Jul 18 11:16:10 1997
+--- ../SSLeay-0.8.1.new/crypto/rsa/rsa.h	Thu Aug 28 04:54:20 1997
+***************
+*** 101,106 ****
+--- 101,107 ----
+  #define RSA_3	0x3L
+  #define RSA_F4	0x10001L
+  
++ #define RSA_NO_PADDING		0
+  #define RSA_PKCS1_PADDING	11
+  #define RSA_SSLV23_PADDING	12
+  
+diff --context -r crypto/rsa/rsa_enc.c ../SSLeay-0.8.1.new/crypto/rsa/rsa_enc.c
+*** crypto/rsa/rsa_enc.c	Fri Jul 18 11:16:10 1997
+--- ../SSLeay-0.8.1.new/crypto/rsa/rsa_enc.c	Thu Aug 28 04:58:18 1997
+***************
+*** 111,117 ****
+  	BN_CTX *ctx=NULL;
+  
+  	if (	(padding != RSA_PKCS1_PADDING) &&
+! 		(padding != RSA_SSLV23_PADDING))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PUBLIC_ENCRYPT,RSA_R_UNKNOWN_PADDING_TYPE);
+  		goto err;
+--- 111,118 ----
+  	BN_CTX *ctx=NULL;
+  
+  	if (	(padding != RSA_PKCS1_PADDING) &&
+! 		(padding != RSA_SSLV23_PADDING) &&
+! 		(padding != RSA_NO_PADDING))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PUBLIC_ENCRYPT,RSA_R_UNKNOWN_PADDING_TYPE);
+  		goto err;
+***************
+*** 121,127 ****
+  	if (ctx == NULL) goto err;
+  
+  	num=BN_num_bytes(rsa->n);
+! 	if (flen > (num-11))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PUBLIC_ENCRYPT,RSA_R_DATA_TOO_LARGE_FOR_KEY_SIZE);
+  		goto err;
+--- 122,129 ----
+  	if (ctx == NULL) goto err;
+  
+  	num=BN_num_bytes(rsa->n);
+! 	if (((padding == RSA_NO_PADDING) && (flen > num)) ||
+! 	    ((padding != RSA_NO_PADDING) && (flen > (num-11))))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PUBLIC_ENCRYPT,RSA_R_DATA_TOO_LARGE_FOR_KEY_SIZE);
+  		goto err;
+***************
+*** 135,161 ****
+  		}
+  	p=(unsigned char *)buf;
+  
+! 	*(p++)=0;
+! 	*(p++)=2; /* Public Key BT (Block Type) */
+! 
+! 	/* pad out with non-zero random data */
+! 	j=num-3-flen;
+! 
+! 	RAND_bytes(p,j);
+! 	for (i=0; i<j; i++)
+! 		{
+! 		if (*p == '\0')
+  			do	{
+! 				RAND_bytes(p,1);
+! 				} while (*p == '\0');
+! 		p++;
+  		}
+  
+- 	if (padding == RSA_SSLV23_PADDING)
+- 		memset(&(p[-8]),3,8);
+- 
+- 	*(p++)='\0';
+- 
+  	memcpy(p,from,(unsigned int)flen);
+  
+  	f=BN_new();
+--- 137,166 ----
+  		}
+  	p=(unsigned char *)buf;
+  
+!  	if (padding != RSA_NO_PADDING)
+!  		{
+! 		  *(p++)=0;
+! 		  *(p++)=2; /* Public Key BT (Block Type) */
+! 		  
+! 		  /* pad out with non-zero random data */
+! 		  j=num-3-flen;
+! 		  
+! 		  RAND_bytes(p,j);
+! 		  for (i=0; i<j; i++)
+! 		    {
+! 		      if (*p == '\0')
+  			do	{
+! 			  RAND_bytes(p,1);
+! 			} while (*p == '\0');
+! 		      p++;
+! 		    }
+! 		  
+! 		  if (padding == RSA_SSLV23_PADDING)
+! 		    memset(&(p[-8]),3,8);
+! 		  
+! 		  *(p++)='\0';
+  		}
+  
+  	memcpy(p,from,(unsigned int)flen);
+  
+  	f=BN_new();
+***************
+*** 279,285 ****
+  	unsigned char *buf=NULL;
+  	BN_CTX *ctx=NULL;
+  
+! 	if ((padding != RSA_PKCS1_PADDING) && (padding != RSA_SSLV23_PADDING))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_UNKNOWN_PADDING_TYPE);
+  		goto err;
+--- 284,292 ----
+  	unsigned char *buf=NULL;
+  	BN_CTX *ctx=NULL;
+  
+! 	if ((padding != RSA_PKCS1_PADDING) &&
+! 	    (padding != RSA_SSLV23_PADDING) &&
+! 	    (padding != RSA_NO_PADDING))
+  		{
+  		RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_UNKNOWN_PADDING_TYPE);
+  		goto err;
+***************
+*** 321,391 ****
+  		{ if (!rsa->meth->bn_mod_exp(ret,f,rsa->d,rsa->n,ctx)) goto err; }
+  
+  	p=buf;
+! 	BN_bn2bin(ret,p);
+! 
+! 	/* BT must be 02 */
+! 	if (*(p++) != 02)
+! 		{
+! 		RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_BLOCK_TYPE_IS_NOT_02);
+! 		goto err;
+! 		}
+! 
+! 	/* scan over padding data */
+! 	j=num-2; /* one for type and one for the prepended 0. */
+! 	for (i=0; i<j; i++)
+! 		if (*(p++) == 0) break;
+! 
+! 	if (i == j)
+! 		{
+! 		RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_NULL_BEFORE_BLOCK_MISSING);
+! 		goto err;
+! 		}
+  
+! 	if (i < 8)
+  		{
+! 		RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_BAD_PAD_BYTE_COUNT);
+! 		goto err;
+! 		}
+! 
+  #undef RSA_DEBUG
+  #ifdef RSA_DEBUG
+! 	{
+! 	int z;
+! 	unsigned char *q;
+! 	q= &(p[-9]);
+! 	fprintf(stderr,"\n");
+! 	for (z=0; z<8; z++) fprintf(stderr,"%02X",q[z]);
+! 	fprintf(stderr,"\n");
+! 	}
+  #endif
+! 
+! 	if (padding == RSA_SSLV23_PADDING)
+! 		{
+! 		int z;
+! 		unsigned char *q;
+! 
+! 		/* -9 because we have jumped the '\0' */
+! 		q= &(p[-9]);
+! 		for (z=0; z<8; z++)
+  			{
+! 			if (*(q++) != 0x03)
+! 				break;
+  			}
+! 		if (z == 8)
+  			{
+! 			RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_SSLV3_ROLLBACK_ATTACK);
+! 			goto err;
+  			}
+! 		}
+! 
+! 	/* skip over the '\0' */
+! 	i++;	
+! 	j-=i;
+! 
+! 	/* output data */
+! 	memcpy(to,p,(unsigned int)j);
+! 	r=j;
+! err:
+  	if (ctx != NULL) BN_CTX_free(ctx);
+  	if (f != NULL) BN_free(f);
+  	if (ret != NULL) BN_free(ret);
+--- 328,412 ----
+  		{ if (!rsa->meth->bn_mod_exp(ret,f,rsa->d,rsa->n,ctx)) goto err; }
+  
+  	p=buf;
+! 	j=BN_bn2bin(ret,p); /* this 'j' only applies to RSA_NO_PADDING, reset otherwise below */
+  
+! 	if (padding != RSA_NO_PADDING)
+  		{
+! 		  /* BT must be 02 */
+! 		  if (*(p++) != 02)
+! 		    {
+! 		      RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_BLOCK_TYPE_IS_NOT_02);
+! 		      goto err;
+! 		    }
+! 		  
+! 		  /* scan over padding data */
+! 		  j=num-2; /* one for type and one for the prepended 0. */
+! 		  for (i=0; i<j; i++)
+! 		    if (*(p++) == 0) break;
+! 		  
+! 		  if (i == j)
+! 		    {
+! 		      RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_NULL_BEFORE_BLOCK_MISSING);
+! 		      goto err;
+! 		    }
+! 		  
+! 		  if (i < 8)
+! 		    {
+! 		      RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_BAD_PAD_BYTE_COUNT);
+! 		      goto err;
+! 		    }
+! 		  
+  #undef RSA_DEBUG
+  #ifdef RSA_DEBUG
+! 		  {
+! 		    int z;
+! 		    unsigned char *q;
+! 		    q= &(p[-9]);
+! 		    fprintf(stderr,"\n");
+! 		    for (z=0; z<8; z++) fprintf(stderr,"%02X",q[z]);
+! 		    fprintf(stderr,"\n");
+! 		  }
+  #endif
+! 		  
+! 		  if (padding == RSA_SSLV23_PADDING)
+! 		    {
+! 		      int z;
+! 		      unsigned char *q;
+! 		      
+! 		      /* -9 because we have jumped the '\0' */
+! 		      q= &(p[-9]);
+! 		      for (z=0; z<8; z++)
+  			{
+! 			  if (*(q++) != 0x03)
+! 			    break;
+  			}
+! 		      if (z == 8)
+  			{
+! 			  RSAerr(RSA_F_RSA_EAY_PRIVATE_DECRYPT,RSA_R_SSLV3_ROLLBACK_ATTACK);
+! 			  goto err;
+  			}
+! 		    }
+! 		  
+! 		  /* skip over the '\0' */
+! 		  i++;	
+! 		  j-=i;
+! 		}
+! 
+!  	if (padding == RSA_NO_PADDING)
+! 	  {
+! 	    for (i=0; i<(num-j); i++)
+! 	      *to++ = 0;
+! 	    /* output data */
+! 	    memcpy(to,p,(unsigned int)j);
+! 	    r=j+(num-j);
+! 	  }
+!  	else
+! 	  {
+! 	    /* output data */
+! 	    memcpy(to,p,(unsigned int)j);
+! 	    r=j;
+! 	  }
+! 	err:
+  	if (ctx != NULL) BN_CTX_free(ctx);
+  	if (f != NULL) BN_free(f);
+  	if (ret != NULL) BN_free(ret);
+
+
+
+

@@ -1,0 +1,2541 @@
+From: pgut01@cs.aukuni.ac.nz (Peter Gutmann)
+Newsgroups: sci.crypt
+Subject: A standard encryption library - Code (Even longer)
+Date: 23 May 1995 14:23:24 GMT
+Organization: University of Auckland
+Lines: 2529
+Sender: pgut01@cs.aukuni.ac.nz (Peter Gutmann)
+Message-ID: <3psr4s$djl@net.auckland.ac.nz>
+NNTP-Posting-Host: cs26.cs.auckland.ac.nz
+X-Newsreader: NN version 6.5.0 #3 (NOV)
+
+
+
+
+#!/bin/sh
+# This is a shell archive (produced by shar 3.50)
+# To extract the files from this archive, save it to a file, remove
+# everything above the "!/bin/sh" line above, and type "sh file_name".
+#
+# made 05/23/1995 14:14 UTC by pgut01@cs26.cs.auckland.ac.nz
+# Source directory /users/studs/grad/pgut01
+#
+# existing files will NOT be overwritten unless -c is specified
+#
+# This shar contains:
+# length  mode       name
+# ------ ---------- ------------------------------------------
+#  24876 -rw------- crypt/crypt.c
+#  11871 -rw------- crypt/crypt.h
+#   4842 -rw------- crypt/makefile
+#   9013 -rw------- crypt/mdcshs.c
+#   1529 -rw------- crypt/null.c
+#  15348 -rw------- crypt/shs.c
+#   1256 -rw------- crypt/shs.h
+#   7532 -rw------- crypt/test.c
+#
+# ============= crypt/crypt.c ==============
+if test ! -d 'crypt'; then
+    echo 'x - creating directory crypt'
+    mkdir 'crypt'
+fi
+if test -f 'crypt/crypt.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/crypt.c (File already exists)'
+else
+echo 'x - extracting crypt/crypt.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/crypt.c' &&
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "crypt.h"
+X
+/****************************************************************************
+*																			*
+*								General Work Routines						*
+*																			*
+****************************************************************************/
+X
+/* Get an IV value.  It doesn't matter much what it is, as long as it's
+X   completely different for each call.  We use the first built-in encrypt
+X   capability we find (actually we just assume it's there to save some time) */
+X
+static void getIV( void *iv, int ivLength )
+X	{
+X	static BOOLEAN initialised = FALSE;
+X	static BYTE ivBuffer[ MAX_IVSIZE ];
+X	CRYPT_INFO cryptInfo;
+X	CRYPT_INFO_MDCSHS cryptInfoEx;
+X
+X	if( !initialised )
+X		{
+X		/* Seed the data with a value which is guaranteed to be different
+X		   each time (unless the entire program is rerun more than twice a
+X		   second, which is doubtful) */
+X		memset( ivBuffer, 0, MAX_IVSIZE );
+X		time( ( time_t * ) ivBuffer );
+X		initialised = TRUE;
+X		}
+X
+X	/* Use an extended setup call to only perform 2 setup iterations for
+X	   speed, since we're not concerned about security */
+X	cryptInfoEx.keySetupIterations = 2;
+X
+X	/* Shuffle the bits and return them to the user.  Since the encryption
+X	   will force a call to getIV() again, we cheat a bit by poking around
+X	   the cryptInfo internals to fool encryptBuffer() into thinking the IV
+X	   is already set */
+X	initCryptContextEx( &cryptInfo, CRYPT_ALGO_MDCSHS, CRYPT_MODE_CFB,
+X						&cryptInfoEx );
+X	loadCryptContext( &cryptInfo, ivBuffer, MAX_IVSIZE );
+X	cryptInfo.ivSet = TRUE;		/* Nasty hack to stop recursion */
+X	encryptBuffer( &cryptInfo, ivBuffer, MAX_IVSIZE );
+X	destroyCryptContext( &cryptInfo );
+X	memcpy( iv, ivBuffer, ivLength );
+X	}
+X
+/* Byte-reverse an array of 16- and 32-bit words to account for processor
+X   endianness.  These routines assume the given count is a multiple of
+X   16 or 32 bits */
+X
+void longReverse( LONG *buffer, unsigned count )
+X	{
+X	LONG value;
+X
+X	count /= sizeof( LONG );
+X	while( count-- )
+X		{
+X		value = *buffer;
+X		value = ( ( value & 0xFF00FF00L ) >> 8  ) | \
+X				( ( value & 0x00FF00FFL ) << 8 );
+X		*buffer++ = ( value << 16 ) | ( value >> 16 );
+X		}
+X	}
+X
+void wordReverse( WORD *buffer, unsigned count )
+X	{
+X	WORD value;
+X
+X	count /= sizeof( WORD );
+X	while( count-- )
+X		{
+X		value = *buffer;
+X		*buffer++ = ( value << 8 ) | ( value >> 8 );
+X		}
+X	}
+X
+/* A safe free function which scrubs memory and zeroes the pointer */
+X
+void secureFree( void **pointer, int count )
+X	{
+X	if( *pointer != NULL )
+X		{
+X		/* Scrub the memory, free it, and zero the pointer */
+X		memset( *pointer, 0, count );
+X		free( *pointer );
+X		*pointer = NULL;
+X		}
+X	}
+X
+/****************************************************************************
+*																			*
+*						Capability Management Functions						*
+*																			*
+****************************************************************************/
+X    
+/* The parameters of most encryption algorithms are traditionally specified
+X   in bytes, so we define a shorter form of the bitsToBytes() macro to allow
+X   the capability information to be specified in bits */
+X   
+#define bits(x)	bitsToBytes(x)
+X    
+/* The functions used to implement the null encryption routines */
+X
+int nullInit( CRYPT_INFO *cryptInfo );
+int nullInitEx( CRYPT_INFO *cryptInfo, void *cryptInfoEx );
+int nullEnd( CRYPT_INFO *cryptInfo );
+int nullInitKey( CRYPT_INFO *cryptInfo );
+int nullInitIV( CRYPT_INFO *cryptInfo );
+int nullEncrypt( CRYPT_INFO *cryptInfo, void *buffer, int length );
+int nullDecrypt( CRYPT_INFO *cryptInfo, void *buffer, int length );
+X
+/* The functions used to implement the MDC/SHS encryption routines */
+X
+int mdcshsInit( CRYPT_INFO *cryptInfo );
+int mdcshsInitEx( CRYPT_INFO *cryptInfo, void *cryptInfoEx );
+int mdcshsEnd( CRYPT_INFO *cryptInfo );
+int mdcshsInitKey( CRYPT_INFO *cryptInfo );
+int mdcshsInitIV( CRYPT_INFO *cryptInfo );
+int mdcshsEncrypt( CRYPT_INFO *cryptInfo, void *buffer, int length );
+int mdcshsDecrypt( CRYPT_INFO *cryptInfo, void *buffer, int length );
+X
+/* The encryption library intrinsic capability list */
+X
+static CAPABILITY_INFO intrinsicCapabilities[] = {
+X	/* The no-encryption capability */
+X	{ CRYPT_ALGO_NONE, CRYPT_MODE_NONE, 0, "None", MAX_SPEED,
+X		0, 0, 0, 
+X		0, 0, 0, 
+X		nullInit, nullInitEx, nullEnd, nullInitKey, nullInitIV, 
+X		nullEncrypt, nullDecrypt, NULL },
+X
+X	/* The built-in MDC/SHS capabilities */
+X	{ CRYPT_ALGO_MDCSHS, CRYPT_MODE_CFB, bits( 8 ), "MDC/SHS", CRYPT_ERROR,
+X		bits( 40 ), bits( 512 ), bits( 2048 ), 
+X		bits( 32 ), bits( 64 ), bits( 160 ),
+X		mdcshsInit, mdcshsInitEx, mdcshsEnd, mdcshsInitKey, mdcshsInitIV,
+X		mdcshsEncrypt, mdcshsDecrypt, NULL },
+X
+X	/* The built-in DES capabilities */
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_ECB, bits( 64 ), "DES-ECB", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64  ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_CBC, bits( 64 ), "DES-CBC", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_CFB, bits( 8 ), "DES-CFB8", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_CFB, bits( 64 ), "DES-CFB64", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_OFB, bits( 8 ), "DES-OFB8", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_DES, CRYPT_MODE_OFB, bits( 64 ), "DES-OFB64", CRYPT_ERROR,
+X		bits( 40 ), bits( 56 ), bits( 56 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X
+X	/* The built-in IDEA capabilities */
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_ECB, bits( 64 ), "IDEA-ECB", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_CBC, bits( 64 ), "IDEA-CBC", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_ECB, bits( 8 ), "IDEA-CFB8", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_ECB, bits( 64 ), "IDEA-CFB64", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_ECB, bits( 8 ), "IDEA-OFB8", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X	{ CRYPT_ALGO_IDEA, CRYPT_MODE_ECB, bits( 64 ), "IDEA-OFB64", CRYPT_ERROR,
+X		bits( 40 ), bits( 128 ), bits( 128 ), 
+X		bits( 16 ), bits( 32 ), bits( 64 ), 
+X		NULL, NULL, NULL, NULL, NULL, 
+X		NULL, NULL, NULL },
+X
+X	/* The end-of-list marker */
+X	{ CRYPT_ALGO_NONE, CRYPT_MODE_NONE, CRYPT_ERROR, "", 0,
+X		0, 0, 0, 0, 0, 0, NULL, NULL, NULL,
+X		NULL, NULL, NULL, NULL, NULL }
+X	};
+X
+/* The list of crypt library capability records.  Even if
+X   initCapabilities() is never called we still have a minimum non-encryption
+X   method available */
+X
+static CAPABILITY_INFO *capabilityListHead = intrinsicCapabilities;
+static CAPABILITY_INFO *capabilityListTail = intrinsicCapabilities;
+static CAPABILITY_INFO *intrinsicCapabilityListEnd = NULL;
+X
+/* Free the capability list */
+X
+static void freeCapabilityList( void )
+X	{
+X	CAPABILITY_INFO *capabilityListPtr = intrinsicCapabilityListEnd;
+X	void *capabilityToFree;
+X
+X	/* Mark the list as being empty */
+X	intrinsicCapabilityListEnd = NULL;
+X
+X	/* Free the capability record list list */
+X	while( capabilityListPtr != NULL )
+X		{
+X		capabilityToFree = capabilityListPtr;
+X		capabilityListPtr = capabilityListPtr->next;
+X		secureFree( &capabilityToFree, sizeof( CAPABILITY_INFO ) );
+X		}
+X	}
+X
+/* Initialise the intrinsic encryption library capability list */
+X
+static int initCapabilities( void )
+X	{
+X	int i;
+X
+X	/* Add the built-in encryption capabilities */
+X	for( i = 0; intrinsicCapabilities[ i + 1 ].blockSize != CRYPT_ERROR; i++ )
+X		intrinsicCapabilities[ i ].next = &intrinsicCapabilities[ i + 1 ];
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Add a capability record to the library */
+X
+static int addCapability( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode, \
+X						  int blockSize, char *name, int speed, \
+X						  int minKeySize, int keySize, int maxKeySize )
+X	{
+X	CAPABILITY_INFO *newElement;
+X
+X	/* Check the passed-in parameters */
+X	if( cryptAlgo < CRYPT_ALGO_NONE || cryptAlgo >= CRYPT_ALGO_LAST )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptMode < CRYPT_MODE_NONE || cryptMode > CRYPT_MODE_LAST )
+X		return( CRYPT_BADPARM2 );
+X	if( blockSize < 0 )
+X		return( CRYPT_BADPARM3 );
+X	if( name == NULL )
+X		return( CRYPT_BADPARM4 );
+X	if( ( speed != CRYPT_ERROR && speed < 0 ) || speed > MAX_SPEED )
+X		return( CRYPT_BADPARM5 );
+X	if( minKeySize < 0 )
+X		return( CRYPT_BADPARM6 );
+X	if( keySize < minKeySize )
+X		return( CRYPT_BADPARM7 );
+X	if( maxKeySize < keySize )
+X		return( CRYPT_BADPARM8 );
+X
+X	/* Allocate memory for the new capability and its associated message */
+X	if( ( newElement = ( CAPABILITY_INFO * ) malloc( sizeof( CAPABILITY_INFO ) ) ) == NULL )
+X		return( CRYPT_NOMEM );
+X	memset( newElement, 0, sizeof( CAPABILITY_INFO ) );
+X	if( ( newElement->name = ( char * ) malloc( strlen( name ) + 1 ) ) == NULL )
+X		{
+X		free( newElement );
+X		return( CRYPT_NOMEM );
+X		}
+X
+X	/* Copy the information across */
+X	newElement->cryptAlgo = cryptAlgo;
+X	newElement->cryptMode = cryptMode;
+X	newElement->blockSize = blockSize;
+X	strcpy( newElement->name, name );
+X	newElement->minKeySize = minKeySize;
+X	newElement->keySize = keySize;
+X	newElement->maxKeySize = maxKeySize;
+X	newElement->next = NULL;
+X
+X	/* Link it into the list */
+X	if( capabilityListHead == NULL )
+X		capabilityListHead = newElement;
+X	else
+X		capabilityListTail->next = newElement;
+X	capabilityListTail = newElement;
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Find the capability record for a given encryption algorithm */
+X
+static CAPABILITY_INFO *findCapabilityInfo( CRYPT_ALGO cryptAlgo, \
+X											CRYPT_MODE cryptMode )
+X	{
+X	CAPABILITY_INFO *capabilityInfoPtr;
+X
+X	/* Try and find information on the required algorithm */
+X	for( capabilityInfoPtr = capabilityListHead;
+X		 capabilityInfoPtr != NULL;
+X		 capabilityInfoPtr = capabilityInfoPtr->next )
+X		if( capabilityInfoPtr->cryptAlgo == cryptAlgo &&
+X			( capabilityInfoPtr->cryptMode == cryptMode ||
+X			  cryptMode == CRYPT_MODE_NONE ) )
+X			return( capabilityInfoPtr );
+X
+X	/* Nothing available */
+X	return( NULL );
+X	}
+X
+/****************************************************************************
+*																			*
+*							Capability Query Functions						*
+*																			*
+****************************************************************************/
+X
+/* Determine whether a given encryption mode is available */
+X
+CRET queryModeAvailability( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptAlgo < CRYPT_ALGO_NONE || cryptAlgo >= CRYPT_ALGO_LAST )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptMode < CRYPT_MODE_NONE || cryptMode > CRYPT_MODE_LAST )
+X		return( CRYPT_BADPARM2 );
+X
+X	/* Make sure the library has been initalised */
+X	if( capabilityListHead == NULL )
+X		return( CRYPT_NOTINITED );
+X
+X	/* See if we have any information on this encryption algo/mode */
+X	if( findCapabilityInfo( cryptAlgo, cryptMode ) == NULL )
+X		return( ( findCapabilityInfo( cryptAlgo, CRYPT_MODE_NONE ) == NULL ) ? \
+X				CRYPT_NOALGO : CRYPT_NOMODE );
+X
+X	return( CRYPT_OK );
+X	}
+X
+CRET queryAlgoAvailability( CRYPT_ALGO cryptAlgo )
+X	{
+X	return( queryModeAvailability( cryptAlgo, CRYPT_MODE_NONE ) );
+X	}
+X
+/* Get information on a given encrytion algorithm */
+X
+CRET queryAlgoModeInformation( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode, \
+X							   CRYPT_QUERY_INFO CPTR cryptQueryInfo )
+X	{
+X	CAPABILITY_INFO *capabilityInfo;
+X
+X	/* Perform basic error checking */
+X	if( cryptAlgo < CRYPT_ALGO_NONE || cryptAlgo >= CRYPT_ALGO_LAST )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptMode < CRYPT_MODE_NONE || cryptMode > CRYPT_MODE_LAST )
+X		return( CRYPT_BADPARM2 );
+X	if( cryptQueryInfo == NULL )
+X		return( CRYPT_BADPARM3 );
+X
+X	/* Make sure the library has been initalised */
+X	if( capabilityListHead == NULL )
+X		return( CRYPT_NOTINITED );
+X
+X	/* Clear the fields in the query structure */
+X	memset( cryptQueryInfo, 0, sizeof( CRYPT_QUERY_INFO ) );
+X
+X	/* Find the information record on this algorithm */
+X	if( ( capabilityInfo = findCapabilityInfo( cryptAlgo, cryptMode ) ) == NULL )
+X		{
+X		cryptQueryInfo->algoName = "";
+X		cryptQueryInfo->blockSize = CRYPT_ERROR;
+X		cryptQueryInfo->minKeySize = CRYPT_ERROR;
+X		cryptQueryInfo->keySize = CRYPT_ERROR;
+X		cryptQueryInfo->maxKeySize = CRYPT_ERROR;
+X		cryptQueryInfo->minIVsize = CRYPT_ERROR;
+X		cryptQueryInfo->ivSize = CRYPT_ERROR;
+X		cryptQueryInfo->maxIVsize = CRYPT_ERROR;
+X		cryptQueryInfo->speed = CRYPT_ERROR;
+X		return( ( findCapabilityInfo( cryptAlgo, CRYPT_MODE_NONE ) == NULL ) ? \
+X				CRYPT_NOALGO : CRYPT_NOMODE );
+X		}
+X
+X	/* Return the appropriate information */
+X	cryptQueryInfo->cryptAlgo = cryptAlgo;
+X	cryptQueryInfo->cryptMode = cryptMode;
+X	cryptQueryInfo->algoName = capabilityInfo->name;
+X	cryptQueryInfo->blockSize = capabilityInfo->blockSize;
+X	cryptQueryInfo->minKeySize = capabilityInfo->minKeySize;
+X	cryptQueryInfo->keySize = capabilityInfo->keySize;
+X	cryptQueryInfo->maxKeySize = capabilityInfo->maxKeySize;
+X	cryptQueryInfo->minIVsize = capabilityInfo->minIVsize;
+X	cryptQueryInfo->ivSize = capabilityInfo->ivSize;
+X	cryptQueryInfo->maxIVsize = capabilityInfo->maxIVsize;
+X	cryptQueryInfo->speed = capabilityInfo->speed;
+X	return( CRYPT_OK );
+X	}
+X
+/* Get information on the algorithm used by a given encryption context */
+X
+CRET queryContextInformation( CRYPT_INFO CPTR cryptInfo,
+X							  CRYPT_QUERY_INFO CPTR cryptQueryInfo )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X
+X	return( queryAlgoModeInformation( cryptInfo->capabilityInfo->cryptAlgo,
+X			cryptInfo->capabilityInfo->cryptMode, cryptQueryInfo ) );
+X	}
+X
+/* Initialise and shut down the encryption library */
+X
+CRET initLibrary( void )
+X	{
+X	return( initCapabilities() );
+X	}
+X
+CRET endLibrary( void )
+X	{
+X	freeCapabilityList();
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*					Encryption Context Management Functions					*
+*																			*
+****************************************************************************/
+X
+/* Initialise and perform an extended initialisation of an encryption
+X   context */
+X
+CRET initCryptContext( CRYPT_INFO CPTR cryptInfo, CRYPT_ALGO cryptAlgo, \
+X					   CRYPT_MODE cryptMode )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptAlgo < CRYPT_ALGO_NONE || cryptAlgo >= CRYPT_ALGO_LAST )
+X		return( CRYPT_BADPARM2 );
+X	if( cryptMode < CRYPT_MODE_NONE || cryptMode > CRYPT_MODE_LAST )
+X		return( CRYPT_BADPARM3 );
+X
+X	/* Set all fields to zero */
+X	memset( cryptInfo, 0, sizeof( CRYPT_INFO ) );
+X
+X	/* Set up the pointer to the capability information */
+X	if( ( cryptInfo->capabilityInfo = findCapabilityInfo( cryptAlgo, cryptMode ) ) == NULL )
+X		return( ( queryAlgoAvailability( cryptAlgo ) ) ? \
+X				CRYPT_NOMODE : CRYPT_NOALGO );
+X
+X	/* Perform any algorithm-specific initialization */
+X	if( cryptInfo->capabilityInfo->initFunction != NULL )
+X		return( cryptInfo->capabilityInfo->initFunction( cryptInfo ) );
+X
+X	return( CRYPT_OK );
+X	}
+X
+CRET initCryptContextEx( CRYPT_INFO CPTR cryptInfo, CRYPT_ALGO cryptAlgo, \
+X						 CRYPT_MODE cryptMode, void *cryptInfoEx )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptAlgo < CRYPT_ALGO_NONE || cryptAlgo >= CRYPT_ALGO_LAST )
+X		return( CRYPT_BADPARM2 );
+X	if( cryptMode < CRYPT_MODE_NONE || cryptMode > CRYPT_MODE_LAST )
+X		return( CRYPT_BADPARM3 );
+X	if( cryptInfoEx == NULL )
+X		return( CRYPT_BADPARM4 );
+X
+X	/* Set all fields to zero */
+X	memset( cryptInfo, 0, sizeof( CRYPT_INFO ) );
+X
+X	/* Set up the pointer to the capability information */
+X	if( ( cryptInfo->capabilityInfo = findCapabilityInfo( cryptAlgo, cryptMode ) ) == NULL )
+X		return( ( queryAlgoAvailability( cryptAlgo ) ) ? \
+X				CRYPT_NOMODE : CRYPT_NOALGO );
+X
+X	/* Perform any algorithm-specific initialization */
+X	if( cryptInfo->capabilityInfo->initExFunction != NULL )
+X		{
+X		int status;
+X
+X		status = cryptInfo->capabilityInfo->initExFunction( cryptInfo, cryptInfoEx );
+X		if( isStatusError( status ) )
+X			return( status );
+X		}
+X
+X	/* Set up the IV information to the default values.  This can be
+X	   overridden later if required */
+X	cryptInfo->ivLength = cryptInfo->capabilityInfo->ivSize;
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Destroy an encryption context */
+X
+CRET destroyCryptContext( CRYPT_INFO CPTR cryptInfo )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X
+X	/* Perform any algorithm-specific shutdown */
+X	if( cryptInfo->capabilityInfo->endFunction != NULL )
+X		{
+X		int status;
+X
+X		status = cryptInfo->capabilityInfo->endFunction( cryptInfo );
+X		if( isStatusError( status ) )
+X			return( status );
+X		}
+X
+X	/* Clear all data in the encryption context */
+X	memset( cryptInfo, 0, sizeof( CRYPT_INFO ) );
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*								Keying Functions							*
+*																			*
+****************************************************************************/
+X
+/* Load a user key into an encryption context */
+X
+CRET loadCryptContext( CRYPT_INFO CPTR cryptInfo, void CPTR userKey,
+X					   int userKeyLength )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( userKey == NULL )
+X		return( CRYPT_BADPARM2 );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X	if( userKeyLength < cryptInfo->capabilityInfo->minKeySize || 
+X		userKeyLength > cryptInfo->capabilityInfo->maxKeySize )
+X		return( CRYPT_BADPARM3 );
+X	if( cryptInfo->capabilityInfo->initKeyFunction == NULL )
+X		return( CRYPT_NOALGO );
+X
+X	/* Load the user encryption key into the crypt context */
+X	memcpy( cryptInfo->userKey, userKey, userKeyLength );
+X	cryptInfo->userKeyLength = userKeyLength;
+X
+X	/* Remember that we need to set an IV before we encrypt anything */
+X	cryptInfo->ivSet = FALSE;
+X
+X	/* Call the encryption routine for this algorithm/mode */
+X	return( cryptInfo->capabilityInfo->initKeyFunction( cryptInfo ) );
+X	}
+X
+/****************************************************************************
+*																			*
+*							IV Handling Functions							*
+*																			*
+****************************************************************************/
+X
+/* Load an IV key into an encryption context */
+X
+CRET loadIV( CRYPT_INFO CPTR cryptInfo, void CPTR iv, int ivLength )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X	if( ivLength < cryptInfo->capabilityInfo->minIVsize ||
+X		ivLength > cryptInfo->capabilityInfo->maxIVsize )
+X		return( CRYPT_BADPARM3 );
+X
+X	/* Set the IV length and check whether we'll be using a user-supplied
+X	   IV */
+X	cryptInfo->ivLength = ivLength;
+X	cryptInfo->ivCount = 0;
+X	if( iv != NULL )
+X		{
+X		/* Load the IV of the required length.  If the required IV size is
+X		   less than the maximum possible IV size, we pad it with zeroes */
+X		memset( cryptInfo->iv, 0, MAX_IVSIZE );
+X		memcpy( cryptInfo->iv, iv, cryptInfo->ivLength );
+X		memcpy( cryptInfo->currentIV, cryptInfo->iv, MAX_IVSIZE );
+X		cryptInfo->ivSet = TRUE;
+X		}
+X	if( cryptInfo->capabilityInfo->initIVFunction != NULL )
+X		{
+X		int status;
+X
+X		status = cryptInfo->capabilityInfo->initIVFunction( cryptInfo );
+X		if( isStatusError( status ) )
+X			return( status );
+X		}
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Retrieve an IV from an encryption context */
+X
+CRET retrieveIV( CRYPT_INFO CPTR cryptInfo, void CPTR iv )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( iv == NULL )
+X		return( CRYPT_BADPARM2 );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X
+X	/* Make sure the IV has been set */
+X	if( cryptInfo->ivSet == FALSE )
+X		return( CRYPT_NOIV );
+X
+X	/* Copy the IV data of the required length to the output buffer */
+X	memcpy( iv, cryptInfo->iv, cryptInfo->ivLength );
+X
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*							Encrypt/Decrypt Routines						*
+*																			*
+****************************************************************************/
+X
+/* Encrypt a block of memory */
+X
+CRET encryptBuffer( CRYPT_INFO CPTR cryptInfo, void *buffer, int length )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( buffer == NULL )
+X		return( CRYPT_BADPARM2 );
+X	if( length < 0 )
+X		return( CRYPT_BADPARM3 );
+X	if( !cryptInfo->keySet )
+X		return( CRYPT_NOKEY );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X	if( cryptInfo->capabilityInfo->encryptFunction == NULL )
+X		return( CRYPT_NOALGO );
+X
+X	/* If there's no IV set, generate one ourselves */
+X	if( !cryptInfo->ivSet )
+X		{
+X		BYTE iv[ MAX_IVSIZE ];
+X		int status;
+X
+X		getIV( iv, cryptInfo->ivLength );
+X		status = loadIV( cryptInfo, iv, cryptInfo->ivLength );
+X		if( isStatusError( status ) )
+X			return( CRYPT_ERROR );
+X		}
+X
+X	/* Call the encryption routine for this algorithm/mode */
+X	return( cryptInfo->capabilityInfo->encryptFunction( cryptInfo, buffer, length ) );
+X	}
+X
+/* Decrypt a block of memory */
+X
+CRET decryptBuffer( CRYPT_INFO CPTR cryptInfo, void *buffer, int length )
+X	{
+X	/* Perform basic error checking */
+X	if( cryptInfo == NULL )
+X		return( CRYPT_BADPARM1 );
+X	if( buffer == NULL )
+X		return( CRYPT_BADPARM2 );
+X	if( length < 0 )
+X		return( CRYPT_BADPARM3 );
+X	if( !cryptInfo->keySet )
+X		return( CRYPT_NOKEY );
+X	if( cryptInfo->capabilityInfo == NULL )
+X		return( CRYPT_NOTINITED );
+X	if( cryptInfo->capabilityInfo->decryptFunction == NULL )
+X		return( CRYPT_NOALGO );
+X
+X	/* Make sure the IV has been set */
+X	if( cryptInfo->ivSet == FALSE )
+X		return( CRYPT_NOIV );
+X
+X	/* Call the decryption routine for this algorithm/mode */
+X	return( cryptInfo->capabilityInfo->decryptFunction( cryptInfo, buffer, length ) );
+X	}
+X
+/****************************************************************************
+*																			*
+*						Dynamic Library Update Support						*
+*																			*
+****************************************************************************/
+X
+/* Add a new encryption capability to the library.  This routine is quite
+X   powerful, but what a kludge! */
+X
+CRET addCryptCapability( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode, \
+X						 int blockSize, char *name, int speed, \
+X						 int minKeySize, int keySize, int maxKeySize )
+X	{
+X	int status;
+X
+X	/* Add the basic capability information */
+X	status = addCapability( cryptAlgo, cryptMode, blockSize, name,
+X							speed, minKeySize, keySize, maxKeySize );
+X	if( isStatusError( status ) )
+X		return( status );
+X
+X	/* Add the handlers */
+/* Not implemented yet */
+X
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*						OS-Specific Support Routines						*
+*																			*
+****************************************************************************/
+X
+#ifdef __WINDOWS__
+X
+/* Whether LibMain() has been called before */
+X
+static BOOLEAN libMainCalled = FALSE;
+static HWND hInst;
+X
+/* The main function for the DLL */
+X
+int CALLBACK LibMain( HINSTANCE hInstance, WORD wDataSeg, WORD wHeapSize, \
+X					  LPSTR lpszCmdLine )
+X	{
+X	/* Rot bilong kargo */
+X	if( wHeapSize > 0 )
+X		UnlockData( 0 );	/* Allow heap to move */
+X
+X	/* If we've been called before, return with an error message */
+X	if( libMainCalled )
+X		return( FALSE );
+X	libMainCalled = TRUE;
+X
+X	/* Initialise the library */
+X	if( initLibrary() != CRYPT_OK )
+X		return( FALSE );
+X
+X	/* Remember the proc instance for later */
+X	hInst = hInstance;
+X
+X	return( TRUE );
+X	}
+X
+/* Shut down the DLL */
+X
+int CALLBACK WEP( int nSystemExit )
+X	{
+X	switch( nSystemExit )
+X		{
+X		case WEP_SYSTEM_EXIT:
+X			/* System is shutting down */
+X			break;
+X
+X		case WEP_FREE_DLL:
+X			/* DLL reference count = 0, DLL-only shutdown */
+X			break;
+X		}
+X
+X	/* Shut down the encryption library if necessary */
+X	endLibrary();
+X	
+X	return( TRUE );
+X	}
+#endif /* __WINDOWS__ */
+SHAR_EOF
+chmod 0600 crypt/crypt.c ||
+echo 'restore of crypt/crypt.c failed'
+Wc_c="`wc -c < 'crypt/crypt.c'`"
+test 24876 -eq "$Wc_c" ||
+	echo 'crypt/crypt.c: original size 24876, current size' "$Wc_c"
+fi
+# ============= crypt/crypt.h ==============
+if test -f 'crypt/crypt.h' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/crypt.h (File already exists)'
+else
+echo 'x - extracting crypt/crypt.h (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/crypt.h' &&
+#ifndef _CRYPT_DEFINED
+X
+#define _CRYPT_DEFINED
+X
+/* Fixup for Windoze support.  We need to include windows.h for various types
+X   and prototypes needed for DLL's, and then fix up a type clash with a
+X   Windows predefined type - for some bizarre reason BYTE and WORD are
+X   unsigned, but LONG is signed */
+X
+#ifdef __WINDOWS__
+X  #include <windows.h>
+X  #undef LONG
+#endif /* __WINDOWS__ */
+X
+/* Some useful types */
+X
+typedef int				BOOLEAN;
+typedef unsigned char	BYTE;
+#ifndef __WINDOWS__
+X  typedef unsigned int	WORD;
+#endif /* __ WINDOWS__ */
+typedef unsigned long	LONG;
+X
+/* Boolean consants */
+X
+#ifndef TRUE
+X  #define FALSE			0
+X  #define TRUE			!FALSE
+#endif /* TRUE */
+X
+/* Machine-dependant types to allow use in special library types such as
+X   DLL's */
+X
+#ifdef __WINDOWS__
+X  #define CPTR	FAR *						/* DLL pointer */
+X  #define CRET	int FAR PASCAL _export		/* DLL return value */
+#else
+X  #define CPTR	*							/* General pointer */
+X  #define CRET	int							/* General return value */
+#endif /* __WINDOWS__ */
+X
+/* Determine the processor endianness.  Thanks to Shawn Clifford
+X   <sysop@robot.nuceng.ufl.edu> for this trick */
+X
+#if !defined( LITTLE_ENDIAN ) && !defined( BIG_ENDIAN )
+X  #ifdef _MSC_VER
+X	#define LITTLE_ENDIAN		/* MSC can't handle the following test */
+X  #else
+X	#if ( ( ( unsigned short ) ( 'AB' ) >> 8 ) == 'B' )
+X	  #define LITTLE_ENDIAN
+X	#elif ( ( ( unsigned short ) ( 'AB' ) >> 8 ) == 'A' )
+X	  #define BIG_ENDIAN
+X	#else
+X	  #error Cannot determine processor endianness - edit crypt.h and recompile
+X	#endif /* Endianness test */
+X  #endif /* Mickeysoft C check */
+#endif /* !( LITTLE_ENDIAN || BIG_ENDIAN ) */
+X
+/****************************************************************************
+*																			*
+*						Encryption Algorithm Types/Modes					*
+*																			*
+****************************************************************************/
+X
+/* The encryption algorithms we can use */
+X
+typedef enum {
+X	CRYPT_ALGO_NONE,				/* No encryption */
+X	CRYPT_ALGO_MDCSHS,				/* MDC/SHS */
+X	CRYPT_ALGO_DES,					/* DES */
+X	CRYPT_ALGO_3DES,				/* Triple DES */
+X	CRYPT_ALGO_IDEA,				/* IDEA */
+X
+X	CRYPT_ALGO_LAST					/* Last possible crypt algo value */
+X	} CRYPT_ALGO;
+X
+/* The encryption modes we can use */
+X
+typedef enum {
+X	/* No encryption */
+X	CRYPT_MODE_NONE,				/* No encryption */
+X
+X	/* Stream cipher modes */
+X	CRYPT_MODE_STREAM,				/* Stream cipher */
+X
+X	/* Block cipher modes */
+X	CRYPT_MODE_ECB,					/* ECB */
+X	CRYPT_MODE_CBC,					/* CBC */
+X	CRYPT_MODE_CFB,					/* CFB */
+X	CRYPT_MODE_OFB,					/* OFB */
+X
+X	CRYPT_MODE_LAST					/* Last possible crypt algo value */
+X	} CRYPT_MODE;
+X
+/****************************************************************************
+*																			*
+*					Library-Wide Constants and Definitions					*
+*																			*
+****************************************************************************/
+X
+/* The maximum user key size - 2048 bits */
+X
+#define MAX_KEYSIZE			256
+X
+/* The maximum IV size - 256 bits */
+X
+#define MAX_IVSIZE			64
+X
+/* The maximum speed ratio for an encryption algorithm */
+X
+#define MAX_SPEED			1000
+X
+/* Macros to convert to and from the bit counts used for some encryption
+X   parameters */
+X
+#define bitsToBytes(bits)	( ( bits ) >> 3 )
+#define bytesToBits(bytes)	( ( bytes ) << 3 )
+X
+/****************************************************************************
+*																			*
+*								Data Structures								*
+*																			*
+****************************************************************************/
+X
+/* The structure used to store internal information about the crypto library
+X   capabilities.  This information is used internally by the library and is
+X   not available to users */
+X
+struct CI;			/* Forward declaration for nested struct */
+X
+typedef struct CA {
+X	/* Basic identification information for the algorithm */
+X	CRYPT_ALGO cryptAlgo;			/* The encryption algorithm */
+X	CRYPT_MODE cryptMode;			/* The encryption mode */
+X	int blockSize;					/* The basic block size of the algorithm */
+X	char *name;						/* Algorithm name */
+X	int speed;						/* Speed relative to block copy */
+X
+X	/* Keying information */
+X	int minKeySize;					/* Minimum key size in bytes */
+X	int keySize;					/* Recommended key size in bytes */
+X	int maxKeySize;					/* Maximum key size in bytes */
+X
+X	/* IV information */
+X	int minIVsize;					/* Minimum IV size in bytes */
+X	int ivSize;						/* Recommended IV size in bytes */
+X	int maxIVsize;					/* Maximum IV size in bytes */
+X
+X	/* The functions for implementing the algorithm */
+X	int ( *initFunction )( struct CI CPTR cryptInfo );
+X	int ( *initExFunction )( struct CI CPTR cryptInfo, void CPTR cryptInfoEx );
+X	int ( *endFunction )( struct CI CPTR cryptInfo );
+X	int ( *initKeyFunction )( struct CI CPTR cryptInfo );
+X	int ( *initIVFunction )( struct CI CPTR cryptInfo );
+X	int ( *encryptFunction )( struct CI CPTR cryptInfo, void CPTR buffer, int length );
+X	int ( *decryptFunction )( struct CI CPTR cryptInfo, void CPTR buffer, int length );
+X
+X	/* The next record in the list */
+X	struct CA *next;				/* Pointer to the next record */
+X	} CAPABILITY_INFO;
+X
+/* An encryption context */
+X
+typedef struct CI {
+X	/* Basic information on the encryption we're using */
+X	CAPABILITY_INFO *capabilityInfo;/* The encryption capability data */
+X
+X	/* User keying information.  The user key is the key as entered by the
+X	   user, the transformed user key is (for those algoriths which do
+X	   this) the user key transformed by whatever key preprocessing method
+X	   is used, stored in canonical form.  The IV is the initial IV stored
+X	   in canonical form */
+X	BYTE userKey[ MAX_KEYSIZE ];	/* User encryption key */
+X	int userKeyLength;				/* User encryption key length in bytes */
+X	BYTE transUserKey[ MAX_KEYSIZE ];	/* Transformed user key */
+X	BYTE iv[ MAX_IVSIZE ];			/* Initial IV */
+X	int ivLength;					/* IV length in bytes */
+X	BOOLEAN keySet;					/* Whether the key is set up */
+X	BOOLEAN ivSet;					/* Whether the IV is set up */
+X
+X	/* Keying information.  The key is the raw encryption key stored in
+X	   whatever form is required by the algorithm.  This may be simply an
+X	   endianness-adjusted form of the transformed key (in the case of
+X	   algorithms like MDC/SHS) or a processed form of the user key (in the
+X	   case of algorithms like DES or IDEA).  The IV is the current working
+X	   IV stored in an endianness-adjusted form.  The ivCount is the number
+X	   of bytes of IV in use, and may be used for various chaining modes.
+X	   These fields may be unused if the algorithm is implemented in hardware */
+X	void *key;						/* Internal working key */
+X	int keyLength;					/* Internal key length in bytes */
+X	BYTE currentIV[ MAX_IVSIZE ];	/* Internal working IV */
+X	int ivCount;					/* Internal IV count for chaining modes */
+X
+X	/* Private data needed by the algorithm */
+X	void *privateData;				/* For private use */
+X	} CRYPT_INFO;
+X
+/* Extra algorithm-specific information stored within a crypt context */
+X
+typedef struct {
+X	int keySetupIterations;		/* No.iterations for user key setup */
+X	} CRYPT_INFO_MDCSHS;
+X
+/* Results returned from the encryption capability query */
+X
+typedef struct {
+X	/* The algorithm, encryption mode, and algorithm name */
+X	CRYPT_ALGO cryptAlgo;			/* The encryption algorithm */
+X	CRYPT_MODE cryptMode;			/* The encryption mode */
+X	char *algoName;					/* The algorithm name */
+X
+X	/* The algorithm parameters */
+X	int blockSize;					/* The basic block size of the algorithm */
+X	int minKeySize;					/* Minimum key size in bytes */
+X	int keySize;					/* Recommended key size in bytes */
+X	int maxKeySize;					/* Maximum key size in bytes */
+X	int minIVsize;					/* Minimum IV size in bytes */
+X	int ivSize;						/* Recommended IV size in bytes */
+X	int maxIVsize;					/* Maximum IV size in bytes */
+X
+X	/* Various algorithm characteristics */
+X	int speed;						/* Speed relative to block copy */
+X	} CRYPT_QUERY_INFO;
+X
+/****************************************************************************
+*																			*
+*								Status Codes								*
+*																			*
+****************************************************************************/
+X
+/* No error in function call */
+X
+#define CRYPT_OK			0		/* No error */
+X
+/* Generic internal error */
+X
+#define CRYPT_ERROR			-1		/* Nonspecific error */
+X
+/* Error in parameters passed to function */
+X
+#define CRYPT_BADPARM		-2		/* Generic bad argument to function */
+#define CRYPT_BADPARM1		-3		/* Bad argument, parameter 1 */
+#define CRYPT_BADPARM2		-4		/* Bad argument, parameter 2 */
+#define CRYPT_BADPARM3		-5		/* Bad argument, parameter 3 */
+#define CRYPT_BADPARM4		-6		/* Bad argument, parameter 4 */
+#define CRYPT_BADPARM5		-7		/* Bad argument, parameter 5 */
+#define CRYPT_BADPARM6		-8		/* Bad argument, parameter 6 */
+#define CRYPT_BADPARM7		-9		/* Bad argument, parameter 7 */
+#define CRYPT_BADPARM8		-10		/* Bad argument, parameter 8 */
+#define CRYPT_BADPARM9		-11		/* Bad argument, parameter 9 */
+#define CRYPT_BADPARM10		-12		/* Bad argument, parameter 10 */
+#define CRYPT_BADPARM11		-13		/* Bad argument, parameter 11 */
+#define CRYPT_BADPARM12		-14		/* Bad argument, parameter 12 */
+#define CRYPT_BADPARM13		-15		/* Bad argument, parameter 13 */
+#define CRYPT_BADPARM14		-16		/* Bad argument, parameter 14 */
+#define CRYPT_BADPARM15		-17		/* Bad argument, parameter 15 */
+X
+/* Errors due to insufficient resources */
+X
+#define CRYPT_NOMEM			-18		/* Out of memory */
+#define CRYPT_NOTINITED		-19		/* Data has not been initialised */
+#define CRYPT_INITED		-20		/* Data has already been initialised */
+#define CRYPT_NOALGO		-21		/* Algorithm unavailable */
+#define CRYPT_NOMODE		-22		/* Encryption mode unavailable */
+#define CRYPT_NOKEY			-23		/* Key not initialised */
+#define CRYPT_NOIV			-24		/* IV not initialised */
+X
+/* A macro to detect an error return value */
+X
+#define isStatusError(status)		( ( status ) < CRYPT_OK )
+#define isStatusOK(status)			( ( status ) == CRYPT_OK )
+X
+/****************************************************************************
+*																			*
+*								Private Functions							*
+*																			*
+****************************************************************************/
+X
+/* Private functions for use only within the crypt library */
+X
+void longReverse( LONG *buffer, unsigned count );
+void wordReverse( WORD *buffer, unsigned count );
+void secureFree( void **pointer, int count );
+X
+/****************************************************************************
+*																			*
+*								Public Functions							*
+*																			*
+****************************************************************************/
+X
+/* Initialise and shut down the encryption library */
+X
+CRET initLibrary( void );
+CRET endLibrary( void );
+X
+/* Query the capabilities of the encryption library */
+X
+CRET queryModeAvailability( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode );
+CRET queryAlgoAvailability( CRYPT_ALGO cryptAlgo );
+CRET queryAlgoModeInformation( CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode, CRYPT_QUERY_INFO CPTR cryptQueryInfo );
+CRET queryContextInformation( CRYPT_INFO CPTR cryptInfo, CRYPT_QUERY_INFO CPTR cryptQueryInfo );
+X
+/* Initialise and destroy an encryption context */
+X
+CRET initCryptContext( CRYPT_INFO CPTR cryptInfo, CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode );
+CRET initCryptContextEx( CRYPT_INFO CPTR cryptInfo, CRYPT_ALGO cryptAlgo, CRYPT_MODE cryptMode, void *cryptInfoEx );
+CRET destroyCryptContext( CRYPT_INFO CPTR cryptInfo );
+X
+/* Load a user key into a crypt context */
+X
+CRET loadCryptContext( CRYPT_INFO CPTR cryptInfo, void CPTR key, int keyLength );
+X
+/* Load/retreive an IV into/from a crypt context */
+X
+CRET loadIV( CRYPT_INFO CPTR cryptInfo, void CPTR iv, int length );
+CRET retrieveIV( CRYPT_INFO CPTR cryptInfo, void CPTR iv );
+X
+/* Encrypt/decrypt a block of memory */
+X
+CRET encryptBuffer( CRYPT_INFO CPTR cryptInfo, void CPTR buffer, int length );
+CRET decryptBuffer( CRYPT_INFO CPTR cryptInfo, void CPTR buffer, int length );
+X
+#endif /* _CRYPT_DEFINED */
+SHAR_EOF
+chmod 0600 crypt/crypt.h ||
+echo 'restore of crypt/crypt.h failed'
+Wc_c="`wc -c < 'crypt/crypt.h'`"
+test 11871 -eq "$Wc_c" ||
+	echo 'crypt/crypt.h: original size 11871, current size' "$Wc_c"
+fi
+# ============= crypt/makefile ==============
+if test -f 'crypt/makefile' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/makefile (File already exists)'
+else
+echo 'x - extracting crypt/makefile (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/makefile' &&
+#****************************************************************************
+#*																			*
+#*						Makefile for the encryption library					*
+#*																			*
+#****************************************************************************
+X
+PROJ	= cryptlib
+X
+CFLAGS	= -c -D__UNIX__ -O -I. $(CMDC)	# Flags for compiler
+X
+LFLAGS	= -o $(PROJ) $(CMDL)	# Flags for linker
+X
+OUTPATH	=					# Where object files go (/tmp is a good place)
+OBJ		= .o				# Extension for object files
+EXE		=					# Extension for executables
+X
+LD		= $(CC)				# Linker (just use the C compiler)
+ECHO	= echo				# Echo to screen command
+MAKE	= make				# The make command
+X
+#****************************************************************************
+#*																			*
+#*			If no args are given, print a usage message and exit			*
+#*																			*
+#****************************************************************************
+X
+default:
+X		@$(ECHO)
+X		@$(ECHO) "Usage: make <system-type>"
+X		@$(ECHO)
+X		@$(ECHO) "To create the encryption library, you have to enter the Unix system type"
+X		@$(ECHO) "you want to build it for.  Possible options are: aix, aix370, aix386,"
+X		@$(ECHO) "bsd386, convex, irix, hpux, hpux-gcc, isc, linux, mint, mipsbsd, next, osf1,"
+X		@$(ECHO) "qnx, sun, svr4, ultrix, and uts4.  If none of the above fit, try 'make "
+X		@$(ECHO) "generic', and send a copy of any changes necessary to the author, "
+X		@$(ECHO) "pgut01@cs.auckland.ac.nz"
+X		@$(ECHO)
+X
+love:
+X		@$(ECHO) "Nicht wahr?"
+X		@$(ECHO)
+X
+#****************************************************************************
+#*																			*
+#*					Rules to build the encryption library					*
+#*																			*
+#****************************************************************************
+X
+$(OUTPATH)crypt$(OBJ):		crypt.h crypt.c
+X							$(CC) $(CFLAGS) crypt.c
+X
+$(OUTPATH)null$(OBJ):		crypt.h null.c
+X							$(CC) $(CFLAGS) null.c
+X
+$(OUTPATH)mdcshs$(OBJ):		crypt.h shs.h mdcshs.c
+X							$(CC) $(CFLAGS) mdcshs.c
+X
+$(OUTPATH)shs$(OBJ):		crypt.h shs.h mdcshs.c
+X							$(CC) $(CFLAGS) shs.c
+X
+$(OUTPATH)test$(OBJ):		crypt.h test.c
+X							$(CC) $(CFLAGS) test.c
+X
+$(PROJ)$(EXE):	$(OUTPATH)crypt$(OBJ) $(OUTPATH)mdcshs$(OBJ) \
+X				$(OUTPATH)null$(OBJ) $(OUTPATH)shs$(OBJ) \
+X				$(OUTPATH)test$(OBJ)
+X		@$(LD) $(LFLAGS) $(OUTPATH)crypt$(OBJ) $(OUTPATH)null$(OBJ) \
+X		$(OUTPATH)mdcshs$(OBJ) $(OUTPATH)shs$(OBJ) $(OUTPATH)test$(OBJ)
+X
+#****************************************************************************
+#*																			*
+#*						Defines for each variation of Unix					*
+#*																			*
+#****************************************************************************
+X
+# AIX for the RS6000: Use cc.  Differs from AIX370/386 in endianness
+X
+aix:
+X		@$(MAKE) $(PROJ) CMDC="-DAIX" CC="cc"
+X
+# AIX370, AIX386: Use cc
+X
+aix370:
+X		@$(MAKE) $(PROJ) CMDC="-DAIX370" CC="cc"
+aix386:
+X		@$(MAKE) $(PROJ) CMDC="-DAIX386" CC="cc"
+X
+# AUX: The only Unix so bloated it has /etc.etc.etc
+X
+# BSD 386: Use cc
+X
+bsd386:
+X		@$(MAKE) $(PROJ) CMDC="-DBSD386" CC="cc"
+X
+# Convex: Use cc (cc has some bugs)
+X
+convex:
+X		@$(MAKE) $(PROJ) CMDC="-DCONVEX" CC="cc"
+X
+# Esix: Run away!!  Run away!!
+X
+# Generic: Generic BSD-ish system running gcc
+X
+generic:
+X		@$(MAKE) $(PROJ) CMDC="-DGENERIC" CC="gcc"
+X
+# HPUX: Use cc if you have the ANSI C compiler, otherwise use gcc
+#       Need to use '-Aa -D_HPUX_SOURCE' as compiler options to get
+#       C compiler into ANSI C mode with UNIX symbols.
+X
+hpux:
+X		@$(MAKE) $(PROJ) CMDC="-DHPUX -Aa -D_HPUX_SOURCE +O3" CC="cc"
+X
+hpux-gcc:
+X		@$(MAKE) $(PROJ) CMDC="-DHPUX" CC="gcc"
+X
+# Irix: Use cc with the -acpp flag for maximum ANSI-ness
+X
+irix:
+X		@$(MAKE) $(PROJ) CMDC="-DIRIX -acpp" CC="cc"
+X
+# ISC Unix: Use gcc
+X
+isc:
+X		@$(MAKE) $(PROJ) CMDC="-DISC" CC="gcc"
+X
+# Linux: Use gcc
+X
+linux:
+X		@$(MAKE) $(PROJ) CMDC="-DLINUX" CC="gcc"
+X
+# MiNT: Use gcc
+X
+mint:
+X		@$(MAKE) $(PROJ) CMDC="-DMINT" CC="gcc"
+X
+# Risc/OS 4: Use gcc
+X
+mipsbsd:
+X		@$(MAKE) $(PROJ) CMDC="-DMIPSBSD" CC="gcc"
+X
+# NeXT 3.0: Use cc
+X
+next:
+X		@$(MAKE) $(PROJ) CMDC="-O2 -DNEXT" CMDL="-object -s" CC="cc"
+X
+# OSF 1: Use gcc
+X
+osf1:
+X		@$(MAKE) $(PROJ) CMDC="-DOSF1" CC="gcc"
+X
+# QNX 4.x: Use cc -ml, ld -N32768 -ml
+X
+qnx:
+X		@$(MAKE) $(PROJ) CMDC="-ml -DPOSIX" CMDL="-N32768 -ml" CC="cc"
+X
+# Sun/Slowaris: Use gcc
+X
+sun:
+X		@$(MAKE) $(PROJ) CMDC="-DSUNOS" CC="gcc"
+X
+# SVR4: Use cc.  Better results can be obtained by upgrading your OS to
+#       4.4 BSD.
+X
+svr4:
+X		@$(MAKE) $(PROJ) CMDC="-DSVR4" CC="cc"
+X
+# Ultrix: Use vcc or gcc
+X
+ultrix:
+X		@$(MAKE) $(PROJ) CMDC="-DULTRIX" CC="gcc"
+X
+# Amdahl UTS 4: Use cc
+X
+uts4:
+X		@$(MAKE) $(PROJ) CMDC="-DUTS4 -Xc", CC="cc"
+X
+#****************************************************************************
+#*																			*
+#*						Cleanup after make has finished						*
+#*																			*
+#****************************************************************************
+X
+clean:
+X		rm -f *.o core
+SHAR_EOF
+chmod 0600 crypt/makefile ||
+echo 'restore of crypt/makefile failed'
+Wc_c="`wc -c < 'crypt/makefile'`"
+test 4842 -eq "$Wc_c" ||
+	echo 'crypt/makefile: original size 4842, current size' "$Wc_c"
+fi
+# ============= crypt/mdcshs.c ==============
+if test -f 'crypt/mdcshs.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/mdcshs.c (File already exists)'
+else
+echo 'x - extracting crypt/mdcshs.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/mdcshs.c' &&
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "crypt.h"
+#include "shs.h"
+X
+/* The default key setup iteration count.  This gives roughly 0.5s delay on
+X   a 10K dhrystone machine */
+X
+#define MDCSHS_DEFAULT_ITERATIONS	200
+X
+/* The size of an MDCSHS key */
+X
+#define MDCSHS_KEYSIZE				128		/* 1024 bits */
+X
+/****************************************************************************
+*																			*
+*							Init/Shutdown Routines							*
+*																			*
+****************************************************************************/
+X
+/* Perform auxiliary init and shutdown actions on an encryption context */
+X
+int mdcshsInitEx( CRYPT_INFO *cryptInfo, void *cryptInfoEx )
+X	{
+X	/* Allocate memory for the key and the algorithm-specific data within
+X	   the crypt context and set up any pointers we need */
+X	if( cryptInfo->key != NULL || cryptInfo->privateData != NULL )
+X		return( CRYPT_INITED );
+X	if( ( cryptInfo->key = malloc( MDCSHS_KEYSIZE ) ) == NULL )
+X		return( CRYPT_NOMEM );
+X	if( ( cryptInfo->privateData = malloc( sizeof( CRYPT_INFO_MDCSHS ) ) ) == NULL )
+X		{
+X		free( cryptInfo->key );
+X		cryptInfo->key = NULL;
+X		return( CRYPT_NOMEM );
+X		}
+X	memcpy( cryptInfo->privateData, cryptInfoEx, sizeof( CRYPT_INFO_MDCSHS ) );
+X	cryptInfo->keyLength = MDCSHS_KEYSIZE;
+X
+X	return( CRYPT_OK );
+X	}
+X
+int mdcshsInit( CRYPT_INFO *cryptInfo )
+X	{
+X	CRYPT_INFO_MDCSHS cryptInfoEx;
+X
+X	/* Use the default number of setup iterations */
+X	memset( &cryptInfoEx, 0, sizeof( CRYPT_INFO_MDCSHS ) );
+X	cryptInfoEx.keySetupIterations = MDCSHS_DEFAULT_ITERATIONS;
+X
+X	/* Pass through to the extended setup routine */
+X	return( mdcshsInitEx( cryptInfo, &cryptInfoEx ) );
+X	}
+X
+int mdcshsEnd( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Free any allocated memory */
+X	secureFree( &cryptInfo->key, cryptInfo->keyLength );
+X	secureFree( &cryptInfo->privateData, sizeof( CRYPT_INFO_MDCSHS ) );
+X
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*						MDC/SHS En/Decryption Routines						*
+*																			*
+****************************************************************************/
+X
+/* The SHS transformation */
+X
+#define shsTransform(cI)	SHSTransform( ( LONG * ) cI->currentIV, \
+X										  ( LONG * ) cI->key )
+X
+void SHSTransform( LONG *digest, LONG *data );
+X
+/* Encrypt data in CFB mode */
+X
+int mdcshsEncrypt( CRYPT_INFO *cryptInfo, BYTE *buffer, int noBytes )
+X	{
+X	int i, ivCount = cryptInfo->ivCount;
+X
+X	/* If there's any encrypted material left in the IV, use it now */
+X	if( ivCount )
+X		{
+X		int bytesToUse;
+X
+X		/* Find out how much material left in the encrypted IV we can use */
+X		bytesToUse = SHS_DIGESTSIZE - ivCount;
+X		if( noBytes < bytesToUse )
+X			bytesToUse = noBytes;
+X
+X		/* Encrypt the data */
+X		for( i = 0; i < bytesToUse; i++ )
+X			buffer[ i ] ^= cryptInfo->currentIV[ i + ivCount ];
+X		memcpy( cryptInfo->currentIV + ivCount, buffer, bytesToUse );
+X
+X		/* Adjust the byte count and buffer position */
+X		noBytes -= bytesToUse;
+X		buffer += bytesToUse;
+X		ivCount += bytesToUse;
+X		}
+X
+X	while( noBytes )
+X		{
+X		ivCount = ( noBytes > SHS_DIGESTSIZE ) ? SHS_DIGESTSIZE : noBytes;
+X
+X		/* Encrypt the IV */
+X		shsTransform( cryptInfo );
+X
+X		/* XOR the buffer contents with the encrypted IV */
+X		for( i = 0; i < ivCount; i++ )
+X			buffer[ i ] ^= cryptInfo->currentIV[ i ];
+X
+X		/* Shift ciphertext into IV */
+X		memcpy( cryptInfo->currentIV, buffer, ivCount );
+X
+X		/* Move on to next block of data */
+X		noBytes -= ivCount;
+X		buffer += ivCount;
+X		}
+X
+X	/* Remember how much of the IV is still available for use */
+X	cryptInfo->ivCount = ( ivCount % SHS_DIGESTSIZE );
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Decrypt data in CFB mode.  Note that the transformation can be made
+X   faster (but less clear) with temp = buffer, buffer ^= iv, iv = temp
+X   all in one loop */
+X
+int mdcshsDecrypt( CRYPT_INFO *cryptInfo, BYTE *buffer, int noBytes )
+X	{
+X	BYTE temp[ SHS_DIGESTSIZE ];
+X	int i, ivCount = cryptInfo->ivCount;
+X
+X	/* If there's any encrypted material left in the IV, use it now */
+X	if( ivCount )
+X		{
+X		int bytesToUse;
+X
+X		/* Find out how much material left in the encrypted IV we can use */
+X		bytesToUse = SHS_DIGESTSIZE - ivCount;
+X		if( noBytes < bytesToUse )
+X			bytesToUse = noBytes;
+X
+X		/* Decrypt the data */
+X		memcpy( temp, buffer, bytesToUse );
+X		for( i = 0; i < bytesToUse; i++ )
+X			buffer[ i ] ^= cryptInfo->currentIV[ i + ivCount ];
+X		memcpy( cryptInfo->currentIV + ivCount, temp, bytesToUse );
+X
+X		/* Adjust the byte count and buffer position */
+X		noBytes -= bytesToUse;
+X		buffer += bytesToUse;
+X		ivCount += bytesToUse;
+X		}
+X
+X	while( noBytes )
+X		{
+X		ivCount = ( noBytes > SHS_DIGESTSIZE ) ? SHS_DIGESTSIZE : noBytes;
+X
+X		/* Encrypt the IV */
+X		shsTransform( cryptInfo );
+X
+X		/* Save ciphertext */
+X		memcpy( temp, buffer, ivCount );
+X
+X		/* XOR the buffer contents with the encrypted IV */
+X		for( i = 0; i < ivCount; i++ )
+X			buffer[ i ] ^= cryptInfo->currentIV[ i ];
+X
+X		/* Shift ciphertext into IV */
+X		memcpy( cryptInfo->currentIV, temp, ivCount );
+X
+X		/* Move on to next block of data */
+X		noBytes -= ivCount;
+X		buffer += ivCount;
+X		}
+X
+X	/* Remember how much of the IV is still available for use */
+X	cryptInfo->ivCount = ( ivCount % SHS_DIGESTSIZE );
+X
+X	return( CRYPT_OK );
+X	}
+X
+/****************************************************************************
+*																			*
+*						MDC/SHS Key Management Routines						*
+*																			*
+****************************************************************************/
+X
+/* The size of the key buffer.  Note that increasing this value will result
+X   in a significant increase in the setup time, so it will be necessary to
+X   make a corresponding decrease in the iteration count */
+X
+#define KEYBUFFER_SIZE		256
+X
+/* Initialise an MDC/SHS key.  This is done by repeatedly encrypting the
+X   user key as follows:
+X
+X	IV <- 0
+X	key <- 0
+X	repeat
+X		encrypt userkey with key
+X		key <- userkey
+X
+X   The IV is updated transparently as part of the encryption process */
+X
+int mdcshsInitKey( CRYPT_INFO *cryptInfo )
+X	{
+X	BYTE keyData[ KEYBUFFER_SIZE ];
+X	int keySetupIterations = ( ( CRYPT_INFO_MDCSHS * ) cryptInfo->privateData )->keySetupIterations;
+X	int count;
+X
+X	/* Copy the key information into the key data buffer.  We silently
+X	   truncate the key length to the size of the buffer, but this usually
+X	   is some hundreds of bytes so it shouldn't be a problem.
+X	   We also correct the endianness of the keyData at this point.  From
+X	   here on all data is in the local endianness format so there is no need
+X	   for further corrections */
+X	memset( keyData, 0, KEYBUFFER_SIZE );
+X	keyData[ 0 ] = ( BYTE ) ( cryptInfo->userKeyLength >> 8 );
+X	keyData[ 1 ] = ( BYTE ) cryptInfo->userKeyLength;
+X	cryptInfo->userKeyLength %= KEYBUFFER_SIZE - sizeof( WORD );
+X	memcpy( keyData + sizeof( WORD ), cryptInfo->userKey, cryptInfo->userKeyLength );
+X
+X	/* Set the initial key and IV to null */
+X	memset( cryptInfo->currentIV, 0, MAX_IVSIZE );
+X	memset( cryptInfo->key, 0, MDCSHS_KEYSIZE );
+X
+X	/* Convert the endianness of the input data from the canonical form to
+X	   the local form */
+X	longReverse( ( LONG * ) keyData, KEYBUFFER_SIZE );
+X
+X	/* "Encrypt" the keyData with the given IV and then set the key to
+X	   the encrypted keyData.  The act of encryption also sets the IV.
+X	   This is particularly important in the case of SHS, since although only
+X	   the first SHS_DATASIZE bytes are copied into the key, the IV is
+X	   still affected by the entire buffer */
+X	for( count = 0; count < keySetupIterations; count++ )
+X		{
+X		mdcshsEncrypt( cryptInfo, keyData, KEYBUFFER_SIZE );
+X		memcpy( cryptInfo->key, keyData, MDCSHS_KEYSIZE );
+X		}
+X
+X	/* Perform one last copy in case they've specified zero iterations and
+X	   the loop was never executed.  For MDCSHS, the transformed key is the
+X	   same as the raw encryption key, so we just copy it over */
+X	memcpy( cryptInfo->key, keyData, MDCSHS_KEYSIZE );
+X
+#if 0
+X	/* Set the key check byte to the last WORD of the encrypted keyData.
+X	   This is never used for anything (it's 191 bytes past the end of the
+X	   last value used to set the key) so we're not revealing much to an
+X	   attacker */
+X	longReverse( ( LONG * ) ( keyData + KEYBUFFER_SIZE - sizeof( LONG ) ), sizeof( LONG ) );
+X	cryptInfo->keyCheck = ( ( WORD ) keyData[ KEYBUFFER_SIZE - 2 ] << 8 ) | \
+X								   keyData[ KEYBUFFER_SIZE - 1 ];
+#endif /* 0 */
+X
+X	/* Wipe the keyData */
+X	memset( keyData, 0, KEYBUFFER_SIZE );
+X
+X	/* Finally, create a copy of the transformed key in the canonical form
+X	   in case the user wants to access it */
+X	memcpy( cryptInfo->transUserKey, cryptInfo->key, MDCSHS_KEYSIZE );
+X	longReverse( ( LONG * ) cryptInfo->transUserKey, MDCSHS_KEYSIZE );
+X	cryptInfo->keySet = TRUE;
+X
+X	return( CRYPT_OK );
+X	}
+X
+/* Initialise the IV */
+X
+int mdcshsInitIV( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Copy the IV to internal storage and convert it from the canonical to
+X	   the internal form */
+X	memcpy( cryptInfo->currentIV, cryptInfo->iv, MAX_IVSIZE );
+X	longReverse( ( LONG * ) cryptInfo->currentIV, MAX_IVSIZE );
+X
+X	return( CRYPT_OK );
+X	}
+SHAR_EOF
+chmod 0600 crypt/mdcshs.c ||
+echo 'restore of crypt/mdcshs.c failed'
+Wc_c="`wc -c < 'crypt/mdcshs.c'`"
+test 9013 -eq "$Wc_c" ||
+	echo 'crypt/mdcshs.c: original size 9013, current size' "$Wc_c"
+fi
+# ============= crypt/null.c ==============
+if test -f 'crypt/null.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/null.c (File already exists)'
+else
+echo 'x - extracting crypt/null.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/null.c' &&
+#include "crypt.h"
+X
+/****************************************************************************
+*																			*
+*							Null En/Decryption Routines						*
+*																			*
+****************************************************************************/
+X
+int nullInit( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullInitEx( CRYPT_INFO *cryptInfo, void *cryptInfoEx )
+X	{
+X	/* Get rid of unused parameter warnings in a compiler-independant manner */
+X	if( cryptInfo || cryptInfoEx );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullEnd( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullInitKey( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullInitIV( CRYPT_INFO *cryptInfo )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullEncrypt( CRYPT_INFO *cryptInfo, void *buffer, int length )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo || buffer || length );
+X
+X	return( CRYPT_OK );
+X	}
+X
+int nullDecrypt( CRYPT_INFO *cryptInfo, void *buffer, int length )
+X	{
+X	/* Get rid of unused parameter warning in a compiler-independant manner */
+X	if( cryptInfo || buffer || length );
+X
+X	return( CRYPT_OK );
+X	}
+SHAR_EOF
+chmod 0600 crypt/null.c ||
+echo 'restore of crypt/null.c failed'
+Wc_c="`wc -c < 'crypt/null.c'`"
+test 1529 -eq "$Wc_c" ||
+	echo 'crypt/null.c: original size 1529, current size' "$Wc_c"
+fi
+# ============= crypt/shs.c ==============
+if test -f 'crypt/shs.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/shs.c (File already exists)'
+else
+echo 'x - extracting crypt/shs.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/shs.c' &&
+#include <string.h>
+#include "crypt.h"
+#include "shs.h"
+X
+/* The SHS f()-functions.  The f1 and f3 functions can be optimized to
+X   save one boolean operation each - thanks to Rich Schroeppel,
+X   rcs@cs.arizona.edu for discovering this */
+X
+/*#define f1(x,y,z)	( ( x & y ) | ( ~x & z ) )			// Rounds  0-19 */
+#define f1(x,y,z)	( z ^ ( x & ( y ^ z ) ) )			/* Rounds  0-19 */
+#define f2(x,y,z)	( x ^ y ^ z )						/* Rounds 20-39 */
+/*#define f3(x,y,z)	( ( x & y ) | ( x & z ) | ( y & z ) )	// Rounds 40-59 */
+#define f3(x,y,z)	( ( x & y ) | ( z & ( x | y ) ) )	/* Rounds 40-59 */
+#define f4(x,y,z)	( x ^ y ^ z )						/* Rounds 60-79 */
+X
+/* The SHS Mysterious Constants */
+X
+#define K1	0x5A827999L									/* Rounds  0-19 */
+#define K2	0x6ED9EBA1L									/* Rounds 20-39 */
+#define K3	0x8F1BBCDCL									/* Rounds 40-59 */
+#define K4	0xCA62C1D6L									/* Rounds 60-79 */
+X
+/* SHS initial values */
+X
+#define h0init	0x67452301L
+#define h1init	0xEFCDAB89L
+#define h2init	0x98BADCFEL
+#define h3init	0x10325476L
+#define h4init	0xC3D2E1F0L
+X
+/* Note that it may be necessary to add parentheses to these macros if they
+X   are to be called with expressions as arguments */
+X
+/* 32-bit rotate left - kludged with shifts */
+X
+#define ROTL(n,X)  ( ( ( X ) << n ) | ( ( X ) >> ( 32 - n ) ) )
+X
+/* The initial expanding function.  The hash function is defined over an
+X   80-word expanded input array W, where the first 16 are copies of the input
+X   data, and the remaining 64 are defined by
+X
+X		W[ i ] = W[ i - 16 ] ^ W[ i - 14 ] ^ W[ i - 8 ] ^ W[ i - 3 ]
+X
+X   This implementation generates these values on the fly in a circular
+X   buffer - thanks to Colin Plumb, colin@nyx10.cs.du.edu for this
+X   optimization.
+X
+X   The updated SHS changes the expanding function by adding a rotate of 1
+X   bit.  Thanks to Jim Gillogly, jim@rand.org, and an anonymous contributor
+X   for this information */
+X
+#ifdef NEW_SHS
+X  #define expand(W,i) ( W[ i & 15 ] = ROTL( 1, ( W[ i & 15 ] ^ W[ i - 14 & 15 ] ^ \
+X												 W[ i - 8 & 15 ] ^ W[ i - 3 & 15 ] ) ) )
+#else
+X  #define expand(W,i) ( W[ i & 15 ] ^= W[ i - 14 & 15 ] ^ W[ i - 8 & 15 ] ^ W[ i - 3 & 15 ] )
+#endif /* NEW_SHS */
+X
+/* The prototype SHS sub-round.  The fundamental sub-round is:
+X
+X		a' = e + ROTL( 5, a ) + f( b, c, d ) + k + data;
+X		b' = a;
+X		c' = ROTL( 30, b );
+X		d' = c;
+X		e' = d;
+X
+X   but this is implemented by unrolling the loop 5 times and renaming the
+X   variables ( e, a, b, c, d ) = ( a', b', c', d', e' ) each iteration.
+X   This code is then replicated 20 times for each of the 4 functions, using
+X   the next 20 values from the W[] array each time */
+X
+#define subRound(a, b, c, d, e, f, k, data) \
+X	( e += ROTL( 5, a ) + f( b, c, d ) + k + data, b = ROTL( 30, b ) )
+X
+/* Initialize the SHS values */
+X
+void shsInit( SHS_INFO *shsInfo )
+X	{
+X	/* Set the h-vars to their initial values */
+X	shsInfo->digest[ 0 ] = h0init;
+X	shsInfo->digest[ 1 ] = h1init;
+X	shsInfo->digest[ 2 ] = h2init;
+X	shsInfo->digest[ 3 ] = h3init;
+X	shsInfo->digest[ 4 ] = h4init;
+X
+X	/* Initialise bit count */
+X	shsInfo->countLo = shsInfo->countHi = 0;
+X	}
+X
+#ifndef ASM_SHS
+X
+/* Perform the SHS transformation.  Note that this code, like MD5, seems to
+X   break some optimizing compilers due to the complexity of the expressions
+X   and the size of the basic block.  It may be necessary to split it into
+X   sections, e.g. based on the four subrounds
+X
+X   Note that this corrupts the shsInfo->data area */
+X
+void SHSTransform( LONG *digest, LONG *data )
+X	{
+X	LONG A, B, C, D, E;		/* Local vars */
+X	LONG eData[ 16 ];		/* Expanded data */
+X
+X	/* Set up first buffer and local data buffer */
+X	A = digest[ 0 ];
+X	B = digest[ 1 ];
+X	C = digest[ 2 ];
+X	D = digest[ 3 ];
+X	E = digest[ 4 ];
+X	memcpy( eData, data, SHS_DATASIZE );
+X
+X	/* Heavy mangling, in 4 sub-rounds of 20 interations each. */
+X	subRound( A, B, C, D, E, f1, K1, eData[  0 ] );
+X	subRound( E, A, B, C, D, f1, K1, eData[  1 ] );
+X	subRound( D, E, A, B, C, f1, K1, eData[  2 ] );
+X	subRound( C, D, E, A, B, f1, K1, eData[  3 ] );
+X	subRound( B, C, D, E, A, f1, K1, eData[  4 ] );
+X	subRound( A, B, C, D, E, f1, K1, eData[  5 ] );
+X	subRound( E, A, B, C, D, f1, K1, eData[  6 ] );
+X	subRound( D, E, A, B, C, f1, K1, eData[  7 ] );
+X	subRound( C, D, E, A, B, f1, K1, eData[  8 ] );
+X	subRound( B, C, D, E, A, f1, K1, eData[  9 ] );
+X	subRound( A, B, C, D, E, f1, K1, eData[ 10 ] );
+X	subRound( E, A, B, C, D, f1, K1, eData[ 11 ] );
+X	subRound( D, E, A, B, C, f1, K1, eData[ 12 ] );
+X	subRound( C, D, E, A, B, f1, K1, eData[ 13 ] );
+X	subRound( B, C, D, E, A, f1, K1, eData[ 14 ] );
+X	subRound( A, B, C, D, E, f1, K1, eData[ 15 ] );
+X	subRound( E, A, B, C, D, f1, K1, expand( eData, 16 ) );
+X	subRound( D, E, A, B, C, f1, K1, expand( eData, 17 ) );
+X	subRound( C, D, E, A, B, f1, K1, expand( eData, 18 ) );
+X	subRound( B, C, D, E, A, f1, K1, expand( eData, 19 ) );
+X
+X	subRound( A, B, C, D, E, f2, K2, expand( eData, 20 ) );
+X	subRound( E, A, B, C, D, f2, K2, expand( eData, 21 ) );
+X	subRound( D, E, A, B, C, f2, K2, expand( eData, 22 ) );
+X	subRound( C, D, E, A, B, f2, K2, expand( eData, 23 ) );
+X	subRound( B, C, D, E, A, f2, K2, expand( eData, 24 ) );
+X	subRound( A, B, C, D, E, f2, K2, expand( eData, 25 ) );
+X	subRound( E, A, B, C, D, f2, K2, expand( eData, 26 ) );
+X	subRound( D, E, A, B, C, f2, K2, expand( eData, 27 ) );
+X	subRound( C, D, E, A, B, f2, K2, expand( eData, 28 ) );
+X	subRound( B, C, D, E, A, f2, K2, expand( eData, 29 ) );
+X	subRound( A, B, C, D, E, f2, K2, expand( eData, 30 ) );
+X	subRound( E, A, B, C, D, f2, K2, expand( eData, 31 ) );
+X	subRound( D, E, A, B, C, f2, K2, expand( eData, 32 ) );
+X	subRound( C, D, E, A, B, f2, K2, expand( eData, 33 ) );
+X	subRound( B, C, D, E, A, f2, K2, expand( eData, 34 ) );
+X	subRound( A, B, C, D, E, f2, K2, expand( eData, 35 ) );
+X	subRound( E, A, B, C, D, f2, K2, expand( eData, 36 ) );
+X	subRound( D, E, A, B, C, f2, K2, expand( eData, 37 ) );
+X	subRound( C, D, E, A, B, f2, K2, expand( eData, 38 ) );
+X	subRound( B, C, D, E, A, f2, K2, expand( eData, 39 ) );
+X
+X	subRound( A, B, C, D, E, f3, K3, expand( eData, 40 ) );
+X	subRound( E, A, B, C, D, f3, K3, expand( eData, 41 ) );
+X	subRound( D, E, A, B, C, f3, K3, expand( eData, 42 ) );
+X	subRound( C, D, E, A, B, f3, K3, expand( eData, 43 ) );
+X	subRound( B, C, D, E, A, f3, K3, expand( eData, 44 ) );
+X	subRound( A, B, C, D, E, f3, K3, expand( eData, 45 ) );
+X	subRound( E, A, B, C, D, f3, K3, expand( eData, 46 ) );
+X	subRound( D, E, A, B, C, f3, K3, expand( eData, 47 ) );
+X	subRound( C, D, E, A, B, f3, K3, expand( eData, 48 ) );
+X	subRound( B, C, D, E, A, f3, K3, expand( eData, 49 ) );
+X	subRound( A, B, C, D, E, f3, K3, expand( eData, 50 ) );
+X	subRound( E, A, B, C, D, f3, K3, expand( eData, 51 ) );
+X	subRound( D, E, A, B, C, f3, K3, expand( eData, 52 ) );
+X	subRound( C, D, E, A, B, f3, K3, expand( eData, 53 ) );
+X	subRound( B, C, D, E, A, f3, K3, expand( eData, 54 ) );
+X	subRound( A, B, C, D, E, f3, K3, expand( eData, 55 ) );
+X	subRound( E, A, B, C, D, f3, K3, expand( eData, 56 ) );
+X	subRound( D, E, A, B, C, f3, K3, expand( eData, 57 ) );
+X	subRound( C, D, E, A, B, f3, K3, expand( eData, 58 ) );
+X	subRound( B, C, D, E, A, f3, K3, expand( eData, 59 ) );
+X
+X	subRound( A, B, C, D, E, f4, K4, expand( eData, 60 ) );
+X	subRound( E, A, B, C, D, f4, K4, expand( eData, 61 ) );
+X	subRound( D, E, A, B, C, f4, K4, expand( eData, 62 ) );
+X	subRound( C, D, E, A, B, f4, K4, expand( eData, 63 ) );
+X	subRound( B, C, D, E, A, f4, K4, expand( eData, 64 ) );
+X	subRound( A, B, C, D, E, f4, K4, expand( eData, 65 ) );
+X	subRound( E, A, B, C, D, f4, K4, expand( eData, 66 ) );
+X	subRound( D, E, A, B, C, f4, K4, expand( eData, 67 ) );
+X	subRound( C, D, E, A, B, f4, K4, expand( eData, 68 ) );
+X	subRound( B, C, D, E, A, f4, K4, expand( eData, 69 ) );
+X	subRound( A, B, C, D, E, f4, K4, expand( eData, 70 ) );
+X	subRound( E, A, B, C, D, f4, K4, expand( eData, 71 ) );
+X	subRound( D, E, A, B, C, f4, K4, expand( eData, 72 ) );
+X	subRound( C, D, E, A, B, f4, K4, expand( eData, 73 ) );
+X	subRound( B, C, D, E, A, f4, K4, expand( eData, 74 ) );
+X	subRound( A, B, C, D, E, f4, K4, expand( eData, 75 ) );
+X	subRound( E, A, B, C, D, f4, K4, expand( eData, 76 ) );
+X	subRound( D, E, A, B, C, f4, K4, expand( eData, 77 ) );
+X	subRound( C, D, E, A, B, f4, K4, expand( eData, 78 ) );
+X	subRound( B, C, D, E, A, f4, K4, expand( eData, 79 ) );
+X
+X	/* Build message digest */
+X	digest[ 0 ] += A;
+X	digest[ 1 ] += B;
+X	digest[ 2 ] += C;
+X	digest[ 3 ] += D;
+X	digest[ 4 ] += E;
+X	}
+#else
+X  void SHSTransform( LONG *digest, LONG *data );
+#endif /* !ASM_SHS */
+X
+#if 0
+X
+/* When run on a little-endian CPU we need to perform byte reversal on an
+X   array of longwords.  It is possible to make the code endianness-
+X   independant by fiddling around with data at the byte level, but this
+X   makes for very slow code, so we rely on the user to sort out endianness
+X   at compile time */
+X
+#if defined( LITTLE_ENDIAN )
+X
+void longReverse( LONG *buffer, int byteCount )
+X	{
+X	LONG value;
+X
+X	byteCount /= sizeof( LONG );
+X	while( byteCount-- )
+X		{
+X		value = *buffer;
+X		value = ( ( value & 0xFF00FF00L ) >> 8  ) | \
+X				( ( value & 0x00FF00FFL ) << 8 );
+X		*buffer++ = ( value << 16 ) | ( value >> 16 );
+X		}
+X	}
+#else
+X  #define longReverse(buf, count)
+#endif /* LITTLE_ENDIAN */
+X
+#endif /* 0 */
+X
+/* Update SHS for a block of data */
+X
+void shsUpdate( SHS_INFO *shsInfo, BYTE *buffer, int count )
+X	{
+X	LONG tmp;
+X	int dataCount;
+X
+X	/* Update bitcount */
+X	tmp = shsInfo->countLo;
+X	if ( ( shsInfo->countLo = tmp + ( ( LONG ) count << 3 ) ) < tmp )
+X		shsInfo->countHi++;				/* Carry from low to high */
+X	shsInfo->countHi += count >> 29;
+X
+X	/* Get count of bytes already in data */
+X	dataCount = ( int ) ( tmp >> 3 ) & 0x3F;
+X
+X	/* Handle any leading odd-sized chunks */
+X	if( dataCount )
+X		{
+X		BYTE *p = ( BYTE * ) shsInfo->data + dataCount;
+X
+X		dataCount = SHS_DATASIZE - dataCount;
+X		if( count < dataCount )
+X			{
+X			memcpy( p, buffer, count );
+X			return;
+X			}
+X		memcpy( p, buffer, dataCount );
+X		longReverse( shsInfo->data, SHS_DATASIZE );
+X		SHSTransform( shsInfo->digest, shsInfo->data );
+X		buffer += dataCount;
+X		count -= dataCount;
+X		}
+X
+X	/* Process data in SHS_DATASIZE chunks */
+X	while( count >= SHS_DATASIZE )
+X		{
+X		memcpy( shsInfo->data, buffer, SHS_DATASIZE );
+X		longReverse( shsInfo->data, SHS_DATASIZE );
+X		SHSTransform( shsInfo->digest, shsInfo->data );
+X		buffer += SHS_DATASIZE;
+X		count -= SHS_DATASIZE;
+X		}
+X
+X	/* Handle any remaining bytes of data. */
+X	memcpy( shsInfo->data, buffer, count );
+X	}
+X
+/* Final wrapup - pad to SHS_DATASIZE-byte boundary with the bit pattern
+X   1 0* (64-bit count of bits processed, MSB-first) */
+X
+void shsFinal( SHS_INFO *shsInfo )
+X	{
+X	int count;
+X	BYTE *dataPtr;
+X
+X	/* Compute number of bytes mod 64 */
+X	count = ( int ) shsInfo->countLo;
+X	count = ( count >> 3 ) & 0x3F;
+X
+X	/* Set the first char of padding to 0x80.  This is safe since there is
+X	   always at least one byte free */
+X	dataPtr = ( BYTE * ) shsInfo->data + count;
+X	*dataPtr++ = 0x80;
+X
+X	/* Bytes of padding needed to make 64 bytes */
+X	count = SHS_DATASIZE - 1 - count;
+X
+X	/* Pad out to 56 mod 64 */
+X	if( count < 8 )
+X		{
+X		/* Two lots of padding:  Pad the first block to 64 bytes */
+X		memset( dataPtr, 0, count );
+X		longReverse( shsInfo->data, SHS_DATASIZE );
+X		SHSTransform( shsInfo->digest, shsInfo->data );
+X
+X		/* Now fill the next block with 56 bytes */
+X		memset( shsInfo->data, 0, SHS_DATASIZE - 8 );
+X		}
+X	else
+X		/* Pad block to 56 bytes */
+X		memset( dataPtr, 0, count - 8 );
+X
+X	/* Append length in bits and transform */
+X	shsInfo->data[ 14 ] = shsInfo->countHi;
+X	shsInfo->data[ 15 ] = shsInfo->countLo;
+X
+X	longReverse( shsInfo->data, SHS_DATASIZE - 8 );
+X	SHSTransform( shsInfo->digest, shsInfo->data );
+X	}
+X
+/****************************************************************************
+*																			*
+* 								SHS Test Code 								*
+*																			*
+****************************************************************************/
+X
+#ifdef TEST_SHS
+X
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+X
+/* Test the SHS implementation */
+X
+#ifdef NEW_SHS
+X
+static LONG shsTestResults[][ 5 ] = {
+X	{ 0xA9993E36L, 0x4706816AL, 0xBA3E2571L, 0x7850C26CL, 0x9CD0D89DL, },
+X	{ 0x84983E44L, 0x1C3BD26EL, 0xBAAE4AA1L, 0xF95129E5L, 0xE54670F1L, },
+X	{ 0x34AA973CL, 0xD4C4DAA4L, 0xF61EEB2BL, 0xDBAD2731L, 0x6534016FL, }
+X	};
+X
+#else
+X
+static LONG shsTestResults[][ 5 ] = {
+X	{ 0x0164B8A9L, 0x14CD2A5EL, 0x74C4F7FFL, 0x082C4D97L, 0xF1EDF880L },
+X	{ 0xD2516EE1L, 0xACFA5BAFL, 0x33DFC1C4L, 0x71E43844L, 0x9EF134C8L },
+X	{ 0x3232AFFAL, 0x48628A26L, 0x653B5AAAL, 0x44541FD9L, 0x0D690603L }
+X	};
+#endif /* NEW_SHS */
+X
+static int compareSHSresults( SHS_INFO *shsInfo, int shsTestLevel )
+X	{
+X	int i;
+X
+X	/* Compare the returned digest and required values */
+X	for( i = 0; i < 5; i++ )
+X		if( shsInfo->digest[ i ] != shsTestResults[ shsTestLevel ][ i ] )
+X			return( ERROR );
+X	return( OK );
+X	}
+X
+void main( void )
+X	{
+X	SHS_INFO shsInfo;
+X	unsigned int i;
+X	time_t secondCount;
+X	BYTE data[ 200 ];
+X
+X	/* Make sure we've got the endianness set right.  If the machine is
+X	   big-endian (up to 64 bits) the following value will be signed,
+X	   otherwise it will be unsigned.  Unfortunately we can't test for odd
+X	   things like middle-endianness without knowing the size of the data
+X	   types */
+#ifdef LITTLE_ENDIAN
+X	if( *( long * ) "\x80\x00\x00\x00\x00\x00\x00\x00" < 0 )
+X		{
+X		puts( "Error: Comment out the LITTLE_ENDIAN define in SHS.H and recompile" );
+X		exit( ERROR );
+X		}
+#else
+X	if( *( long * ) "\x80\x00\x00\x00\x00\x00\x00\x00" >= 0 )
+X		{
+X		puts( "Error: Uncomment the LITTLE_ENDIAN define in SHS.H and recompile" );
+X		exit( ERROR );
+X		}
+#endif /* LITTLE_ENDIAN */
+X
+X	/* Test SHS against values given in SHS standards document */
+X	printf( "Running SHS test 1 ... " );
+X	shsInit( &shsInfo );
+X	shsUpdate( &shsInfo, ( BYTE * ) "abc", 3 );
+X	shsFinal( &shsInfo );
+X	if( compareSHSresults( &shsInfo, 0 ) == ERROR )
+X		{
+X		putchar( '\n' );
+X		puts( "SHS test 1 failed" );
+X		exit( ERROR );
+X		}
+#ifdef NEW_SHS
+X	puts( "passed, result= A9993E364706816ABA3E25717850C26C9CD0D89D" );
+#else
+X	puts( "passed, result= 0164B8A914CD2A5E74C4F7FF082C4D97F1EDF880" );
+#endif /* NEW_SHS */
+X
+X	printf( "Running SHS test 2 ... " );
+X	shsInit( &shsInfo );
+X	shsUpdate( &shsInfo, ( BYTE * ) "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", 56 );
+X	shsFinal( &shsInfo );
+X	if( compareSHSresults( &shsInfo, 1 ) == ERROR )
+X		{
+X		putchar( '\n' );
+X		puts( "SHS test 2 failed" );
+X		exit( ERROR );
+X		}
+#ifdef NEW_SHS
+X	puts( "passed, result= 84983E441C3BD26EBAAE4AA1F95129E5E54670F1" );
+#else
+X	puts( "passed, result= D2516EE1ACFA5BAF33DFC1C471E438449EF134C8" );
+#endif /* NEW_SHS */
+X
+X	printf( "Running SHS test 3 ... " );
+X	shsInit( &shsInfo );
+X	for( i = 0; i < 15625; i++ )
+X		shsUpdate( &shsInfo, ( BYTE * ) "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", 64 );
+X	shsFinal( &shsInfo );
+X	if( compareSHSresults( &shsInfo, 2 ) == ERROR )
+X		{
+X		putchar( '\n' );
+X		puts( "SHS test 3 failed" );
+X		exit( ERROR );
+X		}
+#ifdef NEW_SHS
+X	puts( "passed, result= 34AA973CD4C4DAA4F61EEB2BDBAD27316534016F" );
+#else
+X	puts( "passed, result= 3232AFFA48628A26653B5AAA44541FD90D690603" );
+#endif /* NEW_SHS */
+X
+X	printf( "\nTesting speed for 10MB data... " );
+X	shsInit( &shsInfo );
+X	secondCount = time( NULL );
+X	for( i = 0; i < 50000U; i++ )
+X		shsUpdate( &shsInfo, data, 200 );
+X	secondCount = time( NULL ) - secondCount;
+X	printf( "done.  Time = %ld seconds, %ld kbytes/second\n", \
+X			secondCount, 10050L / secondCount );
+X
+X	puts( "\nAll SHS tests passed" );
+X	exit( OK );
+X	}
+#endif /* TEST_SHS */
+SHAR_EOF
+chmod 0600 crypt/shs.c ||
+echo 'restore of crypt/shs.c failed'
+Wc_c="`wc -c < 'crypt/shs.c'`"
+test 15348 -eq "$Wc_c" ||
+	echo 'crypt/shs.c: original size 15348, current size' "$Wc_c"
+fi
+# ============= crypt/shs.h ==============
+if test -f 'crypt/shs.h' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/shs.h (File already exists)'
+else
+echo 'x - extracting crypt/shs.h (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/shs.h' &&
+#ifndef _SHS_DEFINED
+X
+#define _SHS_DEFINED
+X
+/* Define the following to compile the SHS test code */
+X
+/*#define TEST_SHS			/**/
+X
+/* Define the following to use the updated SHS implementation */
+X
+/*#define NEW_SHS			/**/
+X
+#if 0
+X
+/* Determine the endianness if need be.  Thanks to Shawn Clifford
+X   <sysop@robot.nuceng.ufl.edu> for this trick */
+X
+#if !defined( LITTLE_ENDIAN ) && !defined( BIG_ENDIAN )
+X	#if ( ( ( unsigned short ) ( 'AB' ) >> 8 ) == 'B' )
+X		#define LITTLE_ENDIAN
+X	#elif ( ( ( unsigned short ) ( 'AB' ) >> 8 ) == 'A' )
+X		#define BIG_ENDIAN
+X	#else
+X		#error Cannot determine processor endianness - edit shs.h and recompile
+X	#endif /* Endianness test */
+#endif /* !( LITTLE_ENDIAN || BIG_ENDIAN ) */
+#endif /* 0 */
+X
+/* The SHS block size and message digest sizes, in bytes */
+X
+#define SHS_DATASIZE	64
+#define SHS_DIGESTSIZE	20
+X
+/* The structure for storing SHS info */
+X
+typedef struct {
+X			   LONG digest[ 5 ];			/* Message digest */
+X			   LONG countLo, countHi;		/* 64-bit bit count */
+X			   LONG data[ 16 ];				/* SHS data buffer */
+X			   } SHS_INFO;
+X
+/* Message digest functions */
+X
+void shsInit( SHS_INFO *shsInfo );
+void shsUpdate( SHS_INFO *shsInfo, BYTE *buffer, int count );
+void shsFinal( SHS_INFO *shsInfo );
+X
+#endif /* _SHS_DEFINED */
+SHAR_EOF
+chmod 0600 crypt/shs.h ||
+echo 'restore of crypt/shs.h failed'
+Wc_c="`wc -c < 'crypt/shs.h'`"
+test 1256 -eq "$Wc_c" ||
+	echo 'crypt/shs.h: original size 1256, current size' "$Wc_c"
+fi
+# ============= crypt/test.c ==============
+if test -f 'crypt/test.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping crypt/test.c (File already exists)'
+else
+echo 'x - extracting crypt/test.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'crypt/test.c' &&
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "crypt.h"
+X
+/* The size of the test buffers */
+X
+#define TESTBUFFER_SIZE		256
+X
+/* Work routines: Set a pair of encrypt/decrypt buffers to a known state,
+X   and make sure they're still in that known state */
+X
+static void initTestBuffers( BYTE *buffer1, BYTE *buffer2 )
+X	{
+X	/* Set the buffers to a known state */
+X	memset( buffer1, '*', TESTBUFFER_SIZE );
+X	memcpy( buffer1, "1234", 4 );		/* For endianness check */
+X	memcpy( buffer2, buffer1, TESTBUFFER_SIZE );
+X	}
+X
+static void checkTestBuffers( BYTE *buffer1, BYTE *buffer2 )
+X	{
+X	/* Make sure everything went OK */
+X	if( memcmp( buffer1, buffer2, TESTBUFFER_SIZE ) )
+X		{
+X		puts( "Warning: Decrypted data != original plaintext." );
+X
+X		/* Try and guess at endianness problems - we want "1234" */
+X		if( !memcmp( buffer1, "4321", 4 ) )
+X			puts( "\t It looks like the 32-bit word endianness is reversed." );
+X		else
+X			if( !memcmp( buffer1, "2143", 4 ) )
+X				puts( "\t It looks like the 16-bit word endianness is "
+X					  "reversed." );
+X		else
+X			if( buffer1[ 0 ] >= '1' && buffer1[ 0 ] <= '9' )
+X				puts( "\t It looks like there's some sort of endianness "
+X					  "problem which is more complex than just a reversal." );
+X			else
+X				puts( "\t It's probably more than just and endianness "
+X					  "problem." );
+X		}
+X	}
+X
+/* Report information on the encryption algorithm */
+X
+static void reportAlgorithmInformation( char *algorithmName,
+X										CRYPT_QUERY_INFO *cryptQueryInfo )
+X	{
+X	char speedFactor[ 50 ];
+X
+X	/* Determine the speed factor relative to a block copy */
+X	if( cryptQueryInfo->speed == CRYPT_ERROR )
+X		strcpy( speedFactor, "unknown speed factor" );
+X	else
+X		sprintf( speedFactor, "0.%03d times the speed of a block copy",
+X				 cryptQueryInfo->speed );
+X
+X	printf( "%s algorithm is available with\n"
+X				"  name `%s', block size %d bits, %s,\n"
+X				"  min key size %d bits, recommended key size %d bits, "
+X					"max key size %d bits,\n"
+X				"  min IV size %d bits, recommended IV size %d bits, "
+X					"max IV size %d bits.\n",
+X				algorithmName, cryptQueryInfo->algoName,
+X				bytesToBits( cryptQueryInfo->blockSize ), speedFactor,
+X				bytesToBits( cryptQueryInfo->minKeySize ),
+X				bytesToBits( cryptQueryInfo->keySize ),
+X				bytesToBits( cryptQueryInfo->maxKeySize ),
+X				bytesToBits( cryptQueryInfo->minIVsize ),
+X				bytesToBits( cryptQueryInfo->ivSize ),
+X				bytesToBits( cryptQueryInfo->maxIVsize ) );
+X	}
+X
+/* Perform a test en/decryption */
+X
+static void testCrypt( CRYPT_INFO *cryptInfo, CRYPT_INFO *decryptInfo,
+X					   BYTE *buffer )
+X	{
+X	CRYPT_QUERY_INFO cryptQueryInfo;
+X	BYTE iv[ 100 ];
+X	int status;
+X
+X	/* Encrypt the buffer in two odd-sized chunks */
+X	status = encryptBuffer( cryptInfo, buffer, 79 );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't encrypt data: Code %d.\n", status );
+X	status = encryptBuffer( cryptInfo, buffer + 79, TESTBUFFER_SIZE - 79 );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't encrypt data: Code %d.\n", status );
+X	status = encryptBuffer( cryptInfo, buffer + TESTBUFFER_SIZE, 0 );
+X
+X	/* Copy the IV from the encryption to the decryption context */
+X	queryContextInformation( cryptInfo, &cryptQueryInfo );
+X	status = retrieveIV( cryptInfo, iv );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't retrieve IV after encryption: Code %d.\n", status );
+X	status = loadIV( decryptInfo, iv, cryptQueryInfo.ivSize );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't load IV for decryption: Code %d.\n", status );
+X
+X	/* Decrypt the buffer in different odd-size chunks */
+X	status = decryptBuffer( decryptInfo, buffer, 125 );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't decrypt data: Code %d.\n", status );
+X	status = decryptBuffer( decryptInfo, buffer + 125, TESTBUFFER_SIZE - 125 );
+X	if( isStatusError( status ) )
+X		printf( "Couldn't decrypt data: Code %d.\n", status );
+X	}
+X
+/* Sample code to test the MDC/SHS implementation.  This code uses MDC/SHS,
+X   but can be adapted for any algorithm or mode by changing the setting of
+X   CRYPT_ALGO and CRYPT_MODE */
+X
+static int testMDCSHS( void )
+X	{
+X	BYTE buffer[ TESTBUFFER_SIZE ], testBuffer[ TESTBUFFER_SIZE ];
+X	CRYPT_INFO cryptInfo, decryptInfo;
+X	CRYPT_INFO_MDCSHS cryptInfoEx;
+X	CRYPT_QUERY_INFO cryptQueryInfo;
+X	CRYPT_ALGO cryptAlgo = CRYPT_ALGO_MDCSHS;
+X	CRYPT_MODE cryptMode = CRYPT_MODE_CFB;
+X	int status;
+X
+X	/* Initialise the test buffers */
+X	initTestBuffers( buffer, testBuffer );
+X
+X	/* Check the capabilities of the library */
+X	status = queryAlgoAvailability( cryptAlgo );
+X	printf( "queryAlgoAvailability() reports " );
+X	if( isStatusOK( status ) )
+X		puts( "MDC/SHS is available" );
+X	else
+X		{
+X		printf( "MDC/SHS is not available: Code %d.\n", status );
+X		return( FALSE );
+X		}
+X	status = queryModeAvailability( cryptAlgo, cryptMode );
+X	printf( "queryModeAvailability() reports " );
+X	if( isStatusOK( status ) )
+X		puts( "MDC/SHS-CFB is available" );
+X	else
+X		{
+X		printf( "MDC/SHS-CFB is not available: Code %d.\n", status );
+X		return( FALSE );
+X		}
+X	status = queryAlgoModeInformation( cryptAlgo, cryptMode, &cryptQueryInfo );
+X	printf( "queryModeAvailability() reports " );
+X	if( isStatusOK( status ) )
+X		reportAlgorithmInformation( "MDC/SHS-CFB", &cryptQueryInfo );
+X	else
+X		{
+X		printf( "no information available on MDC/SHS algorithm: Code %d.\n",
+X				status );
+X		return( FALSE );
+X		}
+X
+X	/* Set up an encryption context, load a user key into it, and perform a
+X	   key setup.   We use an extended setup with reduced iteration count for
+X	   people who have to run this thing 2000 times while debugging */
+X	cryptInfoEx.keySetupIterations = 10;
+X	status = initCryptContextEx( &cryptInfo, cryptAlgo, cryptMode,
+X								 &cryptInfoEx );
+X	if( isStatusError( status ) )
+X		{
+X		printf( "initCryptContext(): Failed with error code %d.\n", status );
+X		return( FALSE );
+X		}
+X	status = loadCryptContext( &cryptInfo, "Test key", 8 );
+X	if( isStatusError( status ) )
+X		{
+X		printf( "loadCryptContext(): Failed with error code %d.\n", status );
+X		return( FALSE );
+X		}
+X
+X	/* Create another crypt context for decryption.  The error checking here
+X	   is a bit less picky to save space */
+X	cryptInfoEx.keySetupIterations = 10;
+X	initCryptContextEx( &decryptInfo, cryptAlgo, cryptMode, &cryptInfoEx );
+X	status = loadCryptContext( &decryptInfo, "Test key", 8 );
+X	if( isStatusError( status ) )
+X		{
+X		printf( "loadCryptContext(): Failed with error code %d.\n", status );
+X		return( FALSE );
+X		}
+X
+X	/* Perform a test en/decryption */
+X	testCrypt( &cryptInfo, &decryptInfo, buffer );
+X
+X	/* Make sure everything went OK */
+X	checkTestBuffers( buffer, testBuffer );
+X
+X	/* Destroy the encryption contexts */
+X	status = destroyCryptContext( &cryptInfo );
+X	if( isStatusError( status ) )
+X		{
+X		printf( "destroyCryptContext(): Failed with error code %d.\n", status );
+X		return( FALSE );
+X		}
+X	status = destroyCryptContext( &decryptInfo );
+X	if( isStatusError( status ) )
+X		{
+X		printf( "destroyCryptContext(): Failed with error code %d.\n", status );
+X		return( FALSE );
+X		}
+X
+X	return( TRUE );
+X	}
+X
+/* Exercise various aspects of the encryption library */
+X
+void main( void )
+X	{
+X	int status;
+X
+X	/* Initialise the library */
+X	status = initLibrary();
+X	if( isStatusError( status ) )
+X		{
+X		printf( "Couldn't init library, code %d.\n", status );
+X		exit( 0 );
+X		}
+X
+X	/* Test the encryption routines contained in the library */
+X	if( !testMDCSHS() )
+X		{
+X		puts( "Tests aborted due to encryption library error." );
+X		exit( 0 );
+X		}
+X
+X	/* Shut down the library */
+X	status = endLibrary();
+X	if( isStatusError( status ) )
+X		{
+X		printf( "endLibrary(): Failed with error code %d.\n", status );
+X		exit( 0 );
+X		}
+X	}
+SHAR_EOF
+chmod 0600 crypt/test.c ||
+echo 'restore of crypt/test.c failed'
+Wc_c="`wc -c < 'crypt/test.c'`"
+test 7532 -eq "$Wc_c" ||
+	echo 'crypt/test.c: original size 7532, current size' "$Wc_c"
+fi
+exit 0
+

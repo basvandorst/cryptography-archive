@@ -1,0 +1,1 @@
+#define WINVN_VERSION "WinVN 0.92.6"

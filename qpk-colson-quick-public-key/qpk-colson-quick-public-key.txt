@@ -1,0 +1,194 @@
+From msuinfo!uwm.edu!hookup!news.duke.edu!news-feed-1.peachnet.edu!gatech!swrinde!pipex!uunet!sparky!paganini.sydney.sterling.com!paganini.sydney.sterling.com!not-for-mail Tue Nov 15 21:45:28 1994
+Path: msuinfo!uwm.edu!hookup!news.duke.edu!news-feed-1.peachnet.edu!gatech!swrinde!pipex!uunet!sparky!paganini.sydney.sterling.com!paganini.sydney.sterling.com!not-for-mail
+From: DAVIDCOLSTON@delphi.com
+Newsgroups: sci.crypt.research
+Subject: QPK - Quick Public Key
+Followup-To: sci.crypt.research
+Date: 16 Nov 1994 13:06:48 +1100
+Organization: Delphi Internet Services Corporation
+Lines: 178
+Sender: ggr@sydney.sterling.com
+Approved: Greg_Rose@sydney.sterling.com (sci.crypt.research co-mod)
+Distribution: world
+Message-ID: <3abpfo$11hf@paganini.sydney.sterling.com>
+NNTP-Posting-Host: paganini.sydney.sterling.com
+
+
+Quoting berliner from a message in talk.politics.crypto
+   > I hope you will consider posting a description of some
+   > of the technical details of your voice encryption system
+   > to sci.crypt. Many people would probably take an interest
+   > in hearing about a working system for voice encryption
+   > there, as there has already been much discussion there
+   > on how best to go about implementing such a thing.
+   > Guy Berliner
+
+
+Let's start with the public key stuff.
+As a preamble to this, I'd like to note why and how it was
+developed. After the first release of PGP, Phil told me he was
+worried about using RSA. I offered to come up with another scheme
+and originally designed a version of Rabin.
+
+Nothing was ever done with that proposal. A year latter, 2.0 PGP
+was due to be released and I came up with the current public key
+system. Again, Phil ignored it. Posts on sci.crypt were totally
+ignored by anyone with the ability to judge the math. Phil was
+then approached by the customs folks and I recieved a call from
+him in December of last year. By that time I was tired of waiting
+around for Phil and had coded QPK (Quick Public Key) in PDS 7.1.
+That languished till Charlie and I decided to do Voice.
+
+
+   FOR THE MATHEMATICALLY ORIENTED - HOW A QUICK PUBLIC KEY WORKS.
+
+Math notation:
++                 plus
+-                 minus
++-                plus or minus
+*                 multiplication
+/                 division
+^                 exponent
+<>                unequal
+=                 equals
+==                congruent
+<                 less than
+>                 greater than
+INT               truncated integer round
+SQR               square root
+(                 open expression
+)                 close expression
+x^-1  modulo p    the multiplicative inverse of x in the field of p
+x... y            the range of values
+N                 a number equal to P times Q, where P and Q are prime
+
+Variables in capital letters are permanent and those in small letters
+are temporary.
+
+                              BACKGROUND
+
+Because the "secret key" function of many public keys  methods are so
+slow, most cryptographers use these functions only to "boot strap"
+into a conventional key system, which is faster to send the actual
+message. Most of the conventional key systems use comparatively small
+numbers in relation to the size of the public N as a "random seed
+number". The holder of the secret key may actually have a larger
+amount of computer time to decipher the starting point of the
+conventional algorithm than to decipher the actual message. It would
+seem to be a good idea, if a public key function could take advantage
+of the actual message size required to speed up the public key
+process. The range of message sizes is described below, but generally
+speaking we a discussing messages less than SQR(Q) in actual size.
+
+Imagine a series of related equations modulo a prime, P. These
+equations have the formula ((e * e + e)/2 * L + C) modulo P. The
+value, C, is a constant determined by the rule (L - 1) * (1 / (2 * L))
+modulo P == C. For L = 1, C = 0. Therefore, if L is known, the
+expression ((e * e + e)/2) modulo P may be determined, even if e is
+unknown.
+
+Each value of L has an area or series of areas, in which the value of
+e becomes discoverable, WITHOUT resorting to a modular square root.
+ie. Let r == ((e * e + e)/2 * L + C) modulo P. If e is in the correct
+range relative to L, then (r * L * 8 + (L - 2) * (L - 2)) will have an
+integer square root and the value, e, may be determined with ease. The
+range of values of e, for any value of L, which have this property and
+the location of those values vary greatly. The following illustrates a
+public key approach for L = 12, but other values of L may also be
+used. Perhaps I should also note that the particular L, which a secret
+key holder uses need not be public knowledge, but is not all that
+sensitive.
+
+       ESTABLISHING A QUICK PUBLIC KEY (Q.P.K.) BASED ON L = 12
+
+A person wishing to receive public messages, which he/she alone can
+decrypt calculates N = P * Q. Where P and Q are a randomly selected
+prime numbers, Q being the larger.
+
+A == (11 * 24^-1 ) modulo Q
+B == (2 * A) modulo Q
+D = Q - B
+If D > (Q - 1)/2 then set D = Q - D - 1.
+F = (Q - 1)/2 - D
+
+Let Y1 ... Y2 be a range of numbers with in the limits:
+(D - k) and (D + k), where k = INT(SQR(2 * Q / 12)).  Y1 may be
+randomly selected from any point in this range, but Y2 may not be
+larger than (D + k), and Y2 - Y1 is the maximum message size.
+
+A message range for N, public information, is then created by using
+Chinese remainder theorem to find the modular intersection Q == Y1
+and P == x, x being a random number in the range x > 0, x < P.
+This intersection is called S. A check is made to verify the
+following:
+
+A' = (11 * 24^-1) modulo N
+B' == (2 * A') modulo N
+D' = N - B'
+If D' > (N - 1)/2 then Set D' = N - D' - 1
+NOTE: P, Q, D, F, Y1, Y2, k, A, AND B are secret values.
+
+                          Q.P.K. ENCRYPTION
+
+A public key for short messages consists of S and N.
+
+To send a Message the sender calculates:
+e = (S + Message)
+((e * e + e)/2) modulo N == Cipher
+
+                          Q.P.K. DECRYPTION
+
+t ==  Cipher modulo Q
+f == (t * 12 + A) modulo Q
+g = SQR(f * 8 * 12 + 100)
+
+NOTE: If g is NOT an integer value, the message is rejected as
+      invalid. If g modulo (2 * L) <> (L - 2) then Q is repetitively
+      added to g until g modulo (2 * L) == (L - 2).
+
+z = (g - 10)/24
+e == ((B - 1) + z) modulo Q
+If e > (Q - 1)/2 then set e = (Q - 1) - e.
+Message = e - Y1
+
+For other values of L:
+A == ((L - 1) * 2^-1* L^-1)) modulo Q
+k = INT(SQR(2 * Q / L))
+NOTE: If L = 1 then D = 0 and the message range is 1... k.
+      If L = 2 then the message range is D... (Q - 1)/2 and these
+      values modulo Q are already perfect squares < Q.
+f == (t * L + A) modulo Q
+g = SQR(f * 8 * L + (L - 2) ^ 2)
+z = (g - (L - 2)/(L * 2))
+
+
+
+If you are confused by all of this, then I will try to make it simple.
+Your PC know the secret key (Both P and Q). By limiting message sizes
+and using a small cheat adder, which is a public constant, you can do
+a secret key decrypt of the message very quickly. On my 386-16 the actual
+decrypt time is measured in tenths of a second. This is very desireable
+in the telephone connect situation. You don't want to wait any great length
+of time before starting a conversation. You might be calling long
+distance<G>. Since the person you are talking to is encrypted live and real
+time, so to speak, why wait to talk!
+
+
+
+I am very sure than the notes above are a bit fuzzy,and may even have a mistake
+or two, so I will be happy to answer questions.
+
+One more note:
+Remember, Call Security 1.0 is just that, a 1.0 version. If there is interest
+and a next revision, then there are MANY improvements that can be included
+in the program.
+
+
+David Colston
+'Uncle Dave'
+
+Eliminate government waste no matter how much it costs.
+
+Rainbow V 1.08 for Delphi - Registered
+
+

@@ -1,0 +1,1307 @@
+\input texinfo   @c -*-texinfo-*-
+@setfilename Qshell.info
+@settitle A Programming-Language Shell
+@setchapternewpage odd
+
+@ifinfo
+@node Top, Abstract, (dir), (dir)
+
+@menu
+* Abstract::			
+* Shell-paper::			A Programming-Language Shell
+
+ --- The Detailed Node Listing ---
+
+A Programming-Language Shell
+
+* Introduction::		
+* Related work::		
+* Programming language::	A Programming Language
+* Internal structure::		
+* Evaluation::			Evaluated vs. unevaluated args.
+* Writing macros::		Primitives useful for writing macros
+* Regular expressions::		
+* Pathnames::			File and Directory Objects
+* Commands::			
+* Pipeline implementation::	Pipeline implementation
+* Control::			
+* Future work::			
+* Summary::			
+@end menu
+
+@end ifinfo
+
+@node Abstract, Shell-paper, Top, Top
+@unnumbered Abstract
+
+Modern high-level programming languages provide multiple
+data types (such as numbers, strings, and lists), as well as
+first-class function values.  Most utility languages
+(awk, perl, tcl) and most shells only have one (or a few) data
+types (strings), but they are very convenient for
+manipulating text or invoking programs.
+This paper discusses the issues involved in
+getting the best of both worlds, in the context
+of the Q programming language.
+
+For example, executing a program has the same syntax
+as a function call, a pipe is function composition,
+and a disk file just a persistent string.
+Similarly, a disk file just a persistent string.
+These goals have implications for the syntax and the
+control structure of the programming language.
+
+@node Shell-paper,  , Abstract, Top
+@chapter A Programming-Language Shell
+
+By Per Bothner
+
+@ifinfo
+@menu
+* Introduction::		
+* Related work::		
+* Programming language::	A Programming Language
+* Internal structure::		
+* Evaluation::			Evaluated vs. unevaluated args.
+* Writing macros::		Primitives useful for writing macros
+* Regular expressions::		
+* Pathnames::			File and Directory Objects
+* Commands::			
+* Pipeline implementation::	Pipeline implementation
+* Control::			
+* Future work::			
+* Summary::			
+@end menu
+@end ifinfo
+
+@node Introduction, Related work, Shell-paper, Shell-paper
+@section Introduction
+
+First we will contrast programming languages
+with command and utility languages.  The next section
+will discuss some previous attempts to bridge the gap.
+The most important difference is in the supported data types.
+Programming languages normally support many data-types,
+including user-defined ones.
+There are ways to group data objects together into
+arrays, lists, and structures.  Command languages have
+just a few data types, sometimes only strings.
+On the other hand, very high-level data types
+(associative tables, files, programs) may be supported,
+but, their treatment may be ad hoc and lacking in orthogonality.
+
+Modern functional languages support first-class functions,
+and lexical scoping.  Only a few Lisp-based command-languages do.
+Programming languages do a fair amount of syntax checking
+and "compilation" before evaluation; command languages
+are completely interpretive, which limits their efficiency.
+It also delays all error checking to run-time, making
+debugging harder.  Command languages
+are usually interactive, programming languages are
+generally batch-oriented.  Programming languages
+evaluate the arguments to a function, while command
+languages (at least shells) pass the parameters unevaluated.
+Command languages are designed for writability,
+and have a terse syntax; most programming languages
+are less terse, and more readable.
+
+The remainder of this paper discusses these issues
+in more detail, and specifically how Q makes these tradeoffs.
+But first we will look at other languages that bridge
+the gap between command and programming languages.
+
+@node Related work, Programming language, Introduction, Shell-paper
+@section Related work
+
+A number of small Scheme and Lisp implementations
+have been designed for embedding into
+applications, to allow the latter to be conveniently
+programmable and customizable:
+xlisp, xscheme, elk, Scheme->C, and GNU emacs Lisp (which
+is hardly small...).  One problem with Lisp is that
+the syntax is somewhat clumsy for interactive
+use (though many would disagree).  Also, Lisp is
+rather low-level for a shell.
+
+Tcl has similar uses
+[John Ousterhout:
+"Tcl: An Embeddable Command Language",
+Proc. USENIX Winter Conference, January 1990, 133-146].
+It takes a very minimalist approach: The only data type is string.
+This is enough for an embedded command language, but would be
+unsuitable for non-trivial programs. 
+Python [Guido van Rossum, Amsterdam] is also designed for embedded
+uses.  It has a more sophisticated syntax and data types than Tcl.
+However, Python is very procedural (statement-oriented),
+and does not seem suitable as a shell.
+
+EZ assumes a self-contained environment and is not well integrated
+into Unix. Also, the syntax could be terser.
+[Christopher Fraser and David R Hanson:
+A High-Level Programming and Command Language.
+Sigplan Notices XVIII(6) p. 212-219, June 1983.]
+
+Q shares many of the goals of APL-derivatives like J.
+[Roger Hui, Kenneth Iverson, E. McDonnel and Arthur Whitney:
+APL\?
+APL90 Conference Proceedings, APL Quote Quad XX(4), 192-200, July 1990.]
+Both are intended as very high-level languages,
+to improve the productivity of programmers and users.
+Both use powerful builtins that work on first-class function
+and builtin data types (arrays in J, sequences in Q).
+But while J has a less idiosyncratic character set than APL,
+it is still designed to be used in its own little universe,
+and is not well-integrated into the Unix universe of programs and files.
+
+Perl (by Larry Wall) is a popular utility language.
+However, the shell support is rather low level.
+Worse, the language is essentially a collection
+of useful features without an overall design.
+
+
+@node Programming language, Internal structure, Related work, Shell-paper
+@section A Programming Language
+
+Q is an interactive programming language
+in the tradition of Lisp and APL:
+@example
+Q1> 3+4  # This is a comment
+7
+@end example
+The interactive prompt @code{Q1> } is used
+to indicate user input; the next line is the output.
+
+Alternatively:
+@example
+3+4 ==> 7
+@end example
+means that @code{3+4} evaluates to @code{7}.
+
+Q has APL-like features for manipulating arrays:
+@example
+(1 upto 4) + [40 30 20 10]
+==> [41 32 23 14]
+@end example
+(@code{[]} is used to construct one-dimensional arrays.)
+Q is based on one-dimensional sequences,
+in contrast to APL's multi-dimensional arrays.
+(Arrays are viewed as nested sequences.)
+
+A colon before an identifier indicates a declaration:
+@example
+Q3> :a=[10 20]
+Q4> a+a
+20 40
+@end example
+In @code{Q3}, @code{a} is declared as a new variable.
+Note that the @code{=} is not assignment, it is unification
+(bi-directional pattern matching, as in logic programming):
+@example
+Q5> [:x :y] = a
+Q6> sprintf "x is %s, y is %s.\n" x y
+x is 10, y is 20.
+@end example
+The builtin function @code{sprintf} is similar
+to the C function (except that its arguments are
+dynamically typed, and the output is to a dynamically
+allocated string); @code{printf} writes to a file.
+Either supports many of the features
+of Common Lisp's @code{format}.
+
+String literals can contain C-style escapes (such as @code{\n}).
+They can also contain an expression following a @code{$},
+which cancels one level of quotation.
+If @code{a} has the value @code{"5"} then
+@code{"$(3+a)"} evaluates to the string @code{"8"}.
+
+@subsection Functions
+
+Function definitions look like the following:
+@example
+Q7> :(Factorial :x) = if x=0 => 1 || x * (Factorial x-1)
+Q8> 2 / Factorial 20
+1/1216451004088320000
+@end example
+Here, @code{if @var{cond} => @var{alt1} || @var{alt2}}
+is Q's if-then-else syntax.
+
+@comment different
+Note that no parentheses or commas are needed for a function call.
+Such delimiters are inconvenient for interactive use.
+
+@subsection White space
+
+@comment different
+Q uses spaces to avoid parentheses.
+All of the operations within one word are done before the others:
+@example
+3+10*10 ==> 103
+3+10 * 10 ==> 130
+3 + 10*10 ==> 103
+@end example
+Using spaces improves terseness, and is easier to scan visually
+than parentheses.  It is also consistent with the way a shell
+splits a command into words before evaluation.
+(You can still use parentheses for grouping if you want or need to.)
+
+New-lines separate "statements" (which are
+just expressions).  A new-line is equivalent with @samp{;}.
+Requiring an explicit statement terminator would be clumsy
+and error-prone in an interactive language.
+
+Q also uses indentation to express control structure,
+like Python and Haskell's "off-side" rule.
+
+@node Internal structure, Evaluation, Programming language, Shell-paper
+@section Internal structure
+
+@comment different
+Though dynamic scoping has its uses, static scoping
+is generally preferred in functional languages, because
+it permits natural definition of first-class operators,
+and because it is easier to compile efficient code.
+
+Lexical scoping means that name binding
+and deciding if closures are needed must be done before
+evaluation.  Because we want to support mutual recursion
+without forward declarations, this step must be a
+separate pass, after parsing and before evaluation.
+This pass, which we call the name binding pass,
+is also when macro expansion is done.
+
+@ignore
+In interactive mode, we get the following structure:
+
+@comment missing
+@enumerate
+@item
+Read, tokenize, and parse one input line.
+@item
+Do name binding. Optionally do optimizations.
+@item
+Evaluate and print result.
+@item
+Repeat at 1.
+@end enumerate
+
+Loading in a whole source file follows the same steps,
+except that the entire file is parsed at once.
+Then name binding and optimization is done on the entire result.
+
+Note that that full parsing (yielding an expression tree)
+is done before evaluation.  This yields better efficiency
+than representing programs as text.
+
+A file can be compiled into C++.  A somewhat unusual model
+is used:  The entire file is parsed, optimized, @emph{and}
+evaluated.  The result is a module:  A mapping from names
+to objects.  Some of the objects are functions.
+Then the module is "dumped:"  A C++ program is written
+that will re-create the module.  Compiling a top level-form
+in other languages (such as Lisp or C++), the compiler
+generates code to evaluate the form at load time.
+In the Q model, the top-level form is evaluated at
+compile time; usually the result is used to initialize
+some global variable.  The compiled output contains
+code to initialize the global variable from the
+result of the expression, but the expression itself is
+not evaluated at load time.
+
+The compiler writes out modules that may contain interlinked
+data (and functions).  The modules is loaded in using static or
+dynamic linking.  The result is a semi-automatic "poor man's
+persistent object" scheme.
+@end ignore
+
+@node Evaluation, Writing macros, Internal structure, Shell-paper
+@section Argument evaluation
+
+Parameters in traditional programming languages
+are evaluated before the call:
+If the variable @code{a} has the value 10, then
+@example
+print a
+@end example
+would print @code{10}.
+
+Shells (and Tcl) put implicit quotes around the arguments,,
+and you have to use an evaluate operator to undo the quoting.
+For example the operand @code{xx$(a)yy} is implicitly translated
+into @code{(string_concat "xx" a "yy")}.
+
+Implicit quoting is convenient when most arguments
+are constants, as in interactive use.
+Consider the alternative:
+@example
+mv "-i" "foo.c" "foo.c.old"
+@end example
+
+One the other, implicit quoting is clumsy when there are
+other data types in addition to strings.
+For example in:
+@example
+abs -10
+@end example
+we want to pass the integer -10 to the @samp{abs} routine,
+not the string "-10".
+
+Q's solution is to provide macros, similar to those in Lisp:
+A macro is a function that is run at compile time
+to transform an expression into a different expression.
+Q provides primitives that makes it convenient to write macros
+in user-oriented terms.  These are discussed next.
+
+@ignore
+Thus we can define "mv" as a macro that when given:
+@example
+mv -i foo.c foo.c.old
+@end example
+translates it to:
+@example
+run_program "mv" ["-i" "foo.c" "foo.c.old"]
+@end example
+
+Using macros is very efficient, since the re-writing
+is done at compile-time.  It is also very flexible:
+A macro can quote some arguments and not others,
+select whether and when file-name globbing is to be done,
+and re-arrange the arguments in arbitrary ways.
+
+There are a number of subtle issues concerning macros.
+First, should macros be evaluated at parse time or name binding time?
+Parse-time macros allow for very extensible syntax, since
+the macro can read ahead and parse according using arbitrary
+syntax.  However, they are rather low-level for typical
+use by users, since they require exposing a lot of the
+parsing machinery (unless there is some higher-level
+sugar-coating) because the macro body must be able to
+construct new expressions.  Furthermore, if there are separate
+parse and bind passes, the parser does not yet know
+if an identifier represents a macro call, since it
+could be defined later in the same routine.
+This becomes especially unacceptable if we allow
+"implicit" macros for Unix commands in the current search
+path, as Q does.
+
+Common Lisp has low-level reader macros that are bound
+to characters, and that are run at parse time, as
+well as higher-level macro functions, bound to
+identifiers, that are run at bind time.
+Q has the same model, though there is currently no
+provision for user-written reader macros.
+
+Most macros are simple templates of expressions with
+indicators where the actual parameters can be plugged in.
+But how is the template to be written?  It is straightforward
+if macros are purely lexical, as in the C pre-processor:
+Just substitute the actual parameters, and re-scan.
+Writing macros is also reasonably straightforward
+(if occasionally messy) in a language with a well-defined
+representation for expressions (as Common Lisp has).
+@end ignore
+
+@node Writing macros, Regular expressions, Evaluation, Shell-paper
+@section Primitives useful for writing macros
+
+The Q macro system allows arbitrary program transformation
+by running user-defined "@code{macro} functions at compile time functions.
+However, most of the time one only needs
+simple textual replacement, perhaps with parameters, as suggested
+by experience with the C pre-processor.  The @code{parse}
+primitive function provides this functionality.
+
+@subsection parse
+
+The "parse" routine takes any number of strings and/or
+expressions.  If there is only a single
+string argument, "parse" parses the string,
+and yields the resulting parse tree expression.
+If there are multiple arguments, @samp{parse} effectively parses their
+concatenation:  when it gets to the end of one argument,
+it continues with the next.  If one of the arguments is
+an expression, it is substituted in place.
+
+The "increment" macro @code{incr} is a simple example:
+@example
+:(macro incr :Y) = parse Y ":=" Y "+1
+@end example
+The application:
+@example
+incr X
+@end example
+is re-writtenat  compile-time to:
+@example
+X:=X+1
+@end example
+
+@subsection The @code{quote} macro
+
+The primitive macro @code{quote} puts quotes around its operands.
+Unless there are unquote operators (using @samp{$}),
+the result is constant.
+For example:
+For example:
+@example
+quote ~/Q/mi/parse* 3+$a
+@end example
+becomes:
+@example
+["~/Q/mi/parse*" "3+$a"]
+@end example
+which (if @code{a} is has the value @code{"4-5"})
+evaluates to the 2-element vector:
+@example
+["~/Q/mi/parse*" "3+4-5"]
+@end example
+
+The @code{quote} macro is the primitive used by all commands
+that do not evaluate their arguments.
+For example, the command "cd" is defined as:
+@example
+:(macro cd :x@@)= parse "__cd (quote " x@@ ")"
+@end example
+
+(The first @samp{x@@} means the list of all the remaining arguments.
+The second "splices" the list @samp{x} into @samp{quote}'s argument list.)
+
+@comment FIXME - clumsy/verbose
+The body of @code{cd} is the call: @code{parse "__cd (quote " x@@ ")"}.
+First, @code{parse} scans the string "__cd (quote ".
+It then inserts the result of @code{x@@} (which is a list of
+expressions, usually just one), and finishes with the
+final quote bracket.
+Thus:
+@example
+cd ../foo
+@end example
+is macro-expanded into (the parse of):
+@example
+__cd (quote ../foo)
+@end example
+which becomes:
+@example
+__cd ["../foo"]
+@end example
+where @code{__cd} is a non-macro function that does the actual work of @code{cd}.
+
+@subsection Features of @code{quote}
+
+Parentheses, quoted strings, and backquotes
+are included in the resulting strings.  Hence:
+@example
+quote (3+4) "is"\: 10
+==> ["(3+4)" "\"is\"\\:" "10"]
+@end example
+This is so avoid losing essential quoting and grouping information.
+
+Also not that @code{quote} works of @emph{vectors} of strings,
+not individual strings.  If there are multiple expressions in
+parentheses, the result is multiple strings:
+@example
+quote (a b)
+==> ["(a)" "(b)"]
+@end example
+Concatenation of string vectors yields a distributive "join":
+@example
+quote /(a b)/(c d)/
+==>
+["/(a)/(c)/" "/(a)/(d)/" "/(b)/(c)/" "/(b)/(d)/"]
+@end example
+This mechanism subsumes the @code{@{...@}}-feature of csh.
+For example, csh's:
+@example
+cc -o foo@{,.c@}  # csh, not Q!
+@end example
+could be expressed as:
+@example
+cc -o foo("" .c)
+@end example
+
+The same distribution is done for the result of an expression
+in @code{$}.  If @code{a} has the value @code{["" ".c"]},
+then @code{quote foo$a} evaluates to
+@code{["foo" "foo.c"]}.
+If @code{a} is only a simple string (such as @code{"\n.c"}),
+it is split at newlines (so we get the same result as before).
+
+@node Regular expressions, Pathnames, Writing macros, Shell-paper
+@section Regular expressions
+
+Unix is cursed with a number of incompatible syntaxes
+for regular expression patterns, used by different
+programs, and with various features.
+The shell globbing patterns are used most frequently.
+These are simple and terse, but they are not fully general
+regular expressions.  Q's solution
+extends the conventional globbing syntax, as in
+the Korn Shell.
+
+These are the most important special characters:
+@table @samp
+@item ?
+Matches any single character except @samp{\0} or @samp{\n}.
+When matching against file names, also does not match a @samp{/},
+nor an initial @samp{.}.
+
+@item *
+Matches any number of characters that might match @samp{?}.
+Also, remembers the matched characters for use by
+replacement commands.
+
+@item *(@var{pattern})
+Match any number of instances of the @var{pattern}.
+
+@item "@var{chars}"
+Match the quoted characters. C-style escapes are recognized.
+
+@item \@var{X}
+Match the character @var{X} exactly.
+
+@item (@var{pattern})
+Grouping. Same as @var{pattern}, but also remembers the matched
+characters for use by replacement commands.
+
+@item @var{pattern1}|@var{pattern2}
+Match either pattern.
+
+@item [@var{charset}]
+Standard character sets.
+
+@item [:@var{keyword}:]
+Extension loophole.  Do some special matching operation
+depending on the @var{keyword}.
+@end table
+
+The builtin function @code{match} tries to match a string
+against a quoted pattern:
+@example
+"abcd" match a*d  # Succeeds
+@end example
+There may be a second replacement pattern:
+@example
+"abcd" match a*d A*D
+==> "AbcD"
+@end example
+
+@subsection glob
+
+The @code{glob} function takes a single string, interprets
+it as a globbing pattern, and returns a sorted vector of matching
+file names.  The result is the empty vector if there are
+no matches.
+
+One unique feature of @code{glob} is that it knows how
+search through an unbounded number of sub-directories.
+To find every @code{Makefile} in any sub-directory of @code{dld-*} do:
+@example
+glob "dld-*/*(*/)Makefile"
+@end example
+
+@comment FIXME - clumsy
+The algorithm works by scanning the filenames in a directory.
+Each filename (prepended by the name of the current directory)
+is matched against the pattern.  If pattern matches the
+entire filename, we have found a match.  Otherwise, the
+regular expression matcher has been modified to signal
+two kinds of failure: A prefix-partial-match happens
+when the matcher runs out of characters in the candidate.
+This means that the candidate is not a valid match,
+but it might be a prefix of a valid match.  In that case,
+if the candidate names a directory, we continue
+recursively scanning that directory.  Other kinds of
+match failure tell us to give up (with this particular file).
+
+Note that the above example runs
+2-3 times faster than GNU find on:
+@example
+find . -regex "dld-.*Makefile" -print
+@end example
+The reason is that find has to look into @emph{every}
+sub-directory of @code{.}, while Q's @code{glob}
+only looks at sub-directories matching @code{dld-*}.
+
+@subsection globlist
+
+The function @code{globlist} does "shell-style" globbing,
+using the routine @code{glob}.  It takes a @emph{vector}
+of strings, does tilde-expansion, and calls @code{glob} on each pattern.
+Any empty result from @code{glob}
+is replaced by a one-element vector containing the
+original pattern, but with quotes and parentheses removed.
+To find every @code{Makefile} in any sub-directory of @code{dld-*} do:
+@example
+glob "dld-*/*(*/)Makefile"
+@end example
+Note that the above example is
+2-3 times faster than GNU find, because
+find has to look into @emph{every}
+sub-directory of @code{.}, while Q's @code{glob}
+only looks at sub-directories matching @code{dld-*}.
+(See full paper for Q's algorithm.)
+
+@subsection globlist
+
+@code{globlist} takes a vector
+of strings, does tilde-expansion, and calls @code{glob} on each pattern.
+Where there is no match, the answer
+is replaced by the original pattern, but with quotes and parentheses removed.
+The sub-answers are concatenated to one vector.
+@example
+globlist (quote x(3+4)y p"ar"se* f(oo).*)
+@end example
+might yield:
+@example
+["x3+4y" "parserule.o" "parsemacros.o" "parse.o" "foo.*"]
+@end example
+
+Here is a no-frills implementation of @code{echo}:
+@example
+Q1> :(macro echo :X@@)= parse "__echo (quote " X@@ ")"
+Q2> :(__echo :L)= sprintf "%@{%s%^ %@}\n" (globlist L)
+Q3> echo parse*
+parserule.o parsemacros.o parse.o
+@end example
+The function @code{__echo} does the actual work: It calls
+@code{globlist} to do globbing, and then concatenates
+the results together using the @code{sprintf} routine.
+(The @code{"%@{...%@}"} format directives loop over a sequence,
+just like Common Lisp's @code{~@{...~@}} directives.)
+
+In Unix, the shell traditionally does globbing.  This is
+usually convenient, but sometimes the standard
+expansion is inappropriate, such as the patterns used by
+@code{grep} and @code{find}.
+Non-Unix systems may provide globbing under application control.
+This provides more flexibility.  The Q approach provides
+the same flexibility in a Unix framework.
+
+As an example, consider @code{ren}, an intelligent
+(and simplified) @code{mv}:
+@example
+:(__ren :src :dst)=(
+  :X=(glob src)
+  @{run mv $(X?) $(X? match $src $dst)@} do)
+:(macro ren :args@@) = parse "__ren (quote " args@@ ")@@"
+@end example
+The @code{__ren} routine takes two patterns.  It first finds the
+filenames matching the first pattern.  Then, for each match,
+it calls @code{rename} (interface to the
+system call),  using the matching filename @code{X?}
+and the new name @code{X? match $src $dst}.
+
+The @code{ren} macro allows you to write:
+@example
+ren *.c.BAK BAK/*.c
+@end example
+
+@node Pathnames, Commands, Regular expressions, Shell-paper
+@section File and Directory Objects
+
+Since files and strings are both sequences of characters,
+it is reasonable to use the same operations for both.
+@ignore
+But how do we refer to files as first-class objects?
+Files in programming languages are usually manipulated
+indirectly, using a read/write/seek interface.
+Shells handle files themselves occasionally (primarily
+to set up input/output redirection, and to exec programs).
+Mostly, though, shells manipulate @emph{names} of files,
+passing the names to programs that do the actual work.
+@end ignore
+But we need to distinguish files from file names,
+just as we distinguish identifiers from the values
+they evaluate to.
+@ignore
+One option is to have a common unified name space
+for files and other objects.  This makes sense for a
+true unified environment, with automatic persistence,
+but in more conventional environments one has to distinguish
+between file and non-file objects.
+
+Another option is to use some special syntactic mark
+to distinguish filenames.
+@end ignore
+Q uses the prefix @samp{./} to indicate a filename,
+which evaluates to a file "object":
+@example
+./Makefile # The file named Makefile.
+@end example
+File names can be specified at runtime:
+@example
+Q1> :fname="Makefile"
+Q2> ./$fname # Same as ./Makefile
+@end example
+
+Q follows the emacs convention that two consecutive @samp{/}
+means to go to root:
+@example
+.//etc/passwd  # The file name /etc/passwd
+@end example
+Just @samp{.} by itself is short for @samp{./.}.
+
+A filename object is a sequence (string) variable,
+so all generic sequence operations are applicable:
+@example
+Q1> [2 3 4] 1 # Indexing
+3
+Q2> "xyz" 1
+y
+Q3> ./Makefile
+Q.tar.Z:
+        tar -v -cf - -X non-tared mi doc unix/Makefile Qlink test \
+        Makefile non-tared|compress -c>Q.tar.Z
+Q4> ./Makefile 1
+.
+Q5> size [3 4 5]
+3
+Q6> size "xyz"
+3
+Q7> size ./Makefile
+110
+Q8> # Reversing Makefile:
+Q9> sprintf "%s\n" (./Makefile (109 downto 0))
+
+Z.rat.Q>c- sserpmoc|derat-non elifekaM
+\ tset knilQ elifekaM/xinu cod im derat-non X- - fc- v- rat
+:Z.rat.Q     
+@end example
+
+Filenames can be used for assignment:
+@example
+Q10> ./foo := ./Makefile
+@end example
+In this case the filename @code{./foo} can name a
+non-existing file.
+
+A filename that names a directory is viewed as an associative mapping
+from names to other filenames.
+@example
+Q11> sprintf "%#s\n" ./unix
+./unix
+Q12> sprintf "%#s\n" (./unix "Makefile")
+./unix/Makefile
+Q13> # Can also use a filename as an "index":
+Q14> sprintf "%#s\n" (./unix ./Makefile)
+./unix/Makefile
+Q15> sprintf "%#s\n" (. "/etc/passwd")
+.//etc/passwd
+Q16> size (. "/etc/passwd")
+759
+Q17> wc /etc/passwd
+      14      30     759 /etc/passwd
+@end example
+
+Compare the Unix process environment, which is also represented
+as an associative mapping, except in this case
+each name is mapped to a string:
+@example
+Q18> env "TERM"
+xterm
+Q19> size env
+18
+Q20> env "FOO" := "/etc/foo"
+Q21> size env
+19
+Q22> env "FOO"
+/etc/foo
+@end example
+
+As a convenience, Q will assume that an identifier is
+a filename, even without a @samp{./} prefix, if there
+exists a file with that name, and no other binding for
+that name is in scope.  Thus @code{Makefile} will
+normally work as well as @code{./Makefile}.
+Also, a word that begins with @samp{/} is treated
+as an absolute filename.  (Just @samp{/} by itself
+is the division operator.)  A word that begins with
+an existing directory name followed by @samp{/}
+is also a filename.
+
+These conventions work well,  but may be modified or
+removed if it turns out they are too complicated or
+error prone.  There are some complications
+because @code{/} is also used for division.
+Thus @code{a/b} is @code{a} divided by @code{b} if @code{a}
+is defined.  Otherwise, @code{a/b} is a filename if @code{a}
+is a directory (that exists at compile time).  Otherwise,
+@code{a/b} is an error.
+
+
+@node Commands, Pipeline implementation, Pathnames, Shell-paper
+@section Commands
+
+The macro @code{run} is used to run a program:
+@example
+run ls -l ../lib/*.o
+@end example
+The macro @code{exec} is like @code{run}, but it does
+an @code{execve} without a prior @code{fork}.
+
+An implicit @code{run} is added before an undeclared
+identifier that matches an executable in @code{PATH}:
+@example
+ls -l ../lib/*.o
+@end example
+Note that the @code{run} is inserted at macro-expansion
+time, not at run-time.  Hence the program (here @code{ls})
+must be in the @code{PATH} both at compile-time @emph{and}
+run-time.  (Otherwise, the compiler would not know
+whether to compile @code{-l} as subtraction or to quote it.)
+
+@subsection Standard input and output
+
+If we think of running a program as a kind of function call,
+it is natural to think of a pipeline as function composition:
+The output of one function is used directly as an input
+of another.  It is reasonable to view standard input and output
+abstractly as strings.
+
+A program has two sets of inputs:  The command line arguments
+(passed in @code{argv}), and standard input.
+Q allows infix functions, with a varying number of right
+parameters.  We will interpret the left argument (if any)
+as standard input to the program, and the right arguments
+will be passed as @code{argv}.  The left argument will be
+evaluated, while the right arguments will be quoted.
+
+We can pass a string to a program:
+@example
+Q1> "Hello World!\n" run /usr/bin/tr a-zA-Z A-Za-z
+hELLO wORLD!
+@end example
+
+The stdin argument need not be a string, but can be
+any printable object:
+@example
+Q2> 250 for 10
+250 251 252 253 254 255 256 257 258 259
+Q3> (250 for 10) tr 0-9 1-90
+361 362 363 364 365 366 367 368 369 360
+@end example
+
+Input can be a pathname object:
+@example
+Q4> ./Makefile wc
+     199     848    6895
+@end example
+In that case, no @code{pipe} or @code{fork} is needed:  The file
+is just opened for input, and the file descriptor is passed to
+the program.  This is standard input redirection.
+
+Similarly, the output of a command can be saved as a string:
+@example
+Q1> :S=(ls -ld ../test)
+Q2> sprintf "(%#s)" S
+("drwxrwxr-x  2 bothner       512 Jul 25 17:41 ../test\n")
+@end example
+(The format @samp{%#s} means to print the argument in a form
+that can be read back in, with appropriate escapes.)
+
+Finally, the composition of two programs is a pipeline:
+@example
+Q3> ls -ld ../test) tr a-zA-Z A-Za-z
+DRWXRWXR-X  2 BOTHNER       512 jUL 25 17:41 ../TEST
+@end example
+Notice the unbalanced parenthesis; this is a convenience
+that is allowed for interactive input only.
+
+Generalized output redirection has the form:
+@example
+>@var{filename} @var{expression}
+@end example
+This evaluates @var{expression}, but prints the result on @var{filename}.
+The @var{expression} can be any expression, not just
+ones that run programs:
+For example:
+@example
+Q4> >foo "2+4=$(2+4)\n"
+Q5> cat foo
+2+4=6
+@end example
+
+@node Pipeline implementation, Control, Commands, Shell-paper
+@section Pipeline implementation
+
+It is important that the features just described be implemented
+without extraneous @code{forks} or copying of temporary values.
+The difficulty is that what is a reasonable implementation
+in one context is inefficient in another context.
+
+The Q evaluator does keeps track of the "result" context.
+To @code{run} a program in the default context Q must
+allocate an expandable buffer, copy all of the output from the program
+into the buffer, and then create a string using the buffer.
+But if the context is such that the result will be piped as
+standard input to another program, then the @code{run} command
+will be evaluated in a "pipe" context.  In that case the evaluator
+just creates a pipe, has the program write to one end of the pipe,
+and passes the other end of the pipe to the other program.
+Similarly, if the context is one where the result will just be
+printed (such as the top-level read-evaluate-print loop),
+then Q can evaluate a @code{run} command by just letting the
+program's standard output print without re-direction.
+
+@ignore
+OBSOLETE!
+Therefore Q supports three contexts for evaluation of expressions.
+Each context is implemented by a different C++ virtual method.
+We can evaluate the expression @var{exp} using one of the following:
+
+@itemize @bullet
+@item
+The @code{eval} method is the "standard" way to evaluate an
+expression, returning the result as an object pointer:
+@example
+Object Expression::eval(Environment* env);
+@end example
+
+@item
+The @code{eval_print} method evaluates the expression, and prints
+the result on an @code{ostream} (output file):
+@example
+void Expression::eval_print(Environment* env, ostream& output);
+@end example
+
+@item
+The @code{eval_pipe} method evaluates the expression,
+and returns a file descriptor that may be used to read the result.
+@example
+PipeResult Expression::eval_pipe(Environment* env);
+@end example
+The @code{result} contains two fields: The file descriptor to read
+from, and an optional process identifier to @code{wait} on.
+@end itemize
+
+The @code{eval_print} and @code{eval_pipe} methods have default
+implementations using @code{eval}, so implementing these methods
+for a new sub-class of @code{Expression} is purely an efficiency issue.
+The default implementation of @code{eval_print} is obvious.
+
+The default implementation of @code{eval_pipe} creates a pipe,
+calls @code{eval_print} to the front end of the pipe,
+and returns the other hand of the pipe.  (The caller of
+@code{eval_pipe} then passes the read end of the pipe
+as standard input to some program.)  However, one must be
+careful not to write to the pipe so much that Q is blocked
+before the reader has been forked off.  The simplest solution
+is for @code{eval_pipe} to always @code{fork} before doing any
+output. A more efficient solution to @code{fork} only when the
+output might be above some threshold.  The cleanest solution
+is to always fork a lightweight thread, if those are available.
+
+Running a program happens by evaluating a @code{RunCommandExpr}.
+To @code{eval} a @code{RunCommandExpr}, we first use @code{eval_pipe}
+to evaluate the left operand if any.  This gives us the
+previous stage in the pipeline, which we pass to the program
+(using @code{dup2} after the @code{fork}).  We must then handle
+the output end of the program.  Since @code{eval} must return the
+output as a string, we create a pipe for the child to write to.
+The parent process reads from the pipe into
+a result string.
+
+Using @code{eval_print} to evaluate a @code{RunCommandExpr} is
+more efficient, since we don't have to create an output pipe:
+We just redirect (using @code{dup2}, if needed) the output from
+the program to the output @code{ostream}.  This assumes the output
+@code{ostream} is a regular file (an @code{ofstream}); otherwise
+we must create an output pipe, which the parent process reads
+and copies to the output @code{ostream}.
+
+Using @code{RunCommandExpr::eval_pipe} is similarly efficient.
+
+When a pathname like @code{./Makefile} is the input to a program,
+we avoid copying the contents of @code{Makefile} by using
+a special method for @code{eval_pipe}: Just open the file,
+and return the resulting file descriptor.
+
+This implementation scheme is simple, flexible, and efficient.
+Using an object-oriented programming language simplified the implementation.
+
+Both @samp{ksh} and @samp{bash} support shell functions,
+whose results are returned by printing on @samp{stdout}.
+A corresponding Q function would have to allocate an explicit
+string, and might therefore be less efficient.
+However, a planned extension would allow the programmer
+to specify that the result should be returned by printing
+to a given output file.  (I view this as the programmer
+specifying a non-default calling convention, using an @samp{ostream}.)
+This would be easy to implement,
+by using @code{eval_print} in the body of the function.
+A similar extension would allow an input parameter to be passed
+as an input stream.
+@end ignore
+
+@node Control, Future work, Pipeline implementation, Shell-paper
+@section Control
+
+@subsection Output printing
+@comment FIXME needs work
+When an interactive programming system has done evaluating a top-level
+expression, it normally prints the result, followed by a new-line.
+Evaluating a shell command does not yield an explicit result,
+but prints the standard output of the program.
+Shells assume that a program prints complete lines, terminated
+by new-lines, so an explicit new-line is not added by the shell.
+So if Q views the output from a program  as
+equivalent to returning a string, then when printing a result
+that is a string, we should not add a new-line.  But when
+printing other objects, it is desirable to add a new-line.
+
+The format directive @samp{%+s} prints the argument as suitable
+for printing a result. If the argument is not a sequence, it is
+printed, followed by a new-line.
+@example
+sprintf "|%+s|" 3+4 ==> "|7\n|"
+@end example
+To print a sequence, each element of the sequence is printed in turn.
+Spaces are normally printed between elements.
+However, if neighboring elements are in turn sequences,
+a new-line is printed instead.
+Also, no space is printed after a character.  (Since a string
+is a character sequence, it is printed without extra spaces.)
+Finally, a new-line is printed, unless the sequence was empty,
+or the last element was a character.
+
+@subsection True and false
+
+Statements that are evaluated solely for their side-effects
+(such as assignments and declarations) should not print anything.
+Therefore, we decree that they return "nothing",
+that is the empty string @code{""}.
+
+A declaration in Q is just a unification
+expression.  (That is, there is no conceptual difference
+between @code{5=(2+3)}, and @code{:x=(2+3)}, except that the latter
+also declares @code{x} (a compile-time action), and at run-time
+has the side-effect of binding @code{x} to @code{5}.)
+Hence, a successful unification retrurn @code{""} as its value.
+For consistency, other standard relations (such as
+@code{2<3}) also evaluate to @code{""} if they succeed.
+The default "true" value in Q is therefore @code{""}.
+Note also that @code{;} is essentially "logical and."
+
+"Exception" values represent "false."
+If a function argument is an exception, the function
+returns the exception.  Exceptions are not normal first-class
+values, and they use a condition-handling
+mechanism using non-local jumps.
+
+An "uncaught" exception is normally just printed:
+@example
+Q1> 2<3   # True, prints nothing.
+Q2> 2>3   # False, raises exception.
+Exception: Failed comparison (>).
+@end example
+
+Exceptions that represent failures (but not serious errors)
+are caught using the @code{if} construct.
+@example
+Q3> if 2 > 3 => "True\n" || "False\n"
+False
+@end example
+If a program returns a non-zero exit code, that raises
+a failure exception:
+@example
+Q4> sh -c "exit 1"
+Exception: Program sh (pid: 5292) failed with return code 1.
+Q5> if sh -c "exit 1" => "sh ok\n" || "sh failed\n"
+sh failed
+@end example
+(One difference compared to traditional shells is that in Q
+a statement list only succeeds if each statement succeeds.
+That is, in Q, the @code{;} operator corresponds to @samp{sh}'s @code{&&}.)
+
+@subsection Statement lists
+
+Most languages support some kind of "statement list" form, where each
+"statement" is evaluated in turn.
+In Q, we define the effect of evaluating @code{@var{expr1}; @var{expr2}}
+as the following:
+First evaluate @var{expr1}, then evaluate @var{expr2}.
+If either result is @code{""} (or @code{[]}),
+then return the other result.
+If neither is null, the result is the concatenation of the two values,
+as if computed by @code{sprintf "%s%s" @var{expr1} @var{expr2}}.
+
+This arcane definition is chosen because it has the following
+desirable properties:
+@itemize @bullet
+@item
+The @code{let} common in functional languages:
+@example
+(let ((x (+ 3 4))) (* x x)) # Scheme example
+@end example
+(which evaluates to 49) is expressible as:
+@example
+(:x=3+4; x*x)
+@end example
+This works because the value of @code{:x=3+4} is @code{[]}.
+@item
+Some people perfer a @code{where} form,
+where the definitions are given @emph{after} their use:
+@example
+x*x where x = 3+4 # Not Q
+@end example
+This is expressible as:
+@example
+(x*x; :x=3+4)
+@end example
+@item
+The output from a statement
+list is the concatenation of the output from
+each sub-command. For example:
+@example
+:foo = (cat file1; cat file2)
+@end example
+makes @code{foo} a string of the concatenation of @code{file1}
+and @code{file2}.
+This is consistent with how shells work.
+@item
+Associativity: @code{(@var{a}; @var{b}); @var{c}} = @code{@var{a}; (@var{b}; @var{c})}
+@item
+@code{"";@var{a}} = @code{@var{a};""} = @code{@var{a}}
+@item
+@code{("string1"; "string2")} = @code{"string1string2"}
+@item
+@code{sprintf "%s" (@var{a};@var{b})} = @code{(sprintf "%s" @var{a}; sprintf "%s" @var{b})}
+@end itemize
+
+We also define:
+@example
+expr1
+expr2
+@end example
+to be the same as:
+@example
+(expr1; expr2)
+@end example
+
+@subsection Looping
+
+Q (being a non-pure functional language) does not have standard
+iterative constructs.  Instead it relies on various operators
+for manipulating sequences.  The intent is to optimize these
+in a manner similar to [Water's streams].
+A very powerful primitive is provided by the @code{@{...?...@}}
+construct, which is a lazy (demand-evaluated) sequence defined
+as a mapping from an index (denoted by @code{?}) to the
+value of the expression in @code{@{...@}}.
+@example
+Q12> (@{stdout printf "<%d>" ?@} for 10) do; stdout printf "\n"
+<0><1><2><3><4><5><6><7><8><9>
+@end example
+The @code{do} operator takes any sequence (lazy or not),
+and "prints" each element in sequence. (Normally each
+element evaluates to an empty result, but the side effect is
+of interest.)
+We informally define @code{X do} for a sequence @code{X} of length @code{n}
+as:
+@example
+sprintf "%s" (X 0; X 1; ...; X n-1)
+@end example
+(Of course @code{n} need not be known before @code{X} is exhausted.)
+Thus we can replace @samp{printf} operations that write to @samp{stdout}
+with ones that returns a string:
+@example
+Q2> (@{sprintf "<%d>" ?@} for 10) do; "\n"
+<0><1><2><3><4><5><6><7><8><9>
+@end example
+
+@node Future work, Summary, Control, Shell-paper
+@section Future work
+
+Support for @samp{csh}-style job control is currently being worked on.
+It (like other parts of Q) uses code from @samp{bash}, the GNU shell,
+written primarily by Brain Fox.
+
+Make Q a practical (robust) default shell.
+
+Investigate use of multiple threads or co-routines.
+
+Add Garbage collection.  (The Q implementation does not collect garbage,
+though it has been designed under the assumption that a garbage
+collector will be available.  I have waited for g++ version 2.0,
+which will provide some support for garbage collection.)
+
+Implement looping constructs efficiently,
+along the lines of [Richard Waters: "Automatic Transformation
+of Series Expressions into Loops", TOPLAS, XIII(1) p 52-98, January 1991].
+
+Improve text editing support.  Support some kind of
+Structured Regular Expressions, as in [Rob Pike: "The Text Editor Sam",
+Software Practice & Experience, XVII(11) 813-845, 1982.]
+Interface to WYSIWYG/editor, probably using the Interviews toolkit.
+
+And then maybe one day I'll be able to get back to looking at the
+constraint and logic programming issues I discussed in [Per Bothner:
+"Efficiently Combining Logical Constraints with Functions",
+Stanford Computer Science, December 1988.]
+
+@node Summary,  , Future work, Shell-paper
+@section Summary
+
+Let us compare Ousterhout's design goals for Tcl in [Tcl],
+and see how Q fits them:
+
+@enumerate
+@item
+The language is for commands. ... This suggests that the language should
+have a simple syntax so that it is easy to type commands.
+
+This has been a major goal in designing Q, and has motivated
+most of the decisions discussed in this paper.
+
+@item
+The language must be programmable.
+
+Q is a fully programmable very-high-level language.
+
+@item
+The language must permit a simple and efficient interpreter.
+
+This has not such a priority for Q.  Compared to Tcl, Q
+is a big language.  The interpreter is efficient enough
+for interactive use,  and there is an (un-finished) compiler
+that translates Q into C++.  However, the run-time is much
+bigger than Tcl (though much smaller than typical Lisp
+systems).  On the other hand, much of the system size consists
+of the builtin types and routines, and the system is modular
+enough to be incrementally loadable (autoloading will soon be added).
+
+@item
+The language must permit a simple interface to C applications.
+
+Because Q has a rich hierarchical type system, it is more reasonable
+to support a simple interface to C++ applications.
+This Q does very well.  Most of the primitive functions are written as Q
+stub routines that invoke a C++ primitive. For example:
+@example
+:(:x take :y~Numeric)=external DoTake
+@end example
+declares that the @code{take} function takes two arguments,
+one of which must be numeric, and the body of the function
+is implemented by the C++ function @code{DoTake}.
+
+Writing @code{DoTake} is also easy:
+@example
+Object* DoTake(Object* x, Numeric* y) @{ ... @}
+@end example
+(Note that @code{Numeric} is a sub-class of @code{Object}.)
+The Q module containing @code{take} is compiled into a C++
+program, whose object file is linked with that containing @code{DoTake}.
+Nothing more is needed.  The linking can be dynamic or static.
+The C++ mechanism for static initializers is used to enter @code{take}
+into the appropriate tables.
+@end enumerate
+
+It is practical to combine the features of a shell into
+a full-fledged programming languages.
+I hope I have shown that careful orthogonal design
+can give a moderate-sized very powerful multi-purpose language.
+
+Using object-oriented programming (and C++ in particular)
+made it much easier to manage the many possible combinations
+in a rich language (such as different expression types
+and different output modes).
+
+@bye

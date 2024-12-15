@@ -1,0 +1,80 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!news.doit.wisc.edu!decwrl!waikato!aukuni.ac.nz!cs18.cs.aukuni.ac.nz!pgut1
+From: pgut1@cs.aukuni.ac.nz (Peter Gutmann)
+Subject: Norton's InDiskreet
+Organization: Computer Science Dept. University of Auckland
+Date: Thu, 11 Nov 1993 12:37:43 GMT
+Message-ID: <1993Nov11.123743.1701@cs.aukuni.ac.nz>
+Summary: Don't delete your copy of PGP yet
+Lines: 70
+
+People have mentioned Norton's [In]Diskreet here recently and I thought I'd
+have a look at it to see how good (or bad) its DES implementation really is (I
+didn't bother with the "fast, proprietary method", by all indications it's
+worthless).  As the summary line in the header says, don't throw away your copy
+of PGP yet.  For those of you who have a copy and would like a quick look at
+the sort of security you're buying, try the following:
+ 
+   - Create a test file, I used 128 zeroes.
+   - Encrypt it with the password 'xxxxxx'
+   - Decrypt it with the password 'xxxxxx'
+   - Decrypt it with the password 'xxxxyy'
+   - Decrypt it with the password 'yyyyxx'
+ 
+The DES routines themselves seem to be taken from a DES library rather than
+being written by Symantec/Norton.  Symantec provide the front-end, and Peter
+Norton provides the picture of himself wearing a pastel shirt and silly smirk
+for the cover of the box.  This seemed to be a good indication - perhaps the
+DES implementation was by someone vaguely competent, which meant Symantec would
+have little chance of screwing it up.
+ 
+Unfortunately, as the above test shows, it isn't.  The front-end gets a
+password in the range of 6..40 characters, and converts it to all-uppercase
+(red neon sign lights up and flashes "MISTAKE.  MISTAKE.  MISTAKE").  Then it
+packs it into a struct along with a collection of other information and passes
+it to the DES library.  The DES library then takes the password and reduces it
+to 64 bits by cyclically xor-ing in the full-length password into an 8-byte
+buffer initially set to all zeroes, ie:
+ 
+    for( index = 0; *password; index++ )
+        buffer[ index % 8 ] = *password++;
+ 
+Finally, the top 32 bits of this buffer is passed to the key schedule routines
+and some of it used for the key schedule (this is what the sample en/decryption
+shows up).  They seemed to be doing a DES key schedule, but I didn't bother
+verifying its correctness - there didn't seem much point really.  Note that the
+first mistake was made by the front-end, but the second two were made in the
+DES library itself, meaning that both parts are incompetently implemented.  Oh
+well, at least Peter Norton's contribution to the whole affair doesn't weaken
+it's security.  Usually I check DES implementations against the NBS test data,
+but I couldn't be bothered ripping out the code, and the key handling provides
+holes big enough to drive a bus through anyway.  Note that it doesn't even use
+a proper 56-bit key as per the FIPS docs (although, admittedly, it's in good
+company there), or check for the weak keys which are possible with the key
+setup they're using.
+ 
+The encryption itself uses DES in CBC mode with a fixed IV.  This means that,
+in combination with the tiny key space, it's possible to create a precomputed
+collection of plaintext/ciphertext pairs and "break" most encrypted files by
+reading the results out of a table.  Since the whole-disk encryption always
+begins with a fixed DOS FAT (file allocation table), this instant decryption is
+entirely feasible.  When encrypting files, [In]Diskreet stores the file name,
+date, and various other pieces of information at the start of the data and a
+key check sequence at the end, allowing a quick and easy check for correct
+passwords.
+ 
+In summary, there may be a possibly-correct DES implementation in there
+somewhere, but it doesn't help much.  [In]Diskreet will stop a casual browser,
+but won't give you any protection at all against any serious attack.
+ 
+ObPropaganda: There should be an encrypting filesystem offering *real* security
+              available within a few weeks.  The initial version will be for
+DOS only, and will provide sector-level encryption for entire disks. I just
+need to test it a bit more, I'll call for beta-testers here once it's ready.
+ 
+Peter.
+--
+ pgut1@cs.aukuni.ac.nz||p_gutmann@cs.aukuni.ac.nz||gutmann_p@kosmos.wcc.govt.nz
+peterg@kcbbs.gen.nz||peter@nacjack.gen.nz||peter@phlarnschlorpht.nacjack.gen.nz
+             (In order of preference - one of 'em's bound to work)
+             -- DOS 6 - Double your disk space: delete Windoze --

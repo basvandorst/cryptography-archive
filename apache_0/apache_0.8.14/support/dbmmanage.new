@@ -1,0 +1,82 @@
+#!/usr/local/bin/perl
+#
+# usage: dbmmanage <DBMfile> <command> <key> <value>
+#
+# commands: add, delete, view, adduser
+#
+# no values needed for delete, no keys or values needed for view.
+# to change a value, simply use "add".
+# adduser encrypts the password:
+# dbmmanage <dbm file> adduser <person> <password>
+
+die "Too few arguments.\n" if (@ARGV < 2);
+
+($file,$command,$key,$value) = @ARGV;
+
+$file =~ s/\.db.?$//;		# remove ".db" or ".dbX" extension if any
+$file =~ s/\.pag$//;		# remove ".pag" and ".dir" as well.
+$file =~ s/\.dir$//;		# these are all common DBM extensions.
+
+if ($command eq "add") {
+  dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+  $DB{$key} = $value;
+  dbmclose(%DB);
+  print "Entry $key added with value $value.\n";
+} elsif ($command eq "adduser") {
+  srand;			# needs to be done only once.
+  $salt = &compute_salt(0);	# change to compute_salt(1) for new crypt()
+  $hash = crypt($value, $salt);
+  dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+  $DB{$key} = $hash;
+  dbmclose(%DB);
+  print "User $key added with password ``$value'', encrypted to $hash\n";
+} elsif ($command eq "delete") {
+  dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+  delete($DB{$key});
+  dbmclose(%DB);
+} elsif ($command eq "view") {
+  dbmopen(%DB, $file, undef) || die "Error: $!\n";
+  unless ($key) {
+    while (($nkey,$val) = each %DB) {
+      print "$nkey = $val\n";
+    }
+  } else {
+    print "$key = $DB{$key}\n";
+  } 
+  dbmclose(%DB);
+} else {
+  print "Command unrecognized - must be one of: view, add, adduser, delete.\n";
+}
+
+exit(0);
+
+# if $newstyle is 1, then use new style salt (starts with '_' and contains
+# four bytes of iteration count and four bytes of salt).  Otherwise, just use
+# the traditional two-byte salt.
+# see the man page on your system to decide if you have a newer crypt() lib.
+# I believe that 4.4BSD derived systems do (at least BSD/OS 2.0 does).
+# The new style crypt() allows up to 20 characters of the password to be
+# significant rather than only 8.
+sub compute_salt {
+  local($newstyle) = @_;
+  local($salt);
+  if ($newstyle) {
+    $salt = "_" . &randchar(1) . "a.." . &randchar(4);
+  } else {
+    $salt = &randchar(2);
+  }
+  $salt;
+}
+
+# return $count random characters
+sub randchar {
+  local($count) = @_;
+  local($str) = "";
+  local($enc) =
+    "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  while ($count--) {
+    # 64 = length($enc) in call to rand() below
+    $str .= substr($enc,int(rand(64))+1,1);
+  }
+  $str;
+}

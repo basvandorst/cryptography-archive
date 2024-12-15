@@ -1,0 +1,390 @@
+--
+-- Definitions for X.509 V3 certificates for use in PGP
+--
+
+-- String type definitions for extensions and name fields
+UniversalString ::= [UNIVERSAL 28] IMPLICIT OCTET STRING
+
+BMPString ::= [UNIVERSAL 30] IMPLICIT OCTET STRING
+
+UTF8String ::= [UNIVERSAL 12] IMPLICIT OCTET STRING
+
+
+AttributeType ::= OBJECT IDENTIFIER
+
+AttributeValue ::= ANY
+
+AttributeTypeAndValue ::= SEQUENCE {
+        type    AttributeType,
+        value   AttributeValue
+}
+
+-- Used for printable AttributeValues
+DirectoryString ::= CHOICE {
+         teletexString           TeletexString,
+         printableString         PrintableString,
+         universalString         UniversalString,
+         utf8String              UTF8String,
+         bmpString               BMPString,
+-- Add this one because it's used
+         ia5String               IA5String
+}
+
+RelativeDistinguishedName  ::=  SET OF AttributeTypeAndValue
+
+RDNSequence        ::= SEQUENCE OF RelativeDistinguishedName
+Name            ::= CHOICE { rdnSequence RDNSequence }
+-- Name            ::=   SEQUENCE OF RelativeDistinguishedName
+
+Version  ::=  INTEGER
+
+CertificateSerialNumber  ::=  INTEGER
+
+CertificateValidityDate ::= CHOICE {
+        utcTime        UTCTime,
+        generalTime    GeneralizedTime
+}
+
+Time ::= CertificateValidityDate
+
+Validity ::= SEQUENCE {
+        notBefore      CertificateValidityDate,
+        notAfter       CertificateValidityDate
+}
+
+UniqueIdentifier  ::=  BIT STRING
+
+AlgorithmIdentifier  ::=  SEQUENCE {
+        algorithm               OBJECT IDENTIFIER,
+        parameters              ANY OPTIONAL
+}
+
+SubjectPublicKeyInfo  ::=  SEQUENCE {
+        algorithm            AlgorithmIdentifier,
+        subjectPublicKey     BIT STRING 
+}
+
+Extension  ::=  SEQUENCE {
+        extnID      OBJECT IDENTIFIER,
+        critical    BOOLEAN OPTIONAL,
+        extnValue   OCTET STRING
+}
+
+Extensions  ::=  SEQUENCE OF Extension
+
+-- Extension type for alternate names
+GeneralNames ::= SEQUENCE SIZE (1..MAX) OF GeneralName
+
+GeneralName ::= CHOICE {
+       otherName                       [0]     OtherName,
+       rfc822Name                      [1]     IA5String,
+       dNSName                         [2]     IA5String,
+--     x400Address                     [3]     ORAddress,
+       directoryName                   [4]     Name,
+--     ediPartyName                    [5]     EDIPartyName,
+       uniformResourceIdentifier       [6]     IA5String,
+       iPAddress                       [7]     OCTET STRING,
+       registeredID                    [8]     OBJECT IDENTIFIER
+}
+
+OtherName ::= SEQUENCE {
+        type-id    OBJECT IDENTIFIER,
+        value      [0] EXPLICIT ANY DEFINED BY type-id
+}
+
+
+-- Extension type for basic constraints
+BasicConstraints ::= SEQUENCE {
+        cA                      BOOLEAN DEFAULT FALSE,
+        pathLenConstraint       INTEGER (0..MAX) OPTIONAL
+}
+
+-- Extension type for key usage
+KeyUsage ::= BIT STRING {
+         digitalSignature        (0),
+         nonRepudiation          (1),
+         keyEncipherment         (2),
+         dataEncipherment        (3),
+         keyAgreement            (4),
+         keyCertSign             (5),
+         cRLSign                 (6),
+         encipherOnly            (7),
+         decipherOnly            (8)
+}
+
+-- Extension type for CRL Distribution Point
+   CRLDistPointsSyntax ::= SEQUENCE SIZE (1..MAX) OF DistributionPoint
+
+   DistributionPoint ::= SEQUENCE {
+        distributionPoint       [0] IMPLICIT   DistributionPointName OPTIONAL,
+        reasons                 [1] IMPLICIT   ReasonFlags OPTIONAL,
+        cRLIssuer               [2] IMPLICIT   GeneralNames OPTIONAL }
+
+   ReasonFlags ::= BIT STRING {
+        unused                  (0),
+        keyCompromise           (1),
+        cACompromise            (2),
+        affiliationChanged      (3),
+        superseded              (4),
+        cessationOfOperation    (5),
+        certificateHold         (6) }
+
+   DistributionPointName ::= CHOICE {
+        fullName                [0] IMPLICIT   GeneralNames,
+        nameRelativeToCRLIssuer [1] IMPLICIT   RelativeDistinguishedName }
+
+-- CRL extension for issuing distribution point
+   IssuingDistributionPoint ::= SEQUENCE {
+        distributionPoint       [0] IMPLICIT   DistributionPointName OPTIONAL,
+        onlyContainsUserCerts   [1] IMPLICIT   BOOLEAN DEFAULT FALSE,
+        onlyContainsCACerts     [2] IMPLICIT   BOOLEAN DEFAULT FALSE,
+        onlySomeReasons         [3] IMPLICIT   ReasonFlags OPTIONAL,
+        indirectCRL             [4] IMPLICIT   BOOLEAN DEFAULT FALSE }
+
+
+-- PGP custom extension type
+PGPExtension ::= SEQUENCE {
+	version			Version DEFAULT v1,
+	keyCreation		Time
+}
+
+
+TBSCertificate ::= SEQUENCE {
+        version         [0] EXPLICIT Version OPTIONAL,
+        serialNumber         CertificateSerialNumber,
+        signature            AlgorithmIdentifier,
+        issuer               Name,
+        validity             Validity,
+        subject              Name,
+        subjectPublicKeyInfo SubjectPublicKeyInfo,
+
+        issuerUniqueID  [1] IMPLICIT UniqueIdentifier OPTIONAL,
+
+        subjectUniqueID [2] IMPLICIT UniqueIdentifier OPTIONAL,
+
+        extensions      [3] EXPLICIT Extensions OPTIONAL
+}
+
+-- Version of TBSCertificate with opaque entries for complex fields
+XTBSCertificate ::= SEQUENCE {
+        version         [0] EXPLICIT Version OPTIONAL,
+        serialNumber         CertificateSerialNumber,
+        signature            AlgorithmIdentifier,
+        issuer               ANY,
+        validity             ANY,
+        subject              ANY,
+        subjectPublicKeyInfo ANY,
+
+        issuerUniqueID  [1] IMPLICIT UniqueIdentifier OPTIONAL,
+
+        subjectUniqueID [2] IMPLICIT UniqueIdentifier OPTIONAL,
+
+        extensions      [3] EXPLICIT Extensions OPTIONAL
+}
+
+
+Certificate ::= SEQUENCE {
+        tbsCertificate       TBSCertificate,
+        signatureAlgorithm   AlgorithmIdentifier,
+        signature            BIT STRING
+}
+
+-- for certificate validation, we need the raw form of the signed portion
+-- so use the following definition to just parse the outer information
+XCertificate ::= SEQUENCE {
+        tbsCertificate                ANY,
+        signatureAlgorithm        AlgorithmIdentifier,
+        signature                BIT STRING
+}
+
+-- Fully unparsed form of the cert
+XXCertificate ::= SEQUENCE {
+        tbsCertificate            ANY,
+        signatureAlgorithm        ANY,
+        signature                 ANY
+}
+
+IssuerAndSerialNumber ::= SEQUENCE {
+        issuer               Name,
+        serialNumber         CertificateSerialNumber
+}
+
+XIssuerAndSerialNumber ::= SEQUENCE {
+        issuer               ANY,
+        serialNumber         CertificateSerialNumber
+}
+
+
+-- RSA public key definition from X.509 --
+
+RSAKey ::= SEQUENCE {
+        modulus INTEGER,
+        exponent INTEGER
+}
+
+-- DSS definitions (draft-ietf-pkix-ipki-part1-05.txt) --
+-- note: ipki uses INTEGER, while FORTEZZA uses OCTET STRING
+DssParms ::= SEQUENCE {
+        p        INTEGER,
+        q        INTEGER,
+        g        INTEGER
+}
+
+DssSigValue ::= SEQUENCE {
+        r        INTEGER,
+        s        INTEGER
+}
+
+DSAPublicKey ::= INTEGER -- public key Y
+
+-- ELG parameters and key
+ELGParms ::= SEQUENCE {
+        p        INTEGER,
+        g        INTEGER
+}
+
+ELGPublicKey ::= INTEGER -- public key Y
+
+
+-- X.501 --
+
+AttributeValues ::= SET OF AttributeValue
+
+Attribute ::= SEQUENCE {
+        type AttributeType,
+        values AttributeValues
+}
+
+-- PKCS-7 --
+
+Attributes ::= SET OF Attribute
+
+ContentEncryptionAlgorithmIdentifier ::= AlgorithmIdentifier
+
+DigestAlgorithmIdentifier ::= AlgorithmIdentifier
+
+DigestEncryptionAlgorithmIdentifier ::= AlgorithmIdentifier
+
+KeyEncryptionAlgorithmIdentifier ::= AlgorithmIdentifier
+
+Certificates ::= SET OF Certificate
+
+
+ContentInfo ::= SEQUENCE {
+	contentType ContentType,
+	content
+		[0] EXPLICIT ANY DEFINED BY contentType OPTIONAL
+}
+
+ContentType ::= OBJECT IDENTIFIER
+
+-- Contents
+
+Data ::= OCTET STRING
+
+SignedData ::= SEQUENCE {
+	version Version,
+	digestAlgorithms DigestAlgorithmIdentifiers,
+	contentInfo ContentInfo,
+	certificates
+		[0] IMPLICIT Certificates OPTIONAL,
+	crls
+		[1] IMPLICIT CertificateRevocationLists OPTIONAL,
+	signerInfos SignerInfos
+}
+
+-- CRL structures
+
+CertificateRevocationLists ::=
+	SET OF CertificateRevocationList
+
+CertificateRevocationList  ::=  SEQUENCE  {
+     tbsCertList          TBSCertList,
+     signatureAlgorithm   AlgorithmIdentifier,
+     signature            BIT STRING  }
+
+TBSCertList  ::=  SEQUENCE  {
+     version                 Version OPTIONAL,
+                                  -- if present, must be v2
+     signature               AlgorithmIdentifier,
+     issuer                  Name,
+     thisUpdate              Time,
+     nextUpdate              Time  OPTIONAL,
+     revokedCertificates     SEQUENCE OF RevokedCertificate  OPTIONAL,
+     crlExtensions           [0]  EXPLICIT Extensions OPTIONAL
+                                         -- if present, must be v2
+}
+
+RevokedCertificate  ::=  SEQUENCE  {
+          userCertificate         CertificateSerialNumber,
+          revocationDate          Time,
+          crlEntryExtensions      Extensions OPTIONAL
+                                         -- if present, must be v2
+}
+
+DigestAlgorithmIdentifiers ::=
+	SET OF DigestAlgorithmIdentifier
+
+SignerInfos ::=
+	SET OF SignerInfo
+
+SignerInfo ::= SEQUENCE {
+	version Version,
+	issuerAndSerialNumber IssuerAndSerialNumber,
+	digestAlgorithm DigestAlgorithmIdentifier,
+	authenticatedAttributes
+		[0] IMPLICIT Attributes OPTIONAL,
+	digestEncryptionAlgorithm DigestEncryptionAlgorithmIdentifier,
+	encryptedDigest EncryptedDigest,
+	unauthenticatedAttributes
+		[1] IMPLICIT Attributes OPTIONAL
+}
+
+EncryptedDigest ::= OCTET STRING
+
+-- PKCS-10 --
+
+CertificationRequest ::= SEQUENCE {
+	certificationRequestInfo CertificationRequestInfo,
+	signatureAlgorithm SignatureAlgorithmIdentifier,
+	signature Signature
+}
+
+SignatureAlgorithmIdentifier ::= AlgorithmIdentifier
+
+Signature ::= BIT STRING
+
+
+CertificationRequestInfo ::= SEQUENCE {
+	version Version,
+	subject Name,
+	subjectPublicKeyInfo SubjectPublicKeyInfo,
+	attributes [0] IMPLICIT Attributes
+}
+
+-- From PKCS-1 -----------------------------------------------------
+
+RSAPrivateKey ::= SEQUENCE {
+	version Version,
+	modulus INTEGER, -- n
+	publicExponent INTEGER, -- e
+	privateExponent INTEGER, -- d
+	prime1 INTEGER, -- p
+	prime2 INTEGER, -- q
+	exponent1 INTEGER, -- d mod (p-1)
+	exponent2 INTEGER, -- d mod (q-1)
+	coefficient INTEGER -- (inverse of q) mod p
+}
+
+-- From PKCS-8 --------------------------------------------------------
+
+PrivateKeyInfo ::= SEQUENCE {
+  version Version,
+
+  privateKeyAlgorithm PrivateKeyAlgorithmIdentifier,
+  privateKey PrivateKey,
+  attributes [0] IMPLICIT Attributes OPTIONAL }
+
+PrivateKeyAlgorithmIdentifier ::= AlgorithmIdentifier
+
+PrivateKey ::= OCTET STRING

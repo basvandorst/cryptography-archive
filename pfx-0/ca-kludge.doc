@@ -1,0 +1,23 @@
+Here is how I kludge the netscape-cert-type CA bit. This is messy and should
+really be done by req -x509 (which I haven't had time to patch yet). This is
+horrible and I wont even admit to writing this :-)
+
+1. Create a CA with CA.sh -newca .
+2. Edit ssleay.cnf and change the value nsCertType to 0x04.
+3. Create a request with CA.sh -newreq, this should have the CA info entered.
+4. Sign the request with CA.sh -signreq. 
+5. Use a patched x509 (see above) to check netscape-cert-type.
+6. You now have a ca certificate and key with the relevant attributes. Self
+   sign the new cert with
+ x509 -days 365 -in newcert.pem -signkey newreq.pem -out cacert.pem
+7. Overwrite cacert.pem in the CA directory (default ./demoCA) with cacert.pem
+   and the CA private key (./demoCA/private/cakey.pem) with newreq.pem
+8. Use the "new CA" as normal. Don't forget to reset the cert type in ssleay.cnf
+   to 0x80 (for clients) or 0x40 (for servers).
+
+If you now add the cacert.pem to any pfx files you create it should be added as
+an untrusted CA on import.
+
+Other fairly essential stuff like basic constraints and key useage cannot be
+set at present because they are constructed types and the current extension
+packing stuff can't handle them.

@@ -1,0 +1,281 @@
+
+MESSAGE DIGEST LIBRARY
+
+Copyright,
+Matthew Gream <M.Gream@uts.edu.au>,
+February 1994.
+
+
+-- License
+
+Please read 'license.txt', it is written for my larger project, but
+applies to this as well (it doesn't cover the items of sofware that
+are not under my control, ie. the message digests themselves).
+
+
+-- Acknowledgements
+
+I acknowledge the use and inclusion of the following items of software
+within the library:
+
+	MD4, MD5  -- RSA Laboratories Inc.
+	SHS       -- Peter C. Gutmann, Colin Plumb.
+	HAVAL	  -- Y. Zheng, J. Pieprzyk and J. Seberry.
+
+
+-- Overview
+
+In working on a larger project, I've had to construct some generic
+modular handlers for message digest, encryption and compression methods.
+The idea is that the one generic interface handler allows selection and
+use of any of the particular methods by a common set of interface
+functions, thereby removing the idiosyncrasies of each particular
+method.
+
+Some of the goals when writing this are to ensure it is flexible enough
+to allow addition of new methods even external to this library, ie so an
+application could selectively add or remove methods due to some other
+influence. At the same, it must be easy to determine what methods are
+currently available, and select them. Therefore, each method is known by
+a string, ie "md5" for RSAs message-digest #5.
+
+Access to the module is, similar to how most message digests are
+structure at the moment, via a context structure which keeps all the per
+association static data within it. This allows concurrency.
+
+Anyway, the reason for release of this is that I gave it to a friend to
+use on something he was working on, he expressed delight at the
+'niftyness' of it, and suggested I make it available. Writing this
+documentation and packaging it up for posting has already taken longer
+than writing the thing in the first place :-)
+
+
+-- Startup
+
+Most, just about all actually, functions have an enumerated return type
+of 'err_code' which are defined in the header file (note: I had to hack
+around to move a few things into this header file, because in the larger
+project, it is more distributed). To be honest, err_code is a bit of a
+misnomer, it should really be ret_code, but anyway ... these give
+information about function execution problems.
+
+Before you use the module in anyway whatsoever, you want to call the
+module initialisation function, this sets up internal tables and
+registers a few common message digests (md4,md5,shs,haval). The syntax
+for this is:
+
+                md_mod_open ();
+
+Even though it does return an err_code, it is currently redundant. By
+the same token, after you've finished with the module, you're expected
+to call:
+
+                md_mod_close ();
+
+which closes down and clears any used internal info. Naturally, a call
+to /md_mod_open()/ will re-initialise it again.
+
+
+-- Lookup
+
+To look at what methods are already registered, two functions so you can
+'walk the list' so to speak. To initialise the walk, call:
+
+                md_list_init (word* state_var);
+
+/state_var/ is used as an index and used in the subsequent procedure of
+returning each registered identifier in turn, the syntax for this is:
+
+                md_list_next (word* state_var, string ident);
+
+Where string is a char array of minimum size /ident_sz/ (defined in the
+header -- currently 16). At each iteration, /state_var/ is updated and
+the next identifier is copied into /ident/. The return code here will be
+/err_ok/ until the end of list is reached (or you pass an incorrect
+/state_var/). For example, the following bit of code would list all the
+currently registered methods:
+
+        void list_methods ()
+          {
+            word        s;
+            char        ident[ident_sz+1];
+
+            md_list_init (&s);
+            while (md_list_next (&s, ident) == err_ok)
+              printf ("-> %s\n", ident);
+          }
+
+-- Registration/Deregistration
+
+If you wish to add a custom digest to the module, you need to call the
+registration process. First, your message digest needs to provide the
+following functions (examine, say, md4-if.c to see how this works):
+
+  create() :            this takes as argument the message digest
+                        context and allocates/initialises the internal
+                        private data store.
+
+  destroy() :           takes a context as argument and deallocates the
+                        the internal private data store.
+
+  register() :          takes and info structure as it's argument and
+                        fills out all the function call handlers to
+                        those just described above.
+
+  deregister() :        can be NULL, if not this is called when the
+                        module is deregistered and takes an info struct
+                        as it's argument.
+
+  [the user called functions that actually do work:]
+
+  init() :              called with the private data structure as
+                        argument and expected to initialise state
+                        information ready to start calculating a digest.
+
+  update () :           takes private data structure, data and it's
+                        length to be used to update the digest.
+
+  final () :            takes private data structure and a storage area
+                        to copy the digest too when all update()s have
+                        been finished.
+
+To register, you call the registration function with the ASCII string
+name of the method and the above registration function, the syntax for
+this is:
+
+                md_register (string ident, function register);
+
+/md_register()/ will then check that an identifier of the same name
+doesn't exist, and if so, allocate new storage for an info structure on
+the list and call the register function so it can fill in the details.
+Again, a much better explanation can be had if you read the source code
+:-).
+
+Deregistration is even easier, just call the deregistration function
+with the identifier to remove, the syntax for this is:
+
+                md_deregister (string ident);
+
+As a practical example, say you wanted to register a crc32 message
+digest, you'd have code something to the effect of:
+
+                extern          err_code crc32_register ();
+
+                if (md_register ("crc32", crc32_register) != err_ok)
+                  {
+                    ...
+                  }
+
+and for deregistration:
+
+                (void)md_deregister ("crc32");
+
+
+-- Operation
+
+Putting aside the administrative details of initialisation and
+registration, using the module from an application is exceeding simple.
+You first need to call /md_open()/ with an empty context structure, and
+the requested digest to use. From then on, you can use successive
+iterations of /md_init()/ to initialise the digest, /md_update()/ to
+update the digest with new data, and /md_final()/ to return the digest.
+Again, a practical example is the easiest. Consider the following
+function to take a files as input and determine the digest using md4.
+
+
+        /* returns size of digest if ok, or -1 if error occured
+         */
+        int md_of_file (filename, digest, digest_sz)
+                char*           filename;  /* filename to work on */
+                char*           digest;    /* where to place the digest */
+                int             digest_sz; /* how much space is avail */
+          {
+                int             f;
+                int             i, j, k;
+                char            buf[8192];
+                md_ctx          ctx;
+
+                if (md_mod_open () != err_ok)
+                  return -1;            /* something failed at init */
+
+                if (md_open (&ctx, "md4") != err_ok)
+                  return -1;            /* md4 isn't registered */
+
+                if (digest_sz < md_hash_sz (&ctx))
+                  return -1;            /* not enough space for the digest */
+
+                if ((f = open (filename, O_RDONLY)) < 0)
+                  return -1;            /* can't open file */
+
+                md_init (&ctx);         /* initialisation */
+
+                do                      /* read and update */
+                  {
+                    j = read (f, buf, 8192);
+                    if (j > 0)
+                      md_update (&ctx, buf, j);
+                  }
+                while (j == 8192);      /* until exhausted input */
+
+                close (f);
+
+                md_final (&ctx, digest); /* compute and place in buffer */
+                j = md_hash_sz (&ctx);   /* store size of hash before close */
+
+                md_close (&ctx);        /* close the context */
+
+                md_mod_close ();        /* shutdown the module */
+
+                return j;               /* return size of hash */
+          }
+
+
+-- Building
+
+Type make. Should work on most architectures as there is little, if no,
+architecture dependent code. I've tested it on linux under gcc and SunOS
+under both gcc and cc, no problems at all. I haven't tried it on MSDOS
+yet though.
+
+If you want to modify which digests are included and/or which are loaded
+at module open, the add or remove the object files from the makefile,
+and edit the lines in mdigest.c in /md_mod_open()/ add or subtract
+/md_register()/s.
+
+
+-- Testing
+
+I've not done exhaustive testing on it, but running test suites and
+comparing against vanilla digests, all seems ok. Anyway, it's so damn
+small there isn't really much that can go wrong :-) [famous last
+words ...].
+
+
+-- Included software
+
+ > mfile.
+
+ program which takes as arguments a number of files to calculate message
+ digests of. Each digest can be explicitly requested, or if none are,
+ then the default is to calculate all of them. This is used to make the
+ CHECKSUMS file.
+
+ > mtest.
+
+ runs test suites relevant to particular message digests.
+
+-- Bugs
+
+None (so far).
+
+-- Finally
+
+I had to reverse the arguments to some of the message digests. Theres a
+bit of inconsistency because the init() and update() functions take a
+context as first parameter, but the final() doesn't. I guess it's just
+my pedantic genericism that does it, but hey.
+
+ps. I hate writing documentation, so excuse the above if it seems too
+cryptic.
+
+

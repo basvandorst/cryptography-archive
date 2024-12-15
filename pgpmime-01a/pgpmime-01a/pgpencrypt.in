@@ -1,0 +1,69 @@
+#!/bin/sh
+pgp=%PGP%
+mimencode=%MIMENCODE%
+
+date=`date`
+boundary="_PGPMIME $date $$"
+tempfile=/tmp/pgpmime.$$
+
+encode=false
+encodeopt='-a'
+ext='asc'
+# This controls whether or not the application should do the BASE64 encoding
+if test "$1" = "-e"; then
+  encode=true
+  shift
+  encodeopt='+Armor=off'
+  ext='pgp'
+fi
+
+destfile=$1
+shift
+
+(echo 'Content-Type: multipart/encrypted; boundary="'$boundary'";'
+ echo '    protocol="application/pgp-encrypted"'
+ echo ''
+ echo 'This message is in the MIME format described by the Internet Draft'
+ echo 'draft-elkins-pem-pgp-01.txt and can be decoded with metamail using'
+ echo 'the PGPMIME toolkit (ftp://cs.hmc.edu/pub/me/pgpmime.tar.Z).'
+ echo ''
+ echo '--'$boundary
+ echo 'Content-Type: application/pgp-encrypted'
+ echo ''
+ if test "$encode" = "true"
+ then
+	echo '8bit to 7bit conversion done at the application level.'
+ else
+	echo '8bit to 7bit conversion done by PGP.'
+ fi
+ echo ''
+ echo '--'$boundary
+ echo 'Content-Type: application/octet-stream'
+ if test "$encode" = "true"; then
+   echo 'Content-Transfer-Encoding: base64'
+ fi
+ echo 
+) > "$tempfile"
+
+$pgp +verbose=0 -we $encodeopt $destfile $*
+
+if test $? -ne 0; then
+	/bin/rm -f $tempfile
+	exit 1
+fi
+
+if test "$encode" = "true"
+then
+	$mimencode -b $destfile.pgp >> "$tempfile"
+	if test $? -ne 0; then
+		/bin/rm $tempfile $destfile.pgp
+		exit 1
+	fi
+else
+	cat $destfile.asc >> "$tempfile"
+fi
+
+(echo; echo '--'$boundary'--') >> "$tempfile"
+
+/bin/rm -f $destfile.$ext
+mv $tempfile $destfile

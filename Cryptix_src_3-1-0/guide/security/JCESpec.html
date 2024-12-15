@@ -1,0 +1,524 @@
+<!doctype html public "-//IETF//DTD HTML//EN">
+<HTML>
+
+<HEAD>
+
+<TITLE>         Java Cryptography Extension</TITLE>
+
+</HEAD>
+
+<BODY>
+<HR>
+
+<center>
+
+<H1>Java<font size=-1><sup>TM</sup></font> Cryptography Extension</H1>
+
+<H1>API Specification &amp; Reference</H1>
+
+<H3><I>Last Modified: 27 February 1997</I></H3>
+
+</center>
+
+<HR>
+<H1>Introduction</H1>
+
+<blockquote>
+
+<P>
+This document is intended as a companion to the <a href = 
+"CryptoSpec.html">Java Cryptography Architecture (JCA) API Specification
+&amp; Reference</a>. References to chapters not present in this document 
+are to chapters in the JCA Specification.
+<P>
+The Java Cryptography Extension (JCE) is a set of APIs to and
+implementations of cryptographic functionality, including symmetric,
+asymmetric, stream, and block encryption. It supplements the security
+functionality of the JCA, which itself includes digital signatures
+and message digests.
+<P>
+The architecture of the JCE follows the same 
+<a href = "CryptoSpec.html#Design">design
+principles</a> found elsewhere in the JCA: implementation independence
+and, whenever possible, algorithm independence. It uses the same
+<a href = "CryptoSpec.html#ProviderArch">"provider"</a> architecture.
+<P>
+The JCE provides both API and implementation. The API covers:
+
+<UL>
+<LI>Symmetric bulk encryption, such as DES, 3DES, RC2, and IDEA.<p>
+<LI>Symmetric stream encryption, such as RC4.<p>
+<LI>Asymmetric encryption, such as RSA.<p>
+<LI>Built-in, extensible multiple modes, such as Electronic Codebook
+mode (ECB),  Cipher Block Chaining mode (CBC) and Cipher FeedBack
+mode (CFB).<p>
+<LI>Padding, such as Public Key Cryptography Standard (PKCS) #5
+and Privacy Enhanced Mail (PEM) style padding.
+</UL>
+
+
+<P> The implemententation extends the JCA "SUN" provider, with
+implementations of: 
+
+<UL>
+
+<LI>Data Encryption Standard (DES)<p>
+
+<LI>Triple DES (DES-EDE with 168-bit key)<p> 
+
+<LI>ECB and CBC modes<p>
+
+<LI>PKCS#5-style padding
+
+</UL>
+
+</blockquote>
+
+<H2>Concepts</H2>
+
+<blockquote>
+
+<P>
+This section provides a high-level description of the concepts
+implemented by the API, and the exact meaning of the
+technical terms used in the API specification.
+
+<H4>Encryption and Decryption</H4>
+
+<P> Encryption is the process of taking data (called <I>cleartext</I>)
+and a short string (a <i>key</i>) and producing data meaningless to a
+third-party who does not know the key (<I>ciphertext</I>). Decryption
+is the inverse process: that of taking ciphertext and a short key
+string, and producing cleartext.
+
+<H4>Cipher</H4>
+
+<P> Encryption is done using a cipher. A cipher is an object capable
+of carrying out encryption and decryption according to an encryption
+scheme.<p>  
+
+</blockquote>
+<p>
+
+<H1>Core Classes and Interfaces. </H1>
+
+<H2>The Cipher Class</H2>
+
+<blockquote>
+
+<P>
+The Cipher class defines behavior for encryption and decryption,
+including initialization as well as the encryption or decryption
+operation.
+
+<H4>Creating a Cipher Object</H4>
+
+<blockquote>
+
+<P> Like other engine classes in the API, Cipher objects are created
+using the <code>getInstance</code> factory methods on the Cipher class. 
+A factory method is a static method that returns an instance of a class, 
+in this case an instance of a Cipher subclass implementing a requested 
+algorithm.
+
+<P> To create a Cipher object, you must specify the encryption
+algorithm name, with an optional mode and padding scheme separated
+by "<code>/</code>" characters. You may also specify which provider
+you want to supply the algorithm.
+
+<pre>
+    public static Cipher getInstance(String algorithm);
+<P>
+    public static Cipher getInstance(String algorithm, 
+                                     String provider);
+</pre>
+
+Standard names to be used to specify algorithms are discussed in
+<a href="CryptoSpec.html#AppA">Appendix A</a> 
+in the <i>Java Cryptography Architecture API Specification &amp; 
+Reference</i>.
+
+<p>Standard names to be used to specify modes and padding schemes are 
+discussed in <a href = "#AppA">Appendix A</a> in this document.
+
+<P> The objects returned by factory methods are uninitialized, and
+must be initialized before they become usable. 
+
+</blockquote>
+
+<H4>Initializing a Cipher Object</H4>
+
+<blockquote>
+
+Cipher objects are modal objects. This means that a Cipher 
+object is always in a given state, where it may only do
+one type of operation. States are represented as final integer 
+constants defined on Cipher.
+<P>
+Cipher itself defines three states:
+<UL>
+<LI>UNINITIALIZED
+<LI>ENCRYPT
+<LI>DECRYPT
+</UL>
+
+When it is first created, a Cipher object is in the UNINITIALIZED state.
+Initialization methods are used to initialize a Cipher and cause a state 
+transition. The Cipher class defines two initialization methods,
+<code>initEncrypt</code> and <code>initDecrypt</code>, which change the
+state to <code>ENCRYPT</code> and <code>DECRYPT</code>, respectively.
+They each take a Key instance as an argument:
+
+<pre>
+    public void initEncrypt(Key key);
+<P>
+    public void initDecrypt(Key key);
+</pre>
+
+<p>Note that when a cipher object is initialized, it loses all 
+previously-acquired state. In other words, initializing a Cipher is 
+equivalent to creating a new instance of that cipher, and initializing 
+it. For example, if a cipher is first initialized for decryption with
+a given key, then initialized for encryption, it will lose any
+state acquired while in decryption mode.
+
+</blockquote>
+
+
+<H4>Encrypting and Decrypting Data</H4>
+
+<blockquote>
+
+<P>To encrypt or decrypt data, simply call one of the crypt methods:
+
+<pre>
+    public byte[] crypt(byte[] in);
+<P>
+    public byte[] crypt(byte[] in, int off, int len);
+<P>
+    public int crypt(byte[] in, int inOff, int inLen, byte[] out,
+                     int outOff);
+</pre>
+
+<P><code>crypt</code>will take care of any necessary padding or unpadding, 
+and will allocate new output buffers if none are specified.
+
+</blockquote>
+
+</blockquote>
+
+<H2>The Cipher Stream Classes</H2>
+
+<blockquote>
+
+<P>Sometimes it is not convenient to have to process data in batch mode,
+that is, all at once. While doing stream operations, for example, you
+typically want to process a few bytes at a time, without having to know
+in advance how long the data is, or whether it is too long to be
+held in memory all at once.
+
+When that is the case, the cipher stream classes should be used.
+
+<H3>CipherOutputStream</H3>
+
+<blockquote>
+
+This class is a FilterOutputStream that encrypts or decrypts the data 
+passing through it.
+
+<p>This class has a constructor that takes a Cipher and an output stream as 
+arguments. The cipher is used to encrypt or decrypt all data 
+supplied via calls to one of the <code>write</code> methods. The 
+encryption/decryption result is written to the output stream.
+
+<p>A buffer is used for receiving the data to be encrypted or decrypted,
+depending on the state of the Cipher. To supply the bytes that need
+to be encrypted/decrypted, make one or more calls to one of the
+<code>write</code> methods. After you have supplied all the data,
+call <code>flush</code> to ensure final processing is done. 
+
+<p>With an encrypter stream, every time a complete block has been
+supplied via calls to <code>write</code>, the block is encrypted 
+and written to the output stream. When <code>flush</code> is called, 
+the final data is encrypted and the result written to the
+output stream. If the final data does not comprise a complete block, 
+and the cipher is a padding cipher, the data is padded
+before encryption. If padding is needed but the cipher is not
+a padding cipher, an exception is thrown.
+ 
+<p>With a decrypter stream, every time a complete block plus one
+byte has been supplied via calls to <code>write</code>, the block 
+is decrypted and written to the output stream. When <code>flush</code> 
+is called, exactly one block should be in the buffer. It is decrypted 
+and written out.
+
+</blockquote>
+
+<H3>CipherInputStream</H3>
+
+<blockquote>
+
+This class is a FilterInputStream that encrypts or decrypts the data 
+passing through it. Typically, this stream would be used as a filter to 
+read an encrypted file.
+
+<p>This class has a constructor that takes a Cipher and an input stream as 
+arguments. The cipher is used to encrypt or decrypt all data 
+read through the stream. 
+
+<p>For block ciphers, some buffering of the data received from the input 
+stream is done. The buffer length is the cipher's block size. For 
+stream ciphers, that is, ciphers capable of encrypting or decrypting 
+a byte at a time, no buffering is necessary. 
+
+<p>The data is encrypted or decrypted, depending on the initialization
+state of the Cipher. To get the encryption/decryption result bytes, make
+one or more calls to the <code>read</code> methods. One 
+<code>read</code> method, with no arguments, returns the 
+next result byte. The other <code>read</code>
+method returns multiple result bytes at once.
+
+<p>For a buffered decrypter stream, every time the buffer is empty, the
+stream attempts to read a complete buffer, and blocks until it
+does. When it has read a buffer, it decrypts it. If the next byte is
+an EOF and the cipher is a padding/unpadding cipher, the decryption 
+result is then unpadded. If an EOF is encountered before a whole
+buffer has been read, an exception is thrown.
+
+<p>For a buffered encrypter stream, every time the buffer is empty, the
+stream attempts to read a complete buffer, and blocks until it
+does. If it reads a whole buffer without reaching EOF, it encrypts
+it. If it reaches EOF in the middle of a buffer, and the cipher is a
+padding cipher, it will pad the buffer, and encrypt it. Otherwise,
+an exception will be thrown.
+
+</blockquote>
+
+</blockquote>
+
+
+<H2>Key Generator</H2>
+
+<blockquote>
+
+<P>
+A key generator is used to generate secret keys for symmetric
+algorithms.
+
+<H4>Creating a Key Generator</H4>
+
+<blockquote>
+
+<P>
+The arguments for creating a key generator are a symmetric encryption
+algorithm and, optionally, a provider:
+
+<pre>
+    public static KeyGenerator getInstance(String algorithm);
+<P>
+    public static KeyGenerator getInstance(String algorithm,
+                                       String provider);
+</pre>
+
+<P>
+A KeyGenerator object does not need further initialization.
+
+</blockquote>
+
+<H4>Creating a Key</H4>
+
+<blockquote>
+
+<P>
+To generate a key, simply call the method:
+
+<pre>
+    public Key generateKey(SecureRandom random);
+</pre>
+
+<P>
+This method will always return the same key, given the same random
+bytes by the random byte source.
+
+</blockquote>
+
+</blockquote>
+
+<H1>Output Considerations</H1>
+
+<blockquote>
+
+<P>Some of the crypt methods allow the caller to specify the output
+buffer into which to encrypt or decrypt the data. In these cases, 
+it is important to pass a buffer that is large enough to hold the 
+result of the encrypted or decrypted data.
+
+<p>Clients should call the Cipher
+
+<pre>
+    public final int outBlockSize(int inLen)
+</pre>
+
+method to determine the size of an output buffer.
+
+</blockquote>
+
+</blockquote>
+
+
+<H1>Examples</H1>
+
+<blockquote>
+
+<P>
+This section is a short tutorial on how to use the major features
+of the Java Cryptography Extension API.
+
+<H2>Simple Encryption Example</H2>
+
+<blockquote>
+
+This section takes the user through the process of generating a
+key, creating and initializing a cipher object, encrypting a file,
+and then decrypting it. Throughout this example, we use the Data
+Encryption Standard (DES).
+
+<H4>Generating a Key</H4>
+
+<blockquote>
+
+<P>
+To create a DES key, we first get a DES KeyGenerator, then generate
+the key:
+
+<pre>
+    SecureRandom random = new SecureRandom(); 
+    KeyGenerator keygen = KeyGenerator.getInstance("DES");
+    keygen.initialize(random);
+    Key key = keygen.generateKey();
+</pre>
+
+</blockquote>
+
+<H4>Creating a Cipher</H4>
+
+<blockquote>
+
+<P>
+The next step is to create a Cipher instance. To do this, use
+one of the Cipher class's <code>getInstance</code> factory methods. 
+You must specify the algorithm name. Optionally, you may also specify, 
+if applicable:
+<UL>
+<LI>the encryption mode
+<LI>the padding scheme to be used
+<LI>the provider from which to get the implementation
+</UL>
+
+<P>
+In this example, we create a DES (Data Encryption Standard) cipher,
+in Cipher Block-Chaining mode, with PKCS#5-style padding. We do not
+specify a provider.
+<P>
+DES's standard algorithm name is "DES", Cipher Block-Chaining
+Mode is "CBC" and PKCS#5 padding is "PKCS#5". These are separated
+by "<code>/</code>" characters, to find the cipher specification:
+"<code>DES/CBC/PKCS#5</code>".
+
+<pre>
+    /* Create the cipher */
+<P>
+    Cipher des = Cipher.getInstance("DES/CBC/PKCS#5");
+</pre>
+
+<P>
+The variable <code>key</code> is bound to a legal DES key, which may be
+used for encryption and decryption. The handle to the key must be kept
+secure, since it is the keystone of the secrecy afforded by the
+encryption algorithm. With the key, we are able to initialize
+the object for encryption and decryption.
+
+<pre>
+    /* Initialize the cipher for encryption */ 
+    des.initEncrypt(key); 
+
+    byte[] ciphertext = des.crypt(cleartext);
+    <P>
+    /* Initialize the cipher for decryption */ 
+    des.initDecrypt(key); 
+
+    byte[] decrypted = des.crypt(ciphertext);
+    <P>
+    /* Verify that the clear text is identical to the 
+    decrypted text */
+
+    if (decrypted.length != cleartext.length)
+        return false;
+
+    for (int i = 0; i &lt; cleartext.length; i++) {
+        if (decrypted[i] != cleartext[i])
+            return false;
+    }
+    return true;
+</pre>
+
+</blockquote>
+
+</blockquote>
+
+<p>
+<P>
+
+<HR>
+
+<a name="AppA">
+<H1>Appendix A: Standard Names</H1>
+
+<blockquote>
+
+<P> The API requires and utilizes a set of standard names for various
+algorithms, padding schemes, providers, etc. This appendix
+extends the standard set of names defined by 
+<a href="CryptoSpec.html#AppA">Appendix A</a> 
+in the <i>Java Cryptography Architecture API Specification &amp; 
+Reference</i> as follows:
+
+<P> PKCS#5: A name for the padding scheme described in RSA
+Laboratories Technical Note: Public Key Cryptography Standard (PKCS)
+5.
+
+<P>ECB: Electronic Codebook Mode, as defined in the National Institute
+of Standards and Technology (NIST) Federal Information Processing
+Standard (FIPS) 81.
+
+<P>CBC: Cipher-Chaining Mode, as defined in NIST FIPS 81.
+
+<P>CFB: Cipher-Feedback Mode, as defined in NIST FIPS 81.
+
+<P>OFB: Output-Feedback Mode, as defined in NIST FIPS 81.
+
+</blockquote>
+
+
+
+<p>
+<!-- +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ -->
+<HR SIZE=3 NOSHADE>
+ 
+<IMG SRC="../../images/JAVA.85.GIF" ALIGN=RIGHT>
+ 
+<FONT SIZE=-2>
+<A HREF="../../relnotes/SMICopyright.html">Copyright &#169;</A> 
+1996, 1997 Sun Microsystems, Inc., 2550 Garcia Ave., Mtn. View, CA 94043-1100 USA. All rights reserved
+.
+<br><br>
+<FONT SIZE=-1>
+Please send comments to: <a href="mailto:java-security@java.sun.com">
+java-security@java.sun.com</a>
+</FONT>
+ 
+
+
+</BODY>
+
+</HTML>

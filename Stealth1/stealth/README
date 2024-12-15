@@ -1,0 +1,286 @@
+
+		Stealth V1.2 by Henry Hastur
+		----------------------------
+
+Stealth is a simple filter for PGP which strips off all identifying header
+information to leave only the encrypted data in a format suitable for
+steganographic use. That is, the data can be hidden in images, audio
+files, text files, CAD files, and/or any other file type that may contain
+random data, then sent to another person who can retrieve the data from 
+the file, attach headers, and PGP decrypt it.
+
+Stealth is not intended to replace the standardised methods of using
+encryption (e.g. ASCII-armoured PGP email) ; in an ideal world we would
+all be able to send openly encrypted mail or files to each other with no 
+fear of reprisals, however there are often cases when this is not possible,
+either because the local government does not approve of encrypted 
+communication, or perhaps because you are working for a company that
+does not allow encrypted email but doesn't care about Mandelbrot
+GIFs. This is where Stealth and steganography can come into play.
+
+
+Compiling
+---------
+
+Stealth has currently only been tested on BSD and SVR4 Unix (and as
+such should work with most varieties of Unix), with both non-ANSI
+compilers and ANSI compilers with 'minimal ANSI' flags. In order to
+compile the program, you should just be able to extract the files
+from the tar file provided, then type 'make'. If that fails you may
+need to change the definition of CC and CFLAGS in the makefile to
+get it to compile. On machines with gcc, the GNU C compiler, Stealth
+can be compiled by simply changing the 'CC=cc' line in makefile to
+'CC=gcc'.
+
+The current code has not been tested on a PC, as I don't currently
+have time to do so. I'm hoping that someone will be able to do that
+for me.
+
+Usage
+-----
+
+Stealth always reads from its standard input and writes to the standard
+output, though when adding headers to data the data has to be stored in a
+temporary file (see Security Concerns below).
+
+Command line arguments :
+
+	-c 	Conventional encryption used rather than public key
+	-a	Add headers (defaults to strip headers)
+	-v	Verbose output.
+	-f	Frig output.
+
+The -a argument takes a string specifying the key id to put into the
+header. This can be specified either as an identifying name (e.g.
+foo.bar@snafu.com), or as a 24-bit key id as given by the pgp -kv
+command, prefixed by '0x' (See examples below). The latter has been
+added for MS-DOS users who can only pass a single word to the program
+for a key name.
+
+The -f option is used to alter the bit frequency of the output. It can
+be followed by an integer representing the percentage of ones (1 to 100)
+in the output (assuming a 50:50 distribution in the input), and a 128-bit
+'key' in the form 0xHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH, where the Hs are hex
+digits (0-F). If the key is not provided, then the last 128-bits of the PGP
+public key value are used, and if the percentage is not given, it is
+assumed to be 50 %. See the section on 'Frig' for more detail. 
+
+The percentage and key can be in either order, as they are differentiated
+by the presence of the '0x' on the beginning of the key. Note that if you
+use the conventional encryption option and the frig option, you *must*
+specify a key as there will be no PGP public key to use.
+
+Stealth needs to be able to find your pubring.pgp file, which it does
+by first checking in the directory pointed to by $PGPPATH, then the
+current directory.
+ 
+
+Examples
+--------
+
+To encrypt a file with PGP and store it in the file pgp.stl prior to sending :
+
+pgp -ef < secrets.dat | stealth > pgp.stl
+
+To encrypt a file with conventional (IDEA) encryption, and pass to a
+steganography program called steg_program :
+
+pgp -fec < secrets.dat | stealth -c | steg_program
+
+To PGP encrypt a file, strip headers, alter the bit frequency to 55:45
+of ones and zeros, use the md5sum of Tim May's 'Crypto-Anarchist Manifesto'
+as the key, and pass it on to the steganography program :
+
+pgp -ef < secrets.dat | stealth -f 55 0x0c51c5fa1aacf1d7e49ac4bd752b2a79 |
+	steg_program
+
+To take the output from a steganographic extraction tool, add headers
+for key "Your Id", and decrypt :
+
+steg_program | stealth -a "Your Id" | pgp -f > secrets.dat
+
+[ Note : this use of " marks will only work on Unix, not MS-DOS. If
+  you have to specify a key with more than one word, you will probably
+  have to specify the key id instead ]
+
+To take the conventionally encrypted output from a steg program, attach
+headers and decrypt :
+
+steg_program | stealth -ac | pgp -f > secrets.dat
+
+To take the output from a steganography program, add  the headers
+for a key whose 24-bit id is 23ffff, and decrypt :
+
+steg_program | stealth -a 0x23ffff | pgp -f > secrets.dat
+
+To take the output from the steganography program used in the 'frig'
+example above, add headers for key id 23ffff and decrypt :
+
+steg_program | stealth -a 0x23ffff -f 55 0x0c51c5fa1aacf1d7e49ac4bd752b2a79 |
+	pgp -f > secrets.dat
+
+
+Limitations
+-----------
+
+Files can be signed, but can only be encrypted to one recipient - extra
+RSA headers for all but the first recipient will be stripped from the
+file. In addition, if you specify conventional encryption but pass an
+RSA-encrypted file into the filter the RSA-block will be stripped. In
+either case, stealth will print out warnings to inform you of this.
+
+Stealth provides no support for ASCII-armoured PGP messages - it will
+only work with the binary output format, and the output will have to
+be converted to a useable form after processing, either with a
+steganography program or a standard utility such as uuencode.
+
+Finally, for technical reasons there are potential problems with public
+keys of size (typically) 8*n + 1 or 8*n + 2 (e.g. 513 or 1026). If you
+are encrypting to a key of a peculiar size, it's possible that the algorithm
+used to add headers could fail, but fortunately this can be detected while
+stripping the headers, and a warning will be printed. If this warning appears,
+you will probably want to encrypt the data again until a suitably sized
+RSA-block is created.
+
+It is NOT neccesary to remove garbage data that the steganography program
+may have added to the end of the PGP-encrypted data. PGP output contains
+an encrypted end-of-file mark that allows the program to decrypt correctly
+and ignore any trailing garbage. This may not work correctly if you 
+switch off the default compress-before-encryption operation of PGP.
+
+
+Frig
+----
+
+The frig code is essentially a complicated bit-distribution function. The
+output of the stealth program is buffered up for a time, then when enough
+bits have been collected to meet the frequency distribution requirements,
+the 512-bit block is padded out with an appropriate number of ones or
+zeros - see the 'security concerns' section, and the frig function is 
+called. After the bits have been redistributed in this fashion, the block 
+is output to stdout. A similar operation occurs for input, to strip out 
+the bits that were added to the data.
+
+The code assumes that the input data is 50:50 one and zero, and will not
+produce the requested frequency distribution if this is not the case. This 
+should be a valid assumption for data output from any good encryption 
+system.
+
+The frig operation works as follows :
+
+permute the input block
+for 32 rounds
+	substitute each byte for another that has the same number of ones
+		and zeros.
+	permute the block
+end loop
+
+There are 64 randomly generated 256-entry tables used in the algorithm. More 
+could have been used, however I wanted to keep overall memory use down to 
+32k (for both encryption and decryption tables) in order to make the code
+PC-friendly. The table used for each byte is determined by the key, the
+number of the round, and the position of the byte in the block. 
+
+A 512-bit block size allows the additional ones and zeros to be spread out
+over a large area, while the 128-bit key and 32 rounds ensure that each
+bit of the output depends on each bit of the key and most bits of
+the plaintext. As a result, with a 50:50 zero/one split of bit frequencies,
+typically 45-55 % of the output bits change for a single bit change in
+the key or plaintext. It would be nice to have some form of block-chaining,
+e.g. xoring the new block with the old plaintext, but unfortunately doing
+that would mess up the bit-frequency....
+
+Performance scales pretty much linearly with the number of rounds, so
+if it's running too slowly you could reduce the number of rounds in
+frig.h (the numnber of rounds must be a multiple of two). This will 
+reduce security somewhat, and must obviously be done by both sender 
+and receiver. 
+
+You could also create your own set of arrays for conv.c, the only 
+restrictions on the values you can use in the arrays are that the 
+number of set bits in the array element must match the number of 
+set bits in the second-level (0-256) array index, and each array 
+element must be unique for that 256-entry array. You could also 
+increase the number of arrays from the default 64 if you're running
+on a machine with plenty of memory - the only restriction is that the
+number must be a power of two. This should increase security somewhat,
+and again obviously the arrays must match at both ends.
+
+Key transfer is potentially a problem if you decide not to use the
+default (which is hardly secure). A simple method of picking suitable
+keys might be to use the md5 of a known file - e.g. a system manual page
+that's identical on the sender and receiver's machine, an e-book, or
+an issue of an ezine, a paper such as Tim May's one used in the example,
+the first Usenet post by the receiver in a day, or more whimsically, 
+perhaps David Sternlight's first post each full moon... None of these
+methods are *particularly* secure either, however once an encrypted
+line of communication is set up it will be possible to exchange keys
+in the encrypted messages.
+
+None of these methods are particularly secure, however the majority of
+the cryptographic strength of your steganography should be in the use
+of PGP to encrypt the data. This second level key is used merely to make
+it harder to determine whether any data has in fact been hidden in the
+file. I wouldn't want to trust it against attacks from a major
+government, but it's probably secure enough for most uses. If anyone
+wants to perform more sophisticated cryptanalysis of the algorithm,
+and/or produce a better set ofsubstitution tables than those that
+have been randomly generated for conv.c, feel free to do so.
+
+The Frig code can be freely ripped off and incorporated into your own
+steganography code as long as you leave the copyright messages intact
+in the source, and give me a mention in the documentation...
+
+
+Security Concerns
+-----------------
+
+After passing through the stealth filter, the PGP-encrypted data is
+essentially white noise, with no identifying marks, and whilst it may
+well have enough peculiarities for an expert cryptanalyst to recognize
+it as encrypted data, the probability is much less than would be the
+case with a PGP header identifying the recipient attached.
+
+'Frigged' data will look very similar to noise of the specified
+frequency distribution, but again there could be minor peculiarities
+that would make it stand out. Statistical analysis of the output data
+shows that the bit-frequencies and byte-frequencies of the output
+are close to the expected values. The main problem is likely to be
+the way that this version simply appends ones and zeros to the end
+of the data before passing it to the 'Frig' algorithm. It would be
+better if the code was modified to use a Bresenham-style algorithm
+to distribute the bits around the block before 'Frig-ing' them,
+however I don't have time to do this at the moment. This would
+make it much more difficult to determine when you've found the
+'right' data.
+
+One other concern is that stealth has to create a temporary file when
+reading in data to attach headers, and depending on the build options
+chosen the program will store it in either $PGPPATH, the current directory
+or /tmp. On Unix machines, the file will be deleted as soon as it is opened,
+making it difficult to capture, but on other operating systems the file
+will only be deleted when it has been used. (In either case the file will
+be zeroed before being closed).
+
+In addition, some operating systems will use temporary files on your disk
+to emulate unix pipes (e.g. MS-DOS) - these files will not be zeroed when
+finished with !
+
+The key and user-id are passed in as command-line parameters, which can
+be read with 'ps' on a Unix machine. This should be probably be changed
+to ask the user for them. These improvements will have to go into version
+1.3 unless someone else gets there first.
+
+Export Restrictions
+-------------------
+
+Due to the addition of the 'frig' code, Stealth is now probably covered by 
+current export restrictions under the US ITAR regs, but I'm not a lawyer, 
+so if in doubt check it out yourself. It was written outside the US and 
+imported, so should soon be available on some European ftp sites 
+as well as US sites. 
+
+
+						Henry Hastur
+
+

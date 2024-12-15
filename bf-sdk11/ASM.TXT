@@ -1,0 +1,275 @@
+
+                                    BF-SDK
+                                    ~~~~~~
+                                     V1.1
+
+                              Assemblerinterface
+                              ~~~~~~~~~~~~~~~~~~
+
+                          (c) 1996 Cedric Reinartz
+
+
+This documentation helps you to use the assembler interface in your own 
+program. A typical program structure would be:
+
+   - declaration of some variables
+   - include BFE_ASM.INC
+   - definition of your data (.DATA)
+   - your code (.CODE) where you can use the BF-Macros
+
+In the following only the first and last part will be explained. Please
+have a look also in BFE_ASM.INC, BFENG386.ASM and ASM_DEMO.ASM to fully 
+understand the code.
+
+===============================================================================
+
+VARIABLES
+~~~~~~~~~
+
+
+NOPUB
+
+With this variable you can decide if BFENG386.ASM will be included or if
+BFENG386.OBJ will be used. If "noPub" is not defined the functions in BFENG386
+will be exported and you can (must) use BFENG386.OBJ. In this case you can not
+influence the behavior of BFENG386 further.
+Notice that BFENG386.OBJ which is shipped with this package is compiled with
+defaults preset in BFENG386.ASM. If you want to use the OBJ with different
+options you have to change the defaults and recompile.
+An example for this kind of use is the generation of the pascal unit in this
+package (BLOWFISH.TPU).
+If "noPub" is defined (the value doesn't matter) you include BFENG386.ASM in
+your own code. In this case there are variables which influence how 
+BFENG386.ASM will be compiled:
+Default: not defined
+
+-------------------------------------------------------------------------------
+
+USESMALL
+
+If "useSmall" is not defined the .model large directive will be used. This
+will result in CALLs generated as FAR by the assembler. If you want NEAR
+CALLs (for speed reasons as example) you have to define "useSmall" (value
+doesn't matter).
+Default: not defined
+
+-------------------------------------------------------------------------------
+
+NOLOOP
+
+If "noLOOP" is defined with the value "1" all the encryption rounds are placed
+after each other. This is very memory consuming, but eliminates the need for
+LOOPs and thus gives more speed. Any other value will generate a LOOP
+construction which is much smaller and about 20% slower than the enrolled
+version.
+Use this for TSR's and device drivers which handle slow devices.
+Note: This variable must be defined.
+Default: 1
+
+-------------------------------------------------------------------------------
+
+RNDS
+
+With "rnds" you can define how many rounds Blowfish should go. There
+are 3 possible values:
+
+       1:  There are always 16 Rounds to go
+       2:  There are always 32 Rounds to go
+       3:  You switch between 16 and 32 Rounds by software
+
+The different values are all due to speed and memory reasons. A "3" is the most
+flexible one. If 16 Rounds are set with "rnds equ 3" the code is a bit slower
+and slightly bigger than using "rnds equ 1".
+If you use "rnds equ 3" in conjunction with "noLOOP equ 0" you are able to set
+the number of rounds from 2 to 32. Remember that the security enhances with a
+increasing number of rounds (you should use at least 14), while the speed
+decreases with increasing rounds.
+Note: This variable must be defined.
+Default: 3
+
+===============================================================================
+
+MACROS
+~~~~~~
+
+
+_InitCrypt seg,off,len
+
+ Function   : Initialises the Boxes
+ Argument   : seg: segment of the password
+              off: offset of the password
+              len: length of the password
+ Return     : none
+ Affects    : all but DS
+ Description: A Password with a maximum of 56 Bytes is used to encrypt the
+              Boxes. These encrypted boxes are vital for the further encryption
+              process with _(CBC)Encrypt and _(CBC)Decrypt. If you want to
+              change the password at runtime you have to restore the original
+              contents of the boxes before you can use this function again 
+              (See _GetBoxes and _SetBoxes).
+
+-------------------------------------------------------------------------------
+
+_WeakKey
+
+ Function   : Test if the generated Boxes are weak
+ Argument   : none
+ Return     : AX = Status (1=weak, 0=good)
+ Affects    : AX, BX, CX, DX, SI, DI, direction Flag
+ Description: After "_InitCrypt" you should test the Boxes with this function.
+              If they provide a weakness which a cryptoanalyst could use to
+              break the cipher a "1" is returned. In this case you should
+              reload the original boxes and let the user choose a different 
+              password.
+
+-------------------------------------------------------------------------------
+
+_Encrypt seg,off,len
+
+ Function   : Encrypts a plaintext string using the ECB method
+ Argument   : seg: segment of the plaintext
+              off: offset of the plaintext
+              len: length of the plaintext
+ Return     : none
+ Affects    : all but DS
+ Description: This function encrypts (multiple) blocks of 8 Bytes of plaintext
+              using the ECB method (blocks are not chained). The generated 
+              ciphertext will overwrite the plaintext. Thus the seg:off 
+              argument will point to the ciphertext after the encryption. The 
+              length of the plaintext must be a multiple of 8. If it is not,
+              plaintext bytes will be left at the end of the ciphertext.
+
+-------------------------------------------------------------------------------
+
+_Decrypt seg,off,len
+
+ Function   : Decrypts a ciphertext string using the ECB method
+ Argument   : seg: segment of the ciphertext
+              off: offset of the ciphertext
+              len: length of the ciphertext
+ Return     : none
+ Affects    : all but DS
+ Description: This function decrypts (multiple) blocks of 8 Bytes of cipher-
+              text using the ECB method (blocks are not chained). The generated
+              plaintext will overwrite the ciphertext. Thus the seg:off
+              argument will point to the plaintext after the decryption. The 
+              length of the ciphertext must be a multiple of 8. If it is not, 
+              ciphertext bytes will be left at the end of the plaintext.
+
+-------------------------------------------------------------------------------
+
+_CBCEncrypt seg,off,len,segcl,offcl,segch,offch
+
+ Function   : Encrypts a plaintext string using the CBC method
+ Argument   : seg  : segment of the plaintext
+              off  : offset of the plaintext
+              len  : length of the plaintext
+              segcl: segment of the IV (low DWord)
+              offcl: offset of the IV (low DWord)
+              segch: segment of the IV (high DWord)
+              offch: offset of the IV (high DWord)
+ Return     : none
+ Affects    : all but DS
+ Description: This function encrypts (multiple) blocks of 8 Bytes of plaintext
+              using the CBC method (blocks are chained using an initialisation
+              vector IV). The generated ciphertext will overwrite the plain-
+              text. Thus the seg:off argument will point to the ciphertext 
+              after the encryption. The length of the plaintext must be a
+              multiple of 8. If it is not, plaintext bytes will be left at the
+              end of the ciphertext. The IV must not be secret. For different
+              encryptions you can choose the same IV but if possible you should
+              use different ones to improve security. 
+              Note: you need the original IV for decryption.
+
+-------------------------------------------------------------------------------
+
+_CBCDecrypt seg,off,len,segcl,offcl,segch,offch
+
+ Function   : Decrypts a ciphertext string using the CBC method
+ Argument   : seg  : segment of the ciphertext
+              off  : offset of the ciphertext
+              len  : length of the ciphertext
+              segcl: segment of the IV (low DWord)
+              offcl: offset of the IV (low DWord)
+              segch: segment of the IV (high DWord)
+              offch: offset of the IV (high DWord)
+ Return     : none
+ Affects    : all but DS
+ Description: This function decrypts (multiple) blocks of 8 Bytes of ciphertext
+              using the CBC method (blocks are chained using an initialisation
+              vector IV). The generated plaintext will overwrite the cipher-
+              text. Thus the seg:off argument will point to the plaintext 
+              after the decryption. The length of the ciphertext must be a
+              multiple of 8. If it is not, ciphertext bytes will be left at the
+              end of the plaintext.
+              Note: The IV is the same used on encryption.
+
+-------------------------------------------------------------------------------
+
+_ClearBoxes
+
+ Function   : Clears the Boxes
+ Argument   : none
+ Return     : none
+ Affects    : EAX, CX, DI
+ Description: Clears the contents of the P- and S-Boxes. This should be used
+              before you exit your program to make sure that no one can get
+              your Key.
+
+-------------------------------------------------------------------------------
+
+_SetRounds rnds
+
+ Function   : Set number of rounds. Returns number of rounds.
+ Argument   : rnds: # of rounds = 16, 32 or 2-32. See variable RNDS
+ Return     : AX = number of rounds
+ Affects    : AX
+ Description: You always have to give a Argument. If BFENG386.ASM was compiled
+              with "rnds equ 3" you are able to set the number of rounds 
+              between 2 and 32. This function always returns the number of
+              rounds actual used. If you supply an invalid argument the
+              default is used and returned. For more details see variable
+              RNDS.
+
+-------------------------------------------------------------------------------
+
+_GetBoxes seg,off
+
+ Function   : Copies the actual P- and S-Boxes to a user buffer
+ Arguments  : seg: segment of the user buffer
+              off: offset of the user buffer
+ Return     : none
+ Affects    : BX, CX, DX, SI, DI, direction flag
+ Description: Use this to save the original Boxes. If you want to change the
+              Password at runtime you have to restore these Boxes first. 
+              You can also save the encrypted Boxes and restore them if needed.
+              In this way you are able to swap Passwords at high speed.
+              The needed buffer size is 1042 for rnds=1 and 1058 for rnds=2 or 
+              rnds=3
+
+-------------------------------------------------------------------------------
+
+_SetBoxes seg,off
+
+ Function   : Copies a user buffer to the P- and S-Boxes
+ Arguments  : seg: segment of the user buffer
+              off: offset of the user buffer
+ Return     : none
+ Affects    : BX, CX, DX, SI, DI, direction flag
+ Description: Use this to restore the Boxes with previously saved ones.
+              See description of "_GetBoxes".
+
+-------------------------------------------------------------------------------
+
+_GetBoxPointer
+
+ Function   : Returns a Pointer to the beginning of PBox in DX:AX
+ Arguments  : none
+ Return     : DX:AX = pointer to the Boxes
+ Affects    : AX, DX
+ Description: If the _DATA segments are combined, DX will be the same as DS.
+              For a reason I do not know DX:AX is sometimes wrong, so verify
+              this! You can use this function to initialise DS
+
+
+-eof -

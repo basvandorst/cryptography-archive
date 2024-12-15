@@ -1,0 +1,101 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uchinews!vixen.cso.uiuc.edu!howland.reston.ans.net!pipex!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Weakness in CFB disk encryption + fix
+Message-ID: <1993Dec3.164857.22120@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Fri, 3 Dec 93 16:48:57 GMT
+Lines: 88
+
+Here's an interesting attack on disk encryption products that a block
+cipher in CFB mode.  It applies to a lesser degree to CBC, but there
+is a fix.   The latter is the useful part of this posting.
+
+Consider a message encrypted in CFB mode using a given IV.  If
+x[] is the plaintext and y[] is the ciphertext, then
+
+y[0] = x[0] ^ e(IV)
+y[1] = x[1] ^ e(x[0])
+etc.
+
+Now, if you have two messages x[] and x'[] encrypted with the same key
+and IV, then
+
+y[0] ^ y'[0] = x[0] ^ e(IV) ^ x'[0] ^ e(IV) = x[0] ^ x'[0].
+
+Thus, you can XOR the first ciphertext blocks and get the XOR of the
+corresponding first plaintext blocks.  If the XOR happens to be
+zero, then the same technique applies to the second blocks and so on.
+It is well known that two ASCII texts XORed with each other are not
+very secure.  Shannon estimated the entropy of english text at about
+1.2 bits per character.  Using 8 bits leaves lots of checking
+information.
+
+Now prepending random padding to the message, or using a random IV,
+renders this attack unusable.  But in a disk encryptor, the IV is
+usually computed based on the sector offset plus some disk-wide data.
+The same sector always uses the same IV, so the ciphertext at different
+times (say, before and after running a disk optimizer), constitutes
+two messages that use the same key and IV.
+
+One fix is to add some random data, but that requires extra storage
+space, which is undesirable on a disk, because you need to store it
+somewhere, and the logical and physical sector sizes are usually
+required to be equal, so writes become non-atomic and slow down and
+generally it's undesirable.
+
+With CBC, you cal tell where the first changed block is, for example
+where an edit to a file occurred.  Not much information, but it
+might be of use sometime.
+
+The objective is to have the IV change each time the sector is written.
+This is hard to achieve, but it *can* be data-dependent.  Here's how:
+
+Every block of ciphertext depends on the choice of IV, due to feedback.
+However, when decrypting, only block 0 of the plaintext needs the
+IV to decrypt.  Block i needs only blocks i and i-1 of ciphertext.
+
+So what you do is take a checksum (it doesn't have to be cryptographic,
+just large enough there's little chance of collision) of blocks 1 through
+n of the plaintext.  Merge this with the IV derived from per-disk
+and sector offset information, as usual.  Then encrypt as usual.
+
+This makes the IV, and thus every bit following, depend on all of
+blocks 1..n.  (The checksum need not be cryptographic under the
+assumption that the plaintext is not specially structured to cause
+collisions.)
+
+To decrypt, decrypt blocks 1..n, compute the checksum, compute the
+IV, and then decrypt block 0.
+
+There are similar fixes, including making two encryption passes
+(for the second, the IV is the last block in the first pass),
+but that's more expensive.
+
+Now, the only time information is revealed is if the first block has
+changed in some way that makes the XOR useful, but the remaining
+blocks in the sector have not.
+
+You can eliminate even this if yoy encrypt the first block a second time,
+using the last block as its IV.  This is sort of a 1.1-pass encryption,
+and makes every bit in the ciphertext depend on every bit in the plaintext.
+(Actually, assuming 64-bit blocks and 512-byte sectors, that's 65
+encryptions where 64 would do, so it's 1.015625.)
+
+It might also be possible to do something similar where a first pass
+is made with a weak cipher, but that still causes dependencies,
+and then a second pass is made with the last block of the first pass as
+the IV.  This would achieve the same effect.
+
+(Well, it *is* possible, but I'd like to think up a good cipher to
+use.  It need not have any key information.  A scrambler polynomial
+might do nicely.)
+
+Just to tell people, and to make sure it's been published so it can't
+be patented.  Please post if you come up with any refinements.
+-- 
+	-Colin

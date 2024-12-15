@@ -1,0 +1,140 @@
+INSTALLATION:
+
+
+1.  Building KFS
+
+A makefile has been provided.  It is known to work with gnu make, but will
+probably fail with other makes, so make sure you have already installed
+gnu make before trying to compile KFS.
+
+First check the makefile and make any changes as desired.  KFS has been
+tested on a Sun 3/60 running SunOS 4.1.1 as well as Sparcstations running
+SunOS 4.1.2 and 4.1.3.  Next, build KFS with the following commmands:
+
+% gmake depend
+% gmake
+
+Ignore the following three warnings:
+
+kfs_vnodeops.c:605: warning: `f' may be used uninitialized in this function
+kfs_acl.c:158: warning: assignment discards `const' from pointer target type
+getacl.c:74: warning: assignment discards `const' from pointer target type
+
+You will need to install four executables to a directory in your path:
+mount_kfs, kfsctl, getacl, and setacl.  kfsctl should be setuid and should
+be owned by root if it is to be used by unprivileged users.
+
+Assuming everything compiles without difficulty, you are ready to
+proceed to the next step.
+
+
+2.  Installing KFS in your kernel
+
+NOTE:  It is recommended that you make backup copies of all system
+files you change in this step so that you can restore your system
+to a known state if you experience problems and/or decide to remove
+KFS from your system.
+
+You will need to be root to perform the following:
+
+2.1.  Setting up Symlinks
+
+Change directories to /sys.  Make a symbolic link there called kfs which
+points to the kfs source code.  Next make another symbolic link from
+kfs.rel (should have been built in step 1) to /sys/`arch -k`/OBJ/kfs_rel.o.
+Suitably modified, the following statements should accomplish the above:
+
+% cd /sys
+% ln -s PATH_TO_KFS
+% ln -s PATH_TO_KFS/kfs.rel /sys/`arch -k`/OBJ/kfs_rel.o
+
+2.2.  Editing files.cmn
+
+Next, you will need to edit /sys/conf.common/files.cmn.  Add the following
+line to the end of the file:
+
+kfs/kfs_rel.c		optional KFS
+
+2.3.  Editing Kernel Configuration File
+
+Kernel configuration files are stored in the directory /sys/`arch -k`/conf.
+If you have previously compiled a custom kernel, you will already have a
+configuration file here.  If not, it is suggested that you copy either
+the file GENERIC or GENERIC_SMALL to some other name.  In these instruct-
+ions, it will be assumed that you have named this configuration file KFS.
+
+Edit the kernel configuration file, KFS, and add the following line:
+
+options KFS
+
+2.4.  Editing /sys/os/vfs_conf.c
+
+Add the following lines of code immediately after the block of code
+containing "#ifdef HSFS":
+
+#ifdef KFS
+extern	struct vfsops kfs_vfsops;
+#endif
+
+Next, add the following lines to the end of the vfssw structure
+initialization (right after the entry for HSFS):
+
+#ifdef KFS
+	"kfs", &kfs_vfsops,		/* KFS */
+#else
+	(char *)0, (struct vfsops *)0,
+#endif
+
+2.5.  Editing /sys/os/init_sysent.c
+
+Look for the comment "2.2 file system" in this file.  You should see
+a bunch of function declarations.  At the end of these function
+declarations, add the following lines of code:
+
+#ifdef KFS
+int	vno_altioctl();
+#endif /* KFS */
+
+Next, add the following lines to the end of the systent structure
+initialization (placement should be obvious by looking at the
+comments):
+
+#ifdef KFS
+	3, vno_altioctl,		/* 198 = vno_altioctl */
+#else
+	0, errsys,			/* 198 not configured */
+#endif /* KFS */
+
+2.6.  Running Config
+
+You are now ready to run config on your kernel.  Change directories
+to /sys/`arch -k`/conf and type the following (substituting the name
+you gave your kernel configuration file for KFS if necessary):
+
+# config KFS
+
+2.7.  Building the Kernel
+
+Now it is time to build a new kernel.  The following commands will
+accomplish this (once again, substitute the name you gave your kernel
+configuration file for KFS if necessary):
+
+# cd /sys/`arch -k`/KFS
+# make
+
+2.8.  Installing the New Kernel
+
+Make a backup of your old kernel, and copy the newly made kernel with
+KFS configured into it to /vmunix.  The following commands should do
+this:
+
+# mv /vmunix /vmunix.orig
+# cp vmunix /vmunix
+
+
+3.0  Testing
+
+Once you have successfully completed steps 1 and 2 above, you may
+reboot your machine and test KFS.  There are some scripts in the
+kfs/QA directory which verify correct operation of KFS.  Look in
+the file kfs/QA/README for more details.

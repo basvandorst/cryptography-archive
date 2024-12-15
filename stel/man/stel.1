@@ -1,0 +1,687 @@
+.\" 
+.\"  $Author: vince $
+.\"  $Header: /users/vince/src/stel-dist/stel/RCS/stel.1,v 1.2 1996/03/26 14:42:29 vince Exp $
+.\"  $Date: 1996/03/26 14:42:29 $
+.\"  $Revision: 1.2 $
+.\"  $Locker:  $
+.\"
+.TH stel 1
+.ds )H CERT-IT
+.ds ]W BETA Release: May 1996
+
+.SH NAME
+
+stel \- Secure TELnet
+.SH SYNOPSIS
+.B stel
+[
+.IR hostname
+]  [
+.IR options
+]  [ 
+.IR commands
+] 
+
+.SH DESCRIPTION
+
+.IR stel(1)
+is intented to be a
+.IR simple
+and
+.IR practical
+.IR "plug and play"
+solution for logging into a remote system or executing
+.IR commands
+on a remote system.
+.B stel
+offers a variety of features which range from mutual
+authentication to file transfer.  The security of
+.B stel
+relies upon the underlying cryptographic desing, not trusting
+the net in any way.
+.IR hostname
+is the name of the remote system.
+If no options are provided,
+.B stel
+defaults to triple DES encryption, 1024 bits Diffie Hellman
+modulus, no protection from active attacks, and the remote
+system user's shell as the command to be executed on the
+remote system.  This should
+be reasonable for most systems, and it is believed to be a
+good compromise  between speed, ease of use and security.
+
+.SH OPTIONS
+.B stel
+recognizes the following options:
+.RS
+
+.TP
+.B -1
+Use the
+.IR "single DES"
+cipher.  For the crypto impaired, single DES has a 64-bit block 
+size for the plaintext and the ciphertext.  It uses a key size of 56
+bits.   It is based on the design concept of combining substitutions
+and permutations, and it has 16 rounds.
+DES is probably the best studied encryption algorithm available today, in
+fact it was first released in 1976.  Since then, there has been
+much speculation on the key length, on the number of interations,
+and the design of the S-boxes.  Some people even feared that the
+NSA embedded a ``trap-door'' into the algorithm but, as far as it
+is publicly known,
+nobody has never proved or misproved anything.  The only real
+.IR practical
+problem DES is suffering from is key length.  This is why
+.IR "triple DES"
+remains the default encryption method.
+
+
+.TP
+.B -4
+Use the
+.IR RC4
+cipher.  It is the (alleged) 
+RC4 algorithm posted in the Usenet News in 1995 (RC4
+was originally a trade secret algorithm of RSA Data Security and has
+not been published; however, this implementation is widely believed to
+be equivalent).
+RC4 is a stream, variable-key-size cipher, and it uses a key size of
+128 bits in the present implementation.  RC4 is a very new algorithm,
+and it is not nearly so well-studied as DES or IDEA.  
+RC4 is the fastest algorithm currently supported by
+.CR stel ,
+and it is intended to be used when speed is an issue and security 
+is
+.CR not .
+
+.TP
+.B -a
+Protect from
+.IR active
+attacks.  This is one of the most advanced
+features of
+.CR stel .
+When using this option, the data stream
+which is transmitted from client to server and vice versa is
+``packetized'' and sanity checks are performed on each
+data packet.  Sanity checks include CRC32 encrypted MACs,
+to foil garbage injection, and encrypted sequence numbers,
+to foil replay attacks.  When using this option,
+.IR "file transfer"
+facilities are available.
+
+
+.TP
+.B -D
+Enable
+.IR debug
+mode.  When this option is set, extensive debugging information
+are displayed.  Most variables and keys are dumped, and they
+are effectively visibile on to the screen, so use this option
+with care.
+.B -D
+should only  be used to achieve a better
+understanding about how
+.B stel
+really works.  When this option is set, both encrypted and unencrypted
+data are dumped on to the screen, making it difficult to read what
+is being displayed on the screen.
+
+.TP
+.B -e 
+Disable
+.IR escape
+features.  By default,
+.B stel
+provides escapes features by means of the default escape
+character ``^]''.  When this option is set, escapes
+features are disabled.  This option is intended if
+using
+.B stel
+in conjuction with modem file transfer programs
+(i.e., kermit),
+when a complete terminal transparency is required.
+
+.TP
+.B -h
+Display some
+.IR help
+information.
+
+.TP
+.B -i
+Use the
+.IR IDEA
+cipher.
+For the crypto impaired, IDEA has a 64-bit block 
+size for the plaintext and the ciphertext.  It uses a key size of 128
+bits.  It is based on the design concept of ``mixing operations from
+different algebraic groups''.  It has been developed at ETH in Zurich
+by James L. Massey and Xuejia Lai, and published in 1990.
+It is estimated that the workload to
+exhaust all the possible 128-bit keys in the IDEA cipher would
+roughly equal the factoring workload to crack a 3100-bit RSA key,
+which is quite a bit bigger than the 1024-bit RSA key size that most
+people use for high security applications.  IDEA is resistant to
+differential and related-key cryptanalysis, and it could be
+significantly more secure than DES.  However, it is not nearly
+so well-studied as DES.  This is why triple DES remains the
+default encryption method.
+
+.TP
+.B "-l username"
+Set the user login name on the remote host to
+.IR username
+The default name is the current account name of the user invoking
+.CR stel .
+
+.TP
+.B -m
+Set Diffie-Hellman key exchange algorithm's
+.IR modulo
+to
+.IR 512
+bits.  Diffie-Hellman is used by
+.B stel
+for sharing a secret between client and server.  The DH algorithm
+gets its security from the difficulty of calculating discrete
+logarithms in a finite field, as compared with the ease of
+calculating exponentiation in the same field.  512 bits are
+considered the minimum size for achieving a minimum security
+level.  
+.B stel
+uses, in fact, 1024 as default.  The size of the modulus
+severely impacts the speed of the authentication process, so
+this option is merely suggested when sitting at or connecting
+to a very slow system.
+
+.TP
+.B -M
+Set Diffie-Hellman key exchange algorithm's
+.IR modulo
+to
+.IR 2048
+bits.  2048 bits should be enough for the most security 
+demanding contexts.  When using this option on slow
+systems,
+.B stel
+timeouts before the authentication phase completes, so
+use
+.B -M
+when when sitting at and connecting to fast systems.
+
+.TP
+.B -n
+Do
+.IR not
+use data encryption at all.  This is intended to be a debugging
+only option; when this option is set
+.B stel
+loses most of its
+security strength.  Do not use it for real connections.
+
+.TP
+.B "-p port"
+Use a non standard
+.IR port
+number.  If 
+.B -p
+is not used,
+.B stel
+attempts to contact a STEL server at the standard STEL  port
+that is, 10005 or the one described by the 
+.B stel
+service.
+
+.TP
+.B -r
+Enhance
+.IR randomness .
+When this option is set, the user is asked to
+type in a reasonably long random string, which is passed, among with
+other internal random information, through a strong hash
+function (MD5), in order to distill randomness.  By default,
+.B stel
+generates internal random information
+by means of system dependent information
+(such as processes, frequently changing file's time stamps,
+internal variables) and by means of the 
+.IR truerand
+package.
+
+.TP
+.B -t
+Do not allocate a pseudo
+.IR terminal
+on the remote system.
+Normally
+.B stel
+allocates a pseudo terminal on the remote system,
+since standard shell sessions require it.
+This option can be handy when executing
+non-interactive commands on the remote system.  When this
+option is set, it is not possible, for the STEL server,
+to turn off printing while passwords are being typed in.
+Use this option with care.
+
+.TP
+.B -v
+Be
+.IR verbose .
+When this option is set, some debugging information, internal variables
+and encryption keys are displayed.  Encryption session keys are
+effectively visibile on to the screen, so use this option with care.
+
+.RE
+
+.SH USER AUTHENTICATION
+Basically, 
+.B stel 
+supports three authentication methods:
+.IR SecurID ,
+.IR s/key
+and
+.IR "Unix passwords" .
+The three systems are checked in order.
+If the user is SecurID registered, by means of
+.CR /etc/securid.conf ,
+then SecurID authentication is required.  Else, if the user is
+s/key registered, by means of
+.B /etc/skeykeys 
+or remotely, by means of the
+.B skeyd 
+s/key daemon and the 
+.B /etc/skeydconf
+configuration file, then s/key authentication is required.
+Users can be forced not to use standard passwords, by means
+of the 
+.B /etc/skey.access 
+configuration file.
+Unix passwords are considered the last resort authentication
+method.  However, being all data transmissions
+encrypted, even standard Unix password offer a
+reasonable level of security.
+Finally, all logging-in users are checked against
+.CR /etc/login.access ,
+which controls access from the network.
+
+.SH MUTUAL AUTHENTICATION
+
+.B stel
+uses the Diffie-Hellman exponential based method to determine
+a common encryption key.  This completely eliminates the need of
+keyservers to store and manage user keys and it greatly simplifies
+the overall system design.  The Diffie-Hellman method does not
+require any a-priori shared secret between the parties.  
+The algorithm is based on the difficulty of factoring in
+finite fields, and the protocol is very clever and very  simple.
+However, it provides no authentication between the two parties.
+A malicious hacker 
+using an active line tap could intercept and change all messages,
+impersonating the client to the server and the server to the
+client.  The client and the server would not realize that;
+for example, all messages sent by the client to the server
+would be received by the hacker, decrypted by the hacker using
+the client's session key, encrypted again using the server's
+session key and sent to the server.  This is what is commonly called
+.IR "Man In The Middle Attack" .
+
+To defeat such an attack, a system based on the
+.IR Interlock
+Protocol (an idea by Shamir and Rivest)
+is supported by 
+.CR stel .
+If the user wishing to login on the remote system owns
+a file named 
+.B .stelsecret
+in his/her remote home directory
+then the information contained in the file is exploited to
+perform mutual authentication between the parties.
+Similarly, system to system mutual authentication is
+provided by means of
+.CR /etc/stelsecret ,
+which applies to all users of the system.
+It is desiderable to keep the contents of
+.B .stelsecret
+and
+.B /etc/stelsecret
+files confidential, since mutual authentication depends on them.
+It is up to the user to protect his/her
+.CR .stelsecret ,
+file while it is up to the adminitrator to protect
+.CR /etc/stelsecret ,
+eventually by making 
+.B stel
+a SUID program and chown-ing
+.B /etc/stelsecret
+to the UID
+.B stel
+is SUID to.
+.B stel
+attempts, in fact, to act safely in case it has been made
+a SUID program.
+
+The syntax of 
+.B ~/.stelsecret
+and
+.B /etc/stelsecret
+files is as follows:
+
+.RS
+.B "hostname1, hostname2, ... , hostN : secret-pass-phrase"
+.RE 
+
+.B secret-pass-phrase
+is a single string (no spaces) of arbitrary length. 
+Mutual authentication relies upon this secret;
+maintenance of this secret, and distribution of its contents
+to remote sites for use when connecting there is left as an
+exercise for the reader.  The suggested way for doing this
+is logging to the remote system's console and editing the
+file.
+
+.B hostname1
+is a host name optionally expressed in dotted notation or
+by means of regular expressions.  Supported regular
+expressions are ``*'', ``?'' and ``[]''.  For example:
+
+.RS
+.B sun-[ab].some.domain.org
+.RE
+
+matches 
+sun-a.some.domain.org
+and 
+system-b.some.domain.org ,
+while
+
+.RS
+.B *.some.domain.org
+.RE
+
+matches all systems in the *.some.domain.org domain .
+DOTS (``.'') are never matched by ``*'' or ``?'',
+so *.some.domain.org does not match this.one.domain.org or
+this.other.one.domain.org.
+
+A sample, one line, stelsecret file may look like this:
+
+.RS
+.B work[123].domain.edu,10.20.30.4?,*.big.net:some-secret
+.RE
+
+When someone connects to a STEL server as
+.IR username ,
+the server checks
+.B /etc/stelsecret
+and
+.IR username 's
+.CR ~/.stelsecret
+secret files on the server system.  If a match between the user's
+source address and any host address contained in the secret files
+occurs, the logging-in user is
+required to type in the corresponding secret.  The typed-in
+secret is verified by means of a strengthened version of the
+.IR Interlock
+Protocol
+which is supposed to foil the
+.IR "Man In The Middle Attack"
+completely.
+
+
+.SH ENVIRONMENT
+The following environment variables are inherited by the server:
+
+.RS
+.CR TERM ,
+.CR DISPLAY ,
+.CR LINES ,
+.CR COLUMNS ,
+.CR WINDOWID
+.RE
+
+The following environment variables are set by the server,
+upon the logging-in user being authenticated:
+
+.RS
+.CR LOGNAME ,
+.CR USER ,
+.CR USERNAME ,
+.CR SHELL ,
+.CR MAIL
+.RE
+
+The user is also provided with a new environment variable,
+.CR STELKEYHASH ,
+which is a one-way hashing of the actual session key.
+The environment variable 
+.CR SKEYPADFILE
+is checked and it is used when generating s/key reponses
+by means of the MJR DES-padding method.  Refer to
+.CR MJR-SKEY-MODE
+for details.
+
+.SH ESCAPE FEATURES
+The
+.IR escape
+menu is enabled by hitting the escape character once the
+connection between client and server has been established.
+Escape features include experimental ftp-like
+.IR "file transfer"
+commands (
+.CR put ,
+.CR get
+),
+a
+.CR log
+command, a
+.CR status
+command, and s/key
+response generation commands (
+.CR skey ,
+.CR auto
+). The
+.CR auto
+command detects s/key prompts and automatically
+generates and sends s/key responses.
+A special s/key operation mode,
+.IR "MJR DES padding" ,
+is available.  MJR DES padding mode is supposed to
+foil s/key dictionary attacks.
+Use of these commands should be straightforward.
+
+.SH SECURITY OF STEL
+The security of
+.B stel
+depends on different factor.  They are the strength of the
+.IR "encryption algorithms"
+, the strength of the
+.IR Diffie-Hellman
+key exchange method, the strength of the
+.IR "random number generator" ,
+the strength of the underlying
+.IR protocol
+, the correctness of
+the implementation (that is,
+.IR
+.IR bugs !
+) and, last but not least, the
+.IR "Human Factor(tm)"
+, which is universally known to be one of the
+crucial factors for all security systems.
+
+The
+.IR "encryption algorithms"
+used by
+.B stel
+are considered to be the state of the art algorithms available
+today.
+.IR RC4
+is not intented for real secure communications, since
+it is too new and untested, and rumors about alleged weak keys
+families are enough for most security demanding users
+to stay away from it.  On the
+the other hand, RC4 is very fast, and it is handy when connecting
+to or sitting at a very slow computer, or for file transfers.
+.IR IDEA
+is supposed to be very strong, and most cryptographers
+are today betting on it.  But the algorithm is new, and there
+could be some devastating cryptanalytic news about IDEA tomorrow.
+.IR "Single DES"
+is a well-known and well-built algorithm, and it is still
+secure, unless you need your secrets to be protected from
+the efforts of the major governments and organizations.
+The default encryption method, that is
+.IR "triple DES"
+which three different pseudo-independent keys, is much
+stronger than single DES.  The first
+and third key are really independent and unrelated keys, and
+the second key is generated using the IDEA cipher and the
+other two keys.  Being considered the
+.IR "Meet In The Middle Attack"
+, it is supposed that triple DES encryption is at least
+as secure as one might naively expect double DES encryption
+to be (112 bits effective key space).  
+RC4, single DES, triple DES and IDEA are used in 8-bit
+.IR "8-bit Cipher FeedBack mode" ,
+since data streams are typically to be processed in
+byte-sized chunks.
+
+The
+.IR Diffie-Hellman
+method is so simple that everyone can trust it at
+first sight.  Diffie-Hellman gets its security from
+the difficulty of calculating discrete logarithms in a
+finite field.  The size of the field is reasonably large,
+with 1024 bits as the default size, and 512 bits or 2048
+bits as alternative sizes.  512 bits are only intended to
+be used when sitting at or connecting to a very slow system.  
+According to the publicly known best algorithms for finding
+discrete logs in GF(p), 1024 bits are secure enough for
+protecting information in the next few years.
+.B stel
+uses fixed fields, and this is a disadvantage, since the
+main amount of cryptoanalytic efforts needed to crack
+Diffie-Hellman has to be done only once per field. 
+Also, it uses a fixed low exponent as generator, that is the number 3,
+and this has been found to be dangerous due the
+.IR "Hastead attack" .
+To prevent the mentioned attack, 
+.B stel
+uses random padding for initial data transmissions,
+so it should never happen to encrypt the same message
+under different keys (a condition for the Hastead attack to succeed).
+The most practical attack against Diffie-Hellman is,
+however, a 
+.IR "Man In The Middle Attack" .
+Being
+.CR stel 's
+protocol publicly available and getting the active attacks
+techniques more and more advanced, it would no be hard,
+for a malicious hacker, to impersonate the logging-in user
+to the STEL server and vice versa, as described above.
+Mutual authentication foils impersonation, and
+it is highly suggested when high security is required.
+
+.IR "Random numbers"
+are generated by
+``distilling'' randomness from unpredictable, but low entropy,
+information.  That is, MD5 is used to transform such information
+into pseudo random bit strings.  Low entropy information is
+composed by system dependent information, by
+.CR truerand() 's
+output and, eventually, by a random string the user is required
+to type in (by means of the
+.B -r
+option).
+Random numbers are crucial to the security of 
+.CR stel .
+They are, in fact, used for randomizing data streams,
+for generating random Diffie-Hellman exchanges (and thus
+generating encryption session keys),
+for performing mutual authentication.
+
+.CR stel 's
+.IR protocol
+will be described in a forthcoming Internet Draft.
+
+Security
+.IR bugs
+are an open question.
+.B stel
+is a new tool, and it has not been extensively tested yet.
+Bugs should be reported to
+.CR stel-authors@dea.sec.dsi.unimi.it 
+or to
+.CR stel-list .
+To subscribe to the list, contact
+.CR majordomo@idea.sec.dsi.unimi.it .
+
+The
+.IR "Human Factor(tm)"
+is often what weakens a security system most.  The choice and
+management of the mutual authentication secrets are, for instance,
+some of the most critical aspects of
+.CR stel .
+The use of one-time password based authentication method
+is recomended, since shoulder surfing attacks, X server
+spoofing, and tampering with local applications are well
+known, elementary attacks.  Still, it should be remembered
+that s/key is vulnerable to dictionary
+attacks, so it is advisable to choose strong s/key seeds or
+make use of the MJR DES-padding method.  
+Care should be taken when entering sensitive data or
+passwords.  Albeit the communication channel is always
+encrypted with 
+.CR stel ,
+it is not really safe to send passwords or other authenticating
+reusable information to the remote party.  When generating
+s/key responses, it is recomended to use the built-in s/key
+response generator.
+When
+.B stel
+prompts the user with something like
+.CR stel[1588]:>
+then all typed-in data are 
+.IR not
+trasmitted to the remote party, and it is thus safe to enter
+s/key passwords for generating s/key responses.
+Upon establishing a connection, a
+.CR "GOING REMOTE"
+banner is displayed.  All subsequent typed-in data are
+transmitted to the remote party,
+.IR unless
+the local prompt is displayed.  Please note the local prompt's
+PID: it should
+.IR never
+change in a
+.B stel
+session.  If it does, you are being spoofed.
+
+.SH DIAGNOSTIC
+
+.B stel
+reports errors via syslog and, when applicable, via standard
+output.
+
+.SH AUTHOR
+
+David Vincenzetti <vince@idea.sec.dsi.unimi.it>, Stefano Taino
+<taino@idea.sec.dsi.unimi.it> and Fabio Bolognesi <bolo@idea.sec.dsi.unimi.it>.
+
+.SH CREDITS
+Thanks to all
+.B stel
+beta testers, for they excellent job in testing and
+providing fixes.  Special thanks to: Wietse Venema, Marcus J. Ranum,
+The _H*bbit, Giordano Pezzoli, Paul Leyland, Tom Dunigan, 
+Mark C. Henderson, Uri Blumenthal.
+
+
+.SH SEE ALSO
+
+steld(1), skeyd(1), skey.access(5),
+
+skey.access, login.access, securid.conf, skeydconf
+
+MJR-SKEY-MODE

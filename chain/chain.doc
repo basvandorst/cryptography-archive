@@ -1,0 +1,246 @@
+Chain
+-----
+
+Chain is a program designed to assist in using the Cypherpunks remailers. 
+These remailers are simple servers which forward mail according to embedded
+requests, erasing information about the sender of the message.  They are
+designed to enhance personal privacy by preventing network eavesdroppers
+from acquiring information about whom you communicate with by email.
+
+(More information about the Cypherpunks remailers is available by anonymous
+ftp to the Cypherpunks archive site, soda.berkeley.edu, in directory
+/pub/cypherpunks/remailer.)
+
+For maximum privacy, remailers can be "chained".  Messages are sent
+through a series of remailers before arriving at their final destination.
+Also, some of the remailers can receive encrypted messages whose contents
+are indecypherable to outsiders.  Only when the remailer decrypts the
+message are the contents revealed, including instructions for where to
+send the message as the next hop in the chain.
+
+Setting up these chains is a multi-step procedure, and the purpose of
+the chain program is to make this simpler.  Chain can process an email
+message to go through a large number of Cypherpunks remailers very
+easily.  It can also work with the encryption program PGP to encrypt
+the mail for those remailers which support it.
+
+In its simplest mode, it is run as:
+
+chain destination-address remailer-nickname [...]
+
+Chain runs as a "filter" program, meaning that it reads a message as its
+input, processes it according to the command-line arguments, and writes
+the resulting message to its output.  The message may be typed directly
+into the chain program's input, or it may be put into a file and directed
+to chain using redirection.  This method would lead to a command line like:
+
+chain destination-address remailer-nickname [...] < infile > outfile
+
+The first command line argument is the "destination-address", the name
+to which the mail should finally be sent.  This typically needs to be an
+Internet email address like joe@clat.state.edu.
+
+This is followed by one or more "remailer nicknames".  The message will
+be prepared to be sent through these remailers in the order given on the
+command line before being sent to the final destination-address.  A
+remailer nickname is an abbreviation of some part of the remailer address.
+
+Chain uses a remailer file called chain.ini.  It looks for it either in the
+current directory, or if it is not found there and the environment variable
+PGPPATH is set (which it typically is for users of the PGP encryption
+program) it looks in that directory.  Chain.ini consists of a list of
+Cypherpunks remailer addresses, one per line.  In addition, if the first
+character of a line is a star ("*"), that is a flag that that remailer
+supports encryption, and chain will attempt to encrypt messages to that
+remailer.   Here is a typical chain.ini file: 
+
+	hh@soda.berkeley.edu 
+	nowhere@bsu-cs.bsu.edu 
+*	hal@alumni.caltech.edu 
+*	elee7h5@rosebud.ee.uh.edu 
+*	remail@extropia.wimsey.com 
+
+This lists five remailers, two of which do not support encryption and
+three which do (the ones with the '*' at the front).  The latest version
+of the chain.ini file should be available at the Cypherpunks archive
+site listed above.  If you don't have the PGP program then remove the
+'*' from all the lines so chain won't try to use it.
+
+Chain looks up the remailer nicknames in this file, stopping when it
+finds the first match to the nickname anywhere in the file.  In the
+file above, for example, "soda" would match on the first line, while
+"rosebud" would match on the fourth.  "edu" would not be a very good
+nickname because it matches more than one, but chain doesn't check for
+that and just takes the first match (the first line, in this case).
+
+A sample command line for the chain program would be:
+
+chain joe@clat.state.edu rosebud soda extropia < mail.in > mail.out
+
+This sets up a remailing chain which will go through the rosebud, soda,
+and extropia remailers (in that order) before being sent to the final
+destination, joe@clat.state.edu.  It reads the mail from the file
+mail.in and produces the processed output in mail.out.
+
+This output file then would need to be sent manually to the first
+remailer in the chain.  In this case that would be
+elee7h5@rosebud.ee.uh.edu.
+
+Chain creates two temp files as it runs.  They are put either in the
+local directory or, if the environment variable TMP is set, in that
+directory.  It normally deletes them when it terminates.
+
+
+Chain -m
+--------
+
+The -m switch is only available on Unix systems which use the
+sendmail program to send mail.  It causes chain to pipe the message
+into sendmail, directing the message to the first remailer in the
+chain, automatically.  A sample command line would be:
+
+chain -m joe@clat.state.edu soda portal < mail.in
+
+This would set up a chain for the soda and portal remailer, taking
+the mail from the file mail.in, and automatically sending the result
+to the first remailer, in this case hh@soda.berkeley.edu.
+
+Chain -s
+--------
+
+Most of the remailers offer the option of changing the "Subject"
+line of your message as it is remailed.  (I'm not sure at this point
+whether any don't support this.)  This enhances privacy because you
+don't have to put a subject lin on your mail as you send it; it can
+be added later in the chain.
+
+The -s switch can be used to specify the subject which your message
+will be tagged with as it leaves the last remailer in the chain.  This
+switch is used as -s, then a blank, then your subject, surrounded by
+quotes.  It works on both MS-DOS and Unix systems.  Here is an
+example:
+
+chain -s "Questionable mail" joe@clat.state.edu portal < mail.in > mail.out
+
+This would create mail to be sent to joe@clat.state.edu via the portal
+remailer; as it leaves portal, the mail will be given the subject
+"Questionable mail".
+
+On Unix systems, this switch can be used in conjunction with -m, to
+both automatically mail the message and arrange for it to get tagged
+with an appropriate subject on its last leg:
+
+chain -m -s "Questionable mail" joe@clat.state.edu portal < mail.in
+
+This will automatically mail the message to the portal remailer,
+causing the subject to be set as it leaves that remailer.
+
+Chain -e
+--------
+
+The -e switch adds one extra level of encryption.  It encrypts the
+outgoing message with the public key of your final message
+destination before adding the chaining instructions.  This means that
+when your message is received, it will be encrypted in the public key
+of the recipient.
+
+Chain looks up the public key in your regular PGP key ring, using the
+full destination address you specified for the lookup.  Chain will
+abort if no match is found when you specify -e.  An example:
+
+chain -e joe@clat.state.edu nowhere portal < mail.in > mail.out
+
+This will encrypt the message with the public key of joe@clat.state.edu,
+then process it for sending via the nowhere and portal remailers.
+
+The -e switch can be used with -s and -m.
+
+Chain -r
+--------
+
+Chain -r is used to create anonymous return addresses (ARA's).  An ARA is a
+block of text which others can use to direct messages to you via a chain of
+Cypherpunks remailers without knowing who you are.  To be useful, ARA's
+should use encryption for at least the first step in the chain so that your
+true address is not revealed.
+
+Chain creates anonymous return addresses with a command line similar to
+those described above, except that the -r switch is used.  (The -r
+switch may not be used at the same time as the other switches
+described above.)
+
+chain -r destination-address remailer-nickname [...]
+
+This creates an anonymous return address which is an alias for the
+specified "destination-address" and which passes through the remailers
+listed by the "remailer nicknames".  Chain does not read any input in
+this mode (other than the chain.ini remailer file) and writes the ARA
+on its output.  Typically this will be directed to a file with "> file.out"
+or something similar.
+
+The format of chain's anonymous return address output is as follows.
+
+    Copy the material between the "cut here" lines below and put it
+    at the top of your reply message, then send the message to:
+    elee7h5@rosebud.ee.uh.edu
+    
+    vvvvvvvvvvvvvvvvvvvvvvv cut here vvvvvvvvvvvvvvvvvvvvvvv
+    ::
+    Encrypted: PGP
+    
+    -----BEGIN PGP MESSAGE-----
+    Version: 2.2
+    
+    pfQ648MrsmsLOFO5BanPl1P8g1SnGr1S0R7um0yHYhxxXIjKx2/CwFQcCXEcsexd
+    KBYZjocNGAe/tVqvSVaaZcr4X/wiEK9Y22yx6fPymhlCH5fbKIyQrZR4xqHvr/ED
+    2BKmw2redmLcs0f9ZlttdwDb0cPahnZgXvuz6HkPDX/LGVj4Zz14K0z+uaCrchBR
+    aVKMa4pT49lf6StSf5wUdxHgnsNfxGbAYAwqswahdLNdniD7Ue8HTRZYF23ubd98
+    Rzv2PYG7G2j/hvtyCrcwKMI/wQP6wDNY0bgj9Q+F
+    =P2Q+
+    -----END PGP MESSAGE-----
+    ^^^^^^^^^^^^^^^^^^^^^^^ cut here ^^^^^^^^^^^^^^^^^^^^^^^
+
+This block of text is intended to be placed somewhere in a message which
+you have mailed or posted anonymously.  It includes instructions to those
+who wish to reply to you.  They are supposed to take the material between
+the "cut here" lines and put it at the top of the message they want to
+send to you.  They then send the resulting message to the first remailer
+in the chain you chose for your ARA, in this case elee7h5@rosebud.ee.uh.edu.
+
+For example, if they wanted to send you the message, "Tell me more about
+your ideas", they would create a message which looked like:
+
+    ::
+    Encrypted: PGP
+    
+    -----BEGIN PGP MESSAGE-----
+    Version: 2.2
+    
+    pfQ648MrsmsLOFO5BanPl1P8g1SnGr1S0R7um0yHYhxxXIjKx2/CwFQcCXEcsexd
+    KBYZjocNGAe/tVqvSVaaZcr4X/wiEK9Y22yx6fPymhlCH5fbKIyQrZR4xqHvr/ED
+    2BKmw2redmLcs0f9ZlttdwDb0cPahnZgXvuz6HkPDX/LGVj4Zz14K0z+uaCrchBR
+    aVKMa4pT49lf6StSf5wUdxHgnsNfxGbAYAwqswahdLNdniD7Ue8HTRZYF23ubd98
+    Rzv2PYG7G2j/hvtyCrcwKMI/wQP6wDNY0bgj9Q+F
+    =P2Q+
+    -----END PGP MESSAGE-----
+    Tell me more about
+    your ideas.
+
+They would then send this to elee7h5@rosebud.ee.uh.edu.  The ARA at
+the front of the message would be decrypted and the resulting data would
+allow the message to be passed on to the next remailer in the chain,
+until it is finally sent directly to you by the last chained remailer.
+
+This procedure is a little complicated, granted, but the chain -r program
+makes it easy to create ARA's, and it should not be overwhelmingly difficult
+for those who wish to reply to you to cut a block of text from your
+message and put it at the front of their own reply.
+
+(NOTE: for technical reasons, the "extropia" remailer cannot be used for
+anonymous return addresses at present.)
+
+
+Chain is written by Hal Finney, 74076.1041@compuserve.com.
+This is the initial release.  Please report problems to the author.
+Chain is placed in the public domain; its source code may be freely
+used.

@@ -1,0 +1,92 @@
+10 '** PLAYFAIR.ENC **  PLAYFAIR ENCODER BY MIKE BARLOW JAN 4 1985 MOD Dec 2 1985 aug87 ibm version aug 1 88
+15 '
+20 KEY OFF:CLS:CLEAR :DEFINT A-Z:AL$="ABCDEFGHIKLMNOPQRSTUVWXYZ" '25 char alph
+30 GOSUB 2000                           'pick up default example
+40 GOTO 360
+45 '----------- enciphering subroutine -------------
+50 '  do a rectangle
+60 P1=INSTR(AL$,T1$)-1:P2=INSTR(AL$,T2$)-1  'find pt posns in keyalphabet
+65 X1=P1-INT(P1/5)*5                    'x1 is horiz posn of p1
+70 X2=P2-INT(P2/5)*5                    'x2 is horiz posn of p2
+80 HD=X2-X1                             'HD is horiz diff between p2 and p1
+100 IF INT(P1/5)=INT(P2/5) THEN 150     '= Same Row
+110 IF HD=0 THEN 210                    '= Same Column
+120 C1=P1+HD:C2=P2-HD                   'add diffs to origs
+130 GOTO 280
+140 '  do a row
+150 C1=P1+1:C2=P2+1                     'move right one posn
+180 IF X1=4 THEN C1=C1-5                'wrap round on same row
+190 IF X2=4 THEN C2=C2-5
+200 GOTO 280
+210 '  do a column
+220 Y1=INT(P1/5)                        'get Y posn of chars
+230 Y2=INT(P2/5)
+240 C1=P1+5:C2=P2+5                     'move down one row
+250 IF Y1=4 THEN C1=C1-5*5              'wrap round in same col
+260 IF Y2=4 THEN C2=C2-5*5
+270 '  print the chars
+280 CT$(N)=MID$(AL$,C1+1,1)+MID$(AL$,C2+1,1):PRINT CT$(N)" ";
+290 RETURN
+295 '----------------------------------------------------------
+360 '
+  enter the text
+370 GOSUB 5010 'title
+380 Q$="": LOCATE 9,1:PRINT"ENTER THE PLAINTEXT (with or w/out spaces, no punctuation, 240 chars max): ":LINE INPUT Q$:IF Q$=""THEN Q$=XT$:LOCATE 10,1:PRINT Q$
+385 GOSUB 1000                             'remove blanks
+390 RT$=Q$:WT$="":N1$="X":N2$="Z"          'remembered text, working text, nulls
+400 FOR N=1 TO LEN(Q$)
+410   X$=MID$(Q$,N,1):IF X$="J"THEN X$="I"     'change J to I
+420   IF RX$="X"THEN N$=N2$ ELSE N$=N1$        'choose a null
+430   IF X$=RX$ AND N/2=INT(N/2) THEN X$=N$+X$ 'insert it if double letters in a pair
+440   RX$=RIGHT$(X$,1)                         'remember the last letter
+450   WT$=WT$+X$                               'assemble the new text
+460 NEXT
+465   IF MID$(WT$,LEN(WT$)-1,1)="X" THEN N$=N2$ ELSE N$=N1$  'choose a null
+470 IF LEN(WT$)/2<>INT(LEN(WT$)/2)THEN WT$=WT$+N$            'add it if odd number of letters
+480 PRINT:PRINT"Adjusted Plaintext is:":PRINT WT$
+490 NG=LEN(WT$)/2:DIM CT$(NG),PT$(NG)          'number of groups
+500 '
+    enter the keyword
+510 KW$="":PRINT:PRINT"ENTER THE KEYWORD (UPPER CASE, no "CHR$(34)"J"CHR$(34)"): ";:X=POS(0):Y=CSRLIN:LINE INPUT KW$:IF KW$=""THEN KW$=XK$:LOCATE Y,X:PRINT KW$
+520 FOR N=1 TO LEN(KW$)                  'check for l.case, J's, and duplicates
+530  DU$=MID$(KW$,N,1):IF ASC(DU$)>90 OR DU$="J"THEN 510
+540  IF INSTR(N+1,KW$,DU$) THEN PRINT"Duplicate letters "DU$:GOTO 510
+550 NEXT
+560 PRINT "Adjusted Keyword is: "KW$: GOSUB 5020
+570 FOR N=1 TO LEN(KW$)
+580   X=INSTR(AL$,MID$(KW$,N,1))         'find posn of KW letter in alphabet
+590   IF X=0 THEN LOCATE 7,1:PRINT"Fault - try again.":GOTO 510
+600   X$=LEFT$(AL$,X-1)                  'take the alphabet to the left of it
+610   AL$=X$+RIGHT$(AL$,LEN(AL$)-X)      'and add to the remainder
+620 NEXT
+630 AL$=KW$+AL$                          'now put the KW in front
+640 '  print the square
+650 GOSUB 5010                           'title
+660 FOR N=0 TO 4:LOCATE 4+N,1:PRINT MID$(AL$,1+5*N,5);:NEXT:PRINT
+740 '    display texts
+750 LOCATE 10,1:PRINT"Plaintext pairs are:  ";
+760 FOR N=1 TO NG
+770   PT$(N)=MID$(WT$,(N*2)-1,2):PRINT PT$(N)" ";
+780 NEXT:PRINT
+790 PRINT:PRINT"Ciphertext pairs are: ";
+800 FOR N=1 TO NG
+810   T1$=LEFT$(PT$(N),1):T2$=RIGHT$(PT$(N),1):GOSUB 60
+820 NEXT
+830 Q$="":LOCATE 22,23:PRINT"Do you wish to do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+840 ON INSTR("AaQq",Q$) GOTO 10,10,842,842:GOTO 830
+842 LOCATE 22,21:PRINT "Encipherment by Michael Barlow on an IBM-AT":END
+1000 ' --- remove blanks ---
+1010 FOR N=1 TO LEN(Q$)
+1020  X$=MID$(Q$,N,1)
+1030  IF X$=" " THEN 1050
+1040  OP$=OP$+X$
+1050 NEXT
+1060 Q$=OP$:OP$="":RETURN
+2000 ' --- examples ---
+2010 XT$="COME QUICKLY WE NEED HELP":XK$="LOGARITHM" 'ACA&U P18
+2030 RETURN
+5000 '
+5010 CLS:PRINT DATE$ TAB(28)"LITTLE GEM PLAYFAIR ENCODER":PRINT TAB(28)STRING$(27,"-"):PRINT:PRINT TAB(34)"By Mike Barlow":RETURN
+5020 LOCATE 23,1:PRINT SPC(79):LOCATE 23, 28:PRINT "Press ENTER to proceed: ";:LINE INPUT QQ$:LOCATE 23,1: PRINT SPC(79);:RETURN
+65000 SAVE"playfair.enc",A
+

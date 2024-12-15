@@ -1,0 +1,477 @@
+PREFACE
+-------
+
+This book grew out of a project to publish source code for cryptographic
+software, namely PGP (Pretty Good Privacy), a software package for the
+encryption of electronic mail and computer files. PGP is the most widely
+used software in the world for email encryption. Pretty Good Privacy, Inc
+(or "PGP") has published the source code of PGP for peer review, a long-
+standing tradition in the history of PGP. The first time a fully implemented
+cryptographic software package was published in its entirety in book form
+was "PGP Source Code and Internals," by Philip Zimmermann, published by The
+MIT Press, 1995, ISBN 0-262-24039-4.
+
+Peer review of the source code is important to get users to trust the
+software, since any weaknesses can be detected by knowledgeable experts who
+make the effort to review the code. But peer review cannot be completely
+effective unless the experts conducting the review can compile and test the
+software, and verify that it is the same as the software products that are
+published electronically. To facilitate that, PGP publishes its source code
+in printed form that can be scanned into a computer via OCR (optical
+character recognition) technology.
+
+Why not publish the source code in electronic form? As you may know,
+cryptographic software is subject to U.S. export control laws and
+regulations. The new 1997 Commerce Department Export Administration
+Regulations (EAR) explicitly provide that "A printed book or other printed
+material setting forth encryption source code is not itself subject to the
+EAR." (see 15 C.F.R. §734.3(b)(2)). PGP, in an overabundance of caution,
+has only made available its source code in a form that is not subject to
+those regulations. So, books containing cryptographic source code may be
+published, and after they are published they may be exported, but only
+while they are still in printed form.
+
+Electronic commerce on the Internet cannot fully be successful without
+strong cryptography. Cryptography is important for protecting our privacy,
+civil liberties, and the security of our personal and business transactions
+in the information age. The widespread deployment of strong cryptography
+can help us regain some of the privacy and security that we have lost due
+to information technology. Further, strong cryptography (in the form of
+PGP) has already proven itself to be a valuable tool for the protection of
+human rights in oppressive countries around the world, by keeping those
+governments from reading the communications of human rights workers.
+
+This book of tools contains no cryptographic software of any kind, nor does
+it call, connect, nor integrate in any way with cryptographic software. But
+it does contain tools that make it easy to publish source code in book form.
+And it makes it easy to scan such source code in with OCR software rapidly
+and accurately.
+
+Philip Zimmermann
+prz@acm.org
+
+November 1997
+
+
+
+INTRODUCTION
+------------
+
+This book contains tools for printing computer source code on paper in
+human-readable form and reconstructing it exactly using automated tools.
+While standard OCR software can recover most of the graphic characters,
+non-printing characters like tabs, spaces, newlines and form feeds cause
+problems.
+
+In fact, these tools can print any ASCII text file; it's just that the
+attention these tools pay to spacing is particularly valuable for computer
+source code. The two-dimensional indentation structure of source code is
+very important to its comprehensibility. In some cases, distinctions
+between non-printing characters are critical: the standard make utility
+will not accept spaces where it expects to see a tab character.
+
+Producing a byte-for-byte identical copy of the original is also valuable
+for authentication, as you can verify a checksum.
+
+There are five problems we have addressed:
+
+1. Getting good OCR accuracy.
+2. Preserving whitespace.
+3. Preserving lines longer than can be printed on the page.
+4. Dealing with data that isn't human-readable.
+5. Detecting and correcting any residual errors.
+
+The first problem is partly addressed by using a font designed for OCR
+purposes, OCR-B. OCR-A is a very ugly font that contains only the digits 0
+through 9 and a few special punctuation symbols. OCR-B is a very readable
+monospaced font that contains a full ASCII set, and has been popular as a
+font on line printers for years because it distinguishes ambiguous
+characters and is clear even if fuzzy or distorted.
+
+The most unusual thing about the OCR-B font is the way that it prints a
+lower-case letter 1, with a small hook on the bottom, something like an
+upper-case L. This is to distinguish it from the numeral 1. We also made
+some modifications to the font, to print the numeral 0 with a slash, and
+to print the vertical bar in a broken form. Both of these are such common
+variants that they should not present any intelligibility barrier. Finally,
+we print the underscore character in a distinct manner that is hopefully
+not visually distracting, but is clearly distinguishable from the minus
+sign even in the absence of a baseline reference.
+
+The most significant part of getting good OCR accuracy is, however, using
+the OCR tools well. We've done a lot of testing and experimentation and
+present here a lot of information on what works and what doesn't.
+
+To preserve whitespace, we added some special symbols to display spaces,
+tabs, and form feeds. A space is printed as a small triangular dot
+character, while a hollow rightward-pointing triangle (followed by blank
+spaces to the right tab stop) signifies a tab. A form feed is printed as
+a yen symbol, and the printed line is broken after the form feed.
+
+Making the dot triangular instead of square helps distinguish it from a
+period. To reduce the clutter on the page and make the text more readable,
+the space character is only printed as a small dot if it follows a blank
+on the page (a tab or another space), or comes immediately before the end
+of the line. Thus, the reader (human or software) must be able to
+distinguish one space from no spaces, but can find multiple spaces by
+counting the dots (and adding one).
+
+The format is designed so that 80 characters, plus checksums, can be
+printed on one line of an 8.5x11" (or A4) page, the still-common punched
+card line length. Longer lines are managed with the simple technique of
+appending a big ugly black blob to the first part of the line indicating
+that the next printed line should be concatenated with the current one
+with no intervening newline. Hopefully, its use is infrequent.
+
+While ASCII text is by far the most popular form, some source code is not
+readable in the usual way. It may be an audio clip, a graphic image bitmap,
+or something else that is manipulated with a specialized editing tool. For
+printing purposes, these tools just print any such files as a long string
+of gibberish in a 64-character set designed to be easy to OCR unambiguously.
+Although the tools recognize such binary data and apply extra consistency
+checks, that can be considered a separate step.
+
+Finally, the problem of residual errors arises. OCR software is not perfect,
+and uses a variety of heuristics and spelling-check dictionaries to clean up
+any residual errors in human-language text. This isn't reliable enough for
+source code, so we have added per-page and per-line checksums to the printed
+material, and a series of tools to use those checksums to correct any
+remaining errors and convert the scanned text into a series of files again.
+
+This "munged" form is what you see in most of the body of this book. We
+think it does a good job of presenting source code in a way that can be read
+easily by both humans and computers.
+
+The tools are command-line oriented and a bit clunky. This has a purpose
+beyond laziness on the authors' parts: it keeps them small. Keeping them
+small makes the "bootstrapping" part of scanning this book easier, since you
+don't have the tools to help you with that.
+
+
+
+SCANNING
+--------
+
+Our tests were done with OmniPage 7.0 on a Power Macintosh 8500/120 and an
+HP ScanJet 4c scanner with an automatic document feeder. The first part of
+this is heavily OmniPage-specific, as that appears to be the most widely
+available OCR software.
+
+The tools here were developed under Linux, and should be generally portable
+to any Unix platform. Since this book is about printing and scanning source
+code, we assume the readers have enough programming background to know how
+to build a program from a Makefile, understand the hazards of CR, LF or CRLF
+line endings, and such minor details without explicit mention.
+
+The first step to getting OrnniPage 7 to work well is to set it up with
+options to disable all of its more advanced features for preserving font
+changes and formatting. Look in the Seffings menu.
+
+· Create a Zone Contents File with all of ASCII in it, plus the extra
+  bullet, currency, yen and pilcrow symbols. Name it "Source Code".
+· Create a Source Code style set. Within it, create a Source Code zone style
+  and make it the default.
+· Set the font to something fixed-width, like Courier.
+· Set a fixed font size (10 point) and plain text, left-aligned.
+· Set the tab character to a space.
+· Set the text flow to hard line returns.
+· Set the margins to their widest.
+· The font mapping options are irrelevant.
+
+Go to the settings panel and:
+
+· Under Scanner, set the brightness to manual. With careful setting of the
+  threshold, this generates much better results than either the automatic
+  threshold or the 3D OCR. Around 144 has been a good setting for us; you
+  may want to start there.
+· Under OCR, you'll build a training file to use later, but turn off
+  automatic page orientation and select your Source Code style set in the
+  Output Options. Also set a reasonable reject character. (For test, we
+  used the pi symbol, which came across from the Macintosh as a weird
+  sequence, but you can use anything as long as you make the appropriate
+  definition in subst.c.)
+
+Do an initial scan of a few pages and create a manual zone encompassing
+all of the text. Leave some margin for page misalignment, and leave space
+on the sides for the left-right shift caused by the book binding being in
+different places on odd and even pages.
+
+Set the Zone Contents and the Style set to the Source Code settings. After
+setting the Style Set, the Zone Style should be automatically set correctly
+(since you set Source Code as the default).
+
+Then save the Zone Template, and in the pop-up menu under the Zone step on
+the main toolbar you can now select it.
+
+Now we're ready to get characters recognized. The first results will be
+terrible, with lots of red (unrecognizable) and green (suspicious) text in
+the recognized window. Some tweaking will improve this enormously.
+
+The first step is setting a good black threshold. Auto brightness sets the
+threshold too low, making the character outlines bleed and picking up a lot
+of glitches on mostly-blank pages. Try training OCR on the few pages you've
+scanned and look at the representative characters. Adjust the threshold so
+the strokes are clear and distinct, neither so thin they are broken nor so
+think they smear into each other. The character that bleeds worst is
+lowercase w, while the underscore and tab symbols have the thinnest lines
+that need worry.
+
+You'll have to re-scan (you can just click the AUTO button) until you get
+satisfactory results.
+
+The next step is training. You should scan a significant number of pages
+and teach OmniPage about any characters it has difficulty with. There are
+several characters which have been printed in unusual ways which you must
+teach OmniPage about before it can recognize them reliably. We also have
+some characters that are unique, which the tools expect to be mapped to
+specific Latin-1 characters to be processed.
+
+They characters most in need of training are as follows:
+
+· Zero is printed 'slashed.'
+· Lowercase L has a curled tail to distinguish it clearly from other
+  vertical characters like 1 and I.
+· The or-bar or pipe symbol '|' is printed "broken" with a gap in the
+  middle to distinguish it similarly.
+· The underscore character has little "serifs" on the end to distinguish
+  it from a minus sign. We also raised it a just a tad higher than the
+  normal underscore character, which was too low in the character cell to
+  be reliably seen by OmniPage.
+· Tabs are printed as a hollow right-pointing triangle, followed by blanks
+  to the correct alignment position. If not trained enough, OmniPage
+  guesses this is a capital D. You should train OmniPage to recognize this
+  symbol as a currency symbol (Latin-1 244).
+· Any spaces in the original that follow a space, or a blank on the printed
+  page, are printed as a tiny black triangle. You should train OmniPage to
+  recognize this as a center dot or bullet (Latin-1 267). We didn't use a
+  standard center dot because OmniPage confused it with a period.
+· Any form feeds in the original are printed as a yen currency symbol
+  (Latin-1 245).
+· Lines over 80 columns long are broken after 79 columns by appending a big
+  ugly black block. You should train OmniPage to recognize this as a
+  pilcrow (paragraph symbol, Latin-1 266). We did this because after
+  deciding something black and visible was suitable, we found out the font
+  we used doesn't have a pilcrow in it.
+
+The zero and the tab character, because of their frequency, deserve special
+attention.
+
+In addition, look for any unrecognized characters (in red) and retrain those
+pages. If you get an unrecognized character, that character needs training,
+but Caere says that "good examples" are best to train on, so if the training
+doesn't recognize a slightly fuzzy K, and there's a nice crisp K available
+to train on, use that.
+
+Other things that need training:
+
+· ~ (tilde), ^ (caret), ` (backquote) and ' (quote). These get dropped
+  frequently unless you train them.
+· i, j and; (semicolon). These get mixed up.
+· 3 and S. These also get mixed up.
+· Q can fail to be recognized.
+· C and [ can be confused.
+· c/C, o/O, p/P, s/S, u/U, v/V, w/W, y/Y and z/Z are often confused. This
+  can be helped by some training.
+· r gets confused with c and n. I don't understand c, but it happens.
+· f gets confused with i.
+
+The OCR training pages have lots of useful examples of troublesome
+characters. Scan a few pages of material, training each page, then scan a
+few dozen pages and look for recognition problems. Look for what OmniPage
+reports as troublesome, and when you have the repair program working, use
+it to find and report further errors. Train a few pages particularly dense
+in problems and append the troublesome characters to the training file, the
+re-recognize the lot.
+
+Double-check your training file for case errors. It's easy to miss the shift
+key in the middle of a lot of training and will result in terrible results
+even though OmniPage won't report anything amiss. We have spent a while
+wondering why OmniPage wasn't recognizing capital S or capital W, only to
+find that OmniPage was just doing what it was trained to do.
+
+We have heard some reports that OmniPage has problems with large training
+files. We have observed OmniPage suffering repeatable internal errors
+sometimes after massive training additions, but they were cured by deleting
+a few training images. Appending more training images to the training file
+did not cause the problem to re-appear.
+
+Repairing the OCR results
+
+If the only copy of the tools you have is printed in this book, see the next
+chapter on bootstrapping at this point. Here, we assume that you have the
+tools and they work.
+
+When you have some reasonable OCR results, delete any directory pages. With
+no checksum information, they just confuse the postprocessing tools. (The
+tools will just stop with an error when they get to the "uncorrectable"
+directory name and you'll have to delete it then, so it's not fatal if you
+forget.) Copy the data to a machine that you have the repair and unmunge
+utilities on.
+
+The repair utility attempts automatic table-driven correction of common
+scanning errors. You have to recompile it to change the tables, but are
+encouraged to if you find a common problem that it does not correct reliably.
+If it gets stuck, it will deposit you into your favorite editor on or
+slightly after the offending line. (The file you will be editing is the
+unprocessed portion of the input.) After you correct the problem and quit
+the editor, repair will resume.
+
+"Your favorite editor" is taken from the $VISUAL and $EDITOR environment
+variables, or the -e option to repair.
+
+The repair utility never alters the original input file. It will produce
+corrected output for file in file.out, and when it has to stop, it writes
+any remaining uncorrected input back out to file.in (via a temporary
+file.dump) and lets you edit this file. If you re-run repair on file and
+file.in exists, repair will restart from there, so you may safely quit and
+re-run repair as often as you like. (But if you change the input file, you
+need to delete the .in file for repair to notice the change.)
+
+Statistics on repair's work are printed to file.log. This is an excellent
+place to look to see if any characters require more training.
+
+As it works, repair prints the line it is working on. If you see it make a
+mistake or get stuck, you can interrupt it (control-C or whatever is
+appropriate), and it will immediately drop into the editor. If you interrupt
+it a second time, it will exit rather than invoking the editor. If the
+editor returns a non-zero result code (fails), repair will also stop. (E.g.
+:cq in vim.)
+
+One thing that repair fixes without the least trouble is the number of
+spaces expected after a printing tab character. It's such an omnipresent OCR
+software error that repair doesn't even log it as a correction.
+
+In some cases, repair can miscorrect a line and go on to the next line,
+possibly even more than once, finally giving up a few lines below the actual
+error. If you are having trouble spotting the error, one helpful trick is to
+exit the editor and let repair try to fix the page again, but interrupt it
+while it is still working on the first line, before it has found the
+miscorrection.
+
+The Nasty Lines
+
+Some lines of code, particularly those containing long runs of underscore or
+minus characters, are particularly difficult to scan reliably. The repair
+program has a special "nasty lines" feature to deal with this. If a file
+named "nastylines" (or as specified by the -l option) exists, they are
+checksummed and are considered as total replacements for any input line with
+the same checksum. So, for example, if you place a blank line in the
+nastylines file, any scanner noise on blank lines will be ignored.
+
+The "nastylines" file is re-read every time repair restarts after an edit,
+so you can add more lines as the program runs. (The error-correction patterns
+should be done this way, too, but that'll have to wait for the next release.)
+
+Sortpages
+
+If, in the course of scanning, the pages have been split up or have gotten
+out of order, a perl script called sortpages can restore them to the proper
+order. It can merge multiple input files, discard duplicates, and warns about
+any missing pages it encounters. This script requires that the pages have
+been repaired, so that the page headers can be read reliably. The repair
+program does not care about the order it works on pages in; it examines each
+page independently. Unmunge, however, does need the pages in order.
+
+Unmunging
+
+After repair has finished its work, the unmunge program strips out the
+checksums and, based on the page headers, divides the data up among various
+files. Its first argument is the file to unpack. The optional second argument
+is a manifest file that lists all of the files and the directories they go
+in. Supplying this (an excellent idea) lets unmunge recreate a directory
+hierarchy and warn about missing files.
+
+When you have unmunged everything and reconstructed the original source code,
+you are done. Unmunge verifies all of the checksums independently of repair,
+as a sanity check, and you can have high confidence that the files are
+exactly the same as the originals that were printed.
+
+
+
+BOOTSTRAPPING
+-------------
+
+There's a problem using the postprocessing tools to correct OCR errors, when
+the code being OCRed is the tools themselves. We've tried to provide a
+reasonably easy way to get the system up and running starting from nothing
+but a copy of OmniPage.
+
+You could just scan all of the tools in, correct any errors by hand, delete
+the error-checking information in a text editor, and compile them. But
+finding all the errors by hand is painful in a body of code that large.
+With the aid of perl (version 5), which provides a lot of power in very
+little code, we have provided some utilities to make this process easier.
+
+The first-stage bootstrap is a one-page perl script designed to be as small
+and simple as possible, because you'll have to hand-correct it. It can verify
+the checksums on each line, and drop you into the editor on any lines where
+an error has occurred. It also knows how to strip out the visible spaces and
+tabs, how to correct spacing errors after visible tab characters, and how to
+invoke an editor on the erroneous line.
+
+Scan in the first-stage bootstrap as carefully as possible, using OmniPage's
+warnings to guide you to any errors, and either use a text editor or the
+one-line perl command at the top of the file to remove the checksums and
+convert any funny printed characters to whitespace form.
+
+The first thing to do is try running it on itself, and correct any errors you
+find this way. Note that the script writes its output to the file named in
+the page header, so you should name your hand-corrected version differently
+(or put it in a different directory) to avoid having it overwritten.
+
+The second-stage bootstrap is a much denser one-pager, with better error
+detection; it can detect missing lines and missing pages, and takes an
+optional second argument of a manifest file which it can use to put files
+in their proper directories. It's not strictly necessary, but it's only one
+more (dense) page and you can check it against itself and the original
+bootstrap.
+
+Both of the botstrap utilities can correct tab spacing errors in the OCR
+output. Although this doesn't matter in most source code, it is included
+in the checksums.
+
+Once you have reached this point, you can scan in the C code for repair and
+unmunge. The C unmunge is actually less friendly than the bootstrap
+utilities, because it is only intended to work with the output of repair.
+It is, however, much faster, since computing CRCs a bit at a time in an
+interpreted language is painfully slow for large amounts of data. It can
+also deal with binary files printed in radix-64.
+
+
+
+PRINTING
+--------
+
+Despite the title of this book, this process of producing a book is not well
+documented, since it's been evolving up to the moment of publication. There,
+is, however, a very useful working example of how to produce a book
+(strikingly similar to this book) in the example directory, all controlled
+by a Makefile.
+
+Briefly, a master perl script called psgen takes three parameters: a file
+list, a page numbers file to write to, and a volume number (which should
+always be 1 for a one-volume book). It runs the listed files through the
+munge utility, wraps them in some simple PostScript, and prepends a prolog
+that defines the special characters and PostScript functions needed by the
+text.
+
+The file list also includes per-file flags. The most important is the
+text/binary marker. Text files can also have a tab width specified, although
+munge knows how to read Emacs-style tab width settings from the end of a
+source file.
+
+The prolog is assembled from various other files and defines by psgen using
+a simple preprocessor called yapp (Yet Another Preprocessor). This process
+includes some book-specific information like the page footer.
+
+Producing the final PostScript requires the necessary non-standard fonts
+(Futura for the footers and OCRB for the code) and the psutils package,
+which provides the includeres utility used to embed the fonts in the
+PostScript file. The fonts should go in the books/ps directory, as
+"Futura.pfa" and the like.
+
+The pagenums file can be used to produce a table of contents. For this book,
+we generated the front matter (such as this chapter) separately, told psgen
+to start on the next page after this, and concatenated the resultant
+PostScript files for printing. The only trick was making the page footers
+look identical.

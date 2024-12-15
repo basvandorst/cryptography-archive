@@ -1,0 +1,1259 @@
+SFS Disk Volume Layout
+----------------------
+
+An SFS volume is broken up into two parts, the boot sector which is used to
+identify the volume and store assorted status information, and the encrypted
+volume itself.  If a program tries to read the boot sector, the SFS driver will
+assemble a pseudo-boot sector in memory and return that instead.  If a program
+tries to write to the boot sector, the SFS driver will skip the boot sector
+while still writing any other sectors which may be requested.
+
+All data on the boot sector, both plaintext and encrypted, is stored in
+big-endian format following the convention used by international cryptographic
+standards.  Care should to taken to ensure that the proper endianness is
+maintained when reading and writing the boot sector on little-endian systems
+(the performance of the current implementation was tested against the RS6000
+version to confirm that endianness conversion was being done correctly).
+
+In the following discussion a BYTE is an 8-bit quantity, a WORD is a big-
+endian 16-bit quantity, and a LONG is a big-endian 32-bit quantity.  There are
+no alignment restrictions for the data as stored on disk.  All data is
+close-packed with no need for byte-padding for word or longword boundaries.
+
+
+The SFS Volume Header Record
+
+The boot record is the first sector in a disk volume, and is usually used to
+load a bootstrap code block which loads more code which eventually loads DOS or
+an operating system.  In the case of SFS there is no bootstrap code as SFS
+partitions are not bootable.  Instead, the boot record contains a volume header
+record holding identification information which SFS uses when mounting the
+volume, and encryption information to allow SFS to decrypt the volume.  The
+information is stored as a series of variable-length data packets with fields
+in big-endian order.  Although it might be desirable to store the data as
+DER-encoded ASN.1 (ISO 8824, ISO 8825), the amount of code necessary to decode
+this information is considerable, leading to excessively complicated loaders
+for the encrypted volume.  In particular, it would make the use of automatic
+volume mounts for the SFS device driver virtually impossible.
+
+The SFS volume header may contain multiple data packets, currently up to seven
+types are implemented (there is an additional eighth pseudo-packet type which
+is a null data packet).  One packet identifies the volume, one contains
+encryption information needed to en/decrypt the volume, and one contains
+filesystem-specific information needed to access the volume.  These packets are
+mandatory.  Finally, a number of optional packets may be used to hold data such
+as information for volumes accessible by multiple users, information needed by
+the high-speed direct disk access routines in SFS, and information to control
+the conditions under which SFS volumes are unmounted.  Each packet consists of
+a packet type identifier followed by the length of the data in the packet, and
+then by the packet data itself.
+
+The volume header is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[ 4 ]   'SFS1' identification string
+       4      2     WORD        Information packet 1 ID
+       6      2     WORD        Information packet 1 data length
+       8     ??     ????        Information packet 1 data
+       n      2     WORD        Information packet 2 ID
+     n+2      2     WORD        Information packet 2 data length
+     n+4     ??     ????        Information packet 2 data
+                      ..........
+       m      2     WORD        Information packet n ID
+     m+2      2     WORD        Information packet n data length
+     m+4     ??     ????        Information packet n data
+
+It is recommended that the order of the information packets be as follows
+
+    1.  Volume information
+    2.  Encryption information
+    3.  Filesystem information
+    4.  Other information (such as multiuser access data, direct disk access
+        information, information to control the conditions under which SFS
+        volumes are unmounted, and smart card information)
+
+although this is not essential.  However some volume mount software which must
+run with severely limited resources may run into problems if the order of the
+data packets is not as expected.  The remainder of the sector is filled with
+zeroes, which correspond to null packets.  Currently defined packet types are:
+
+    Name                    Value   Information type
+
+    SFS_PACKET_NONE           0     Null packet
+    SFS_PACKET_VOLUMEINFO     1     Volume information
+    SFS_PACKET_ENCRINFO       2     Encryption information
+    SFS_PACKET_DISK_BPB       3     Filesystem information
+    SFS_PACKET_MULTIUSER      4     Multiuser access information
+    SFS_PACKET_FASTACCESS     5     Direct disk access information
+    SFS_PACKET_UNMOUNT        6     Volume unmount information
+    SFS_PACKET_SMARTCARD      7     Smart card information
+
+
+Packet 0 - Null Packet
+
+This packet contains no information and is never explicitly set in an SFS
+volume header.  However since the remainder of the header after the actual data
+is padded out with zeroes, it can be viewed as containing a succession of null
+packets.
+
+
+Packet 1 - Volume Information Packet
+
+The volume information packet contains the volume name, the volume creation
+time, and the volume serial number.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Volume information packet ID = 1
+       2      2     WORD        Volume information packet data length
+       4      2     WORD        Volume name character set identifier
+       6      2     WORD        Volume name length
+       8     ??     BYTE[]      Volume name
+       n      4     LONG        Volume date, stored as seconds since 1970 GMT
+     n+4      4     LONG        Volume serial number
+
+The character set identifier is one of the following:
+
+    Name                    Value   Information type
+
+    SFS_CHARSET_ISO646        0     ISO 646/ASCII character set
+    SFS_CHARSET_ISO8859_1     1     ISO 8859-1 character set
+    SFS_CHARSET_ISO8859_2     2     ISO 8859-2 character set
+    SFS_CHARSET_ISO8859_3     3     ISO 8859-3 character set
+    SFS_CHARSET_ISO8859_4     4     ISO 8859-4 character set
+    SFS_CHARSET_ISO8859_5     5     ISO 8859-5 character set
+    SFS_CHARSET_ISO8859_6     6     ISO 8859-6 character set
+    SFS_CHARSET_ISO8859_7     7     ISO 8859-7 character set
+    SFS_CHARSET_ISO8859_8     8     ISO 8859-8 character set
+    SFS_CHARSET_ISO8859_9     9     ISO 8859-9 character set
+
+The volume name is stored as an octet string immediately following the
+character set and length values.  The recommended maximum length for the volume
+name field is 100 octets, in order to allow room for the remainder of the
+volume header.
+
+The volume creation data is stored as a count of seconds since midnight on 1st
+January 1970.  Times are stored relative to GMT, although some operating
+systems may have trouble with time zones.
+
+The volume serial number is used mainly for identification purposes and has no
+special characteristics, but should be unique across volumes.
+
+
+Packet 2 - Encryption Information Packet
+
+The encryption information packet contains the algorithm identifier of the
+encryption algorithm being used, the iteration count used when setting up the
+keying information, the initialisation vector (IV) for the disk key, the
+encrypted disk key for the volume, and a key check value which may be used to
+verify that the correct decryption key has been given. The packet layout is as
+follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Encryption packet ID = 2
+       2      2     WORD        Encryption packet data length
+       4      2     WORD        Encryption algorithm identifier
+       6      2     WORD        Encryption key setup iteration count
+       8     ??     BYTE[]      Disk key IV
+       n    128     BYTE[]      Encrypted disk key
+   n+128      2     WORD        Key check value
+
+The encryption algorithm identifier is one of the following:
+
+    Name                    Value   Encryption algorithm type
+
+    SFS_ENCRALGO_NONE         0     No encryption
+    SFS_ENCRALGO_SHS          1     MDC/SHS
+
+The MDC/SHS algorithm uses the Secure Hash Standard as the block transformation
+in the MDC encryption algorithm.
+
+The size of the disk key IV depends on the encryption algorithm, and is equal
+to the block size of the encryption algorithm being used.  In the case of
+MDC/SHS this is 160 bits or 20 bytes.
+
+The encrypted disk key contains 128 bytes of cryptographically strong random
+information whose derivation is given in the section "Generating Random
+Numbers" above.  This data may be utilized as required by the encryption
+algorithm used for the particular disk volume.  In the case of MDC/SHS the
+first 160 bits are used as the master disk IV from which individual sector IV's
+are generated as described in the section "The Use of an Initialization
+Vector", the next 512 bits are used as the en/decryption key, and the remaining
+352 bits are ignored.  Other algorithms with larger or smaller key spaces may
+use this data differently.
+
+The key check value is provided to give some warning about an incorrect
+password, and should be derived from the encryption key in some nontrivial
+manner which makes using the key check in an attack no easier than a standard
+known plaintext attack.  In the case of MDC/SHS it is the last two octets in
+the key data buffer after the key setup operation has been performed (this
+value is never used as part of the encryption key, and is the product of 200
+iterations of MDC/SHS over the user key).
+
+
+Packet 3 - Filesystem Information Packet
+
+The filesystem information packet contains identification information for the
+filesystem contained on the encrypted volume followed by encrypted
+filesystem-specific information needed to handle the volume.  This information
+is highly system-specific.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Filesystem information packet ID = 3
+       2      2     WORD        Filesystem information packet data length
+       4      2     WORD        Filesystem type identifier
+       6     ??     BYTE[]      Encrypted filesystem information
+
+The filesystem type identifier is one of the following:
+
+    Name                    Value   Filesystem type
+
+    SFS_FILESYSTEM_NONE       0     No filesystem
+    SFS_FILESYSTEM_FAT        1     MSDOS FAT filesystem - BPB data
+
+The encrypted MSDOS BPB data record corresponds directly to a standard BIOS
+parameter block and is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Sector size in bytes
+       2      1     BYTE        Sectors per cluster
+       3      2     WORD        Number of boot sectors
+       5      1     BYTE        Number of FAT copies
+       6      2     WORD        Number of entries in root directory
+       8      2     WORD        16-bit number of sectors on disk
+      10      1     BYTE        Media descriptor byte
+      11      2     WORD        Number of sectors per FAT
+      13      2     WORD        Number of sectors per track
+      15      2     WORD        Number of heads
+      17      4     LONG        Number of hidden sectors
+      21      4     LONG        32-bit number of sectors on disk
+
+
+Packet 4 - Multiuser Access Information
+
+The multiuser access information packet contains an identification number for
+the multiuser access data file needed to access the volume.  This value is
+checked against an equivalent one in the access data file to ensure that the
+data file corresponds to the volume in question.  In addition the presence of
+this packet signals to the user software that the volume has multiuser access
+enabled.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Multiuser access information packet ID = 4
+       2      2     WORD        Multiuser access information packet data length
+       4      4     LONG        Multiuser access data file ID
+
+
+Packet 5 - Direct Disk Access Information
+
+The direct disk access information packet contains information needed by the
+disk access routines in SFS to bypass the normal BIOS disk access methods and
+interface directly with the drive.  This leads to a significant speed
+improvement with disk types which support this access mode, since SFS can
+perform en/decryption operations while waiting for disk I/O to complete.  The
+packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Direct access information packet ID = 5
+       2      2     WORD        Direct access information packet data length
+       4      2     WORD        Direct access method
+       6     ??     ??          Extra information needed for direct access
+
+The direct access method is one of the following:
+
+    Name                    Value   Access mode
+
+    SFS_ACCESSMODE_BIOS       0     BIOS disk access (default)
+    SFS_ACCESSMODE_IDE        1     IDE single-sector programmed I/O access
+    SFS_ACCESSMODE_SCSI       2     SCSI device access via ASPI interface
+    SFS_ACCESSMODE_LBA        3     LBA access via EIDE interface
+    SFS_ACCESSMODE_CDROM      4     CDROM encrypted volume file
+    SFS_ACCESSMODE_AUDIO      5     CD audio file via steganography
+
+Some of the high-speed access modes are not used automatically since it is
+unsafe to assume that all hardware will support them.  Therefore if the direct
+disk access information packet is absent and if BIOS access to the drive is
+possible, slower BIOS accesses are used by default.  If it has been determined
+by external software that a fast access mode is possible, the software should
+write (or update) a direct disk access information packet to reflect this.  If
+no access to the drive other than with a fast direct access mode is possible,
+then the fast access mode will always be used.
+
+
+Packet 6 - Volume Unmount Information
+
+The volume unmount information packet contains information on conditions under
+which SFS volumes are unmounted by the SFS driver.  These may be in response to
+external stimuli, or due to internal conditions monitored by the driver.  In
+the absence of this packet, the settings used for volume unmounts are the
+defaults set by the driver, although these can generally be overridden under
+user control.
+
+Currently two parameters, the auto-unmount timeout value and smart card removal
+actions, are defined.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Volume unmount information packet ID = 6
+       2      2     WORD        Volume unmount information packet data length
+       4      2     WORD        Auto-unmount timeout in minutes, 0 = none set
+       6      2     WORD        Smart card unmount action
+
+The auto-unmount timeout value  contains the default setting for the
+auto-unmount timer for this volume.  If no disk access takes place in the
+specified time, the volume is automatically unmounted.  A value of 0 in this
+field indicates that no auto-unmount timer is to be set (although this is
+better accomplished by simply deleting the volume unmount information packet).
+
+The smart card unmount action specifies the action which will be performed on
+the volume when the smart card associated with it is removed from the card
+reader.  If the volume doesn't use a smart card, no action will be performed.
+The unmount actions are as follows, and are explained in more detail in the
+section "Controlling SFS Volumes with Smart Cards" above:
+
+    Name                    Value   Unmount action
+
+    SFS_CARD_UMT_NONE         0     Do nothing (also used when no smart card is
+                                    used for the volume)
+    SFS_CARD_UMT_RO           1     Make the volume readonly if card is removed
+    SFS_CARD_UMT_THIS         2     Unmount the volume if card is removed
+    SFS_CARD_UMT_ALL          3     Unmount all volumes is card is removed
+
+
+Packet 7 - Smart Card Information
+
+The smart card information packet contains information used to tie a particular
+smart card to an SFS volume.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Smart card information packet ID = 6
+       2      2     WORD        Smart card information packet data length
+       4      2     WORD        Smart card type (0 = none, 1 = basic 256-byte
+                                memory card).
+       6      4     LONG        Smart card serial number
+
+The smart card type is used to tell the software how to communicate with the
+card associated with the volume, since many cards cannot identify themselves
+properly or can't even be accessed without the correct key.  Currently two
+types are defined, a no-card type 0 and a basic 256-byte memory card controlled
+via the I2C bus protocol with card type 1.
+
+The smart card serial number is used to tie the volume to the card with the
+given serial number.
+
+
+SFS Multiuser Access File Layout
+--------------------------------
+
+[The following information is preliminary and is bound to change at a moments
+ notice]
+
+Associated with each SFS volume which has multiuser access enabled are one or
+more database files containing information on each user who has access to that
+volume.  This consists of identification information for each user (in the case
+of a named database), access control information, and keying information needed
+to access the actual volume.
+
+The file is laid out as a simple flat database, which is adequate for its
+intended use since a user record is only retrieved once per database access,
+and generally the databases will be quite small.
+
+On a system with proper access control this file will be read-only for everyone
+but the volume administrator, but unfortunately under some operating systems
+and also DOS there is little access control and anyone with access to a sector
+editor can change their access rights.  However at this level they can also
+change the SFS volume header and the behaviour of mountsfs and the SFS driver,
+so little is gained by attempting to plug this hole.  In any case, the basic
+access to the volume is cryptographically controlled, and bypassing this goes
+beyond simply editing a file.
+
+In the future it may be worthwhile implementing more heavy-duty controls, such
+as using public-key signed access permission tokens from the volume
+administrator to grant access for networked use.
+
+All data in the multiuser access database is stored in big-endian format
+following the convention used by international cryptographic standards.  Care
+should to taken to ensure that the proper endianness is maintained when reading
+and writing the boot sector on little-endian systems (the performance of the
+current implementation was tested against the RS6000 version to confirm that
+endianness conversion was being done correctly).
+
+In the following discussion a BYTE is an 8-bit quantity, a WORD is a big-
+endian 16-bit quantity, and a LONG is a big-endian 32-bit quantity.  There are
+no alignment restrictions for the data as stored in the database.  All data is
+close-packed with no need for byte-padding for word or longword boundaries.
+
+An access database is broken up into two sections, a header record containing
+details on the database as a whole, and one or more individual user records.
+
+
+Database Header
+
+The database header is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[4]     'SFS1' identification string
+       4      2     WORD        Database type identifier
+       6      4     LONG        Encrypted volume serial number
+      10      2     WORD        Number of user records in database
+      12      2     WORD        Database name character set identifier
+      14      2     WORD        Database name length
+      16     ??     BYTE[]      Database name
+
+The identification string and database type identifier serve to identify the
+general database format.  The type identifier is one of the following:
+
+    Value   Type
+
+      0     Anonymous database containing date, access, keyinfo records
+      1     Named database containing user name, date, access, keyinfo records
+     ??     Reserved for future use
+
+An anonymous database contains no identification for any of the user records.
+Each keyinfo record is decrypted in turn until a valid record is found, and
+this keying information is then used to access the encrypted volume.
+
+A named database contains an idetifier for each user record.  Lookup of the
+database is performed directly by user name, and then access proceeds as for
+the anonymous database.
+
+The encrypted volume serial number is the serial number of the volume this
+database is used to access.
+
+[Problem: Should be able to set to zero to keep corresponding volume anonymous]
+[Problem: Can lead to trouble if chsfs is used to change volume serial number.
+          Perhaps change chsfs to disallow serial number change without also
+          changing database serial number]
+
+The database name is the collective name for the database and the users in it.
+Example database names might be "Ancient Illuminated Seers of Bavaria" or
+"Trilateral Commission".  The name is optional, and may be omitted by
+specifying a name with a length of 0 characters.
+
+
+Database Records
+
+Each record in the database is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Record type identifier
+       2      2     WORD        User name character set identifier
+       4      2     WORD        User name length
+       6     ??     BYTE[]      User name
+       n      4     LONG        Access valid from date
+     n+4      4     LONG        Access valid to date
+     n+8      4     LONG        Access rights bitstring
+    n+12     ??     BYTE[]      Keying information
+
+The record type identifier is one of the following:
+
+    Value   Type
+
+      0     Anonymous record containing date, access, and keyinfo
+      1     Named record containing user name, date, access, and keyinfo
+     ??     Reserved for future use
+
+The user name is the name of the user entitled to access the SFS volume the
+database corresponds to.  Under multiuser operating systems this will simply
+correspond to the userID which the user is known to the operating system under.
+Otherwise, the userID can be the user's name or some similar identifying method
+capable of distinguishing users.  If the record type is an anonymous record,
+the user name fields will not be present.
+
+[Problem: One user with many accounts.  Allow multiple userID's per record?
+          This could encourage password sharing though]
+
+The access valid date pair contains the date after which access to the SFS
+volume is permitted, and the date at which access rights to the volume expire.
+These are stored in the Unix seconds-since-1970 format.
+
+The access rights bitstring contains the access rights the user has to the SFS
+volume.
+
+[Problem: How?  Use RWXRWXRWX?  Or ASN.1-type strings with complex FTAM-type
+          rights?  ACL's?]
+
+The keying information is [what?  Same as single-user keying information]
+
+
+SFS Share File Layout
+---------------------
+
+Associated with all SFS volumes which have key escrow or anti-duress measures
+enabled is a database of shares needed to reconstruct key components to access
+the volumes.  The database may contain a number of share records (if used for
+anti-duress measures), or an individual share (if used for key escrow
+purposes).  The file is laid out as a simple flat database, which is adequate
+for its intended use since it is traversed only once until enough shares have
+been accumulated to gain access to a volume.
+
+A share database is broken up into two sections, a header data packet
+containing details on the database as a whole, and one or more share packets
+containing the shares themselves.  All the shares in one database apply to a
+specific volume, but may consist of many seperate share groups.  There are two
+values used to identify shares, the first one in the database header is the
+volume identifier of the SFS volume the shares apply to and is used to
+associate the shares with a particular SFS volume.  The second is stored with
+each share and is used to tie it to other shares in the same share group.  By
+varying the share group identifier, multiple groups of shares can be stored in
+the same database.
+
+A share database contains multiple data packets, currently up two types are
+implemented (there is an additional third pseudo-packet type which is a null
+data packet).  Each packet consists of a packet type identifier followed by the
+length of the data in the packet, and then by the packet data itself.
+
+The share database is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[4]     'SFS1' application identification string
+       4      4     BYTE[4]     'SDBX' file type identification string
+       8      2     WORD        Share database header packet ID
+      10      2     WORD        Share database header packet data length
+      12     ??     ????        Share database header packet
+       n      2     WORD        Share packet 1 ID
+     n+2      2     WORD        Share packet 1 data length
+     n+4     ??     ????        Share packet 1 data
+       n      2     WORD        Share packet 2 ID
+     n+2      2     WORD        Share packet 2 data length
+     n+4     ??     ????        Share packet 2 data
+                      ..........
+       m      2     WORD        Share packet n ID
+     m+2      2     WORD        Share packet n data length
+     m+4     ??     ????        Share packet n data
+
+Currently defined share packet types are:
+
+    Name                    Value       Information type
+
+    SFS_SHARE_PACKET_NONE     0         Null packet
+    SFS_SHARE_PACKET_DBASEHDR 1         Share database header
+    SFS_SHARE_PACKET_SHARE    2         Individual share
+
+
+Packet 0 - Null Packet
+
+This packet contains no information and is never explicitly set in an SFS
+volume header.  However since the remainder of the header after the actual data
+is padded out with zeroes, it can be viewed as containing a succession of null
+packets.
+
+
+Packet 1 - Share Database Header Packet
+
+The volume information packet contains the volume name, the volume creation
+time, and the volume serial number.  The packet layout is as follows:
+
+The share database header packet contains information about the database as a
+whole, and is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Share database header packet ID = 1
+       2      2     WORD        Share database header packet data length
+       4      4     LONG        Database identifier
+       8      2     WORD        Number of share records in the database
+      10      2     WORD        Number of shares needed to reconstruct the
+                                shared secret
+      12      2     WORD        CRC16 of data fields in record
+
+The database identifier is the volume identifier of the SFS volume which this
+share database applies to.
+
+The count of the total number of shares in the database is useful for
+bookkeeping purposes.
+
+The number of shares needed to reconstruct the shared secret gives the
+threshold value for the (M,N) threshold scheme used to implement the share
+database.
+
+The CRC16 value covers the data fields from the field following the record
+length to the field preceding the checksum value inclusive, and is used for
+error control as shares may be communicated over unreliable channels.
+
+
+Packet 2 - Individual share
+
+Each record in the share database is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Individual share packet ID = 2
+       2      2     WORD        Individual share packet data length
+       4      4     LONG        Share group identifier
+       8      2     WORD        Share record type
+      10     ??     BYTE[]      Share record
+       n      2     WORD        CRC16 of data fields in record
+
+The share group identifier is a value used to connect all shares belonging to
+the same share group in the share database.  Multiple groups of shares may be
+stored in a database by giving each group a different share group identifier.
+
+The share record type defines the format of the share record which follows it,
+and may be one of the following:
+
+    Name                        Value       Information type
+
+    SFS_SHARETYPE_NONE            0         Null share type
+    SFS_SHARETYPE_LAGRANGE        1         LaGrange interpolating polynomial
+                                            scheme
+    SFS_SHARETYPE_LAGRANGE_ENCR   2         LaGrange interpolating polynomial
+                                            scheme with encryption
+
+The share record may contain unencrypted data used for key escrow purposes, or
+encrypted data used for anti-duress measures.  The format of the share record
+is explained below.
+
+The CRC16 value covers the data fields from the field following the record
+length to the field preceding the checksum value inclusive, and is used for
+error control as shares may be communicated over unreliable channels.
+
+
+Share Records
+
+The share record is an integral part of an individual share packet and has no
+length or checksum field associated with it.
+
+The SFS_SHARETYPE_NONE share record is a null record type containing no
+information.
+
+The SFS_SHARETYPE_LAGRANGE polynomial scheme share record is laid out as
+follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Share record ID = 1
+       2      4     WORD        Share number
+       6     ??     BYTE[]      Share data
+
+The share number is the X coordinate and the share data itself is the Y
+coordinates.
+
+The SFS_SHARETYPE_LAGRANGE_ENCR polynomial scheme with encryption share record
+is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Share record ID = 2
+       2      4     WORD        Share number
+       6      2     WORD        Share encryption algorithm identifier
+       8     ??     BYTE[]      Share record IV
+       n     ??     BYTE[]      Encrypted share
+     n+m      2     WORD        Share check value
+
+The share encryption algorithm identifier is as given in the section "SFS Disk
+Volume Layout" above.  An encryption type of SFS_ENCR_ALGO_ID_NONE is
+equivalent to an SFS_SHARETYPE_LAGRANGE share record which has no provision for
+encryption.
+
+The size of the share record IV depends on the encryption algorithm, and is
+equal to the block size of the encryption algorithm being used.  If no
+encryption is used, the IV field is not present.  If MDC/SHS is used, the IV is
+160 bits or 20 bytes.
+
+The share number is the X coordinate and the share data itself is the Y
+coordinates.  The validity of the decrypted Y coordinate is checked using the
+share check value.  Details of this are still uncertain as it is only needed
+for anti-duress measures, which are currently disabled.
+
+
+SFS Smart Card Data Layout
+--------------------------
+
+SFS stores the keying information it needs to access a volume in smart cards as
+explained in the "Design Details" section above.  Since some cards have a
+limited amount of internal storage, SFS uses either the standard
+variable-length record format which follows the format used for volume headers,
+multiuser access files, and share files, or a compressed format containing the
+minimal information needed to work with the card.  Only the standard card
+format will be covered here.
+
+The smart card may contain multiple data packets, currently up two types are
+implemented (there is an additional third pseudo-packet type which is a null
+data packet).  One packet identifies the card in the much the same way that a
+volume information packet identifies a disk volume, and the other contains
+the encryption information needed to en/decrypt the disk key stored in the
+volume header.  Each packet consists of a packet type identifier followed by
+the length of the data in the packet, and then by the packet data itself.
+
+The card is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[4]     'SFS1' application identification string
+       4      4     BYTE[4]     'CARD' data type identification string
+       8      2     WORD        Information packet 1 ID
+      10      2     WORD        Information packet 1 data length
+      12     ??     ????        Information packet 1 data
+       n      2     WORD        Information packet 2 ID
+     n+2      2     WORD        Information packet 2 data length
+     n+4     ??     ????        Information packet 2 data
+                      ..........
+       m      2     WORD        Information packet n ID
+     m+2      2     WORD        Information packet n data length
+     m+4     ??     ????        Information packet n data
+
+The remainder of the card is filled with zeroes, which correspond to null
+packets.  Currently defined card packet types are:
+
+    Name                    Value       Information type
+
+    SFS_CARD_PACKET_NONE      0         Null packet
+    SFS_CARD_PACKET_CARDINFO  1         Card information
+    SFS_CARD_PACKET_ENCRINFO  2         Encryption information
+
+
+Packet 0 - Null Packet
+
+This packet contains no information and is never explicitly set in an SFS smart
+card.  However since the remainder of the card memory after the actual data is
+padded out with zeroes, it can be viewed as containing a succession of null
+packets.
+
+
+Packet 1 - Card Information Packet
+
+The card information packet contains the cards serial number and a flag to
+indicate whether it is a cloneable master card or a non-cloneable slave card.
+The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Card information packet ID = 1
+       2      2     WORD        Card information packet data length
+       4      2     LONG        Card serial number
+       6      2     WORD        Card master flag (0 = slave, 1 = master)
+
+The card serial number is used to tie the card to the volume it is used to
+access.
+
+The card master flag is used to indicate whether a card is cloneable or not.
+If this value is 0, the card is a slave card and cannot be cloned.  If the
+value is 1, the card is a master card and can be cloned to produce more slave
+cards.
+
+Packet 2 - Encryption Information Packet
+
+This packet type is identical to the encryption information packet described in
+the "SFS Disk Volume Layout" section above.
+
+
+Interfacing with SFS
+--------------------
+
+The SFS device driver has a sophisticated control interface which allows
+complete configurability through the standard DOS IOCTL read and write calls,
+which are used to transfer data to and from the control channel of a device.
+It is recommended that you consult a system programming guide or your compilers
+documentation for more information on making DOS IOCTL calls.  Many compilers
+provide standard routines for making these calls.
+
+In the following discussion a BYTE is an 8-bit quantity, a WORD is a little-
+endian 16-bit quantity, and a LONG is a little-endian 32-bit quantity.  These
+values will need endianness conversion after being read from the SFS volume
+header.
+
+
+How SFS Identifies Drives
+
+For floppy disk drives, a value of 0 usually corresponds to drive A: and a
+value of 1 usually corresponds to drive B:.  For fixed disk drives accessible
+through the system BIOS, a value of 0 with the high bit set (giving an actual
+value of 0x80) usually corresponds to the first physical drive and a value of 1
+with the high bit set (giving an actual value of 0x81) usually corresponds to
+the second physical drive.  These values correspond to physical drives as
+accessed through the BIOS, and not logical volumes (SFS can also access drives
+not normally accessible through the BIOS).  A single physical drive may contain
+a number of logical volumes. Since the SFS driver runs below the level at which
+most operating systems operate, it will ignore the DOS drive mappings (in fact
+DOS can't even see the encrypted disk volume) and access the drive directly.
+Thus if there are more than the DOS standard of two floppy drives and two
+physical hard drives connected to the system it should still be able to access
+the drives and present them to the operating system as normal disk volumes.
+
+If the physical drive contains more than one logical volume, the offset of the
+start of the logical volume from the start of the physical drive is specified
+as a sector or disk block count.  If the physical drive contains only one
+logical volume, this value is set to zero.  Finding the start of the logical
+volume will usually entail parsing the partition table of the physical drive.
+Floppy drives have only one logical volume which is equivalent in size to the
+physical drive, fixed disks have one or more logical volumes on each physical
+volume.  These logical volumes can contain different filesystems and operating
+systems, and not all may be accessible or visible to DOS.  For more information
+on disk organization, refer to a good technical reference which covers disk
+drives, and then spend several days figuring out all the DOS quirks never
+mentioned in any reference.
+
+In the following text the term `drive number' is used to refer to a value which
+identifies a particular drive (which depends on the drive type, since BIOS, IDE
+and SCSI drive access identifies drives in different ways), the term `physical
+volume' is used to refer to the physical drive being accessed and the term
+`logical volume' is used to refer to the drive as DOS sees it.
+
+
+Reading from the SFS Driver:
+
+The SFS driver processes both control channel read and control channel write
+requests.  Initially, the drive number of the logical volume being used by the
+SFS driver must be found.  This can be done by checking each possible logical
+drive as follows:
+
+    for( driveNumber = 0; driveNumber <= 'Z' - 'A'; driveNumber++ )
+        {
+        /* Try and read data from the device's control channel */
+        data <- ioctlRead( driveNumber );
+
+        /* Check for the SFS identification string */
+        if( first 4 bytes of data = 'SFS1' )
+            exit loop;
+        }
+
+If, at the end of the loop's execution, the driveNumber is greater than the
+total number of drives in the system, the SFS driver has not been found,
+probably because it isn't present in the system.  Otherwise, driveNumber
+contains the drive number of the logical volume which the SFS driver is making
+available, and the data packet contains assorted status information about the
+SFS volume corresponding to the driveNumber.
+
+The data packet returned by the SFS driver is as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[ 4 ]   'SFS1' identification string
+       4      2     WORD        SFS unit number, starting from 0
+       6      2     WORD        Drive the SFS volume is mounted on.
+                                Interpretation of this value depends on the
+                                disk access mode.
+       8      4     LONG        Sector or disk block offset of logical volume
+                                from start of physical volume, or 0 if logical
+                                volume corresponds to physical volume
+      12      2     WORD        0 = no disk mounted, 1 = disk mounted, 2 = disk
+                                mounted in non-removable mode
+      14      2     WORD        0 = disk is read/write, 1 = disk is read-only
+      16      2     WORD        Quick-unmount hotkey value (high byte = shift
+                                value, low byte = optional keyboard scan code)
+      18      2     WORD        Auto-unmount time.  -1 = no unmount timer set,
+                                0 = timer set but expired, any other value =
+                                total unmount time in minutes
+      20      2     WORD        Auto-unmount timeout actual minutes remaining
+                                before the unmount takes place
+      22      2     WORD        Internal driver check code.  0 = no error, 1 =
+                                driver consistency check failed, 2 = individual
+                                unit consistency check failed.
+      24      4     LONG        Last I/O error status - see below.
+      28      2     WORD        Smart card status - see below.
+
+The unit number is used by SFS to handle multiple encrypted drives.  This value
+starts at zero for the first unit, and identifies the volume being accessed.
+
+The last I/O error status value provides more details on the last read or write
+error encountered by the SFS driver for the drive in question.  This value is
+divided into 4 bytes, of which the first contains the access mode in use when
+the error occurred, the the remaining three contain error information.  The
+possible values are as follows:
+
+    First byte  Access mode     Remaining bytes
+
+        0          BIOS         Byte 1 = 0
+                                Byte 2 = 0
+                                Byte 3 = BIOS error code
+        1          IDE          Byte 1 = 0
+                                Byte 2 = controller status
+                                Byte 3 = controller error code
+        2          SCSI         Byte 1 = sense key
+                                Byte 2 = auxiliary sense key
+                                Byte 3 = auxiliary sense key qualifier
+       ??        Reserved       Reserved for future use
+
+In all cases a value of all ones in bytes 2 and 3 indicate a controller or host
+device timeout.
+
+The smart card status value contains information on the driver's handling of
+the smart card as it applies to the current volume.  Currently defined status
+values are:
+
+    Name                    Value       Information type
+
+    CARD_STATUS_NONE          0         No card present
+    CARD_STATUS_INERT         1         Card present but unused
+    CARD_STATUS_ACTIVE        2         Card active, but not for this volume
+    CARD_STATUS_RO_THIS       3         Card active, volume will become
+                                        read-only if card is removed
+    CARD_STATUS_UMT_THIS      4         Card active, volume will be unmounted
+                                        if card is removed
+    CARD_STATUS_UMT_ALL       5         Card active, all volumes will be
+                                        unmounted if card is removed
+    CARD_STATUS_SUSPENDED     6         Card handling has been temporarily
+                                        suspended to allow other software to
+                                        use the card reader
+
+A return value of CARD_STATUS_ACTIVE implies that a card is present and in use
+by the driver, but that this use does not apply to the current volume.  If the
+card in use does apply to the current volume, a value of CARD_STATUS_RO_THIS,
+CARD_STATUS_UMT_THIS, or CARD_STATUS_UMT_ALL will be returned instead of
+CARD_STATUS_ACTIVE.
+
+If queried via an IOCTL call on the volume's removability, the SFS driver will
+always indicate that the media is removable, even if the volume is on a fixed
+disk.  This is because some disk cacheing software won't invalidate a drive's
+data, even if the driver signals that the media has changed, unless the volume
+is marked as being removable.
+
+This status information can be returned to the user in the form of a status
+message or an information dialog if desired (the drive and offset information
+can be used to read the volume name, date, and serial number from the encrypted
+volume).
+
+
+Writing to the SFS Driver
+
+Once the driver has been found, several types of data packet can be sent to the
+driver to control its operation.  Each control packet begins with a WORD
+containing the magic value 'C0' which the SFS driver checks to ensure the
+packet is meant for it, and a WORD identifying the data packet type.  The data
+packet types are:
+
+    Name                    Value       Information type
+
+    PACKET_SET_DISKINFO       0         Disk parameters
+    PACKET_SET_KEYINFO        1         Keying information
+    PACKET_SET_READONLY       2         Set disk read-only status
+    PACKET_SET_DRIVENO        3         Drive number to mount
+    PACKET_SET_MOUNTSTATUS    4         Set mount status
+    PACKET_SET_UNMOUNT        5         Set/clear quick-unmount hotkey value
+    PACKET_SET_TIMEOUT        6         Set/clear timed unmount value
+    PACKET_WIN_CLOCKTICK      7         Windows clock tick packet
+    PACKET_SET_CARDINFO       8         Smart card control information
+
+These packets are explained in more detail below.  All other values are
+reserved for future use.
+
+
+Packet 0 - Disk Parameters:
+
+This packet type is used to convey to the SFS driver various pieces of
+information about the physical characteristics of the disk drive, including the
+sector size, number of heads, total number of sectors, and so on.  The packet
+layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 0, PACKET_SET_DISKINFO
+       4     25     BYTE[]      BPB record
+
+The BPB record is the information from the BIOS parameter block as defined in
+the section "SFS Disk Volume Layout" above.
+
+Sending this data packet to the driver automatically unmounts the encrypted
+volume.
+
+
+Packet 1 - Keying Information
+
+This packet type sets up the encryption information in the driver.  It contains
+the en/decryption key, and the master IV for the encrypted volume.  The packet
+layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 1, PACKET_SET_KEYINFO
+       4     20     BYTE[ 20 ]  Master IV for encrypted volume
+      24     64     BYTE[ 64 ]  MDC/SHS keying information
+
+Sending this data packet to the driver automatically unmounts the encrypted
+volume.
+
+
+Packet 2 - Set disk Read-only Status
+
+This packet type sets the read-only status of the disk.  Sending a value of 0
+makes the disk read-only.  Sending a value of 1 makes the disk read/write.  The
+packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 2, PACKET_SET_READONLY
+       4      2     WORD        Read-only status: 0 = read-only, 1 = read/write
+
+Sending this packet type has no effect on the mount status of the volume.
+
+
+Packet 3 - Drive Number to Mount
+
+This packet type sets the drive number and the offset of the logical volume on
+the physical drive, which the driver will en/decrypt.  The packet layout is as
+follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 3, PACKET_SET_DRIVENO
+       4      2     WORD        Drive number.  Interpretation of this value
+                                depends on the disk access mode.
+       6      4     LONG        Sector or disk block offset of logical volume
+                                from start of physical volume, or 0 if logical
+                                volume corresponds to physical volume
+
+The drive number contains information allowing the driver to locate the
+physical drive on which the SFS volume is located.  The drive access mode and
+drive identifying information are encoded into a 16-bit word as follows:
+
+    Bits 15-12: Disk access mode
+    Bits 11-0 : Drive identifying information
+
+The drive identifying information is laid out as follows:
+
+    Access mode     Drive identifying informtion
+
+         0          Bits 11-8: 0
+                    Bits 7-0 : BIOS drive number
+         1          Bits 11-8: 0
+                    Bits 7-0 : IDE drive number
+         2          Bits 11-8: SCSI host number
+                    Bits 7-4 : SCSI target ID
+                    Bits 3-0 : SCSI logical unit number
+
+Sending this data packet to the driver automatically unmounts the encrypted
+volume.
+
+
+Packet 4 - Set mount Status
+
+This packet type sets the mount status of the drive.  A value of 0 unmounts the
+drive, a value of 1 mounts the drive.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 4, PACKET_SET_MOUNTSTATUS
+       4      2     WORD        Mount status (0 = unmount, 1 = mount)
+
+Unmounting the drive using this packet type also destroys the encryption
+information held by the driver and forces all data still held in cache and disk
+buffers to be flushed to disk.  This is the only sure way to erase all the
+encryption information, as it wipes not only the actual keying information but
+also most of the data area used by the driver and any data in cache and disk
+buffers.  Merely sending an empty keying information packet will not perform
+this task.
+
+
+Packet 5 - Set/clear Quick-Unmount Hotkey Value
+
+This packet is used to set the hotkey value which the SFS driver checks for to
+quickly unmount an SFS volume, or to clear the hotkey handling.  The packet
+layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 5, PACKET_SET_UNMOUNT
+       4      2     WORD        Hotkey value (see below)
+
+The hotkey which the driver checks for can be any combination of the alt key,
+control key, left shift, and right shift (referred to as the shift code), and
+an arbitrary keyboard scan code.  The recommended default value is a
+combination of the left and right shift keys.  This information is encoded in
+the hotkey WORD as follows:
+
+  The high 8 bits contain the shift code.  This contains a set of bitflags
+  which specify the shift keys the driver checks for, possibly in addition to
+  an optional character code.  The values are:
+
+        Shift key       Value (binary)      Value (hex)
+
+           Alt             00001000             08
+         Control           00000100             04
+       Left Shift          00000010             02
+      Right Shift          00000001             01
+
+  The encoding for the shift code portion of the default left+right shift
+  hotkey is therefore 00000011 binary or 03 hex.
+
+  The low 8 bits contain an optional keyboard scan code which the driver will
+  check for in addition to the shift code.  This value is used in combination
+  with the shift code to specify a key combination to the driver, so that for
+  example Alt-Z would be used as the quick-unmount hotkey, although care should
+  be taken to ensure that none of a large number of existing special key
+  combinations is reused for this.
+
+  If the low 8 bits contain zeroes, the driver does not check for a keyboard
+  scan code in addition to a shift code.  The encoding for the keyboard scan
+  code portion of the default left+right shift hotkey is therefore 00000000
+  binary or 00 hex.
+
+  The overall value is the combination of the shift code and keyboard scan
+  code, or 0300 hex for the default hotkey.
+
+Specifying a value of 0 in this word will disable hotkey checking in the
+driver.
+
+The hotkey quick-unmount is handled by hooking the int 9h keyboard interrupt.
+The interrupt handler which performs this task is installed either when the
+driver is loaded (if there is a volume to be mounted or a hotkey code is
+specified), or when mountsfs is run (which transmits a quick-unmount control
+packet to the driver).  The interrupt handler checks for the programmed hotkey
+and unmounts the volume if it is detected.  Subsequent quick-unmount control
+packets can be sent to the driver to change the actual hotkey value.  Sending a
+value of 0 will disable hotkey checking and deinstall the keyboard interrupt
+handler.
+
+
+Packet 6 - Set/clear Timed Unmount Value
+
+This packet is used to set the unmount time after which an SFS volume is
+unmounted if no accesses are made to it.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 6, PACKET_SET_TIMEOUT
+       4      2     WORD        Timeout value in minutes before unmount
+                                takes place
+
+Specifying a value of 0 as the timeout value will disable the timed unmount
+feature in the driver.
+
+The timed unmount is handled under DOS by hooking the int 1Ch timer interrupt.
+The interrupt handler which performs this task is installed either when the
+driver is loaded (if a timeout value is specified at this time), or when
+mountsfs is run and a timeout value is specified (which transmits a timed
+unmount control packet to the driver).  Under Windows, the same task is
+performed by the Windows SFS driver sending Windows Clock Tick packets (see
+below) to the driver.
+
+The timed unmount handler decrements a timer and unmounts the volume if it
+expires.  The timer is reset every time a media check packet is received by the
+driver, which allows normal DOS and Windows accesses to be detected but doesn't
+cause false triggering due to device driver control functions.  Subsequent
+timed unmount control packets can be sent to the driver to change the actual
+timeout value for a volume.  Sending a value of 0 will disable the timer and,
+if no more volumes have timers set, deinstall the timer interrupt handler if
+one is installed.
+
+
+Packet 7 - Windows Clock Tick
+
+This packet differs from all the others in that it transmits no information to
+the driver other than that conveyed by it's presence.  It is sent by the
+Windows SFS driver every 10 seconds and is used to allow the driver to handle
+timed unmounts and perform smart card processing under Windows, which
+virtualizes the timer interrupt and locks out the driver, in effect replacing
+the normal timer interrupt.  In addition, it allows the driver to report back
+to the SFS Windows driver the current status of any mounted volumes, rather
+than providing the audible feedback it does under DOS.  In order to do this,
+the driver performs the rather unusual step of writing into two reserved fields
+in the received data packet, which eliminates the need for a seperate, slow
+IOCTL read every 10 seconds.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 7, PACKET_WIN_CLOCKTICK
+       4      2     WORD        Returned count of unmounted volumes.  0 = none
+                                unmounted, -1 = all volumes unmounted due to
+                                smart card removal, anything else = count of
+                                unmounted volume.
+       6      2     WORD        Returned current quick-unmount hotkey setting.
+
+The returned count of unmounted volumes can be used to display a dialog box
+indicating to the user that an unmount has occurred.  The returned
+quick-unmount hotkey setting is used by the Windows SFS driver to update its
+internal status of the hotkey setting is changed from DOS.
+
+
+Packet 8 - Smart Card Control Information
+
+This packet consists of a number of sub-packet types which are used to control
+the handling of smart cards by the driver.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Magic value 'C0'
+       2      2     WORD        Packet type 8, PACKET_SET_CARDINFO
+       4      2     WORD        Sub-packet type (see below).
+       6      2     WORD        Card type
+       8     ??     BYTE[]      Card-specific information
+
+The packet sub-types are as follows:
+
+    Name                    Value       Information type
+
+    CARD_PKT_SUSPEND          0         Suspend smart card handling
+    CARD_PKT_RESUME           1         Resume smart card handling
+    CARD_PKT_CLEAR_THIS       2         Clear card handling for the current
+                                        volume
+    CARD_PKT_RO_THIS          3         Enable card handling, make current
+                                        volume readonly if card removed
+    CARD_PKT_UMT_THIS         4         Enable card handling, unmount current
+                                        volume if card removed
+    CARD_PKT_CLEAR_ALL        5         Clear card handling for all volumes
+    CARD_PKT_UMT_ALL          6         Enable card handling, unmount all
+                                        volumes if card removed
+
+Use of the CARD_PKT_SUSPEND and CARD_PKT_RESUME packet subtypes allow the the
+smart card reader to be used without the need to unmount and re-mount volumes
+when the card is removed.  For example, to initialise a new card, the suspend
+packet is sent to the driver, the current card is removed and a blank card
+inserted, the blank card is initialised, the old card is reinserted, and the
+resume packet is sent.  Unlike all other packets types, the driver will not
+update the reader LED when these packets are received, leaving it under the
+control of the calling application.
+
+The mount control packets CARD_PKT_CLEAR_THIS, CARD_PKT_RO_THIS,
+CARD_PKT_UMT_THIS, CARD_PKT_CLEAR_ALL, and CARD_PKT_UMT_ALL control the
+drivers' handling of the currently inserted card.  The first three packet
+subtypes specify how a card removal is to control the operation of the
+currently addressed volume, the last two packet subtypes specify how a card
+removal is to control the operation of all volumes.  It is possible to
+individually control the handling of volumes, so that a card removal could
+unmount one volume, make a second volume readonly, and have no effect on a
+third volume.  Volumes do not need to be mounted using the smart card in order
+for them to be affected by a smart card removal.  Sending any of these packet
+types will cause the driver to update the status of the card reader LED.
+
+
+Controlling the Driver
+
+The SFS driver is initialized by sending it a series of control packets giving
+the disk information, the keying information, the drive number and logical
+volume offset to access, the read/write status, and finally the mount command.
+The sequence of operations for mounting a volume is as follows:
+
+    driveNumber <- find SFS drive number as outlined above;
+    ioctlWrite( driveNumber, PACKET_SET_DISKINFO, \
+                disk information - packet type 0 );
+    ioctlWrite( driveNumber, PACKET_SET_KEYINFO, \
+                keying information - packet type 1 );
+    ioctlWrite( driveNumber, PACKET_SET_READONLY, \
+                read-only status - packet type 2 );
+    ioctlWrite( driveNumber, PACKET_SET_DRIVENO, \
+                drive to mount and vol.offs - packet type 3 );
+    ioctlWrite( driveNumber, PACKET_SET_MOUNTSTATUS, \
+                mount status TRUE - packet type 4 );
+
+To mount a new volume on the same drive:
+
+    driveNumber <- find SFS drive number as outlined above;
+    ioctlWrite( driveNumber, PACKET_SET_KEYINFO, \
+                keying information - packet type 1 );
+    ioctlWrite( driveNumber, PACKET_SET_MOUNTSTATUS, \
+                mount status TRUE - packet type 4 );
+
+To unmount a volume, erasing the keying information held by the device driver:
+
+    driveNumber <- find SFS drive number as outlined above;
+    ioctlWrite( driverNumber, PACKET_SET_MOUNTSTATUS, \
+                mount status FALSE - packet type 4 );

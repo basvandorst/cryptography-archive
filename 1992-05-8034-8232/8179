@@ -1,0 +1,281 @@
+Path: msuinfo!caen!sdd.hp.com!swrinde!gatech!taco!taco.cc.ncsu.edu!setzer
+From: setzer@math.ncsu.edu (William Setzer)
+Newsgroups: sci.crypt
+Subject: Re: Improving on DES
+Message-ID: <SETZER.92May20150615@math.ncsu.edu>
+Date: 20 May 92 20:06:15 GMT
+References: <1992May16.131035.25254@news.nd.edu> <3094@transfer.stratus.com>
+	<1992May19.131809.1250@news.nd.edu> <3135@transfer.stratus.com>
+Sender: news@ncsu.edu (USENET News System)
+Organization: The Chebychev Church of Probability
+Lines: 268
+In-Reply-To: cme@ellisun.sw.stratus.com's message of 19 May 92 17:02:41 GMT
+
+cme@ellisun.sw.stratus.com (Carl Ellison) writes:
+:
+: In fact, I think the world needs a good, simple transposition program --
+: one which takes all input (up to 8192 bytes, for example) and transposes
+: bytes based on a PRNG initialized from a password, so that the second block
+: has a different transposition from the first block.  The password
+: could even be augmented by the sum of the bytes in the first block -- to
+: get a per-message salt.
+: 
+: Care to write one?
+
+Sure :-)
+
+The one below isn't the fastest in the world (it clocks in at about
+30k chars/sec), but hey, it does everything else mentioned above.
+It's a quick hack, so I'm certain many improvements can be made.
+Enjoy.
+
+
+William
+
+Usage: tran [<key> [<infile> [<outfile>]]]
+
+8<-8<-8<-8<- Cut 8<-8<-8<-8<-
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then unpack
+# it by saving it into a file and typing "sh file".  To overwrite existing
+# files, type "sh file -c".  You can also feed this as standard input via
+# unshar, or by typing "sh <file", e.g..  If this archive is complete, you
+# will see the following message at the end:
+#		"End of archive 1 (of 1)."
+# Contents:  MANIFEST Makefile rnd.c tran.c
+# Wrapped by setzer@math.ncsu.edu on Wed May 20 14:59:05 1992
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+if test -f 'MANIFEST' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'MANIFEST'\"
+else
+echo shar: Extracting \"'MANIFEST'\" \(238 characters\)
+sed "s/^X//" >'MANIFEST' <<'END_OF_FILE'
+X   File Name		Archive #	Description
+X-----------------------------------------------------------
+X MANIFEST                   1	This shipping list
+X Makefile                   1	
+X rnd.c                      1	
+X tran.c                     1	
+END_OF_FILE
+if test 238 -ne `wc -c <'MANIFEST'`; then
+    echo shar: \"'MANIFEST'\" unpacked with wrong size!
+fi
+# end of 'MANIFEST'
+fi
+if test -f 'Makefile' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'Makefile'\"
+else
+echo shar: Extracting \"'Makefile'\" \(43 characters\)
+sed "s/^X//" >'Makefile' <<'END_OF_FILE'
+Xall: rnd.o tran.o
+X	cc -o tran rnd.o tran.o
+END_OF_FILE
+if test 43 -ne `wc -c <'Makefile'`; then
+    echo shar: \"'Makefile'\" unpacked with wrong size!
+fi
+# end of 'Makefile'
+fi
+if test -f 'rnd.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'rnd.c'\"
+else
+echo shar: Extracting \"'rnd.c'\" \(2869 characters\)
+sed "s/^X//" >'rnd.c' <<'END_OF_FILE'
+X/* source/rnd.c: random number generator
+X
+X   Copyright (c) 1989-91 James E. Wilson
+X
+X   This software may be copied and distributed for educational, research, and
+X   not for profit purposes provided that this copyright and statement are
+X   included in all such copies. */
+X
+X/* This routine is straight out of the umoria5.3.1 distribution, except
+X   that I hacked out the moria-specific stuff.  -WPS- */
+X 
+X/* Define this to compile as a standalone test */
+X
+X/* This alg uses a prime modulus multiplicative congruential generator
+X   (PMMLCG), also known as a Lehmer Grammer, which satisfies the following
+X   properties
+X
+X   (i)	 modulus: m - a large prime integer
+X   (ii)	 multiplier: a - an integer in the range 2, 3, ..., m - 1
+X   (iii) z[n+1] = f(z[n]), for n = 1, 2, ...
+X   (iv)	 f(z) = az mod m
+X   (v)	 u[n] = z[n] / m, for n = 1, 2, ...
+X
+X   The sequence of z's must be initialized by choosing an initial seed
+X   z[1] from the range 1, 2, ..., m - 1.  The sequence of z's is a pseudo-
+X   random sequence drawn without replacement from the set 1, 2, ..., m - 1.
+X   The u's form a psuedo-random sequence of real numbers between (but not
+X   including) 0 and 1.
+X
+X   Schrage's method is used to compute the sequence of z's.
+X   Let m = aq + r, where q = m div a, and r = m mod a.
+X   Then f(z) = az mod m = az - m * (az div m) =
+X	     = gamma(z) + m * delta(z)
+X   Where gamma(z) = a(z mod q) - r(z div q)
+X   and	 delta(z) = (z div q) - (az div m)
+X
+X   If r < q, then for all z in 1, 2, ..., m - 1:
+X   (1) delta(z) is either 0 or 1
+X   (2) both a(z mod q) and r(z div q) are in 0, 1, ..., m - 1
+X   (3) absolute value of gamma(z) <= m - 1
+X   (4) delta(z) = 1 iff gamma(z) < 0
+X
+X   Hence each value of z can be computed exactly without overflow as long
+X   as m can be represented as an integer.
+X */
+X
+X/* a good random number generator, correct on any machine with 32 bit
+X   integers, this algorithm is from:
+X
+XStephen K. Park and Keith W. Miller, "Random Number Generators:
+X	Good ones are hard to find", Communications of the ACM, October 1988,
+X	vol 31, number 10, pp. 1192-1201.
+X
+X   If this algorithm is implemented correctly, then if z[1] = 1, then
+X   z[10001] will equal 1043618065
+X
+X   Has a full period of 2^31 - 1.
+X   Returns integers in the range 1 to 2^31-1.
+X */
+X
+X#define RNG_M 2147483647L  /* m = 2^31 - 1 */
+X#define RNG_A 16807L
+X#define RNG_Q 127773L	   /* m div a */
+X#define RNG_R 2836L	   /* m mod a */
+X
+X/* 32 bit seed */
+Xstatic int rnd_seed;
+X
+Xvoid set_rnd_seed (seedval)
+Xint seedval;
+X{
+X  /* set seed to value between 1 and m-1 */
+X
+X  rnd_seed = (seedval % (RNG_M - 1)) + 1;
+X}
+X
+X/* returns a pseudo-random number from set 1, 2, ..., RNG_M - 1 */
+Xint rnd()
+X{
+X  register long low, high, test;
+X
+X  high = rnd_seed / RNG_Q;
+X  low = rnd_seed % RNG_Q;
+X  test = RNG_A * low - RNG_R * high;
+X  if (test > 0)
+X    rnd_seed = test;
+X  else
+X    rnd_seed = test + RNG_M;
+X  return rnd_seed;
+X}
+END_OF_FILE
+if test 2869 -ne `wc -c <'rnd.c'`; then
+    echo shar: \"'rnd.c'\" unpacked with wrong size!
+fi
+# end of 'rnd.c'
+fi
+if test -f 'tran.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'tran.c'\"
+else
+echo shar: Extracting \"'tran.c'\" \(1438 characters\)
+sed "s/^X//" >'tran.c' <<'END_OF_FILE'
+X#include <stdio.h>
+X
+Xextern void set_rnd_seed();
+Xextern int rnd();
+X
+X#define BLOCKSIZE 8192
+X
+Xint  perm[BLOCKSIZE];
+Xchar buf[BLOCKSIZE];
+X
+XFILE *my_fopen(file, type)
+Xchar *file, *type;
+X{
+X  FILE *fp;
+X
+X  if (fp = fopen(file, type))
+X    return fp;
+X  (void) fprintf(stderr, "Can't open '%s'\n", file);
+X  exit(1);
+X}
+X
+Xmain(argc, argv)
+Xint argc;
+Xchar **argv;
+X{
+X  register int i, len;
+X  register FILE *infp, *outfp;
+X  int savlen, pos, key;
+X  char tmp;
+X
+X  key   = (argc > 1) ? str2int(argv[1]) : 0;
+X  infp  = (argc > 2) ? my_fopen(argv[2], "r") : stdin;
+X  outfp = (argc > 3) ? my_fopen(argv[3], "w") : stdout;
+X
+X  len = fread(buf, 1, BLOCKSIZE, infp);
+X  key += str2int(buf);
+X  set_rnd_seed(key);
+X
+X  do {
+X    savlen = len;
+X
+X    for (i = 0; i < len; i++)
+X      perm[i] = i;
+X    
+X#define swap(A,B)  tmp = A; A = B; B = tmp;
+X
+X    while (len > 1)
+X      {
+X	pos = 1 + rnd() % (len - 1);
+X	swap( buf[perm[0]], buf[perm[pos]] );
+X
+X	perm[0]   = perm[(pos == len - 2) ? len - 1 : len - 2];
+X	perm[pos] = perm[len - 1];
+X	len -= 2;
+X      }
+X    fwrite(buf, 1, savlen, outfp);
+X  } while (len = fread(buf, 1, BLOCKSIZE, infp));
+X}
+X
+X/* Make an integer out of a string.  Do a poor job of it.
+X * Note that since this function is called on a block of transposed
+X * text and used to construct an "rng key", it mustn't be sensitive
+X * to the position of characters  in `str'.
+X */
+Xint str2int(str)
+Xchar *str;
+X{
+X  int sum = 0;
+X
+X  while (*str)
+X    sum += *str++;
+X
+X  return sum;
+X}
+X
+END_OF_FILE
+if test 1438 -ne `wc -c <'tran.c'`; then
+    echo shar: \"'tran.c'\" unpacked with wrong size!
+fi
+# end of 'tran.c'
+fi
+echo shar: End of archive 1 \(of 1\).
+cp /dev/null ark1isdone
+MISSING=""
+for I in 1 ; do
+    if test ! -f ark${I}isdone ; then
+	MISSING="${MISSING} ${I}"
+    fi
+done
+if test "${MISSING}" = "" ; then
+    echo You have the archive.
+    rm -f ark[1-9]isdone
+else
+    echo You still need to unpack the following archives:
+    echo "        " ${MISSING}
+fi
+##  End of shell archive.
+exit 0

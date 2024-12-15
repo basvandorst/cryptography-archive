@@ -1,0 +1,127 @@
+Newsgroups: comp.theory,sci.crypt,sci.math,rec.puzzles
+Path: msuinfo!caen!zaphod.mps.ohio-state.edu!wupost!cs.utexas.edu!asuvax!elam.mdl.sandia.gov!cs.sandia.gov!samitch
+From: samitch@cs.sandia.gov (Scott A. Mitchell)
+Subject: Re: Looking for random permutation generation algorithms
+Message-ID: <1993Jan8.192007.17273@cs.sandia.gov>
+Sender: usenet@cs.sandia.gov (Another name for news)
+Organization: Sandia National Laboratories, Albuquerque, NM
+References: <2607@usna.NAVY.MIL> <1993Jan8.163909.20820@cs.cornell.edu> <1993Jan8.172824.22910@cs.cornell.edu>
+Date: Fri, 8 Jan 93 19:20:07 GMT
+Lines: 115
+Xref: msuinfo comp.theory:6188 sci.crypt:12662 sci.math:37983 rec.puzzles:20257
+
+
+I had the wrong subject heading last time I posted this and the principle
+players seemed to have missed it, so here it is again.
+
+In article <1993Jan6.014749.15323@ee.ubc.ca> rayw@ee.ubc.ca (raymond w m woo) writes:
+>Hi, does anyone know, or can provide any pointer in the literature to, any 
+>random permutation generation algorithm that can be easily implemented as a 
+>function in a computer program?  
+>
+>Ideally, this function would be computationally effective, and the input 
+>that this function takes would be some kind of index/rank number of the
+>permution to be generated.  
+
+then karr@cs.cornell.edu (David Karr) describes an alg
+
+>Now for b = N down to 2, take i = k mod b.  Copy v[i] to w[p],
+>increment p, copy v[t] to v[i], decrement t.  Essentially this has
+>just removed the i-th element of v, adding it to the output and
+>shrinking v accordingly.
+
+Additionally one should (integer) divide k by b in the loop, 
+(i.e. k = k div b) after the computation of i.
+>Which Karr also points out in a later post.
+
+Follows is a quickly written C++ program for this, that has been tested
+to be correct for all permutations up to rank 7:
+
+===============================================================================
+
+//permute.C,  a C++ program for computing random permutations
+
+#include <stream.h>
+
+void permute( int rank, int index, int output[] ) {
+// returns a permutation of given rank.  
+// index is a number between 1 and rank!, corresponding to a unique
+// permutation to return
+
+  int i;
+  int v[rank];
+  for (i = 0; i<rank;) 
+	v[i] = ++i;
+
+  int t = rank-1;
+  int p = 0;
+
+  for (int b = rank; b>1; b--) {
+	i = index % b;
+  	index /= b;
+	output[p++] = v[i]; 
+	v[i] = v[t--];
+  }
+  output[rank-1] = v[0];
+}
+
+int fact( int v ) {
+  if (v>1) {
+    int w = v--;
+    for (; v > 1; v--)
+	w *= v;
+    return w;
+  }
+  else 
+    return 1;
+}
+
+void vecset( int dest[], int source[], int rank ) {
+//assign dest permutation vector to be equall to source
+//vectors are of length rank 
+	for (int i =0; i<rank; i++) 
+	  dest[i] = source[i];
+	//use memcpy for faster results if you like
+}
+
+int is_same_vec( int v1[], int v2[], int rank ) {
+//return true if v1 and v2 are identical vectors of length rank
+	for (int i = 0; i<rank; i++)
+	  if (v1[i] != v2[i]) return 0;
+	return 1;
+}
+
+void display( int v1[], int rank ) {
+//display a permutation vector on standard output
+	for (int i = 0; i<rank; i++) 
+	 	cout << v1[i];
+  	cout << "\n";
+}
+
+main( int argc, char * argv[] ) {
+//generate and display permutation vectors, 
+
+  for (int rank = 1; rank < 7; rank++) {
+    cout << "\n";  //new line
+    int output [rank];  // a particular permutation
+    int savoutput[fact(rank)] [rank]; //save all permutation vectors 
+
+    //generate and display all permutation vectors of given rank
+    for (int k = fact(rank); k>0; k--) {
+	permute( rank, k, output );
+	vecset(savoutput[k-1], output, rank);
+	display( output, rank );
+    }
+
+    //test uniqueness of permutation vectors of given rank
+    for (int j = 0; j<fact(rank)-1; j++)
+      for (int n = j+1; n<fact(rank); n++)
+	if (is_same_vec(savoutput[j], savoutput [n], rank)) {
+		cout << "error " << n << " " << j 
+		<< " rank= " << rank << "\n";
+		display( savoutput[j], rank );
+		display( savoutput[n], rank );
+	}
+
+  }
+}

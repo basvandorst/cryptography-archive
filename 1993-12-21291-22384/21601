@@ -1,0 +1,1819 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!library.ucla.edu!europa.eng.gtefsd.com!howland.reston.ans.net!xlink.net!math.fu-berlin.de!jiri
+From: jiri@kirk.chemie.fu-berlin.de (Jiri Pittner)
+Subject: Freeware en/decryption program in C here posted
+Message-ID: <0ROJBO9F@math.fu-berlin.de>
+Summary: Here is new version of my crypto program. You can use it as freeware,
+	try to crack it ( I think you will not be successful, of course) and
+	send me comments ...
+	It should be portable (also portable ciphertexts, of course) on all
+	UNIX 32 and 64 bit machines (HP700, SUN, SGI indigo, Convex 210 and 3820
+	Cray YMP were tested)
+	Brief description of the method is also included
+Keywords: encryption decryption cipher cryptanalysis C source code
+Sender: news@math.fu-berlin.de (Math Department)
+Nntp-Posting-Host: kirk.chemie.fu-berlin.de
+Organization: Free University of Berlin, Germany
+Date: Wed, 1 Dec 1993 18:44:04 GMT
+Lines: 1800
+
+
+
+/*
+*************************************************************
+* cryptographical program (c) Jiri Pittner, 1991-3          *
+* contact address: jiri@hpsiepsi.chemie.fu-berlin.de        *
+* contact address 2: jiri@kirk.chemie.fu-berlin.de          *
+* probable future address: jiri@kirk.chemie.hu-berlin.de    *
+* This is freeware - can be used for any non-profit         *
+* purpose, without any warranty, of course ...              *
+* provided that this copyright message is not removed       *
+* recomended name for it: 'cr' or 'cry'
+*                                                           *
+* I think it is quite strong, you can try to crack it       *
+* if you don't think so ...                                 *
+*************************************************************
+
+Brief description precedes the program ...
+
+Improvements in plan:
+when unix and -i used, use fstat so that -m is not necessary for large files
+optionally ask 'retype the password' when encrypting and check identity after checkpassword()
+on SGI problem with libcurses, maybe use only ioctl() to make noecho - cf. source of RASMOL
+test portability on IBM risc workstation if I get somewhere access
+
+
+
+Compilation is simple -> no makefile necessary
+
+always define system : -Damiga, -Dunix, ... 
+on hp7xx -Dhp_risc -Dunix
+on SGI indigo  cc -O   -Wf,-XNl16000 -Dunix -Dconvex cry.c -lcurses -ltermcap
+maybe -Dhp_risc would be also good for SGI
+on sun and convex cc -O -Dunix -Dconvex cry.c -lcurses -ltermcap
+on cray XMP, YMP cc -O -Dunix -Dcray_ymp cry.c -lcurses
+on amiga -lm32 -lc32 with long integer, add #define amiga, needs time.h
+
+on the SGI the curses -termcap makes slightly problems
+
+Attention: in the back compatible regime -BcCD
+encrypted files are portable between convex-sun-hp7xx-amiga | cray xmp-ymp
+| means here that these two groups are not portable
+It was due to different xoring of signed char to signed integer - 
+see option newalgor6.
+
+In the new version, the no port. problems appeared on any machine I could test
+
+
+Short description of the method:
+
+
+It is based on standard pseudorandom generators - congruential
+and aditive one - and modified von Neumann's algorithm. The generators
+are "coupled" together, which should increase the period and
+avoid simple patterns typical for congruential generator.
+I think, this 'random algorithm' did not degenerate in anything like
+the Knuth's warning example of "superrandom generator".
+The idea of Knuth's algorithm 'M' for combination of PRNG's has been also
+used in the new version. 
+The crypted text is xored by some PRNG and sequence of "modified" passwords,
+but also the password lengths changes in some reasonable limits 
+(not to become very short!). Not all of the information contained
+in the generators is used in ciphertext production -> it is not
+possible to use a sequence of blanks in plain text and use it
+for decryption of the rest of the file.
+
+The encryption is done twice, first with some product of the password modifications,
+but also with randomly (time,pid,audio) initiated pseudorandom password,
+which is in crypted way (depending on the real password) saved in the ciphertext.
+
+There has been used a hash function in order to force the cryptanalyst to decrypt
+once the whole buffer:
+The first encryption is started with many times iterated originals password
+xored by random 8 bytes. And these 8 bytes are stored in the header of the file, but
+they are xored by 8B hash function of the buffer after the first encryption.
+Than the buffer is encrypted once more using 16B random password, which is stored
+also in the header, but encrypted using the original password.
+Therefore, who would like to do systematic search on the user password, would have
+to 1) decrypt the WHOLE BUFFER using the decrypted random password
+   2) calculate hash of the buffer
+   3) use the hash to prepare initial password for step 4
+   4) decrypt beginning of the buffer to compare it with the known plain text
+      or to check if it is english text or what
+To decrypt (one pass) 20KB buffer costs approx 6s on 120MIPS machine
+using the default slowness. Are you able to propose a way how to avoid the
+step 1 above to make search of even a moderate number of password guesses possible?
+
+
+The ciphertext created by this program has passed entropy and chi-square test.
+
+
+There have been done things preventing people who don't know the algorithm
+to even guess what's going on - the random encryption described above,
+product file has different length than the input, each bit of the
+product is important and ... 
+The program does not allow its user to use passwords like lowercase words
+or things like aaaa1111 and refuses to crypt too short files or 1KB of zeros ...
+
+It also cleans its buffers as soon as possible, to decrease the risc of searching
+in memory, but of course, the data stay unencrypted for considerable time.
+
+The program is quite time consuming, not very practical on machines <10MIPS.
+
+-------------------------------------------------------------------------------
+
+
+Short description of subroutines:
+
+xmult() : multiplication modulo m, when the product could be bigger than
+		integer word, also adds 1 - for use in lin. congr. PRNG
+
+rnd?() : several lin. congr. PRNG
+
+xrandinit() : initialization - modification of the buffer of aditive PRNG
+
+xrandclear() : clearing of the buffer of aditive PRNG
+
+xrand55() : slightly modified aditive PRNG 
+
+initrandom() : initialization of randomness source (times, pids, /dev/audio, machine dep. PRNG)
+
+randbyte1(), randbyte() : gets random byte (pseudorandom randomly initialized)
+
+getpassword() : prompts and reads  password in some noecho way
+
+checkpasswd() : check if password is not too simple
+
+pascpy() : copies string of unsigned char, but 0 is not terminator as in strncpy()
+	   could be used memcpy() I think, but this does not exist in the C on Amiga, which I am using  ...
+
+getbuf() : allocates buffer
+
+rotbyte() : rotation of a byte to left
+
+getsumxor() : gets sum mod256 and xor of bytes in a buffer, modified by length of the buffer
+
+myhash() : gets simple hash function of given length of a given buffer; details are obvious from the source code
+	   is used several times, once in order to disable decryption tests
+	   on a short beginning of the buffer and also for ciphertext feedback
+	   on the newalgor10 level
+	   On the newalgor13 level it has been improved, so that I think is now
+	   crypt. strong
+
+zaxoruj() : xor buffer by a constant
+
+modifpas1() : make one subiteration of password buffer based on modified x^2 PRNG used for bute pairs  - see source
+		this function is one of the most important ones, therefore some
+		improvements were done on the level newalgor12 in order to make
+		inverse if this function practically impossible
+
+modifpas() : makes one iteration of password buffer calling modifpas1() several times
+	     note that the length of buffer is also variable
+	     Note that this function presents according to tests I have done
+	     a good PRNG, but it is still not crypt. strong in the sense of
+	     unpredictability of next value from all previous ones. Therefore it
+	     is combined with other PRNG's in zakryptuj(). The other PRNG's have
+	     hidden private buffers which are not all written to the ciphertext,
+	     so that the knowledge of all the stream generated by zakryptuj
+	     without knowledge of that buffers is not sufficient to predict next
+	     byte.
+
+initpas() : used for initial iterations of the user supplied password, just calls modifpas()
+
+zakryptuj() : one pass of encryption of a buffer; uses modifpas() and few other
+PRNG
+		first initializes several PRNG and the mixbuf for coupling of
+		the in the sense proposed by Knuth, but slightly modified here
+		encrypts in blocks of variable lengths depending on modifpas
+		uses operation + mod 256 or xor bytewise
+		In the newalgor10 version uses ciphertext feedback through myhash()
+		The main purpose is to combine several PRNG's to make crypt. strong
+		PRNG (impossibility to predict next byte from all previous without
+		knowledge of the private buffers which are not written to the ciphertext
+		and are derived from supplied password in a very complicated way)
+		Anyway, this is still not a top-level function, it is called
+		three times from myencrypt() to encrypt the plaintext, using
+		also hash function and 'random session password' to make
+		differential cryptanalysis hard.
+		For details see the source.
+
+overxor() : xor a buffer with contant of second buffer,  use 2nd buf several times,
+	    if it's too short
+
+prexoruj() : xor 4 bytes with a getsumxor() of a buffer
+
+myencrypt() : the bulk - encryption of a buffer
+	initpas() of the user supplied password
+	save the results for further need and iterate modifpas few times
+	generate random buffer
+	getsumxor() of the modified password and use it to select the base address in prologue, where the random info necessary for decryption will be stored
+	getsumxor() of the data buffer to be encrypted and use this to modify the password
+	select random prologue and epilogue to the buffer to be encrypted
+	zaxoruj() password buffer by the value of sum from last getsumxor and this value seve to the buffer for lated encryption and modifpas() several times
+	overxor() password buffer by random bytes saved in the header and modifpas() several times
+	zakryptuj() buffer with given password buffer
+	get hash of the encrypted buffer and overxor the random sequence used recently with the hash
+	copy 16 random  bytes to the password buffer and modifpas several times
+	zakryptuj() buffer with the random password and operation + mod 256
+	zakryptuj() buffer with the modified password (pas3) saved before and operation xor
+	zaxoruj() buffer by a constant
+	prexoruj() random data used for encryption which are stored in the prologue
+	so that they can be used for decryption but they are not stored unencrypted
+	and that no byte of the ciphertext is irrelevant - it is not possible
+	to simply test, what is was the 'base' variable
+	zakryptuj() several of these data by a pas2 which is modified user supplied password
+	but overxor()ed by random data store elsewhere in the header and further modified by modifpas()
+	output the prologues, buffer, and epilogue and clear the buffers.
+
+	as you see, there are several 'feedbacks' and the buffer will be always
+	encrypted also with random data, which are encrypted and stored in the
+	ciphertext.
+
+mydecrypt() : inverse of myencrypt, also handling the case of too short files, which
+	cannot be product of myencrypt()
+
+main() : read options, open files, get password and check it, it long passphrase is used get hash of it and use it as password, call myen/de/crypt.
+
+
+
+-------------------------------------------------------------------------------
+
+*/
+
+/*
+#define amiga
+*/
+/*
+#define unix
+*/
+
+
+/* mozna pouzij jeste  binarni operaci def. tabulkou, k ni inverzni operaci */
+/* mozna udelej jeste zakr po dvojicich scitani mod 65536 */
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#if __stdc__
+#include <stdlib.h>
+#ifdef convex
+extern long random();
+extern void srandom();
+#endif
+#else
+extern char *malloc();
+extern free();
+#endif
+
+#ifdef unix
+#include <sys/time.h>
+#include <unistd.h>
+#endif
+#ifdef amiga
+#include <time.h>
+#endif
+
+
+#ifdef unix
+#include <curses.h>
+#include <signal.h>
+#endif
+
+
+/*you must not use minpassword <6*/
+#define minfile 50
+#define minpassword 9
+/* maxpalen should not be changed because of backw. compatibility 
+it is not just limit, but also the modifpas uses it, and the decision
+if to hash too long passphrase etc.
+the same is valid for parameters hashlen and nummarks
+*/
+#define maxpalen 41
+#define nummarks 10
+#define hashlen 8
+/* fieldinfo must be >=128+21+hashlen (for newalgor3) */
+#define fieldinfo 160
+/*minbufsize must be >= 256 + 256 + minfile +fieldinfo*/
+#define minbufsize 2048
+
+#ifdef unix
+#define defbuflen 1048576
+#define minslowness 50
+#define maxslowness 1000
+#define defslowness 300
+#define minadit 0
+/*must be >=0*/
+#define defadit 0
+#define maxadit 100
+#endif
+
+#ifdef amiga
+#define defbuflen 32768
+#define minslowness 50
+#define maxslowness 600
+#define defslowness 300
+#define minadit 0
+/*must be >=0*/
+#define defadit 0
+#define maxadit 30
+#endif
+
+
+#define BYTE1 unsigned char
+#define BYTE4 unsigned long
+#define boolean int
+#define true 1
+#define false 0
+
+
+
+char *myname;
+int slowness;
+int aditional;
+short minpalen;
+boolean newalgor13;
+boolean newalgor12;
+boolean newalgor11;
+boolean newalgor10;
+boolean newalgor9;
+boolean newalgor8;
+boolean newalgor7;
+boolean newalgor6;
+boolean newalgor5;
+boolean newalgor4;
+boolean newalgor3;
+boolean newalgor2;
+boolean newalgor;
+int mixsize; /* for algorithm M used in newalgor5 option */
+/*for closing*/
+static FILE *input=NULL;
+static FILE *output=NULL;
+BYTE1 pasw[maxpalen+3]; /* *buf lint:unused*/
+short paswlen;
+
+
+
+/* this is not necessary on unix, but amiga-dos sometimes behaves very strangely */
+void konec(f,n)
+int n;
+BYTE1 *f;
+{
+register int i;
+
+if(f != (BYTE1 *)NULL) (void) free((char *)f);
+if(input!=stdin && input!=NULL) fclose(input);
+if(output!=stdout && output!=NULL) fclose(output);
+for(i=0;i<=maxpalen;i++) pasw[i]= (BYTE1)0;
+slowness=aditional=paswlen=minpalen=0;
+/*random generators are cleared with xrandclear*/
+exit(n);
+}
+
+
+
+
+
+void usage()
+{
+fprintf(stderr,"Usage:\n%s -e|-d [-i file] [-o file] [-m buffer_size] [-k keyword] [-s slowness] [-a aditional]\n\
+       -i   when you want different input file then stdin\n\
+       -o   when you want different output file then stdout\n\
+	    On some machines there could be problems with redirection of stdin\n\
+	    and stdout when you want to specify password 'invisibly' from ter-\n\
+	    minal, then this options become useful. Anyway, this version should\n\
+	    have already all this problems fized.\n\
+       -e   for encrypting\n\
+       -d   for decrypting\n\
+       -b   for oldest backward compatibility\n\
+       -B   for older backward compatibility\n\
+       -c   for old backward compatibility\n\
+       -C   for new backward compatibility\n\
+       -D   for newer backward compatibility\n\
+       -E   for newer2 backward compatibility\n\
+       -F   for newer3 backward compatibility\n\
+       -G   for newer4 backward compatibility\n\
+       -I   for newer5 backward compatibility\n\
+       -J   for newest backward compatibility\n\
+       -k   it is not recomended to input password through command line\n\
+	    in multiuser system - %s can prompt you for password as login\n\
+	    The password must contain at least 3 lowercase letters and \n\
+	    either at least one national (non-ASCII) character\n\
+	    or at least 3 non-lowercase chars, 1 non-alphabetic character,\n\
+	    and 1 uppercase letter on other than 1st position. Minimal and\n\
+	    maximal password lengths are %d and %d characters.\n\
+	    Also some simple test of 'uniformity' is used, but usually these\n\
+	    conditions above are sufficient to pass it.\n\
+       -s   when slowness is low, it should be still secure enough\n\
+	    this option is due to use on very differently quick computers;\n\
+	    remember that this factor is in some sense part of keyword -\n\
+	    you must know which value was used for encrypting!\n\
+	    default slowness is %d, minimum %d, maximum %d.\n\
+       -a   aditional number of password modifications in crypting procedure\n\
+            minimum is 0, default %d, maximum is %d\n\
+	    remember that this factor is in some sense part of keyword -\n\
+	    you must know which value was used for encrypting!\n\
+       -A   number of bits to be used for mixing algorithm, must be between\n\
+	    3 and 8. It is relevant only when no of the options bBcCD is used\n\
+	    It is of course part of your password in the sense mentioned above\n\
+       -m   must be specified when working on larger files then is the default\n\
+	    value: %d bytes\n\n\
+(c) Jiri Pittner, 1991-3.\n\n",myname,myname,minpassword,maxpalen,defslowness,minslowness,maxslowness,
+defadit,maxadit,defbuflen);
+konec((BYTE1 *)NULL,20);
+}
+
+
+/*machine independent pseudorandom generators */
+
+
+/* several other random generators */
+
+static int xrandm=100000000;
+static int xrandm1=10000;
+static int xrandb1=51723621;
+static int xrandb2=98706421;
+static int xrandb3=34245821;
+static int xrandb4=79834621;
+static int xrandb5=63429421;
+static int xrandb6=81753821;
+
+
+
+int xmult(p,q)
+int p,q;
+{
+int p1,p0,q1,q0;
+
+p1=p/xrandm1; p0=p%xrandm1;
+q1=q/xrandm1; q0=q%xrandm1;
+return ((((p0*q1+p1*q0)%xrandm1)*xrandm1+p0*q0)+1)%xrandm;
+}
+
+
+
+char rnd1(a)
+int *a;
+{
+return (char) (0xff & ((*a = xmult(*a,xrandb1))>>8));
+}
+
+
+
+
+char rnd2(a)
+int *a;
+{
+return (char) (0xff & ((*a = xmult(*a,xrandb2)) >> 9));
+}
+
+
+char rnd4(a)
+int *a;
+{
+return (char) (0xff & ((*a = xmult(*a,xrandb4)) >> 10));
+}
+
+
+char rnd5(a)
+int *a;
+{
+return (char) (0xff & ((*a = xmult(*a,xrandb5)) >> 9));
+}
+
+
+char rnd6(a)
+int *a;
+{
+return (char) (0xff & ((*a = xmult(*a,xrandb6)) >> 8));
+}
+
+
+
+
+static int xrandaa[55];
+static int xrandj;
+
+void xrandinit(s,r,n)
+int s,n;
+char *r;
+{
+int j;
+if(s) /*true initialisation else only modification! */
+{
+	xrandaa[0]=s; xrandj=0;
+	do {
+		xrandj++;
+		/*xrandaa[xrandj]=(xmult(xrandb3,xrandaa[xrandj-1])+1)%xrandm;*/
+		xrandaa[xrandj]=xmult(xrandb3,xrandaa[xrandj-1]);
+		}while(xrandj<54);
+}
+if(newalgor6)
+for(j=0;j<55;j++) xrandaa[j] ^= ((BYTE1)r[j%n]);
+else
+for(j=0;j<55;j++) xrandaa[j] ^= r[j%n];
+}
+
+
+xrandclear()
+{
+for(xrandj=0;xrandj<55;xrandj++) xrandaa[xrandj]=0;
+}
+
+
+
+
+char xrand55()
+{
+int tmp;
+int i;
+
+xrandj=(xrandj+1)%55;
+i=(xrandj+38)%55;
+tmp= (0xff & (xrandaa[i]>>16));
+xrandaa[i] = ((xrandaa[i] <<8)& 0x00ffff00) | tmp;
+return (0xff&(xrandaa[xrandj]=(xrandaa[(xrandj+23)%55]+xrandaa[(xrandj+54)%55])%xrandm)>>(6+xrandj%5+xrandj%3));
+}
+
+
+
+
+
+
+/*machine dependent, but does not matter - only for random seeds*/
+void initrandom()
+{
+#ifdef unix
+struct timeval t1;
+struct timezone t2;
+
+gettimeofday(&t1,&t2);
+#ifdef hp_risc
+srand((int)t1.tv_usec^t1.tv_sec^24350373);
+#endif
+#ifdef convex
+srandom((int)t1.tv_usec^t1.tv_sec^78346723);
+#endif
+#ifdef cray_ymp
+srandom((int)t1.tv_usec^t1.tv_sec^37342387);
+#endif
+#ifdef cray_xmp
+/*srand((int)t1.tv_usec^t1.tv_sec^82378238);*/
+#endif
+#endif
+
+#ifdef amiga
+time_t t;
+
+t=time(0);
+srand((short) 21567^(t&0x7fff ^ (t>>15)&0x7fff ));
+#endif
+}
+
+
+
+/*machine dependent*/
+#ifdef hp_risc
+#define RANDOM() rand()
+#else
+#define RANDOM() random()
+#endif
+
+BYTE1 randbyte0()
+{
+#ifdef unix
+register short i,j;
+struct timeval t1;
+struct timezone t2;
+
+gettimeofday(&t1,&t2);
+j= (short) t1.tv_usec&0x03;
+for(i=0; i<=j;i++) RANDOM();
+return((BYTE1) (RANDOM()>>8)&0xff);
+#endif
+
+
+#ifdef amiga
+register short p;
+
+p= rand()>>4;
+if(p&1024) p ^= 1023;
+return((BYTE1)(p ^ (rand()>>4))&0xff);
+#endif
+}
+
+
+/* this includes randomness generated through really random generator,
+ if available; typically /dev/audio input noise 
+ works quite well with ours otherwise unused audio device*/
+BYTE1 noise()
+{
+#ifdef hp_risc
+int i,j,k,l;
+static FILE *f;
+static int first=1;
+
+if(first) {f=fopen("/dev/audio","r"); first=0;}
+if(f==NULL) return 0xaa;
+k=0;
+j=fgetc(f);
+for(i=0;i<255;i++) {l=j;j=fgetc(f); if(j!=l)k++;}
+/*fclose(f);*/
+return (BYTE1)(k&0xff);
+#else
+return 0xaa;
+#endif
+}
+
+
+
+BYTE1 randbyte1()
+{
+static int b=12345678;
+static int count=0;
+
+#ifdef unix
+struct timeval t1;
+struct timezone t2;
+
+gettimeofday(&t1,&t2);
+b ^= (0xfffffff &((t1.tv_sec<<16)^t1.tv_usec));
+#endif
+
+(void) rnd5(&b);
+b^= randbyte0();
+if(!count) b ^= (((unsigned int)noise()) << 7);
+count=(count+1)%3; /* not to call it too often */
+return (BYTE1) rnd5(&b);
+}
+
+
+
+BYTE1 randbyte()
+{
+static int a=98345721;
+int i;
+BYTE1 x;
+static int first=1;
+
+#ifdef unix
+if(first)
+	{
+	first=0;
+	a ^= (getpid()^(((int)getppid())<<9));
+	}
+#endif
+x=randbyte0();
+for(i=0;i<(int)(x&7);i++ ) (void)rnd1(&a);
+return x ^ rnd1(&a) ^ randbyte1();
+}
+
+
+
+
+/* control characters garbage problem now fixed! temporarily change stdout to be stderr! */
+/* but still something strange on SGI machines, test if TERM var. was OK */
+
+char *getpassword(line,prompt)
+char *prompt, *line;
+{
+register char *p;
+#ifdef unix
+FILE *term;
+FILE save;
+
+save= *stdout;
+*stdout= *stderr; 
+/* this dirty (at least I think it is quite dirty) trick solves
+the problem of control characters in the redirected
+output! */
+
+if((term=fopen("/dev/tty","r"))==NULL) 
+	{
+	fprintf(stderr,"%s: No terminal for this process!\n",myname);
+	*stdout=save;
+	konec((BYTE1 *)NULL,100);
+	}
+
+/* disable keyboard interrupts when noecho */
+signal(SIGINT,SIG_IGN);
+signal(SIGTSTP,SIG_IGN);
+initscr();
+noecho();
+fprintf(stderr,"%s",prompt);
+fgets(line,256,term);
+fclose(term);
+echo();
+fprintf(stderr,"\n");
+endwin();
+*stdout=save;
+signal(SIGINT,SIG_DFL);
+signal(SIGTSTP,SIG_DFL);
+#endif
+
+#ifdef amiga
+register int f1;
+char title[256];
+strcpy(title,"con:100/100/350/26/");
+strcat(title,prompt);
+if((f1=open(title,2))== -1) {fprintf(stderr,"%s: can't create window for password input!\n",myname); konec((BYTE1 *)NULL,100);};
+write(f1,"\033[30m\033[40m",10*sizeof(char));
+do
+	{
+	read(f1,line,sizeof(char));
+	}
+while(*(line++) != '\n');
+*(line-1) = '\0';
+close(f1);
+#endif
+
+
+p=line;
+while(*p) if(*(p++)=='\n') *(p-1)='\0';
+return(line);
+}
+
+
+/**********************************************************************/
+
+
+
+
+void checkpasswd(pas,paslen)
+BYTE1 *pas;
+short paslen;
+{
+register short i,j,nasely,upcase,nasel,ndif,naselx,ndigit;
+if(paslen<minpassword) {fprintf(stderr,"%s: Your password is too short!\n",myname); konec((BYTE1 *)NULL,10);}
+nasely=upcase=nasel=ndif=naselx=ndigit=0;
+for(i=0; i<paslen; i++) 
+	{
+	if(pas[i]&0x80 || !isalpha((char)pas[i])) nasel=1;
+	if(pas[i]&0x80 || !islower((char)pas[i])) naselx++;
+	if(!(pas[i]&0x80) && islower((char)pas[i])) nasely++;
+	if(pas[i]&0x80 || (i && isupper((char)(0x7f&pas[i])))) upcase=1;
+	if(!(pas[i]&0x80) && isdigit((char)pas[i])) ndigit++;
+	for(j=0; j<i; j++) if(pas[i]==pas[j]) ndif++;
+	}
+if(ndigit>paslen-3 || (newalgor4 && upcase==0) || nasely<3 || naselx<3 || !nasel || ndif>0.35*paslen*(paslen-1))
+	{fprintf(stderr,"%s: Your password is too uniform!\n",myname); konec((BYTE1 *)NULL,10);}
+}
+
+
+
+
+void pascpy(kam,od,del)
+BYTE1 *kam,*od;
+int del;
+{
+while(del-- > 0) *kam++ = *od++;
+}
+
+
+
+
+BYTE1 *getbuf(n)
+int n;
+{
+BYTE1 *f;
+f= (BYTE1 *) malloc((unsigned)n*sizeof(BYTE1));
+if (f==NULL)
+	{
+	fprintf(stderr,"%s: not enough memory for requested buffer!\n",myname);
+	konec((BYTE1 *)NULL,20);
+	}
+return(f);
+}
+
+
+/* this could be much improved in assembler! */
+void rotbyte(b)
+BYTE1 *b;
+{
+/* old version
+register int j;
+j= ((int)*b)<<1;
+*b= (j&0x100? 1 : 0);
+*b |= ((BYTE1) j&0xff);
+*/
+register unsigned int j;
+j= (unsigned int) (*b);
+*b = 0xff&((j<<1)|(j>>7));
+}
+
+
+
+
+void getsumxor(p,l,su,xo)
+BYTE1 *p,*su,*xo;
+int l;
+{
+register int i;
+register unsigned long j;
+BYTE1 tmp;
+
+j = *xo =0;
+for(i=0; i<l; i++, p++)
+	{
+	*xo ^= *p;
+	j += *p;
+	}
+*su = (BYTE1) (j&0xff);
+
+if(newalgor2)
+	{
+	tmp= (BYTE1)(l&0xff);
+	*su ^= ((BYTE1) ((tmp<<3)&0xff));
+	*xo ^= ((BYTE1)(tmp^0xff));
+	}
+}
+
+
+
+
+
+void myhash(buf,blen,hash0,hlen,doinit)
+BYTE1 *buf,*hash0;
+int blen,hlen;
+boolean doinit;
+{
+int i,j,k,aa,mark[nummarks],marklevel;
+short hlentmp;
+BYTE1 hash[maxpalen+3],su,xo; /* have a private buffer long enough - because of modifpas */
+void modifpas();
+
+/*fprintf(stderr,"debug buf len %d myhash length %d\n",blen,hlen);*/
+
+if(hlen>maxpalen) /* for == is legal, modifpas1 will not increase the length */
+	{
+	fprintf(stderr,"too long hash length, impossible due to use of modifpas()\nthe buffer would have to have length hlen+2+aditional\n");
+	konec(NULL,100);
+	}
+
+/*simple initialization*/
+aa=89674523;
+getsumxor(buf,blen,&su,&xo);
+aa ^= ((((BYTE4)su)<<8)|xo);
+if(doinit) for(j=0;j<hlen; j++) hash[j]=rnd6(&aa);
+else	for(j=0;j<hlen; j++) hash[j]= hash0[j]^rnd6(&aa);
+
+if(newalgor13)
+    {
+    for(i=1;i<nummarks;i++) mark[i]=(i*blen)/nummarks;
+    marklevel=0;
+    }
+
+/*hashing itsself*/
+for(k=0;k<=(newalgor9?1:0);k++) /* scan buffer twice */
+{
+i=0;
+while(i<blen)
+	{
+	if(((aa>>11)&0x0f)==0x0f)
+		{
+		BYTE1 tmp;
+		tmp=hash[0];
+		for(j=1;j<hlen;j++) hash[j-1]=hash[j];
+		hash[hlen-1]=tmp;
+		if(newalgor11)
+			{
+			hlentmp=hlen;
+			modifpas(hash,&hlentmp); /* can change the hlentmp about max aditional */
+			(void)rnd4(&aa); (void)rnd4(&aa); (void)rnd4(&aa);
+			/*debug fprintf(stderr,"%d %d %d\n",hlen,(int)hlentmp,aa); */
+			for(j=hlentmp; j<hlen; j++) hash[j]=(BYTE1)rnd5(&aa);
+			}
+		}
+
+	for(j=0;j<hlen && i<blen; j++, i++)
+		{
+		hash[j] ^= buf[i];
+		if(rnd6(&aa) & (1<< (j&7)) ) rotbyte(hash+j);
+		aa ^= (((BYTE4) (hash[j==0?hlen-1:j-1]))<<(hash[j]&7));
+		if(newalgor4) hash[j] ^= rnd6(&aa);
+		if(newalgor7 && i>0) hash[j]+=buf[i-1];
+		}
+
+	if(newalgor13) /* make modifpas also regularly, especially for small files important*/
+		{
+		register int l;
+		for(l=marklevel+1;l<nummarks;l++)
+			if(i>=mark[l])
+			{
+			marklevel=l;
+			hlentmp=hlen;
+			modifpas(hash,&hlentmp);
+			(void)rnd4(&aa); (void)rnd4(&aa); (void)rnd4(&aa);
+			for(j=hlentmp; j<hlen; j++) hash[j]=(BYTE1)rnd5(&aa);
+			/*fprintf(stderr,"debug blen %d mark %d = %d i=%d\n",blen,l,mark[l],i);*/
+			break;
+			}
+		}
+
+	} /*while*/
+
+/*modifpas it after each pass of a buffer*/
+if(newalgor13)
+	{
+	hlentmp=hlen;
+	modifpas(hash,&hlentmp); /* can change the hlentmp about max aditional */
+	(void)rnd4(&aa); (void)rnd4(&aa); (void)rnd4(&aa);
+	for(j=hlentmp; j<hlen; j++) hash[j]=(BYTE1)rnd5(&aa);
+	}
+} /* for */
+
+/*modifpas the hashbuffer also at the end few times*/
+if(newalgor13)
+   for(i=0;i<slowness/15+blen/1000+(blen%slowness)/20+(blen<2048?20:0);i++)
+	{
+	hlentmp=hlen;
+	modifpas(hash,&hlentmp);(void)rnd4(&aa); (void)rnd4(&aa); (void)rnd4(&aa);
+	for(j=hlentmp; j<hlen; j++) hash[j]=(BYTE1)rnd5(&aa);
+	}
+
+
+
+pascpy(hash0,hash,hlen);
+aa=0;
+for(j=0;j<maxpalen+2; j++) hash[j]=0;
+
+/*debug 
+fprintf(stderr,"hash len %d: ",hlen);
+for(j=0;j<hlen; j++) fprintf(stderr,"%02x ",(int)hash0[j]);
+fprintf(stderr,"\n");
+*/
+}
+
+
+
+
+
+void zaxoruj(co,delka,cim)
+BYTE1 *co,cim;
+register int delka;
+{
+for(;delka>0;delka--) *co++ ^= cim; 
+}
+
+
+
+void modifpas1(pas,paslen)
+BYTE1 *pas;
+short *paslen;
+{
+BYTE1 sum,xor,save1,save2;
+BYTE1 pas0[maxpalen+3];
+int k,aa;
+register int j,i;
+register BYTE4 x,y,z;
+
+getsumxor(pas,(int)*paslen,&sum,&xor);
+
+/*"randomly" modify length*/
+j = ((int)xor)%17;
+if(j <= 4 && *paslen < maxpalen) {(*paslen)++; pas[*paslen - 1]=sum;}
+if(j >= 11 && *paslen > minpalen) (*paslen)--;
+
+if(newalgor12)
+{
+/* first some linear congruential stuff */
+aa=89674523^(sum)^((*paslen)<<8);
+for(i=1;i<=2+aditional+slowness/161;i++)
+    for(j=0; j< *paslen; j++) 
+	{
+	aa = ((aa<<1)^pas[j])&0x3fffffff;
+	pas[j>0?j-1:*paslen-1] ^= rnd5(&aa);
+	}
+
+/* and also v.Neumann's squares, but in 4 bytes, step 2 bytes */
+/* this itsself is quite good PRNG I think, the use of it on the
+string of bytes make the degenerating into repeated zeros very unprobable,
+The parameters were set in order to get the best results, any change has
+to be done very carefully, especially the order of bytes from which the
+integer to be squared is constructed and also the shifts to pick up the new bytes
+Wrong setup can yield extremely bad behaviour. The other code in this subroutine
+should insure that really no degenerate behaviour will occur, what could perhaps happen
+for this code (trivially all bytes zero initial password) and also should
+very complicate any cryptanalysis
+*/
+
+if(*paslen %2) pas[*paslen]= *pas ^ (sum^0xff);
+for(j=0,k= *paslen-2; j< *paslen; j +=2, k=(k+2)%(*paslen))
+	{
+	x  =  (BYTE4) pas[j+1];
+	x |= ((BYTE4) pas[k]) <<8;
+	y  =  (BYTE4) pas[k+1];
+	y |= ((BYTE4) pas[j]) <<8;
+	z=x*x+((x*y)<<17);
+	pas[j+1]= (BYTE1) ((z>>15)  &0xff);
+	pas[j]  = (BYTE1) ((z>>23) &0xff);
+	}
+pascpy(pas0,pas,(int)*paslen);
+getsumxor(pas,(int)*paslen,&save1,&save2);
+}
+else
+{
+/*J.v.Neumann's old algorithm for pairs of bytes*/
+if(*paslen %2) pas[*paslen]= *pas ^ (sum^0xff);
+for(j=0; j< *paslen; j +=2)
+	{
+	x  =  (BYTE4) pas[j+1];
+	x |= ((BYTE4) pas[j]) <<8;
+	x *= x;
+	pas[j+1]= (BYTE1) ((x>>8)  &0xff);
+	pas[j]  = (BYTE1) ((x>>16) &0xff);
+	}
+}
+
+/*further modifications for complexity*/
+if(newalgor3)
+	{
+	aa=23456789;
+	for(i=1;i<=2+aditional+slowness/191;i++)
+	    for(j=0; j< *paslen; j++) 
+		{
+		aa = ((aa<<1)^pas[j])&0x3fffffff;
+		pas[j>0?j-1:*paslen-1] ^= rnd4(&aa);
+		}
+	}
+k= (int) (xor & 7);
+if (slowness<=15) k &= 3;
+for(j=1; j<=k; j++) rotbyte(&sum);
+zaxoruj(pas,(int)*paslen + 1,sum);
+
+/*here was originaly mistake in expression eval. priority, made option
+to switch the behaviour; in fact it was not so important, just it was
+taken bit 0 instead of bit 2 - does not matter, but keep it for backw. comp. */
+/* could be sum&4 resp. sum&1 
+if(newalgor3?((sum&4)==4):(sum&4 == 4))
+*/
+if(newalgor3?(sum&4):(sum&1))
+	{
+	xor=pas[*paslen-1];
+	for(j= *paslen-1; j>0; j--) pas[j]=pas[j-1];
+	pas[0]=xor;
+	}
+
+if(newalgor12)
+	{
+	/* once more v.Neumann, read the comment above */
+	pas[*paslen]=(BYTE1)rnd5(&aa);
+	for(j=0,k= *paslen-2; j< (*paslen)-1; j++, k=(k+1)%(*paslen))
+		{
+		x  =  (BYTE4) pas[j+1];
+		x |= ((BYTE4) pas[k]) <<8;
+		y  =  (BYTE4) pas[k+1];
+		y |= ((BYTE4) pas[j]) <<8;
+		z=x*x+((x*y)<<17);
+		pas[j+1] += (BYTE1) ((z>>15)  &0xff);
+		pas[j] ^= (BYTE1) ((z>>23) &0xff);
+		}
+
+	/* once more v.Neumann, now using the saved 'old' password 
+	  in order to make the inverse of modifpas1 very difficult*/
+	pas0[*paslen]=(BYTE1)rnd5(&aa); 
+	pas[*paslen]=(BYTE1)rnd5(&aa); 
+	for(j=0,k= *paslen-2; j< (*paslen)-1; j++, k=(k+1)%(*paslen))
+		{
+		x  =  (BYTE4) pas[j+1];
+		x |= ((BYTE4) pas0[k]) <<8;
+		y  =  (BYTE4) pas0[k+1];
+		y |= ((BYTE4) pas[j]) <<8;
+		z=x*x+((x*y)<<17);
+		pas[j+1] ^= (BYTE1) ((z>>15)  &0xff);
+		pas[j] += (BYTE1) ((z>>23) &0xff);
+		}
+
+	/* pseudorandom transposition */
+	{int tmp1,tmp2; /* lint complained, to be portable */
+	tmp1=save1;
+	tmp2=save2;
+	i=tmp1%((int)*paslen);
+	j=tmp2%((int)*paslen);
+	}
+	if(i!=j)
+		{
+		save1=pas[i];
+		pas[i]=pas[j];
+		pas[j]=save1;
+		}
+	}
+}
+
+
+
+
+void modifpas(pas,paslen)
+BYTE1 *pas;
+short *paslen;
+{
+register int i;
+for(i=0; i<=aditional; i++) modifpas1(pas,paslen);
+/*
+fprintf(stderr,"paslen %d\n",(int)*paslen);
+for(i=0;i< *paslen;i++) fputc(pas[i],stdout);
+*/
+}
+
+
+
+
+void initpas(p,l,su,xo)
+/*depends on global slowness and minpalen*/
+BYTE1 *p,*su,*xo;
+short *l;
+{
+register short i,j;
+int tmp1,tmp2,tmp3;
+
+getsumxor(p,(int)*l,su,xo);
+j = (short)*su;
+j = (j%(1+slowness) + slowness+3)*10;
+for(i=1; i<=j; i++) modifpas(p,l);
+getsumxor(p,(int)*l,su,xo);
+if(newalgor11)
+	{
+	if(*l >20 && *l > minpalen) (*l)--;
+	if(*l >16 && *l > minpalen) (*l)--;
+	tmp1= *su;
+	tmp2= *xo;
+	tmp3= *l;
+	j= 5 + (tmp1+tmp2+tmp3 +123)%(15+slowness/2);
+	for(i=1; i<=j; i++) modifpas(p,l);
+	getsumxor(p,(int)*l,su,xo);
+	}
+}
+
+
+
+#define MIN(a,b) ((a)<(b)?(a):(b))
+
+
+void zakryptuj(co,del,pas,plen,new,oper,feedback)
+BYTE1 *co,*pas;
+int del,new,oper;
+int feedback; /* 0 no, +1 decrypt, -1 encrypt */
+short plen;
+{
+int aa,bb;
+BYTE4 t1,t2,t3;
+char tmp;
+register short j;
+register int i;
+BYTE4 mask;
+BYTE4 mixbufsize;
+BYTE1 *mixbuf,*feedbuf;
+BYTE1 pas2[maxpalen+3];
+BYTE1 sum,xor;
+short plen2;
+int fcnt,feedcount;
+
+if(newalgor)
+{
+
+
+if(feedback>0) /* allocate and fill the ciphertext feedback buffer */
+	{
+	if((feedbuf=(BYTE1 *) malloc((unsigned)del*sizeof(BYTE1)))== NULL)
+		{fprintf(stderr,"%s: not enough memory for temporary buffer\n");
+		t1=t2=t3=bb=aa=0; xrandclear();
+		for(i=0;i<del;i++) co[i]=0;
+		for(i=0;i<plen;i++) pas[i]=0;
+		konec(co,20);
+		}
+	pascpy(feedbuf,co,del);
+	}
+
+
+
+if(new)
+	{
+	mask= (1<<new)-1;
+	mixbufsize= 1<<(2*new);
+	}
+
+aa=84627589;
+bb=76427643;
+
+/*first initialize congruential generator*/
+t1= (BYTE4)pas[0];
+t2= (BYTE4)pas[1];
+t3= (BYTE4)pas[2];
+aa ^= ((int)(t1 | (t2<<8) | (t3<<16)));
+for(i=0;i<=20+slowness/2;i++) (void)rnd2(&aa);
+if(plen>=6)
+	{
+	t1= (BYTE4)pas[3];
+	t2= (BYTE4)pas[4];
+	t3= (BYTE4)pas[5];
+	aa ^= ((int)(t1 | (t2<<8) | (t3<<16)));
+	for(i=0;i<=10+((1+aditional)*slowness)/10;i++) (void)rnd2(&aa);
+	}
+
+/*also initialize additive generator*/
+bb ^= aa;
+if(newalgor6 && bb==0) /* not very probable to happen, but should be fixed */
+	{
+	if(aa==0) bb=21436587; else bb=aa;
+	}
+xrandinit(bb,(char *)pas,(int)plen);
+for(i=0;i<150+slowness/5+(newalgor3?(int)plen:0);i++) (void)xrand55();
+
+/* allocate and initialize mixbuf */
+if(new)
+	{
+	if((mixbuf=(BYTE1 *) malloc((unsigned)mixbufsize*sizeof(BYTE1)))== NULL)
+		{fprintf(stderr,"%s: not enough memory for temporary buffer\n");
+		t1=t2=t3=bb=aa=0; xrandclear();
+		for(i=0;i<del;i++) co[i]=0;
+		for(i=0;i<plen;i++) pas[i]=0;
+		if(feedback>0) {for(i=0;i<del;i++) feedbuf[i]=0; (void)free(feedbuf);}
+		konec(co,20);
+		}
+	/*initialize the buffer with pseudorandom*/
+	for(i=0;i<mixbufsize;i++)mixbuf[i]=(xrand55()^rnd1(&aa));
+	}
+
+/*the crypting itsself*/
+fcnt=feedcount=i=0;
+while(i<del)
+	{
+	/* couple the rnd generators together to make complicated algorithm */
+	if((aa&0x30000)==0x30000)
+		{tmp=xrand55();
+		if((tmp&0xf8)==0xf8) modifpas(pas,&plen);
+		}
+	if(((pas[2]^pas[0])&7) ==7)
+		{
+		/* char transforms to negative signed integer before xor */
+		if(newalgor6) aa ^= ((BYTE1) xrand55()); else aa ^= xrand55();
+		(void)rnd1(&aa);
+		tmp=(0x1f & (aa>>9));
+		if(tmp==0x1f)
+			{
+			modifpas(pas,&plen);
+			xrandinit(0,(char *)pas,(int)plen);
+			for(j=0;j<=slowness/23;j++) (void)xrand55();
+			}
+		(void)rnd1(&aa);
+		}
+	if(new)
+		{ /* prepare once more modifpas, for addressing in mixbuf */
+		modifpas(pas,&plen);
+		pascpy(pas2,pas,(int)plen);
+		plen2=plen;
+		}
+	modifpas(pas,&plen);
+	if(new && plen>plen2)	for(j=plen2;j<plen;j++) pas2[j]=rnd2(&aa);
+
+	/*use it for xoring or other operation (oper)*/
+	for(j=0; j<plen; j++)
+		if(i>=del) {goto clearit;}
+			else
+			   {
+			   BYTE1 rndb,tmpx;
+			   rndb=0;
+			   if(new)
+				{
+				int addr;
+				addr= (rnd1(&aa)&mask)<<new;
+				addr |= (pas2[j]&mask);
+				rndb=mixbuf[addr];
+				mixbuf[addr]^= (BYTE1)(xrand55()^(j&0xff));
+				aa ^= i;
+				}
+			   if(newalgor7)
+			   	tmpx= (rndb ^ (pas[j] + ((BYTE1)rnd2(&aa))) ^ ((BYTE1)xrand55()));
+			   else
+			   	tmpx= (rndb ^ pas[j] ^ ((BYTE1)rnd2(&aa)) ^ ((BYTE1)xrand55()));
+			   /*
+			   if(oper==1) co[i++] += tmpx;
+			   else if (oper == -1) co[i++]-=tmpx;
+			   else co[i++] ^=tmpx;
+			   */
+			   switch(oper){
+			   case  0: co[i++] ^=tmpx; break;
+			   case  1: co[i++] +=tmpx; break;
+			   case -1: co[i++] -=tmpx; break;
+			   default: fprintf(stderr,"internal error in zakryptuj\n"); exit(100);
+			   }
+			   feedcount++;
+			   }
+
+	if(feedback&&((feedcount>=2048)||(i>=(newalgor11?32:64)&&i<(newalgor11?80:128)&&fcnt<1)||
+	    (i>=(newalgor11?80:128)&&i<256&&fcnt<2)||(i>=256&&i<512&&fcnt<3)||
+	    (i>=512&&i<1024&&fcnt<4)||(i>=1024&&i<2048&&fcnt<5)))
+		{
+/*debug fprintf(stderr,"feedback %d: fcnt feed i %d %d %d\n",feedback,fcnt,feedcount,i); */
+		fcnt++;
+		feedcount=0;
+		modifpas(pas,&plen);
+		if(newalgor13)
+			{
+			register int tmp1,tmp2; /* because of strange lint messages */
+			getsumxor(pas,plen,&sum,&xor);
+			modifpas(pas,&plen);
+			tmp1=sum; tmp2=xor;
+			myhash(feedback>0?feedbuf:co,MIN(i,4096+3*slowness+tmp1+tmp2),pas,(int)plen,false);
+			}
+		else myhash(feedback>0?feedbuf:co,MIN(i,4096+3*slowness),pas,(int)plen,false);
+		for(j=0;j<2+slowness/91;j++) modifpas(pas,&plen);
+		}
+
+	} /* while i<del */
+
+
+clearit:
+
+
+if(new)
+	{
+	for(i=0;i<mixbufsize;i++) mixbuf[i]=0;
+	(void)free(mixbuf);
+	}
+if(feedback>0) {for(i=0;i<del;i++) feedbuf[i]=0; (void)free(feedbuf);}
+feedcount=fcnt=t1=t2=t3=bb=aa=0; xrandclear();
+plen2=0;
+for(i=0;i<maxpalen;i++) pas2[i]=0;
+}
+
+
+
+else /* newalgor */
+
+
+{/*very old algorithm*/
+i=0;
+while(i<del)
+	{
+	modifpas(pas,&plen);
+	for(j=0; j<plen; j++)
+		if(i>=del) return;
+			else
+			   co[i++] ^= pas[j];
+	}
+}
+
+
+}
+
+
+
+
+void overxor(co,lenco,cim,lencim)
+BYTE1 *co, *cim;
+int lenco, lencim;
+{
+register int i,j;
+
+for(i=j=0; i<lenco; i++, j=(j+1)%lencim) co[i] ^= cim[j];
+}
+
+
+
+
+void prexoruj(co,dleceho,delkaceho)
+BYTE1 *co,*dleceho;
+int delkaceho;
+{
+BYTE1 sum,xor;
+getsumxor(dleceho,delkaceho,&sum,&xor);
+*co ^= sum;
+*(co+1) ^= sum;
+*(co+2) ^= xor;
+*(co+3) ^= xor;
+}
+
+
+
+
+void myencrypt(buf,blen,pas,plen,outfile)
+BYTE1 *buf,*pas;
+int blen;
+short plen;
+FILE *outfile;
+{
+BYTE1 f[fieldinfo+1],fgarb1[256],fgarb2[256],pas2[maxpalen+3],pas3[maxpalen+3],hbuf[hashlen];
+register int i,j,base;
+int garb1,garb2,kolikrat;
+BYTE1 sum,xor,cim,datasum,dataxor;
+short plen3,plen2;
+
+
+initpas(pas,&plen,&sum,&xor);
+pascpy(pas2,pas,(int)(plen2=plen));
+for(i=1; i<=10+(newalgor3?slowness/61+(sum&0x07):0); i++) modifpas(pas2,&plen2);
+kolikrat = 7+ ((int)xor)%(slowness+5);
+cim=sum;
+if(newalgor8)
+	{
+	pascpy(pas3,pas2,(int)(plen3=plen2));
+	for(i=1;i<23+slowness/7+blen%slowness;i++) modifpas(pas3,&plen3);
+	}
+for(i=0; i<fieldinfo; i++) f[i]=randbyte();
+
+/*check uniformity of file*/
+j=0;
+for(i=0; i<blen-1; i++) if(buf[i] != buf[i-1]) j++;
+if(j<10) {fprintf(stderr,"%s: Your file is too uniform!\n",myname); konec(buf,10);}
+
+getsumxor(buf,blen,&datasum,&dataxor);
+base = (int) (xor&0x7f);
+garb1= (int) f[base];
+garb2= (int) f[base+1];
+for(i=0; i<=garb1; i++) fgarb1[i]=randbyte();
+for(i=0; i<=garb2; i++) fgarb2[i]=randbyte();
+
+/*Main part of the encryption*/
+zaxoruj(pas,(int)plen,f[base+2]=datasum);
+j= (int) (f[base+3]= dataxor);
+if(newalgor11) j+=5;
+for(i=0; i<=j; i++) modifpas(pas,&plen);
+
+/*newalgor3: password is randomly xored by 8 bytes saved in the
+cipher text, but overxored by hash of the encrypted buffer.
+purpose: to force the cryptanalyst to decrypt the whole buffer
+with the 16B password in order to be able to make the 2nd decryption
+maybe is not necessary, because it was already quite complicated, but ... */
+
+if(newalgor3)
+	{
+	overxor(pas,(int)plen,f+base+21,hashlen);
+	j=slowness/29+13+kolikrat%17;
+	for(i=0; i<=j; i++) modifpas(pas,&plen);
+	}
+zakryptuj(buf,blen,pas,plen,(newalgor5?mixsize:0),0,-newalgor10);
+if(newalgor3)
+	{
+	myhash(buf,blen,hbuf,hashlen,true);
+	overxor(f+base+21,hashlen,hbuf,hashlen);
+	}
+
+plen=16;
+pascpy(pas,f+base+5,16);
+for(i=0; i<=kolikrat; i++) modifpas(pas,&plen);
+zakryptuj(buf,blen,pas,plen,(newalgor5?mixsize:0),(newalgor7?1:0),-newalgor10);
+if(newalgor8) zakryptuj(buf,blen,pas3,plen3,(newalgor5?(mixsize>5?mixsize-2:mixsize):0),0,-newalgor10);
+
+/* the following is in order not to distinguish, which byte of ciphertext header is just balast and which saves information */
+zaxoruj(buf,blen,f[base+4]);
+prexoruj(f+base+5,f,base);
+prexoruj(f+base+7,f+base+(newalgor3?21+hashlen:21),fieldinfo-base-(newalgor3?21+hashlen:21));
+prexoruj(f+base+9,fgarb1,garb1+1);
+prexoruj(f+base+13,buf,blen);
+prexoruj(f+base+17,fgarb2,garb2+1);
+
+if(newalgor11)
+	{
+	overxor(pas2,(int)plen2,(base>=32?f+base-32:f+base+64),30);
+	j=11+slowness/17;
+	for(i=0;i<j;i++) modifpas(pas2,&plen2);
+	}
+zakryptuj(f+base,(newalgor3?21+hashlen:21),pas2,plen2,0,0,0);
+zaxoruj(f+base,(newalgor3?21+hashlen:21),cim);
+/*end of the Main part*/
+
+for(i=0; i<fieldinfo; i++) {fputc((char)f[i],outfile); f[i]= (BYTE1)0;}
+for(i=0; i<=garb1; i++) {fputc((char)fgarb1[i],outfile); fgarb1[i]= (BYTE1)0;}
+for(i=0; i<blen; i++) {fputc((char)buf[i],outfile); buf[i]= (BYTE1)0;}
+for(i=0; i<=garb2; i++) {fputc((char)fgarb2[i],outfile); fgarb2[i]= (BYTE1)0;}
+for(i=0;i<=maxpalen;i++) pas3[i]=pas2[i]=0;
+for(i=0;i<=hashlen;i++) hbuf[i]=0;
+i=0;
+j=0;
+base=0;
+garb1=0;
+garb2=0;
+kolikrat=0;
+blen=0;
+plen=0;
+plen2=0;
+plen3=0;
+sum=0;
+xor=0;
+cim=0;
+datasum=0;
+dataxor=0;
+/*everything cleared*/
+}
+
+
+
+
+void mydecrypt(f,blen,pas,plen,outfile)
+FILE *outfile;
+BYTE1 *f,*pas;
+int blen;
+short plen;
+{
+BYTE1 *buf,*fgarb1,*fgarb2,workpas[maxpalen+3],pas3[maxpalen+3],pas2[maxpalen+3],hbuf[hashlen];
+short workplen,plen2,plen3;
+register int i,j,base;
+int blen0,garb1,garb2,kolikrat;
+BYTE1 sum,xor,cim,wsum,wxor;
+
+initpas(pas,&plen,&sum,&xor);
+blen0 = blen;
+pascpy(pas2,pas,(int)(plen2=plen));
+for(i=1; i<=10+(newalgor3?slowness/61+(sum&0x07):0); i++) modifpas(pas2,&plen2);
+kolikrat = 7+ ((int)xor)%(slowness+5);
+cim=sum;
+
+if(newalgor8) pascpy(pas3,pas2,(int)(plen3=plen2));
+
+base = (int) (xor&0x7f);
+
+/*test of file sizes*/
+if(blen < fieldinfo+minfile) /*this file cannot be a product of our encryption, but let us not tell this to the user*/
+	{
+	getsumxor(f,blen,&wsum,&wxor);
+	blen -= (((int) xor^wsum)%(blen/4));
+	buf=f;
+	zaxoruj(f,blen,wxor^sum);
+	zakryptuj(f,blen,pas,plen,(newalgor5?mixsize:0),0,newalgor10);
+	for(i=0; i<blen; i++) fputc((char)buf[i],outfile);
+	{
+	for(i=0;i<=maxpalen;i++) workpas[i]=pas2[i]=pas3[i]=0;
+	workplen=plen2=plen3=0;
+	i=j=base=blen0=garb1=garb2=kolikrat=0;
+	sum=xor=cim=wsum=wxor=0;
+	/*everything cleared*/
+	}
+	return;
+	}
+
+zaxoruj(f+base,(newalgor3?21+hashlen:21),cim);
+if(newalgor11)
+	{
+	overxor(pas2,(int)plen2,(base>=32?f+base-32:f+base+64),30);
+	j=11+slowness/17;
+	for(i=0;i<j;i++) modifpas(pas2,&plen2);
+	}
+zakryptuj(f+base,(newalgor3?21+hashlen:21),pas2,plen2,0,0,false);
+garb1= (int) f[base];
+garb2= (int) f[base+1];
+fgarb1= f+fieldinfo;
+fgarb2= f+blen-garb2-1;
+buf= f+fieldinfo+garb1+1;
+blen -= (fieldinfo+garb1+1+garb2+1);
+if(blen < minfile) /*bad password or file - output some garbage to confuse the misuser*/
+	{
+	blen += (fieldinfo+garb1+1+garb2+1);
+	buf=f;
+	fgarb1= f+5;
+	fgarb2= f+10;
+	garb1 &= 0x7f;
+	garb2 &= 0x7f;
+	getsumxor(f,blen,&wsum,&wxor);
+	blen -= (((int) xor^wsum)%(blen/4));
+	}
+
+/*Main part of the decryption*/
+prexoruj(f+base+5,f,base);
+prexoruj(f+base+7,f+base+(newalgor3?21+hashlen:21),fieldinfo-base-(newalgor3?21+hashlen:21));
+prexoruj(f+base+9,fgarb1,garb1+1);
+prexoruj(f+base+13,buf,blen);
+prexoruj(f+base+17,fgarb2,garb2+1);
+zaxoruj(buf,blen,f[base+4]);
+
+workplen=16;
+pascpy(workpas,f+base+5,16);
+for(i=0; i<=kolikrat; i++) modifpas(workpas,&workplen);
+
+if(newalgor8)
+	{
+	for(i=1;i<23+slowness/7+blen%slowness;i++) modifpas(pas3,&plen3);
+	zakryptuj(buf,blen,pas3,plen3,(newalgor5?(mixsize>5?mixsize-2:mixsize):0),0,newalgor10);
+	}
+
+zakryptuj(buf,blen,workpas,workplen,(newalgor5?mixsize:0),(newalgor7?-1:0),newalgor10);
+if(newalgor3)
+	{
+	myhash(buf,blen,hbuf,hashlen,true);
+	overxor(f+base+21,hashlen,hbuf,hashlen);
+	}
+
+zaxoruj(pas,(int)plen,f[base+2]);
+j= (int)f[base+3];
+if(newalgor11) j+=5;
+for(i=0; i<=j; i++) modifpas(pas,&plen);
+if(newalgor3)
+	{
+	overxor(pas,(int)plen,f+base+21,hashlen);
+	j=slowness/29+13+kolikrat%17;
+	for(i=0; i<=j; i++) modifpas(pas,&plen);
+	}
+zakryptuj(buf,blen,pas,plen,(newalgor5?mixsize:0),0,newalgor10);
+/*end of the Main part*/
+
+for(i=0; i<blen; i++) {fputc((char)buf[i],outfile); buf[i]= (BYTE1)0;}
+for(i=0; i<blen0; i++) f[i]= (BYTE1)0;
+
+{
+for(i=0;i<=maxpalen;i++) workpas[i]=pas2[i]=pas3[i]=0;
+for(i=0;i<=hashlen;i++) hbuf[i]=0;
+workplen=plen2=plen3=0;
+i=j=base=blen0=garb1=garb2=kolikrat=0;
+sum=xor=cim=wsum=wxor=0;
+/*everything cleared*/
+}
+}
+
+
+
+
+
+/******************************************************************************/
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+boolean encrypt=false;
+boolean decrypt=false;
+boolean pasnaline=false;
+boolean skipcheck=false;
+int bufsize;
+BYTE1 *buf;
+int nread;
+char *infile,*outfile,*s,line[2048];
+register int i;
+
+
+myname = argv[0];
+newalgor13= newalgor12= newalgor11= newalgor10= newalgor9= newalgor8= newalgor7= newalgor6= newalgor5= newalgor4= newalgor3= newalgor2= newalgor = true;
+mixsize=8;
+bufsize=defbuflen;
+slowness=defslowness;
+aditional=defadit;
+infile= outfile= (char *)NULL;
+buf= (BYTE1 *)NULL;
+input=stdin; output=stdout;
+
+/* test modifpas
+scan:
+scanf("%s",line);
+minpalen=paswlen=strlen(line);
+pascpy(pasw,(BYTE1 *)line,(int)paswlen);
+for(i=0;i<20000;i++) modifpas(pasw,&paswlen);
+for(i=0;i<paswlen;i++) printf("%02x ",(int)pasw[i]);
+printf("\n");
+goto scan;
+exit(0);
+*/
+
+while (--argc >0 && (**++argv == '-') )
+	for(s= *argv + 1; *s != '\0'; s++)
+		switch(*s) {
+		case 'b':
+			newalgor=false;
+		case 'B':
+			newalgor2 =false;
+		case 'c':
+			newalgor3 =false;
+		case 'C':
+			newalgor4 =false;
+		case 'D':
+			newalgor6= newalgor5= false;
+		case 'E':
+			newalgor8= newalgor7= false;
+		case 'F':
+			newalgor9= false;
+		case 'G':
+			newalgor10= false;
+		case 'I':
+			newalgor12= newalgor11= false;
+		case 'J':
+			newalgor13= false;
+
+			break;
+		case 'e':
+			encrypt=true;
+			break;
+		case 'd':
+			decrypt=true;
+			break;
+		case 's':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			sscanf(*++argv,"%d",&slowness);
+			if(slowness<minslowness) slowness=minslowness;
+			if(slowness>maxslowness) slowness=maxslowness;
+			break;
+		case 'a':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			sscanf(*++argv,"%d",&aditional);
+			if(aditional <0) aditional *= -1;
+			if(aditional>maxadit) aditional=maxadit;
+			if(aditional<minadit) aditional=minadit;
+			break;
+		case 'm':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			sscanf(*++argv,"%d",&bufsize);
+			if(bufsize<0) bufsize *= -1;
+			if(bufsize<minbufsize) bufsize= minbufsize;
+			break;
+		case 'A':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			sscanf(*++argv,"%d",&mixsize);
+			break;
+		case 'k':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			pasnaline=true;
+			paswlen=(short)strlen(*++argv);
+			if(paswlen>=maxpalen)
+				{
+				myhash((BYTE1 *)*argv,(int)paswlen,pasw,maxpalen-1,true);
+				skipcheck=true;
+				paswlen=maxpalen-1;
+				}
+			else strcpy((char *)pasw,*argv);
+			for(i=0; i<paswlen; i++) (*argv)[i]='\0'; /*this does not work on HP-UX however*/
+			break;
+		case 'i':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			infile= *++argv;
+			break;
+		case 'o':
+			if(--argc <= 0)
+				   {fprintf(stderr,"%s: missing argument after\
+ option -%c in command line\n\n",myname,*s); usage();}
+			outfile= *++argv;
+			break;
+		default:
+			fprintf(stderr,"%s: unknown option -%c\n\n",myname,*s);
+			argc= -1;
+			break;
+		}
+if (argc != 0) usage();
+/* <0 => illegal option; >0 == argument without '-' */
+
+if(encrypt==decrypt) usage();
+
+/* make mixsize legal */
+if(mixsize <3) mixsize=3;
+if(mixsize >8)  mixsize=8;
+
+/*open files for i/o if not stdin,stdout*/
+if(infile != (char *)NULL) if((input= fopen(infile,"r"))==NULL) {fprintf(stderr,"%s: can't open input file: %s\n",myname,infile); konec(buf,20);}
+if(outfile != (char *)NULL) if((output= fopen(outfile,"w"))==NULL) {fprintf(stderr,"%s: can't open output file: %s\n",myname,infile); konec(buf,20);}
+
+
+if(!pasnaline)
+{
+getpassword(line,"Whisper the password:");
+paswlen=(short)strlen(line);
+if(paswlen>=maxpalen) /*if passphrase is too long, just take hash from it */
+	{
+	skipcheck=true;
+	myhash((BYTE1 *)line,(int)paswlen,pasw,maxpalen-1,true);
+	paswlen=maxpalen-1;
+	}
+else strcpy((char *)pasw,line);
+for(i=0;i<2048;i++) line[i]=' ';
+}
+
+initrandom();
+if(encrypt && (!skipcheck)) checkpasswd(pasw,paswlen);
+if(decrypt && paswlen<minpassword)
+	{
+	/*don't tell to the naive user that password was illegal, even if he could
+	find it by trying encryption with it*/
+	paswlen=minpassword+1;
+	for(i=0; i<paswlen; i++)
+		if(!pasw[i]) pasw[i]=(BYTE1)(i+32);
+	}
+
+buf=getbuf(bufsize);
+nread=0;
+while(((i=fgetc(input))!=EOF) && (nread<bufsize)) buf[nread++]=(BYTE1)i;
+if(i != EOF) {fprintf(stderr,"%s: Your file is too big, use option -m!\n",myname); konec(buf,10);}
+if(nread<minfile) {fprintf(stderr,"%s: Your file is too short!\n",myname); konec(buf,10);}
+
+
+minpalen= paswlen+1-(paswlen%2);
+
+if(decrypt) mydecrypt(buf,nread,pasw,paswlen,output);
+else
+if(encrypt) myencrypt(buf,nread,pasw,paswlen,output);
+
+konec(buf,0);
+}
+
+--
+Jiri Pittner
+
+jiri@hpsiepsi.chemie.fu-berlin.de
+jiri@kirk.chemie.fu-berlin.de

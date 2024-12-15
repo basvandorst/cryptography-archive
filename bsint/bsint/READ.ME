@@ -1,0 +1,131 @@
+Pre-alpha release of bsint package.  This entire package is public domain.
+
+TABS
+====
+
+I like tabstops set every four, therefore most of the files in this package
+will probably look the prettiest if tabs are set to every four in your
+editor.
+
+WHAT IS HERE
+==== == ====
+
+The following files are included:
+
+	Makefile
+		-- makes library and a couple of demo programs.  Note that you
+			might have to edit the "ar" command, because it seems
+			that the proper flags are Unix-variant dependent.
+
+	asmmath.c
+	asmmath.h
+		-- low level support code for assorted operations on 32 bit
+			values.  It includes two implementations.  One is in C
+			and should be reasonably portable.  The other is in
+			68020 assembly, using the Think C inline assembler
+			syntax.  If you at all care about speed, find out how
+			your machine does assembly, and write assembly versions
+			of the functions provided in these files.
+
+	bsint.h
+	bsint_io.h
+		-- Headers that define the interface to bsint.  bsint.h is used
+			if you want to use bsints.  bsint_io.h is used if you want
+			to use the << stream operator to print bsints.
+
+	bsi_ops.h
+	bsi_ops.cc
+		-- Functions that operate on bsints.  The header file contains the
+			code for the inline functions, and the cc file contains the rest.
+
+	bui_ops.cc
+		-- Lower level functions.  These operate on bsints as unsigned big
+			integers.  They are used by the function in bsi_ops.*.
+
+	bsint_io.cc
+		-- Streams.
+
+	mersenne.cc
+	n3_1.cc
+		-- mains for two samples programs.
+
+USING BSINTS
+===== ======
+
+Mostly, bsints are pretty easy to use.  Use them like you would use ints.
+
+Here are some things you should be aware of before using bsints.
+
+	1. By default, a bsint is 4096 bits (see NumberSize in bsi_ops.cc).
+	You can change this at runtime by calling bsintSetSizes.  This
+	takes three arguments:
+
+		a. The number of digits you want to work with.
+		b. The cache size (see below).
+		c. The base you are interested in.
+
+	For example, if you want to work with numbers of 765 ternary digits,
+	you could do this:
+
+		bsintSetSizes( 756, 0, 3 );
+
+	If you wanted numbers of 12000 bits, you would say
+
+		bsintSetSizes( 12000, 0, 2 );
+
+	This function actually sets the size of bsints to be big enough to hold
+	twice as many digits as you specified, so that the product of any two
+	numbers that are smaller than the size you specify will be able to fit.
+
+	Bsints are dynamically allocated.  When one is created, new is called
+	to get the space, and delete is called when it is destroyed.  The
+	second paramater of bsintSetSizes sets the size of a cache of free
+	bsints.  When a bsint is destroyed, rather than being deleted it is
+	placed in this cache.  When one is created, the cache is checked
+	first.  If your new and delete are slow, you might want to use this
+	cache.
+
+	bsintSetSizes reallocates the space for any bsints that you have
+	already created, so if you do the following:
+
+		bsint foo;
+		bsintSetSizes(10000,0,10);
+
+	foo will end up being able to hold 20000 decimal digits (don't forget
+	that bsintSetSizes makes bsints large enough to hold the product of
+	two numbers of the size you specify).
+
+	bsintSeteSizes does *NOT* preserve the value of bsints that it
+	reallocates this way.  This will be fixed in a later version.  Thus,
+
+		bsint foo = 1;
+		bsintSetSizes(...)
+
+	leaves the value of foo undefined.
+
+	2. You can call bsintGetSizes if you want to know how big bsints are.
+	It takes one argument, the base you are interested in, and returns
+	the number of digits in that base that a bsint can hold.  Like
+	bsintSetSize, this number is actually half the size of a bsint.
+
+	An argument of 0 means that you are interested in base 2^32.
+
+A NOTE ON THE ALGORITHMS
+= ==== == === ==========
+
+The algorithms are currently undergoing revision.  Multiplication uses
+Karatsuba's algorithm.  When dealing with numbers of different sizes,
+it currently does something real stupid.  There are better ways to
+handle this.  The reason it doesn't yet is that I got sidetracked
+trying to determine the *optimal* way to handle these cases.  Based
+on discussion with a few people on the net about this problem, it
+appears that it is currently unsolved, and a couple people have been
+working out hueristics to get close to the best solution.  Since I'm
+going to redo those sections when that work is done, I've never gotten
+around to fixing it up.  Besides, in real life, I suspect that most
+people will be multiplying numebers that are around the same size,
+which it does handle OK (or multiplying by one longword, which is
+a special case that is also handled).
+
+Division is still the classical algorithm.  I'll worry about that
+after multiplication is solved.

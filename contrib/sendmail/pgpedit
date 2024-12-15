@@ -1,0 +1,51 @@
+#!/usr/local/extras/bin/perl
+
+# PGPedit (C) Copyright 1993, by Jason L. Steiner
+#
+# Permission is hearby granted to freely modify, use and copy this code.
+# This notice must be retained in all distributions and derivatives.
+
+# version 11.4.93
+
+$logname = $ENV{'LOGNAME'};
+$visual = '/usr/ucb/vi';
+$visual = $ENV{'VISUAL'} if ( $ENV{'VISUAL'} );
+$tmpfile = "/tmp/.$logname.$$";
+$clrfile = "/tmp/.$logname.clear.$$";
+$topgp=0;
+$fname=$ARGV[0];
+umask(077);
+
+open(FILE,$fname);
+open(CLEAR,">$clrfile");
+
+while (<FILE>) {
+	if ( !$topgp && m/^(.*)(-----BEGIN PGP .*-----)/ ) {
+		$quote=$1; $line=$2;
+		open(TMP,">>$tmpfile");
+		print TMP "$line\n";
+		$topgp=1;
+	}
+	elsif ( $topgp && m/^(.*)(-----END PGP .*-----)/ ){
+		$line=$2;
+		$topgp=0;
+		print TMP $line;
+		close(TMP);
+		open(PGP,"pgp -f +verbose=0 <$tmpfile |") || die("Can't open PGP.\n");
+		while(<PGP>) {
+			print CLEAR "${quote}$_";
+		}
+		unlink($tmpfile);
+	}
+	elsif ( $topgp ) {
+		m/^$quote(.*)/;
+		$line=$1;
+		print TMP "$line\n";
+	}
+	else {
+		print CLEAR;
+	}
+}
+close(CLEAR);
+system("mv $clrfile $fname");
+system("$visual $fname");

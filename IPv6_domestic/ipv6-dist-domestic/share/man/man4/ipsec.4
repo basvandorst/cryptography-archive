@@ -1,0 +1,172 @@
+.\"#	@(#)COPYRIGHT	1.1a (NRL) 17 August 1995
+.\"
+.\"COPYRIGHT NOTICE
+.\"
+.\"All of the documentation and software included in this software
+.\"distribution from the US Naval Research Laboratory (NRL) are
+.\"copyrighted by their respective developers.
+.\"
+.\"This software and documentation were developed at NRL by various
+.\"people.  Those developers have each copyrighted the portions that they
+.\"developed at NRL and have assigned All Rights for those portions to
+.\"NRL.  Outside the USA, NRL also has copyright on the software
+.\"developed at NRL. The affected files all contain specific copyright
+.\"notices and those notices must be retained in any derived work.
+.\"
+.\"NRL LICENSE
+.\"
+.\"NRL grants permission for redistribution and use in source and binary
+.\"forms, with or without modification, of the software and documentation
+.\"created at NRL provided that the following conditions are met:
+.\"
+.\"1. Redistributions of source code must retain the above copyright
+.\"   notice, this list of conditions and the following disclaimer.
+.\"2. Redistributions in binary form must reproduce the above copyright
+.\"   notice, this list of conditions and the following disclaimer in the
+.\"   documentation and/or other materials provided with the distribution.
+.\"3. All advertising materials mentioning features or use of this software
+.\"   must display the following acknowledgement:
+.\"
+.\"	This product includes software developed at the Information
+.\"	Technology Division, US Naval Research Laboratory.
+.\"
+.\"4. Neither the name of the NRL nor the names of its contributors
+.\"   may be used to endorse or promote products derived from this software
+.\"   without specific prior written permission.
+.\"
+.\"THE SOFTWARE PROVIDED BY NRL IS PROVIDED BY NRL AND CONTRIBUTORS ``AS
+.\"IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED
+.\"TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+.\"PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL NRL OR
+.\"CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+.\"EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+.\"PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+.\"PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+.\"LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+.\"NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+.\"SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+.\"
+.\"The views and conclusions contained in the software and documentation
+.\"are those of the authors and should not be interpreted as representing
+.\"official policies, either expressed or implied, of the US Naval
+.\"Research Laboratory (NRL).
+.\"
+.\"----------------------------------------------------------------------*/
+.\"
+.Dd October 1, 1995
+.Dt IPSEC 4
+.Os NRL-IPv6
+.Sh NAME
+.Nm ipsec
+.Nd IP/IPv6-layer security
+.Sh SYNOPSIS
+.Fd #include <sys/socket.h>
+.Fd #include <netinet6/in6.h>
+.Fd #include <netinet6/ipsec.h>
+.Ft int
+.Fn setsockopt s SOL_SOCKET ipsec_type &ipsec_level sizeof(int)
+.Ft int
+.Fn getsockopt s SOL_SOCKET ipsec_type &ipsec_level &datalen
+.Sh DESCRIPTION
+The NRL IPv6 distribution includes IP/IPv6-layer security.  In conjunction
+with the key management database implemented in
+.Xr key 4 ,
+.Nm
+offers the user a way to protect their network transmissions.  The two
+mechanisms used are the IP Authentication Header (see
+.Xr ah 4 ),
+and the IP Encapsulating Security Payload (see
+.Xr esp 4 ).
+
+To enable security on a socket, before any data is sent (usually, this is
+right after the call to
+.Xr socket 2 ),
+.Xr setsockopt 2
+is called as detailed above, with the integer variable
+.Ar ipsec_type
+set to one of:
+.Bl -tag -width SO_SECURITY_ENCRYPTION_TRANSPORTxx
+.It SO_SECURITY_AUTHENTICATION
+Use the IP Authentication Header to ensure data authenticity.
+.It SO_SECURITY_ENCRYPTION_TRANSPORT
+Use the IP Encapsulating Security Payload to encrypt the
+.Dq transport
+portion of the data (e.g. the TCP header and TCP data).
+.It SO_SECURITY_ENCRYPTION_NETWORK
+Use the IP Encapsulating Security Payload to take an outbound IP or IPv6
+datagram, encapsulate it inside another datagram of the same type, and
+encrypt the entire contents of the inner datagram.  This allows options to
+be encrypted as well.
+.El
+
+IP/IPv6-layer security in this implementation has 4 levels from which to
+choose.  The security level actually used is the more paranoid between what
+the user selects, and what the default system security level is set to.  The
+four levels, placed in
+.Ar ipsec_level ,
+are:
+.Bl -tag -width IPSEC_LEVEL_DEFAULTxx
+.It IPSEC_LEVEL_DEFAULT
+Send normal packets, and accept any packets bound for this socket.
+.It IPSEC_LEVEL_USE
+Use a security feature on outbound packets, but continue to accept any
+packets for this socket.
+.It IPSEC_LEVEL_REQUIRE
+Use a security feature on outbound packets, and require that security
+feature be present on inbound packets.  Inbound packets that do not have the
+requested security feature are dropped silently.
+.It IPSEC_LEVEL_UNIQUE
+Like IPSEC_LEVEL_REQUIRE, but additionally, notify the key management
+database that the key to be used for outbound packets using the security
+feature must be unique to this socket.
+.Sh ORDER OF PROCESSING
+If multiple security features are requested by a socket, the order in which
+they are performed on an outgoing packet are:  ESP-Transport,
+Authentication, ESP-Network.  See
+.Xr esp 4
+for the difference between ESP-Transport and ESP-Network.
+.Sh DIAGNOSTICS
+In addition to errors that normally occur with
+.Xr setsockopt 2 ,
+programs that use
+.Nm
+may have the following happen as well.
+.Bl -tag -width EADDRNOTAVAILxx
+.It Bq Er EIPSEC
+means that the system could not perform the requested security on outbound
+or inbound packets.  This is a catch-all error meaning that
+.Nm
+failed inside the kernel.  Usually this is a result of key management not
+being ready.
+.El
+.Sh SEE ALSO
+.Xr getsockopt 2 ,
+.Xr ah 4 ,
+.Xr esp 4 ,
+.Xr inet6 4 ,
+.Xr key 4
+.Rs
+.%T Security Architecture for the Internet Protocol
+.%B RFC 1825
+.%D August, 1995
+.Re
+.Sh BUGS
+Perhaps these options should not be set at SOL_SOCKET, rather, set at
+IPPROTO_IP.
+
+System security level is currently a kernel compile-time option.
+Eventually,
+.Xr sysctl 8
+should be used to select an appropriate system security level.
+
+Sockets using SO_SECURITY_ENCRYPTION_NETWORK will not work with levels
+higher than IPSEC_LEVEL_USE.
+.Sh HISTORY
+The
+.Nm
+features first appeared in NRL's
+.Bx 4.4
+IPv6 networking distribution.
+
+The IPv6 extensions were written by Ran Atkinson, Dan McDonald, Craig Metz,
+and Bao Phan of the U. S. Naval Research Laboratory.

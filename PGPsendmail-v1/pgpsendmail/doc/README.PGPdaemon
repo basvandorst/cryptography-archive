@@ -1,0 +1,101 @@
+				PGPdaemon
+
+		    Richard Gooch  rgooch@atnf.csiro.au
+
+
+1)  What is it?
+
+  PGPdaemon is a daemon, run by the user, which provides for the
+automatic signing and decryption of messages. It will also
+periodically read the users' incoming mail spool directory and will
+move the contents to another spool file, decrypting any messages that
+it can.
+In order to perform these operations, PGPdaemon requires access to the
+users' passphrase and secret key. On a secure system, this should not
+pose a problem. On a public system, this may be a cause of concern.
+However, if you are concerned about PGPdaemon compromising your PGP
+secret key and passphrase, you should also be concerned about these
+being compromised even if you are using PGP in the conventional way.
+PGPdaemon is written based on the approach that if you compromise your
+secret key and passphrase by using them on a public system, you may as
+well make it as convenient as possible.
+Since PGPdaemon does not require the passphrase to be stored in an
+environment variable, it should be considerably more secure than
+automatic decryption methods which use that technique.
+PGPdaemon makes a good effort to avoid being compromised. Future
+versions will provide various features to detect and thwart attempts
+at tampering.
+
+****
+
+2)  How does it work?
+
+  PGPdaemon creates a named pair of pipes under $PGPPATH and waits for
+connections to the pipes. Access to these pipes is restricted to the
+user. Connections may be made to transfer the passphrase (when
+sendpgppass is used), or to pass messages which should be either
+signed or decrypted. The sign facility is used by PGPsendmail whenever
+an outgoing message is to be signed.
+
+  Periodically, PGPdaemon checks the users' incoming mail spool file
+for new mail. If there is any new mail, it is read and copied into a
+different spool file. If any mail messages were encrypted, PGPdaemon
+will attempt to decrypt them before writing to the output spool file.
+Messages which cannot be decrypted are simply copied.
+
+  PGPdaemon is careful about not reading the incoming spool file or
+writing the outgoing spool file without checking to make sure other
+programmes are not operating on these files. Hence, it creates
+lockfiles in the spool directory and also in /tmp and in addition
+locks the files in an effort to cover as many variations as
+possible. Unfortunately, some mail readers use file locking
+unecessarily, so a command line option exists to overcome this
+problem.
+
+****
+
+3)  The lifetime of PGPdaemon
+
+  By default, PGPdaemon will run until it's parent process dies. If
+PGPdaemon was started by the following line in your ~/.login file:
+-------------------------------------------------------------------------------
+pgpdaemon &
+-------------------------------------------------------------------------------
+
+then PGPdaemon would run until you logged out. See the manual page for
+information on how to modify this behaviour.
+
+****
+
+4)  Installing PGPdaemon
+
+  Many (broken) systems come with world-write access to the system
+mail spool directory denied. This then requires that *all* user mail
+readers should be set-uid ROOT or set-gid to the group ownership of
+the spool directory. If you want to run PGPdaemon, this would require
+the same set-uid or set-gid rights. I didn't write PGPdaemon with this
+in mind: it may be a security risk (especially if it's made set-uid
+ROOT). Instead, world-write access should be granted on the spool
+directory, and *also* the sticky bit should be set for the
+directory. The sticky bit prevents users from deleting each other's
+files, hence granting world-write access should not pose a problem.
+
+  PGPdaemon does not need to be located anywhere in particular, it
+should merely reside in the users' path. For convenience, the install
+script, which is automatically executed by the Makefile, will install
+pgpdaemon and sendpgppass into the directory specified by the
+USRBINPATH environment variable. If you don't have this set, you will
+need to install manually.
+
+****
+
+5)  Example PGPdaemon configuration file
+-------------------------------------------------------------------------------
+# PGPdaemon.config  for Richard Gooch
+#
+USERID		rgooch@atnf.csiro.au
+# Wait for me to send the passphrase before processing mail
+MAILWAIT
+# I don't like the default  $HOME/decrypted-mail
+OUT_SPOOL_FILE	/users/rgooch/mail-inspool
+-------------------------------------------------------------------------------

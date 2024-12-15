@@ -1,0 +1,97 @@
+Newsgroups: comp.theory,sci.crypt,sci.math,rec.puzzles
+Path: msuinfo!caen!zaphod.mps.ohio-state.edu!wupost!dsuvax.dsu.edu!rolfe
+From: rolfe@dsuvax.dsu.edu (Tim Rolfe)
+Subject: Re: Looking for random permutation generation algorithms
+Message-ID: <1993Jan6.224804.6116@dsuvax.dsu.edu>
+Organization: Dakota State University
+References: <1993Jan6.014749.15323@ee.ubc.ca>
+Date: Wed, 6 Jan 1993 22:48:04 GMT
+Lines: 86
+Xref: msuinfo comp.theory:6158 sci.crypt:12555 sci.math:37879 rec.puzzles:20207
+
+In <1993Jan6.014749.15323@ee.ubc.ca> rayw@ee.ubc.ca (raymond w m woo) writes:
+
+>Hi, does anyone know, or can provide any pointer in the literature to, any 
+>random permutation generation algorithm that can be easily implemented as a 
+>function in a computer program?  
+
+>Ideally, this function would be computationally effective, and the input 
+>that this function takes would be some kind of index/rank number of the
+>permution to be generated.  
+[...]
+
+One approach is to consider the offset calculation for an N-dimensional
+array with dimensions (N, N-1, ... , 2, 1).  Language purists:  forgive
+the language in what follows --- I mis-remembered the question as from
+comp.lang.fortran when I worked up the answering code.  I'm assuming
+enough Fortran knowledge to do the translation into <current hot lang.>.
+
+      subroutine GenPrm (IdxVal, N, Set)
+*
+* Permutations of N items can be indexed uniquely after the fashion of
+* the array off-set calculation for a multidimensional array of dimension
+* (N,N-1,N-2,...,2,1)
+*
+* E.g., if N = 4, offset (column major) is I1*3! + I2*2! + I3*1! + I4
+*
+      integer IdxVal, N
+      integer Set(*)
+      integer Idx, Jdx, Work, Temp
+      integer OldN, OverFl
+      data OldN/-1/
+      save OldN, OverFl
+*
+      if (N .ne. OldN) then
+         OldN = N
+         OverFl = 1
+         do 10 Idx = 2, N
+            OverFl = OverFl * Idx
+   10    continue
+      end if
+*
+* (1) Initialize the "Set" array with values to be permuted
+*
+      do 20 Idx = 1, N
+         Set(Idx) = Idx
+   20 continue
+*
+* (2) Set up to strip out the "Indices" in the multidimensional reference
+*
+      Work = mod (IdxVal, OverFl)
+      Ndx  = OverFl/N
+*
+* (3) Isolate those Indexes
+*
+      do 30 Idx = 1, N-1
+         Jdx = Idx + Work / Ndx
+         Work = mod (Work, Ndx)
+         Ndx = Ndx / (N-Idx)
+         Temp = Set(Idx)
+         Set(Idx) = Set(Jdx)
+         Set(Jdx) = Temp
+   30 continue
+      end
+*
+      program TestBed
+      parameter (N = 4)
+      integer   Set(N)
+      integer   Idx, Lim, Tst
+      character OutFmt*20
+*
+      OutFmt = '('//char(N+ichar('0'))//'i5, ''  <--'', i5)'
+      Lim = 1
+      do 10 Idx = 2, N
+         Lim = Lim * Idx
+   10 continue
+      print *, Lim, ' lines in all:'
+      do 20 Idx = 0, Lim-1
+         call GenPrm (Idx, N, Set)
+         Tst = mod(Idx, 20)
+	 print OutFmt, Set, Idx
+         if (Tst .eq. 19) read '(a1)', TsT
+   20 continue
+      end
+-- 
+                                              --- Tim Rolfe
+                                           rolfe@dsuvax.dsu.edu
+                                            ROLFE@SDNET.BITNET

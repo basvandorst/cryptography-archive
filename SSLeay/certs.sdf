@@ -1,0 +1,329 @@
+# How do we handle certificates
+
+H1: Certificate Handling Overview
+
+By default we store the all the certificates in either files
+or series of {{hashed}} directories (where the hash is generated 
+from the subject name appended with a unique number to handle any 
+name clashes).
+
+The format of the certificates can be any of:
+
+* DER  - binary DER encoding
+* PEM  - base64 PEM encoding
+#* TEXT - ASCII text
+
+By default the code we are shipping uses the {{directory}} 
+and {{PEM}}-style encoding for the certificates contained therein.
+
+H2: Set Certificate Cache
+
+E: X509_add_cert_dir(char *dir,int type)
+
+{{dir}} can be either a single directory or a colon separated list
+of directories. {{type}} must be one of
+
+* X509_FILETYPE_PEM
+* X509_FILETYPE_DER
+#* X509_FILETYPE_TEXT
+
+H2: Add Certificate File
+
+To add a certificate:
+
+E: X509_add_cert_file(char *file,int type)
+
+{{file}} contains the certificate. {{type}} must be one of
+
+* X509_FILETYPE_PEM
+* X509_FILETYPE_DER
+#* X509_FILETYPE_TEXT
+
+For {{X509_FILETYPE_PEM}} the file can contain multiple certificates.
+
+H2: Set Certifying Authority Certificate Location
+
+As part of the general struture used, you can specify the location
+from which to load "trusted" certifying authority certificates. The
+cerficates can either be in a single file or in a "hashed" directory.
+
+All certificates loaded via this interface must be in {{PEM}} 
+format as this function simply calls {{X509_add_cert_dir()}} and
+{{X509_add_cert_file()}}.
+
+E: X509_load_verify_locations(char *file,char *dir) 
+
+Either of {{file}} or {{dir}} can be {{NULL}}.
+
+The standard behaviour of using the locations as specified in 
+{{rsa/location.h}} can be activated by using
+
+#X509_set_default_verify_paths() -> X509_set_default_verify_paths(ssl_ctx->cert)
+#                Soon to become:
+#                                   SSL_set_default_verify_paths(ssl_con)
+#
+#E: X509_set_default_verify_paths(void) 
+E: SSL_set_default_verify_paths(ssl_con)
+E: (which is actually) X509_set_default_verify_paths(ssl_ctx->cert)
+
+This loads certificates from the "standard" locations {{b:and}} from
+whatever the standard environment variables point to.
+
+The default values in {{rsa/location.h}} are:
+
+E: #define SSL_CERT_DIR		"/usr/local/ssl/certs"
+E: #define SSL_CERT_FILE	"/usr/local/ssl/cert.pem"
+E:
+E: #define SSL_CERT_DIR_ENV	"SSL_CERT_DIR"
+E: #define SSL_CERT_FILE_ENV	"SSL_CERT_FILE"
+
+:Note: the {{verify}} and {{x509}} utility programs use 
+{{X509_set_default_verify_paths()}} so if you want different 
+behaviour you will have to change the calls in those programs.
+
+H1: Certificate Verification Process
+
+Certificate verification is controlled by {{ssl_set_verify}}. This 
+sets the verify mode and the optional callback function.
+
+E: void ssl_set_verify(SSL *s,int mode, int (*callback)() )
+
+Supported modes are:
+
+* SSL_VERIFY_NONE
+* SSL_VERIFY_PEER
+* SSL_VERIFY_FAIL_IF_NO_PEER_CERT
+
+If {{SSL_VERIFY_PEER}} then the server will request a certificate from
+the client during initial protocol negotiation. If the client does not
+provide one and {{SSL_FAIL_IF_NO_PEER_CERT}} is being used then the 
+verification process will fail and the caller will be returned an 
+error code from {{ssl_accept()}}.
+
+From the client point of view, if {{SSL_VERIFY_PEER}} is set then the 
+client will verify the server's certificate.
+
+The callback function can be used to control the entire certificate
+hierarchy trust policy. It is called after each attempted verification
+of a certificate - either because the certificate was received or 
+a certificate was referenced during traversal of the Certifying
+Authority hierarchy.
+
+E: int (*callback)(int ok,X509 *subj_cert,X509 *issuer_cert,
+E:                 int depth,int errorcode)
+
+{{ok}} is set to {{1}} if the X509 certificate is syntactically "valid" and
+has been verified (i.e. the checksum is okay, date range correct, etc). 
+The callback function can return either {{1}} to accept, or {{0}} to reject -
+i.e. the return value would have been {{ok}} if there was no callback
+function registered.
+
+{{subj_cert}} is the certificate of the {{subject}}
+
+{{issuer_cert}} is the certificate of the issuer (the signer of the
+subjects certificate). It may be {{NULL}} (if there is an error).
+
+{{depth}} is the recursion depth. A depth of {{1}} indicates that you 
+are attempting to verify the issuer of the subjects certificate. 
+If you do not wish to traverse the CA hierarchy simply return {{1}} 
+when the depth is greater than or equal to {{1}}.
+
+{{errorcode}} is one of the {{VERIFY_ERR_}} defines from {{rsa/X509.h}}.
+{{VERIFY_OK}} indicates that there is no error.
+
+:TODO: There are lots of X509 interface routines that you will have to
+look at if you actually want to do anything useful with certificates :-)
+
+Have a look at {{rsa/verify.c}} for a decent example usage of this stuff.
+
+The following are probably of the most imediate use in the 
+callback function:
+
+#H3: X509_get_issuer_name
+#
+#Return the X509_NAME encoding for the issuer of this certificate.
+#
+#E: X509_NAME *X509_get_issuer_name(X509 *cert)
+#
+#H3: X509_get_subject_name
+#
+#Return the X509_NAME encoding for the subject of this certificate.
+#
+#E: X509_NAME *X509_get_issuer_name(X509 *cert)
+
+H3: X509_NAME_oneline
+
+To turn a X509_NAME encoding into a "normal" string:
+
+E: char *X509_NAME_oneline(X509_NAME *name)
+
+It is the responsibility of the caller to {{free()}} the returned
+string.
+
+H1: Generating and Signing Certificates
+
+There are five programs in the {{rsa}} directory that are required
+for generating and managing certificates.
+
+The following two environment variables influence the behaviour of
+the certificate verification process in {{verify}} and {{x509}}.
+
+* {{SSL_CERT_DIR}}
+* {{SSL_CERT_FILE}}
+
+It is considered a {{B:good}} idea for all implementations to 
+standarise on usage of these environment variables.
+
+H2: genrsa
+
+Used to generate {{RSA}} private keys.
+
+E: genrsa [-des|-idea] [-rand file:file:file] [-F4|-3] [numbits] > key
+
+Number of bits to make the RSA private key, default of 512.
+writes to stdout when finished, in {{PEM}} format. If the {{des}}
+or {{idea}} option are used you will be prompted for a {{pass phrase}}.
+
+The random number generator can be seeded with a series of files. Each
+file will have the {{stat(2)}} information and the contents of the
+complete file used. 
+ 
+The public exponent can be set using {{-F4}} or {{-3}} if you desire
+to deviate from the SSLeay default of {{F4}}.
+
+#:TODO: Eric will state clearly what the "." and "+" he outputs
+#while genrsa is working means ;-)
+
+H2: verify
+
+To verify that a certificate is "okay"
+
+E: verify [-CApath path] [-CAfile filename] file1 [file2 ...]
+
+{{verify}} will attempt to verify a certificate via either looking
+through a directory or simply a single file - this behaviour is
+compiled into the program and you really should decide what your
+"site" default for this is. 
+
+{{verify}} requires the arguments to be in {{PEM}} format and 
+the lookup files also must be in {{PEM}} format.
+
+You {{B:may}} want to tailor this program (or {{rsa/location.h}} 
+as it has hard coded paths for the location for the certificates 
+used to verify. Note that you can use the environment variables
+{{SSL_CERT_DIR}} and {{SSL_CERT_FILE}} or the command line args
+{{CApath}} and {{CAfile}} to influence the location used.
+
+H2: rsa
+
+Convert keys from one format to another - i.e. rsa is a filter.
+
+E: rsa [-des|-idea] [-inform format] [-outform format] 
+E:     [-in infile] [-out outfile]
+
+Terse help is given on error. When a {{PEM}} format file is encountered
+you will be prompted for the {{pass phrase}} to encrypt/decrypt the
+private key if the {{des}} or {{idea}} options are used.
+
+:Note: {{rsa}} can be used to change {{pass phrases}} by simply running
+
+E: rsa -des < in >out
+
+H2: x509
+
+{{x509}} is the real key to the signing process and to managing
+certificates.
+
+E: x509
+E:     [-inform format]
+E:     [-outform format]
+E:     [-keyform format]
+E:     [-CAform format]
+E:     [-CAkeyform format]
+E:     [-in input-filename]
+E:     [-out output-filename]
+E:     [-signkey self-signing-key-filename]
+E:     [-CA certifying-authority-certificate-filename]
+E:     [-CAkey certifying-authority-key-filename]
+E:     [-CAcreateserial]
+E:     [-RSAreq private-key-filename]
+E:     [-days]
+E:     [-CAserial filename]
+E:
+E: Output options:
+E:     [-serial]     prints the serial number
+E:     [-hash]       prints the hash vaulue used to dir lookups
+E:     [-subject]    prints the cert's subject DN
+E:     [-issuer]     prints the cert's issuer DN
+E:     [-startdate]  prints the cert's notBefore field
+E:     [-enddate]    prints the cert's notAfter field
+E:     [-noout]      do not display the certificate
+
+If a given input or output file format is not specified it defaults
+to {{PEM}}.
+
+If the {{CAkey}} is not specified and the {{CAform}} is {{PEM}} (which
+is the default) then it is assumed that the {{CAkey}} is also 
+stored in the {{CA}} certificate file.
+
+The {{Output options}} generate output in the order in which they
+are specified on the command line.
+
+If {{-signkey}} is set, the certificate has the public component of 
+the key inserted and is signed with the private key. This is 
+required so the certificate can be sent to a CA for certifying.
+
+If the {{-CA}} flag is present, the certificate is 
+certified/signed by the {{CAkey}} and has the issuer copied from 
+the {{CA}} certificate.  The date is also set and a file of the
+form {{CAkey}} filename.serial is updated and the new serial 
+number is put in the certificate. Unless {{CAcreateserial}} is
+set the file will not be created or edited unless it is in the
+correct format.
+
+The {{-signkey}} and {{-CA}} commands are processed in the same order 
+as their command line arguments. Note that this means you will be
+prompted for the {{pass phrase}} for each in the order in which you
+specified them on the command line. The prompt however {{does}} indicate
+which {{pass phrase}} is required so you should {{read}} it.
+
+E: x509 -noout -subject -issuer -enddate < filename
+
+H2: ssleay
+
+A {{convenience}} application that has all the little applications included
+in it - handy to have in all environments.
+
+Run it and type {{help}} for details on how to use it.
+
+H2: req
+
+{{req}} is used to generate {{certificate requests}} (for sending to your
+top-level CA for signing - perhaps {{VeriSign}}). {{req}} also is setup
+as a convenience utility for managing {{private key}} creation.
+
+E: req -newkey 512 -new  > MINCOM.pem
+
+To 'verify' that the checksum of a certificate request is ok:
+
+E: req -in MINCOM.pem -verify -noout
+
+H1: Generating RSA certificate requests
+
+This needs more documentation, however as it stands the procedure
+is fairly straight forward.
+
+E: # generate your private+public key
+E: req -newkey 512 -new  > MINCOM.pem
+E:
+E: # check that we can at least verify the checksum ourselves
+E: req -in MINCOM.pem -verify -noout
+
+H1: Generating "dummy" certificates
+
+E: # SSLeay 0.5.0b+ (21-Dec-95) supports a quick mechanism for generating
+E: #                            "dummy" certificates
+E: cd /usr/local/ssl/certs
+E: req -new -x509 -nodes -out telnetd.pem -keyout telnetd.pem
+E: ln -s telnetd.pem `x509 -noout -hash < telnetd.pem`.0
+

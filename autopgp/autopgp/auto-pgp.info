@@ -1,0 +1,413 @@
+Info find: auto-pgp.info,   -*-Text-*-
+
+This file is part of Auto-PGP.  Copyright (C)1993 Ian Jackson.
+
+
+File: auto-pgp.info, Node: Top, Next: Security, Up: (dir)
+
+Emacs Auto-PGP
+==============
+
+This file documents Auto-PGP, the painless and automatic system for
+routine use of PGP under GNU Emacs.  For complete documentation of the
+Unix shell commands in the package see their manpages.
+
+See the node Legalese at the end of this file for Copyright and No
+Warranty information.
+
+* Menu:
+* Security::	    IMPORTANT - PASSPHRASE SECURITY WARNING
+* Emacs Commands::  Commands to invoke Auto-PGP from anywhere in your Emacs
+* Query mode::      What you can do when your message has been processed
+* Decrypting::      Incoming file types recognised and processed by Auto-PGP
+* Caveats::	    Things to be careful of
+* Rationale::	    Rationale, and moans about PGP and Emacs
+* Wishlist::	    Things that you or I may care to do at some point
+* Reporting bugs::  How to report bugs - please read this first !
+* Legalese::        Copyright (GPL), NO WARRANTY and patent information.
+
+You should read the SECURITY file in the Auto-PGP distribution before
+using this software.
+
+You'll find the installation instructions in the README file.
+
+
+File: auto-pgp.info, Node: Security, Next: Emacs Commands, Previous: Top, Up: Top
+
+IMPORTANT - PASSPHRASE SECURITY WARNING
+=======================================
+
+To decrypt PGP-encrypted mail you need to supply your passphrase.
+
+I have taken the view that I'd rather not have my passphrase floating
+about in my Emacs where almost anything might happen to it; nor do I
+want to have to type it in all the time.
+
+Putting the passphrase in an environment variable is of course
+completely braindead.
+
+Hence to use auto-pgp to read encrypted mail you must use a program I
+have called `pixie' (installed as pgp-pixie by the default EDITME). It
+is a small Perl script into which you type your passphrase.  It stores
+your passphrase until you kill it.  It listens for connections on a
+unix-domain socket in a protected part of your home directory
+($PGPPATH/.wrapper by default) and supplies the passphrase through it.
+When it does so it prints a message about it to stdout.
+
+There is a wrapper program around PGP (pgp-auto) which opens a
+connection to pixie, puts the file descriptor in PGPPASSFD and then
+runs PGP.  Thus PGP can read the passphrase directly from pixie.
+
+It is of course important to note that while pixie is running anyone
+who can subvert the security of your account (for example by typing a
+command at your session while you're away for a cup of coffee) can get
+at your passphrase.
+
+Furthermore, since pixie tends to sleep for longish periods the page
+containing the passphrase is likely to be swapped or paged out, and
+will therefore be on your system's swap disk.
+
+For these reasons it is even more important than usual not to run
+these programs on a system that you do not have complete control over,
+or which has doubtful security; this includes almost any Unix system
+connected to a network.
+
+Don't say I didn't warn you !
+
+
+File: auto-pgp.info, Node: Emacs Commands, Next: Query mode, Previous: Security, Up: Top
+
+Commands in Emacs provided by Auto-PGP
+======================================
+
+When you have installed Auto-PGP (see the README) and loaded the lisp
+library the following new keystrokes become available to you (from any
+buffer or mode):
+
+C-x y e  Encrypts an outgoing mail message.
+C-x y y  Signs and encrypts an outgoing mail message.
+C-x y s  Signs an outgoing mail message or news posting.
+C-x y a  Signs the entire (visible portion of the) buffer.
+C-x y d  Decrypts or checks the signature of an incoming message.
+         See *Note Decrypting:: for more details.
+
+You have to start a pgp-pixie (*Note Security::) before an the
+operation which will need a passphrase - ie, before decrypting or
+signing (but not before checking a signature).
+
+Emacs will show you what it has done, and if appropriate will allow
+you to paste the results back into the original.
+
+In any case this is done by putting all the buffers involved into
+AutoPGP-Query mode.  See *Note Query mode:: for details of
+what your options are.
+
+When you encrypt a message it will derive the list of recipients from
+the header. First Emacs mail alias expansion is done, then each
+address is looked up in autopgp-outgoing-address-translation-alist.
+The resulting addresses are passed to PGP for it to look up in your
+keyring.  Note that the translated addresses are not substituted back
+into the header of the message.
+
+To allow you to read your own FCC's Auto-PGP will always give PGP the
++encrypttoself option.
+
+If you want to make use of the passphrase stored in pixie from outside
+Emacs you can use `pgp-auto' (or whatever you've installed it as). It
+works exactly as PGP but it always gets the passphrase from `pixie'
+first and supplies it to PGP using the PGPPASSFD feature.  See the
+manpages for pgp-decrypt, pgp-auto and pgp-pixie for more details.
+
+
+File: auto-pgp.info, Node: Query mode, Next: Decrypting, Previous: Emacs Commands, Up: Top
+
+Auto-PGP Query mode - for when the encryption/decryption has run
+================================================================
+
+After you have run Auto-PGP on a buffer Emacs will show you the
+result and, if appropriate, allow you to paste the processed result
+back into the original buffer.
+
+In this mode:
+
+ space     Does the usual thing - ie, replaces if offered, otherwise
+           just pops down the windows.  This is equivalent to `y' if
+           that's appropriate, or to `n' otherwise.
+
+ v or t    Toggles verbose display of messages - usually
+           `uninteresting' messages are not shown.
+
+ n or q    Makes the PGP displays go away and returns to your original
+           buffer without changing it.
+
+ y or r    Pastes the output from PGP back into your original buffer
+           and returns to that buffer.  This is only possible if the
+           PGP operation was successful and produced some output.
+
+ a or l    Exits AutoPGP-Query mode but leave the PGP displays visible.
+           This cancels the opportunity to use `y' or `r'.
+
+ d and u   Scroll the current window up and down.  The sense of u and
+           d is reversed from the usual Emacs -up and -down
+           terminology, so that when you say `u' you see a part of the
+           buffer that precedes the bit you're looking at now.
+
+ D and U   Scroll the `other' window up and down (as in C-x 4 v).
+
+ ?         Describes the mode, giving a list of options.
+
+
+File: auto-pgp.info, Node: Decrypting, Next: Caveats, Previous: Query mode, Up: Top
+
+Decrypting and checking signatures
+==================================
+
+The function autopgp-decrypt-message-or-check-sig (usually on C-x y d)
+will look for a PGP message block in the buffer and feed it to the
+pgp-decrypt filter program.
+
+You can give autopgp-decrypt-message-or-check-sig a numeric prefix
+argument.  This will cause it to find the nth PGP message block in the
+buffer.  Note that this includes messages contained (nested) within
+others; Auto-PGP will strip off the extra `- ' quoting and try to
+decrypt or check the resulting block.
+
+Currently the only formats that are understood are
+
+ - encrypted text
+  Will be decrypted.  Replacement is the list of recipient keys plus
+  the decrypted message.
+
+ - clearsigned text
+  The signature is checked.  No replacement is offered.
+
+ - signed encrypted text
+  Decrypted and signature checked.  Replacement is a clearsigned
+  version of the same message.  See *Note Caveats:: though - there are
+  some problems with trailing whitespace that are due to misdesign in
+  PGP.
+
+
+File: auto-pgp.info, Node: Caveats, Next: Rationale, Previous: Decrypting, Up: Top
+
+Auto-PGP Caveats
+================
+
+You should bear the following potential problems in mind:
+
+* Menu:
+* Trailing spaces::     Trailing spaces can cause signature errors.
+* Read-only override::	Some major modes might conveivably get confused.
+* Simultaneous use::	Don't do it - PGP is broken so it won't work.
+* PGP Prompts::		Sometimes.  On /dev/tty.  Sigh.
+
+
+File: auto-pgp.info, Node: Trailing Spaces, Next: Read-only override, Up: Caveats
+
+Trailing spaces may cause signatures to fail to verify
+======================================================
+
+The different versions of PGP do not agree on whether to include the
+trailing spaces in the signature calculation of a file whose lines
+contain trailing spaces.
+
+Some versions only include them if you are armouring the resulting
+file (rather than using clearsig).
+
+The net result of this is that it is possible for Auto-PGP to create a
+clearsig file that cannot be verified unassisted by some versions of PGP.
+
+The pgp-decrypt wrapper is able to recognise those files and can
+assist PGP so that it is able to verity them, and it also issues a
+warning message to let you know this has happened.
+
+Please do not report this as a bug (unless this description does not
+describe the problem you encountered); I can't fix it until PGP is fixed.
+
+
+File: auto-pgp.info, Node: Read-only override, Next: Simultaneous use, Previous: Trailing Spaces, Up: Caveats
+
+Read-only override may confuse some major modes
+===============================================
+
+C-x y d (autopgp-decrypt-message-or-check-sig) locally overrides any
+read-only setting for the buffer. This is to allow you to use it with
+mailreaders such as RMAIL which set the buffer read-only and only let
+you modify it through their own commands. This works OK except if the
+mode keeps pointers etc to bits of the buffers, in which case all hell
+would break loose. Neither RMAIL nor VM (up to 5.33) do this.
+
+
+File: auto-pgp.info, Node: Simultaneous use, Next: PGP Prompts, Previous: Read-only override, Up: Caveats
+
+Simultaneous use of PGP in two sessions
+=======================================
+
+Don't try to decrypt or encrypt two messages at once (for example on
+different terminals). Due to a misfeature in PGP the temporary files
+may be confused and undesirable things might happen.
+
+
+File: auto-pgp.info, Node: PGP Prompts, Previous: Simultaneous use, Up: Caveats
+
+Gratuitous prompting by PGP may cause lockups
+=============================================
+
+Despite the use of +batchmode, PGP still sometimes tries to prompt for
+input - and what's worse it does so from /dev/tty rather than stdin.
+
+I think I've avoided giving it combinations of options and files that
+do this, but if it happens you'll get a deadlock and have to hit C-g
+in your Emacs.
+
+Under some circumstances some Emacsen don't recognise a C-g as a
+signal under X - if this applies to you, send your Emacs a SIGINT
+using kill.
+
+
+File: auto-pgp.info, Node: Rationale, Next: Wishlist, Previous: Caveats, Up: Top
+
+Rationale and Moans about PGP and Emacs
+=======================================
+
+Due to PGP's dreadful DOS-like file handling [*] and to my mind
+bizarre internal structure I was not confident in my ability to
+correctly modify PGP to do what I wanted.
+
+I have therefore implemented a pair of wrapper scripts around PGP
+which Emacs can call.  These scripts may also be useful to those
+wishing to interface PGP to other mailreaders and other programs.
+
+Different PGP processes' temporary files are all named the same.  Yuk.
+I decided not to work around this by creating subdirectories with the
+PID in them; apart from anything else that kind of thing always
+results in half-empty directories being left lying about.
+
+In an ideal world the outgoing encryption code would have done the
+encryption after writing the file copy, but somehow still manage to
+get the list of actual keys used into the file copy. Unfortunately
+this would involve messing with the message _after_ the user has hit
+`send' or whatever and is thus very mailer/reader/whatever-specific;
+it also makes it very difficult to copy with errors.
+
+So instead I encrypt the message with +encrypttoself and then you can
+decrypt the file copy later if you want to.  This does mean you can't
+use these scripts to communicate with anyone still using PGP 2.1 or
+earlier.
+
+Unfortunately I have to separate the `new' message text from the
+informational messages from PGP using regexps and the like.  I would
+rather that I could persuade Emacs to separate a process's standard
+output and standard error, or alternatively get Emacs to create files
+with private permissions (rather than creating them normally and
+changing the permissions afterwards - under Unix the permissions are
+only checked at the time of opening a file) and get PGP not to
+truncate the resulting file's basename when making its own temporary
+files.
+
+
+[*] No offence intended, but PGP does sometimes seem out of place
+    under Unix.
+
+
+File: auto-pgp.info, Node: Wishlist, Next: Reporting Bugs, Previous: Rationale, Up: Top
+
+Wishlist
+========
+
+I may get around to doing some of these things. On the other hand
+it'll probably get done quicker if you do it yourself :-).
+
+ 1. Some easy way of managing the autopgp-outgoing-translation-alist,
+    perhaps from autopgp-query mode.
+
+ 2. An option to make `pixie' ask for confirmation before supplying
+    the passphrase. Not that I'd use it, but it would fit in nicely
+    with ...
+
+ 3. An X version of pixie.
+
+ 4. An option to make pixie forget the passphrase after a certain
+    length of time (since last use or since you typed it in).
+
+ 5. The ability to handle more different kinds of incoming messages.
+
+ 6. A version of pixie which can use plock and things like it to
+    lock the page with the passphrase in RAM and keep it off the swap
+    disk.
+
+ 7. Allow pixie to write the log messages to a logfile instead of
+    stderr.
+
+
+File: auto-pgp.info, Node: Reporting Bugs, Next: Legalese, Previous: Wishlist, Up: Top
+
+How to report a bug
+===================
+
+If you believe you have found a bug in Emacs Auto-PGP please follow
+these instructions.  This will make it possible for me to investigate
+and hopefully correct the problem.
+
+Firstly, read the documentation - check that you have followed the
+installation instructions and the information in this file correctly.
+In particular check *Note Caveats:: to check the problem you have
+found is not already known.
+
+If you still have a problem I would like the following information:
+
+ - A copy of your EDITME, just before you typed `make install'.
+
+ - A copy of the file you were trying to process.  Please uuencode
+   it as otherwise subtle but vitally important characteristics of it
+   can get lost.
+
+ - What versions of Auto-PGP, PGP and Emacs you are using.
+
+ - What keystrokes you typed to provoke the bug.  For example
+   `in the buffer containing the example file I enclose I typed
+    C-x d y'.
+
+ - The *complete* text of the messages in the *autopgp messages*
+   buffer or printed on stdout/stderr by the scripts if you invoked
+   them manually.  THIS IS VERY IMPORTANT.  Without this information I
+   have next to no chance of telling what is going on.
+
+   Make sure you turn verbose display on with `v' or `t', otherwise
+   some of the messages will not be shown or copied.
+
+   If possible please send the secret key needed to decrypt a failing
+   test file.  If you can reproduce the problem a good way of being
+   able to do this is to create a file encrypted under a test key.
+   Note: I'm not asking you to send me your personal secret key !
+
+ - A copy of your CONFIG.TXT file.
+
+ - If you are reporting an incorrect output a copy of the output
+   produced.  Again, please uuencode it.  A description of in what
+   way the output is incorrect would also be useful.
+
+Please send all that information to ijackson@nyx.cs.du.edu.  If the
+files are very large please make them available for anonymous FTP
+instead :-).
+
+
+File: auto-pgp.info, Node: Legalese, Previous: Reporting Bugs, Up: Top
+
+Copyright, warranty and patent issues
+=====================================
+
+This file and all the others in the Auto-PGP distribution are
+Copyright 1993 by me, Ian Jackson.
+
+You may only copy, distribute and modify them under the terms of the
+GNU General Public Licence, version 2 (or, at your option, any later
+version).  Auto-PGP comes with NO WARRANTY.  See the file COPYRIGHT.
+
+You should have received a copy of the GNU General Public Licence with
+your copy of Emacs, as the file COPYING.
+
+I live and use this software in the United Kingdom and my use is
+therefore not subject to US patent laws.  If I lived in the US I'd use
+PGP anyway.  PKP can go stuff themselves; I don't believe the RSA
+patent would be upheld even under the bizarre US patent laws.

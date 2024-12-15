@@ -1,0 +1,778 @@
+From msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!newsxfer.itd.umich.edu!nntp.cs.ubc.ca!unixg.ubc.ca!quartz.ucs.ualberta.ca!news.ucalgary.ca!cpsc.ucalgary.ca!debug!griffin!dockery Sat Sep 10 17:46:24 1994
+Newsgroups: alt.sources
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!newsxfer.itd.umich.edu!nntp.cs.ubc.ca!unixg.ubc.ca!quartz.ucs.ualberta.ca!news.ucalgary.ca!cpsc.ucalgary.ca!debug!griffin!dockery
+From: dockery@griffin.cuc.ab.ca (Sean Dockery)
+Subject: math64: algebraic routines for 64 bit integers
+Message-ID: <Cvn4LA.1Hv@griffin.cuc.ab.ca>
+Organization: Griffin Software Development
+Date: Mon, 5 Sep 1994 05:00:46 GMT
+Lines: 767
+
+Since everyone seems interested in sixty-four bit integer routines lately,
+I'll throw mine into the fray.
+
+Mail me if you have any questions.
+
+Sean Dockery
+dockery@griffin.cuc.ab.ca
+----- cut here ----- cut here ----- cut here ----- cut here -----
+#!/bin/sh
+# This is a shell archive, meaning:
+# 1. Remove everything above the #!/bin/sh line.
+# 2. Save the resulting text in a file.
+# 3. Execute the file with /bin/sh (not csh) to create the files:
+#	math64
+# This archive created: Sun Sep  4 22:54:30 1994
+export PATH; PATH=/bin:$PATH
+if test ! -d 'math64'
+then
+	mkdir 'math64'
+fi
+cd 'math64'
+if test -f 'math64.h'
+then
+	echo shar: will not over-write existing file "'math64.h'"
+else
+sed 's/^X//' << \SHAR_EOF > 'math64.h'
+X/* math64.h
+X *
+X * Written by Sean Dockery
+X * dockery@griffin.cuc.ab.ca
+X */
+X
+X#ifndef MATH64_H
+X#define MATH64_H
+X
+X#define NEGATIVE(a) ((a).negative)
+X
+Xtypedef struct uint64_tag {
+X    unsigned short int w[4];
+X} uint64;
+X
+Xtypedef struct sint64_tag {
+X    unsigned short int w[4];
+X    unsigned char negative;
+X} sint64;
+X
+Xuint64 udcl64 (unsigned short int w0, unsigned short int w1, unsigned short int w2, unsigned short int w3);
+Xint ucmp64 (uint64 *xp, uint64 *yp);
+X
+Xuint64 uadd64 (uint64 x, uint64 y);
+Xuint64 usub64 (uint64 x, uint64 y);
+Xuint64 umul64 (uint64 x, uint64 y);
+Xuint64 udiv64 (uint64 x, uint64 y);
+X
+Xunsigned long int uint64_to_ulong (uint64 x);
+Xuint64 ulong_to_uint64 (unsigned long int x);
+X
+Xuint64 shift_uint64_left (uint64 x, int count);
+Xuint64 shift_uint64_right (uint64 x, int count);
+X
+Xsint64 sdcl64 (unsigned short int w0, unsigned short int w1, unsigned short int w2, unsigned short int w3, unsigned char n);
+Xint scmp64 (sint64 *xp, sint64 *yp);
+X
+Xsint64 sadd64 (sint64 x, sint64 y);
+Xsint64 ssub64 (sint64 x, sint64 y);
+Xsint64 smul64 (sint64 x, sint64 y);
+Xsint64 sdiv64 (sint64 x, sint64 y);
+X
+Xsigned long int sint64_to_slong (sint64 x);
+Xsint64 slong_to_sint64 (signed long int x);
+X
+Xsint64 shift_sint64_left (sint64 x, int count);
+Xsint64 shift_sint64_right (sint64 x, int count);
+X
+X#endif /* MATH64_H */
+X
+X/* END-OF-FILE */
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'math64.c'
+then
+	echo shar: will not over-write existing file "'math64.c'"
+else
+sed 's/^X//' << \SHAR_EOF > 'math64.c'
+X/* math64.c
+X *
+X * Written by Sean Dockery
+X * dockery@griffin.cuc.ab.ca
+X */
+X
+X#include <stdio.h>
+X
+X#define NEGATIVE(a) ((a).negative)
+X
+Xtypedef struct uint64_tag {
+X    unsigned short int w[4];
+X} uint64;
+X
+Xtypedef struct sint64_tag {
+X    unsigned short int w[4];
+X    unsigned char negative;
+X} sint64;
+X
+Xuint64 udcl64 (unsigned short int w0, unsigned short int w1, unsigned short int w2, unsigned short int w3)
+X/* declare an unsigned 64 bit integer via four 16 bit words */
+X{
+X    uint64 z;
+X
+X    z.w[0] = w0;
+X    z.w[1] = w1;
+X    z.w[2] = w2;
+X    z.w[3] = w3;
+X
+X    return z;
+X}
+X
+Xint ucmp64 (uint64 *xp, uint64 *yp)
+X/* compare two unsigned 64 bit integers */
+X{
+X    int i, result = 0;
+X
+X    for (i = 3; i >= 0 && !result; i--)
+X	result = xp->w[i] - yp->w[i];
+X
+X    return result;
+X}
+X
+Xuint64 uadd64 (uint64 x, uint64 y)
+X/* find the sum of two unsigned 64 bit integers */
+X{
+X    int i;
+X    unsigned long int temp = (unsigned long int) 0;
+X    uint64 z;
+X
+X    for (i = 0; i < 4; i++)
+X    {
+X	temp = (unsigned long int) (x.w[i] + y.w[i] + (temp >> 16));
+X	z.w[i] = (unsigned short int) temp;
+X    }
+X
+X    return z;
+X}
+X
+Xuint64 usub64 (uint64 x, uint64 y)
+X/* find the difference between two unsigned 64 bit integers */
+X{
+X    int i, borrow;
+X    unsigned long int temp;
+X    uint64 z;
+X
+X    if (ucmp64 (&x, &y) < 0)
+X    {
+X	fprintf (stderr, "usub64: warning: difference less than zero\n");
+X	z.w[3] = z.w[2] = z.w[1] = z.w[0] = 0;
+X	return z;
+X    }
+X
+X    for (i = 0; i < 4; i++)
+X    {
+X	if (x.w[i] < y.w[i])
+X	{
+X	    x.w[i + 1]--;
+X	    borrow = 1;
+X	}
+X	else
+X	    borrow = 0;
+X
+X	temp = (unsigned long int) (x.w[i] + (borrow << 16) - y.w[i]);
+X	z.w[i] = (unsigned short int) temp;
+X    }
+X
+X    return z;
+X}
+X
+Xuint64 umul64 (uint64 x, uint64 y)
+X/* find the product of two unsigned 64 bit integers */
+X{
+X    int i, j, carry;
+X    unsigned long int temp;
+X    uint64 p[4], z;
+X
+X    for (i = 0; i < 4; i++)
+X	p[i].w[3] = p[i].w[2] = p[i].w[1] = p[i].w[0] = 0;
+X
+X    for (j = 0; j < 4; j++)
+X    {
+X	carry = 0;
+X	for (i = 0; i < 4; i++)
+X	{
+X	    if (i + j < 4)
+X	    {
+X		temp = (unsigned long int) ((x.w[i] * y.w[j]) + carry);
+X		carry = temp >> 16;
+X		p[j].w[i + j] = (unsigned short int) temp;
+X	    }
+X	    else
+X		i = 4;
+X	}
+X    }
+X
+X    z.w[3] = z.w[2] = z.w[1] = z.w[0] = 0;
+X    for (i = 0; i < 4; i++)
+X	z = uadd64 (z, p[i]);
+X
+X    return z;
+X}
+X
+Xuint64 udiv64 (uint64 x, uint64 y)
+X/* find the quotient of two unsigned 64 bit integers */
+X{
+X    int i, j, carry;
+X    unsigned long int temp;
+X    uint64 r, z;
+X
+X    r.w[3] = r.w[2] = r.w[1] = r.w[0] = 0;
+X    z.w[3] = z.w[2] = z.w[1] = z.w[0] = 0;
+X
+X    if (!ucmp64 (&y, &z))
+X    {
+X	fprintf (stderr, "udiv64: division by zero\n");
+X	exit (1);
+X    }
+X
+X    for (j = 0; j < 64; j++)
+X    {
+X	carry = 0;
+X	for (i = 0; i < 4; i++)
+X	{
+X	    temp = (unsigned long int) ((x.w[i] << 1) + carry);
+X	    carry = x.w[i] >> 15;
+X	    x.w[i] = (unsigned short int) temp;
+X	}
+X
+X	for (i = 0; i < 4; i++)
+X	{
+X	    temp = (unsigned long int) ((r.w[i] << 1) + carry);
+X	    carry = r.w[i] >> 15;
+X	    r.w[i] = (unsigned short int) temp;
+X	}
+X
+X	carry = ucmp64 (&r, &y) >= 0 ? 1 : 0;
+X	if (carry)
+X	    r = usub64 (r, y);
+X
+X	for (i = 0; i < 4; i++)
+X	{
+X	    temp = (unsigned long int) ((z.w[i] << 1) + carry);
+X	    carry = z.w[i] >> 15;
+X	    z.w[i] = (unsigned short int) temp;
+X	}
+X    }
+X
+X    return z;
+X}
+X
+Xunsigned long int uint64_to_ulong (uint64 x)
+X/* convert unsigned 64 bit integer to unsigned long integer */
+X{
+X    unsigned long int z;
+X
+X    z = (unsigned long int) ((x.w[1] << 16) + x.w[0]);
+X
+X    return z;
+X}
+X
+Xuint64 ulong_to_uint64 (unsigned long int x)
+X/* convert unsigned long integer to unsigned 64 bit integer */
+X{
+X    uint64 z;
+X
+X    z.w[0] = (unsigned short int) x;
+X    z.w[1] = (unsigned short int) (x >> 16);
+X    z.w[3] = z.w[2] = 0;
+X
+X    return z;
+X}
+X
+Xuint64 shift_uint64_left (uint64 x, int count)
+X/* shift an unsigned 64 bit integer left 'count' bits */
+X{
+X    int i;
+X    unsigned short int carry;
+X    unsigned long int temp;
+X
+X    if (count <= 0)
+X    {
+X	fprintf (stderr, "shift_uint64_left: zero or negative shift value\n");
+X	return x;
+X    }
+X
+X    if (count >= 64)
+X    {
+X	x.w[3] = x.w[2] = x.w[1] = x.w[0] = 0;
+X	count = 0;
+X    }
+X
+X    else if (count >= 48)
+X    {
+X	x.w[3] = x.w[0];
+X	x.w[2] = x.w[1] = x.w[0] = 0;
+X	count = count - 48;
+X    }
+X
+X    else if (count >= 32)
+X    {
+X	x.w[3] = x.w[1];
+X	x.w[2] = x.w[0];
+X	x.w[1] = x.w[0] = 0;
+X	count = count - 32;
+X    }
+X
+X    else if (count >= 16)
+X    {
+X	x.w[3] = x.w[2];
+X	x.w[2] = x.w[1];
+X	x.w[1] = x.w[0];
+X	x.w[0] = 0;
+X	count = count - 16;
+X    }
+X
+X    if (count)
+X    {
+X	carry = 0;
+X	for (i = 0; i < 4; i++)
+X	{
+X	    temp = (unsigned long int) ((x.w[i] << count) + carry);
+X	    carry = (unsigned short int) (x.w[i] >> (16 - count));
+X	    x.w[i] = (unsigned short int) temp;
+X	}
+X    }
+X
+X    return x;
+X}
+X
+Xuint64 shift_uint64_right (uint64 x, int count)
+X/* shift an unsigned 64 bit integer right 'count' bits */
+X{
+X    int i;
+X    unsigned short int carry;
+X    unsigned long int temp;
+X
+X    if (count <= 0)
+X    {
+X	fprintf (stderr, "shift_uint64_right: zero or negative shift value\n");
+X	return x;
+X    }
+X
+X    if (count >= 64)
+X    {
+X	x.w[3] = x.w[2] = x.w[1] = x.w[0] = 0;
+X	count = 0;
+X    }
+X
+X    else if (count >= 48)
+X    {
+X	x.w[0] = x.w[3];
+X	x.w[3] = x.w[2] = x.w[1] = 0;
+X	count = count - 48;
+X    }
+X
+X    else if (count >= 32)
+X    {
+X	x.w[0] = x.w[2];
+X	x.w[1] = x.w[3];
+X	x.w[3] = x.w[2] = 0;
+X	count = count - 32;
+X    }
+X
+X    else if (count >= 16)
+X    {
+X	x.w[0] = x.w[1];
+X	x.w[1] = x.w[2];
+X	x.w[2] = x.w[3];
+X	x.w[3] = 0;
+X	count = count - 16;
+X    }
+X
+X    if (count)
+X    {
+X	carry = 0;
+X	for (i = 4; i > 0; i--)
+X	{
+X	    temp = (unsigned long int) ((x.w[i - 1] >> count) + carry);
+X	    carry = (unsigned short int) (x.w[i - 1] << (16 - count));
+X	    x.w[i-1] = (unsigned short int) temp;
+X	}
+X    }
+X
+X    return x;
+X}
+X
+Xsint64 sdcl64 (unsigned short int w0, unsigned short int w1, unsigned short int w2, unsigned short int w3, unsigned char n)
+X/* declare a signed 64 bit integer via four 16 bit words */
+X{
+X    sint64 z;
+X
+X    z.w[0] = w0;
+X    z.w[1] = w1;
+X    z.w[2] = w2;
+X    z.w[3] = w3;
+X
+X    z.negative = n ? 1 : 0;
+X
+X    return z;
+X}
+X
+Xint scmp64 (sint64 *xp, sint64 *yp)
+X/* compare two signed 64 bit integers */
+X{
+X    int result = 0;
+X
+X    if (!NEGATIVE (*xp) && !NEGATIVE (*yp))
+X    {
+X	int i;
+X	for (i = 3; i >= 0 && !result; i--)
+X	    result = xp->w[i] - yp->w[i];
+X    }
+X
+X    else if (!NEGATIVE (*xp) && NEGATIVE (*yp))
+X	result = 1;
+X
+X    else if (NEGATIVE (*xp) && !NEGATIVE (*yp))
+X	result = -1;
+X
+X    else if (NEGATIVE (*xp) && NEGATIVE (*yp))
+X    {
+X	int i;
+X	for (i = 3; i >= 0; i--)
+X	    result = yp->w[i] - xp->w[i];
+X    }
+X	
+X    return result;
+X}
+X
+Xsint64 sadd64 (sint64 x, sint64 y)
+X/* find the sum of two signed 64 bit integers */
+X{
+X    int i;
+X    unsigned char sign;
+X    uint64 a, b, c;
+X    sint64 z;
+X
+X    for (i = 0; i < 4; i++)
+X    {
+X	a.w[i] = x.w[i];
+X	b.w[i] = y.w[i];
+X    }
+X
+X    if (!NEGATIVE (x) && !NEGATIVE (y))
+X    {
+X	c = uadd64 (a, b);
+X	sign = 0;
+X    }
+X
+X    else if (!NEGATIVE (x) && NEGATIVE (y))
+X    {
+X	if (ucmp64 (&a, &b) >= 0)
+X	{
+X	    c = usub64 (a, b);
+X	    sign = 0;
+X	}
+X	else
+X	{
+X	    c = usub64 (b, a);
+X	    sign = 1;
+X	}
+X    }
+X
+X    else if (NEGATIVE (x) && !NEGATIVE (y))
+X    {
+X	if (ucmp64 (&a, &b) > 0)
+X	{
+X	    c = usub64 (a, b);
+X	    sign = 1;
+X	}
+X	else
+X	{
+X	    c = usub64 (b, a);
+X	    sign = 0;
+X	}
+X    }
+X
+X    else if (NEGATIVE (x) && NEGATIVE (y))
+X    {
+X	c = uadd64 (a, b);
+X	sign = 1;
+X    }
+X
+X    z.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	z.w[i] = c.w[i];
+X
+X    return z;
+X}
+X
+Xsint64 ssub64 (sint64 x, sint64 y)
+X/* find the difference between two signed 64 bit integers */
+X{
+X    int i, sign;
+X    uint64 a, b, c, zero;
+X    sint64 z;
+X
+X    zero.w[3] = zero.w[2] = zero.w[1] = zero.w[0] = 0;
+X  
+X    for (i = 0; i < 4; i++)
+X    {
+X	a.w[i] = x.w[i];
+X	b.w[i] = y.w[i];
+X    }
+X
+X    if (!NEGATIVE (x) && !NEGATIVE (y))
+X    {
+X	if (ucmp64 (&a, &b) < 0)
+X	{
+X	    c = usub64 (b, a);
+X	    sign = 1;
+X	}
+X	else
+X	{
+X	    c = usub64 (a, b);
+X	    sign = 0;
+X	}
+X    }
+X
+X    else if (!NEGATIVE (x) && NEGATIVE (y))
+X    {
+X	c = uadd64 (a, b);
+X	sign = 0;
+X    }
+X
+X    else if (NEGATIVE (x) && !NEGATIVE (y))
+X    {
+X	c = uadd64 (a, b);
+X	sign = ucmp64 (&c, &zero) ? 1 : 0;
+X    }
+X
+X    else if (NEGATIVE (x) && NEGATIVE (y))
+X    {
+X	if (ucmp64 (&a, &b) <= 0)
+X	{
+X	    c = usub64 (b, a);
+X	    sign = 0;
+X	}
+X	else
+X	{
+X	    c = usub64 (a, b);
+X	    sign = 1;
+X	}
+X    }
+X
+X    z.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	z.w[i] = c.w[i];
+X
+X    return z;
+X}
+X
+Xsint64 smul64 (sint64 x, sint64 y)
+X/* find the product of two signed 64 bit integers */
+X{
+X    int i;
+X    unsigned char sign;
+X    uint64 a, b, c, zero;
+X    sint64 z;
+X
+X    zero.w[3] = zero.w[2] = zero.w[1] = zero.w[0] = 0;
+X    for (i = 0; i < 4; i++)
+X    {
+X	a.w[i] = x.w[i];
+X	b.w[i] = y.w[i];
+X    }
+X
+X    c = umul64 (a, b);
+X    sign = ucmp64 (&c, &zero) ? x.negative ^ y.negative : 0;
+X
+X    z.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	z.w[i] = c.w[i];
+X
+X    return z;
+X}
+X
+Xsint64 sdiv64 (sint64 x, sint64 y)
+X/* find the quotient of two signed 64 bit integers */
+X{
+X    int i;
+X    unsigned char sign;
+X    uint64 a, b, c, zero;
+X    sint64 z;
+X
+X    zero.w[3] = zero.w[2] = zero.w[1] = zero.w[0] = 0;
+X
+X    for (i = 0; i < 4; i++)
+X    {
+X	a.w[i] = x.w[i];
+X	b.w[i] = y.w[i];
+X    }
+X
+X    if (!ucmp64 (&b, &zero))
+X    {
+X	fprintf (stderr, "sdiv64: division by zero\n");
+X	exit (1);
+X    }
+X
+X    c = udiv64 (a, b);
+X    sign = ucmp64 (&c, &zero) ? x.negative ^ y.negative : 0;
+X
+X    z.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	z.w[i] = c.w[i];
+X
+X    return z;
+X}
+X
+Xsigned long int sint64_to_slong (sint64 x)
+X/* convert signed 64 bit integer to signed long integer */
+X{
+X    signed long int z;
+X
+X    z = (signed long int) (((x.w[1] & 0x7FFF) << 16) + x.w[0]);
+X    z = NEGATIVE (x) ? -z : z;
+X
+X    return z;
+X}
+X
+Xsint64 slong_to_sint64 (signed long int x)
+X/* convert signed long integer to signed 64 bit integer */
+X{
+X    sint64 z;
+X
+X    z.w[0] = (unsigned short int) x;
+X    z.w[1] = (unsigned short int) ((x >> 16) & 0x7FFF);
+X    z.w[3] = z.w[2] = 0;
+X
+X    z.negative = x < (signed long) 0 ? 1 : 0;
+X
+X    return z;
+X}
+X
+Xsint64 shift_sint64_left (sint64 x, int count)
+X/* shift a signed 64 bit integer left 'count' bits */
+X{
+X    int i;
+X    unsigned char sign;
+X    uint64 a, zero;
+X
+X    if (count <= 0)
+X    {
+X	fprintf (stderr, "shift_sint64_left: zero or negative shift count\n");
+X	return x;
+X    }
+X
+X    zero.w[3] = zero.w[2] = zero.w[1] = zero.w[0] = 0;
+X    
+X    for (i = 0; i < 4; i++)
+X	a.w[i] = x.w[i];
+X
+X    a = shift_uint64_left (a, count);
+X    sign = ucmp64 (&a, &zero) ? x.negative : 0;
+X
+X    x.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	x.w[i] = a.w[i];
+X
+X    return x;
+X}
+X
+Xsint64 shift_sint64_right (sint64 x, int count)
+X/* shift a signed 64 bit integer right 'count' bits */
+X{
+X    int i;
+X    unsigned char sign;
+X    uint64 a, zero;
+X
+X    if (count <= 0)
+X    {
+X	fprintf (stderr, "shift_sint64_right: zero of negative shift count\n");
+X	return x;
+X    }
+X
+X    zero.w[3] = zero.w[2] = zero.w[1] = zero.w[0] = 0;
+X
+X    for (i = 0; i < 4; i++)
+X	a.w[i] = x.w[i];
+X
+X    a = shift_uint64_right (a, count);
+X    sign = ucmp64 (&a, &zero) ? x.negative : 0;
+X
+X    x.negative = sign;
+X    for (i = 0; i < 4; i++)
+X	x.w[i] = a.w[i];
+X
+X    return x;
+X}
+X
+X/* END-OF-FILE */
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'example.c'
+then
+	echo shar: will not over-write existing file "'example.c'"
+else
+sed 's/^X//' << \SHAR_EOF > 'example.c'
+X/* example.c */
+X
+X#include <stdio.h>
+X#include "math64.h"
+X
+Xint main (void)
+X{
+X    unsigned long int a, b, c;
+X    uint64 x, y, z;
+X
+X    a = 0x4000;
+X    b = 0x20000;
+X    c = a * b;
+X
+X    x = ulong_to_uint64 (a);
+X    y = ulong_to_uint64 (b);
+X    z = umul64 (x, y);
+X
+X    printf ("%16x %16x %16x\n", a, b, c);
+X    printf ("%4x%4x%4x%4x ", x.w[3], x.w[2], x.w[1], x.w[0]);
+X    printf ("%4x%4x%4x%4x ", y.w[3], y.w[2], y.w[1], y.w[0]);
+X    printf ("%4x%4x%4x%4x\n", z.w[3], z.w[2], z.w[1], z.w[0]);
+X
+X    return 0;
+X
+X} /* main */
+SHAR_EOF
+fi # end of overwriting check
+if test -f 'README'
+then
+	echo shar: will not over-write existing file "'README'"
+else
+sed 's/^X//' << \SHAR_EOF > 'README'
+XREADME FILE FOR MATH64
+X
+XMath64 is a simple mathematics package written in ANSI compliant C that
+Xallows for algebraic calculation of integers up to sixty-four bits wide.
+X
+XBoth signed and unsigned routines are provided as well as conversion
+Xroutines to allow transition between long integer representation and the
+XInt64 structure.
+X
+XThe source code is sparsely documented because I felt that the routines
+Xwere fairly self-explanatory.  As well, no overflow handling is provided at
+Xthis time.
+X
+XThese routines are dedicated to the public domain, although I would ask
+Xthat my name as the original author be retained in any distributions.
+X
+XSean Dockery
+Xdockery@griffin.cuc.ab.ca
+X
+XPS:  An enterprising individual could easily upgrade these routines to
+Xninety-six bit integers (or beyond!)  Please send me any improved versions
+Xthat you develop.
+SHAR_EOF
+fi # end of overwriting check
+cd ..
+#	End of shell archive
+exit 0
+
+-- 
+Sean Dockery             |"Now my charms are all o'erthrown, and what strength
+dockery@griffin.cuc.ab.ca| I have's mine own." -Prospero, "The Temptest"
+

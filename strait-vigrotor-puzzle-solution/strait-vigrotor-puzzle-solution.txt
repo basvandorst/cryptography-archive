@@ -1,0 +1,300 @@
+From msuinfo!agate!ihnp4.ucsd.edu!usc!rand.org!jim Mon Apr 18 23:03:20 1994
+Path: msuinfo!agate!ihnp4.ucsd.edu!usc!rand.org!jim
+From: jim@rand.org (Jim Gillogly)
+Newsgroups: sci.crypt
+Subject: Re: PUZZLE or exercise with phi-test
+Date: 16 Apr 1994 15:12:33 GMT
+Organization: Banzai Institute
+Lines: 104
+Message-ID: <2oov91$ovf@rand.org>
+References: <straitsCo8Mxs.5qn@netcom.com>
+NNTP-Posting-Host: mycroft.rand.org
+
+In article <straitsCo8Mxs.5qn@netcom.com>, Stewart C. Strait wrote:
+
+> Let the plaintext, ciphertext, and key be respectively
+> p[0],p[1], ...;  c[0],c[1], ...; and k[0],k[1], ...  .
+>
+> Then c[i]=p[i]+k[0]+ (sum over all p such that (2**p) & i is nonzero)
+> of k[p+1].
+>
+> Plaintext:   THIS ISQU ITEA WEAK SYST EM
+> Keys used:   YYYY YYYY YYYY YYYY YYYY YY
+>               P P  P P  P P  P P  P P  P
+>                MM   MM   MM   MM   MM
+>                   IIII      IIII      II
+>                        WWWW WWWW
+>                                  XXXX XX
+>              ---------------------------
+> Ciphertext:  RUSR ONIB CCKV YVON NIZP HE
+
+and offered a challenge cipher starting
+
+> straits.3.002; VIGROTOR; 1024 Ciphertext letters.
+> ACGUR UMWKH HIARZ RWNTW SRNFG LLMVB LDNQG FCPYB ZICUR YUDKG MDDQJ XKSMN
+
+Probably a number of different approaches would work with this.  As a
+one-off, I tried quick-and-dirty attacks that took more time overall than
+an elegant attack would have used.  Step 1 was observing that subtracting
+the first 512 bytes from the last 512 gives a distribution of differences
+that depends only on the 11th key byte, k[10]:
+
+	c[512] - c[0] = p[512] - p[0] + k[10]
+	c[513] - c[1] = p[513] - p[1] + k[10]
+	c[514] - c[2] = p[514] - p[2] + k[10]
+	c[515] - c[3] = p[515] - p[3] + k[10]
+	c[516] - c[4] = p[516] - p[4] + k[10]
+
+If a word from the first half happens to line up with a word in the second
+half, a string of equal values will show up in the ciphertext differences,
+and that value will be k[10].  The longer the string, the more confidence
+we have that it wasn't due to chance.
+
+Given the underlying roughness of English, an E in one half will wind up
+adjacent to an E in the second half more often than average (as with the
+other high frequency letters); so k[10] should be one of the most frequent
+values for the ciphertext difference to take.  The same concept works for
+other key-letters with decreasing confidence as the segments get shorter:
+
+	k[10]=D (strong confidence)
+	k[9] =P or A, maybe E;
+	k[8] =F (matching string of 3) or VGSX
+	k[7] =H (strong)
+	k[6] =K (very strong)
+	k[5] =M or X, maybe B or H
+	k[4] =maybe HQSW
+	k[3] =perhaps GW
+	k[2] =BIL??
+	k[1] =who knows
+	k[0] =no information, since it's applied to all plaintext
+
+For the first few bytes, exhaustive search is good enough.  With five
+bytes of key we get 16 bytes of output; with six bytes of key we get 32.
+To recognize when we're done, adding logarithms of English digraphs works
+well enough, as would other standard techniques like looking for English
+words using a hash table.  With an exhaustive search of 6 bytes, the
+correct result gets the highest score.  With 5 bytes, it's close enough to
+the top to spot, and a much shorter run:
+
+wgskb easaliosnesnteam: 99      wyxta eindchamonorlenh: 91
+hovgz theeeteaengtorsw: 94      wcssb eesedegonisrlasi: 91
+pzzur loshimepecceasat: 93      ubigm gherrteneattoefw: 91
+pfajk liratrotldiesere: 93      tbjgn hiersueneassoeev: 91
+nmtcx ndacctecaletotua: 93      oazvr mothileofcdearas: 91
+larss presorschenofwnf: 93      mdobu ongreelseynlthet: 91
+gewxx useoonnthaifandr: 93      hovro theetitppyreorsw: 91
+abcfs abermofosonndtar: 93      hovgb theeeteaclermpqu: 91
+xebgc dbisoniolehevith: 92      herqs trisutyelerolyth: 91
+worhj esttodsofolyorwa: 92      hergc trisediobuhelyth: 91
+sgwob iesalikorisntewi: 92      eylfr warhinsepobeatoi: 91
+pjpcr lechaughesmesacl: 92      eqpjg winlerkeahithirt: 91
+pfnwn liengeotiasocoob: 92      zszkd blieitewingponoo: 90
+jtpan raidisofosweecon: 92      wpgrn eredestobjseactw: 90
+iafvg suthoreowtoprild: 92      wovgk espppeplengtorsw: 90
+hovsb theeshsocleradei: 92 ---> vqxww fromanystatenopr: 90
+ekonc woosathhernehosa: 92      uemtj geakednthasperrf: 90
+
+With the first 5 key bytes in hand, I tried each of the other likely keys
+from the first phase in turn, and ended up with VQXWWXKHFAD.  Each of the
+higher key bytes was on the list of possibles, though not always first.
+
+Simpler would have been to eliminate the first stage altogether, and given
+the first few key bytes, get each subsequent byte in turn: with each
+correct new choice, we double the length of exposed plaintext, so it's a
+linear search for the correct one -- as in the movie War Games, where WOPR
+found digits of the secret code one at a time.
+
+Stewart said:
+> If I end up posting a lot of these I'll probably use rec.puzzles
+> instead of sci.crypt and just give a brief announcement in sci.crypt.
+> (Unless there is a consensus that they belong here.)
+
+IMHO sci.crypt is appropriate for the initial posting; probably rec.puzzles
+is best for subsequent ones.
+-- 
+	Jim Gillogly
+	Trewesday, 25 Astron S.R. 1994, 15:12
+
+From msuinfo!agate!ames!elroy.jpl.nasa.gov!sdd.hp.com!vixen.cso.uiuc.edu!howland.reston.ans.net!EU.net!uknet!comlab.ox.ac.uk!pcl Mon Apr 18 23:03:55 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!ames!elroy.jpl.nasa.gov!sdd.hp.com!vixen.cso.uiuc.edu!howland.reston.ans.net!EU.net!uknet!comlab.ox.ac.uk!pcl
+From: pcl@foo.oucs.ox.ac.uk (Paul C Leyland)
+Subject: Re: PUZZLE or exercise with phi-test
+Message-ID: <PCL.94Apr18164357@foo.oucs.ox.ac.uk>
+In-reply-to: straits@netcom.com's message of Thu, 14 Apr 1994 07:17:51 GMT
+References: <straitsCo8Mxs.5qn@netcom.com>
+Date: 18 Apr 1994 15:43:57 GMT
+Lines: 92
+
+In article <straitsCo8Mxs.5qn@netcom.com> straits@netcom.com (Stewart C. Strait) writes:
+
+   The cryptosystem used below can be broken with unknown plaintext
+   using the phi test together with techniques familiar from the
+   Vigenere cipher.
+
+Description deleted:
+
+   The puzzle itself:
+
+   Plaintext is public domain, English, and may
+   begin or end in mid-word.
+
+   straits.3.002; VIGROTOR; 1024 Ciphertext letters.
+   ACGUR UMWKH HIARZ RWNTW SRNFG LLMVB LDNQG FCPYB ZICUR YUDKG MDDQJ XKSMN
+
+Remainder of ciphertext deleted.
+
+Solved it.  I used exhaustive search on the first 32 bytes of the
+message, i.e. 6 key characters.  A psychological (rather than
+cryptanalytical) optimization was to run from Z down to A as I guessed
+that Strait would expect people to use exhaustive search in the naive
+manner 8-) The key popped out quite quickly.
+
+For each proposed decryption, I compared the trigram statistics
+against those for a large body of English, with the optimization that
+any decryption with a trigram that did not appear in my tables was
+instantly rejected.  I had to build my own trigram tables: I used the
+Oxford Text Archive to help me.  My tables are now built from 10Mb of
+the writings of Trollope, possibly not the best of sources.  After an
+initial run to see what sort of values were reasonable, I printed out
+all those which exceeded a threshold and scanned the output.
+
+The key begins VQXWWX and the plaintext FROM ANY STATE NO PREFERENCE
+SHALL BEG
+
+Digging out the rest of the text was then very easy: for each new
+keyletter, write out the next block of text and all 26 decryptions;
+pick the obvious one.
+
+Nice challenge: took me a few hours, largely because I had to write
+all my code from scratch.  At least I have a nice trigram analyser in
+my toolbox now.
+
+Here's the trigram statistics code:
+
+int tri_stats (len, s)
+char *s;
+int len;
+{
+   int j, c1, c2, c3;
+   int sum = 0;
+   int v;
+
+   c1 = s[0];
+   c2 = s[1];
+   j = 2;
+
+   while (j < len)
+   {
+      c3 = s[j++];
+      v = tris[c1][c2][c3];
+      if (v == 0) return 0;
+      sum += v;
+      c1 = c2;
+      c2 = c3;
+   }
+   return sum;
+}
+
+read_tris ()
+{
+   int c1, c2, c3;
+
+   for (c1=0; c1 < 26; c1++)
+   for (c2=0; c2 < 26; c2++)
+   for (c3=0; c3 < 26; c3++)
+   {
+      scanf ("%d", &(tris[c1][c2][c3]));
+   }
+}
+
+Please continue to post challenges of this level of difficulty.
+
+Paul
+
+--
+Paul Leyland <pcl@black.ox.ac.uk>        | Hanging on in quiet desperation is
+Oxford University Computing Services     |     the English way.
+13 Banbury Road, Oxford, OX2 6NN, UK     | The time is gone, the song is over.
+Tel: +44-865-273200  Fax: +44-865-273275 | Thought I'd something more to say.
+Finger pcl@black.ox.ac.uk for PGP key    |
+
+From msuinfo!uwm.edu!spool.mu.edu!darwin.sura.net!convex!cs.utexas.edu!howland.reston.ans.net!math.ohio-state.edu!jussieu.fr!univ-lyon1.fr!news-rocq.inria.fr!couchey.inria.fr!doligez Mon Apr 18 23:05:02 1994
+Path: msuinfo!uwm.edu!spool.mu.edu!darwin.sura.net!convex!cs.utexas.edu!howland.reston.ans.net!math.ohio-state.edu!jussieu.fr!univ-lyon1.fr!news-rocq.inria.fr!couchey.inria.fr!doligez
+From: doligez@couchey.inria.fr (Damien Doligez)
+Newsgroups: sci.crypt
+Subject: Re: PUZZLE or exercise with phi-test
+Date: 18 Apr 1994 18:47:34 GMT
+Organization: I.N.R.I.A Rocquencourt
+Lines: 62
+Distribution: world
+Message-ID: <2oukk6$922@news-rocq.inria.fr>
+References: <straitsCo8Mxs.5qn@netcom.com> <2oov91$ovf@rand.org>
+NNTP-Posting-Host: couchey.inria.fr
+Mime-Version: 1.0
+Content-Type: text/plain; charset=iso-8859-1
+Content-Transfer-Encoding: 8bit
+
+In article <2oov91$ovf@rand.org>, jim@rand.org (Jim Gillogly) writes:
+|> For the first few bytes, exhaustive search is good enough.  With five
+|> bytes of key we get 16 bytes of output; with six bytes of key we get 32.
+
+In article <PCL.94Apr18164357@foo.oucs.ox.ac.uk>, pcl@foo.oucs.ox.ac.uk (Paul C Leyland) writes:
+|> Solved it.  I used exhaustive search on the first 32 bytes of the
+|> message, i.e. 6 key characters.
+
+Hey, you guys seem fond of brute force.  I only had to brute-force 3
+characters of the key, and the recognition could be easily automated.
+This is how I did it:
+
+> Plaintext:   THIS ISQU ITEA WEAK SYST EM
+> Keys used:   YYYY YYYY YYYY YYYY YYYY YY
+>               P P  P P  P P  P P  P P  P
+>                MM   MM   MM   MM   MM
+>                   IIII      IIII      II
+>                        WWWW WWWW
+>                                  XXXX XX
+> Ciphertext:  RUSR ONIB CCKV YVON NIZP HE
+
+Notice that guessing the first 4 letters of the key gives you 8
+characters of plaintext.  But you can apply the same trick to any
+block of 8 characters starting at a multiple of 8.  Guessing 4 letters
+of the key on the "CCKV YVON" cyphertext will give you k[1], k[2] and
+k[3], and k[0]+k[4] (instead of the k[0] you get for the first 8
+characters).
+
+So I guessed 4 letters of key for each 8-letter block, retained the
+blocks with no "unlikely" trigrams, and sorted by the 3 last letters
+of the partial key.  The only (k[1], k[2], k[3]) that appeared more
+than twice was represented 15 times, and it was QXW.
+
+I recovered k[0] by listing the 26 possible decryptions of the first 8
+characters, and the other characters of the key by the same method,
+doubling the amount of plaintext for each key.  I could also have
+solved the 15 equations (with 8 unknowns) given by the 8-character
+blocks.
+
+[also from Paul:]
+|> I had to build my own trigram tables: I used the
+|> Oxford Text Archive to help me.  My tables are now built from 10Mb of
+|> the writings of Trollope, possibly not the best of sources.
+
+My tables come from 60k of text, mostly the PGP documentation.  That's
+all I had on my hard disk.  Next time, I'll use the US Constitution.
+The many "shall" and the absence of "key" and "you" are no good for
+the statistics...
+
+This took me the best part of the week-end, but then, it is my first
+successful cryptanalysis.  I tried the first approach described
+by Jim, but I gave up when it seemed to get nowhere.  I figured that
+an experience cryptanalyst should be able to recover both pieces of
+plaintext from the character-wise difference of the two 512-character
+pieces.  Is it possible ?  Is it easy ?
+
+
+|> Please continue to post challenges of this level of difficulty.
+
+Seconded.  This is more relevant to this newsgroup than all the
+political discussions about the EES.  If you post these to
+rec.puzzles, I will have to subscribe that group.
+

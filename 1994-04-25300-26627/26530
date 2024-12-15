@@ -1,0 +1,155 @@
+Path: msuinfo!agate!dog.ee.lbl.gov!ihnp4.ucsd.edu!usc!cs.utexas.edu!not-for-mail
+From: boucher@csl.sri.com (Peter K. Boucher)
+Newsgroups: sci.crypt
+Subject: Re: Boucher's PRNG
+Date: 28 Apr 1994 14:28:14 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 144
+Sender: daemon@cs.utexas.edu
+Message-ID: <9404281928.AA25966@redwood.csl.sri.com>
+NNTP-Posting-Host: cs.utexas.edu
+
+C445585@mizzou1.missouri.edu (John Kelsey) wrote:
+|> [deletia...] I'd like to see a suggestion for filling all those
+|> state-words up--I think there would be attacks available, for example, if
+|> a simple software-simulated LFSR were used (the kind that simulate 32
+|> parallel LFSRs).
+
+Here's what I've been using.  I suppose you could use Blum-Blum-Shub, 
+or anything unpredictable with statistically "random" output.  I'm 
+filling up only about 4 K-bytes of state with this, so it doesn't 
+have to be super fast.
+
+===================== START CODE FRAGMENT =================================
+
+extern void pm_set_rnd_seed(); /* These functions are */
+extern unsigned long pm_rnd(); /* from a module coded */
+/* by James E. Wilson, of an algorithm presented in   */
+/* the below-cited article.  It returns values in the */
+/* 1 .. (2**31)-1.  It has a full period of (2**31)-1 */
+/*
+   Stephen K. Park and Keith W. Miller, "Random Number Generators:
+   Good ones are hard to find", Communications of the ACM, October 1988,
+   vol 31, number 10, pp. 1192-1201.
+*/
+
+#define LC1(A) (A * 66049 + 3907864577)
+#define LC2(A) (A * 69069)
+#define LC3(A) (A * 1103515245 + 12345)
+
+void
+slow_rnd_longs(W,X,Y,Z,RNDS,NUM_RNDS)
+unsigned long W,X,Y,Z,*RNDS,NUM_RNDS;
+{
+    register unsigned long i,j;
+    register unsigned long rdm_val=0L;
+    register unsigned long x;
+    register unsigned long y;
+
+    pm_set_rnd_seed(W^Y);
+    x = W;
+    while ((x&1) == 0) {
+	x += pm_rnd();
+    }
+    if ((y=X) == 0) {
+	y = pm_rnd();
+    }
+    for (i=NUM_RNDS; i--;) {
+	for (j=32;j--;) {
+	    y ^= (y>>15);
+	    y ^= (y<<17);
+	    rdm_val = (rdm_val>>1) | (0x80000000 & ((x=LC2(x))+y));
+	}
+	RNDS[i] = rdm_val;
+    }
+
+    for (i=0; i<NUM_RNDS; i++) {
+	x=LC1(x);
+	y=LC3(y);
+	RNDS[i] ^= (((x<<8)^(x>>24)) + ((y>>16) ^ (y<<16) ^ pm_rnd()));
+    }
+
+    pm_set_rnd_seed(X^Z);
+    for (i=NUM_RNDS; i--;) {
+	x=LC3(x);
+	y=LC1(y);
+	RNDS[i] += (((y<<15)^(x>>17)) + (((y>>17) ^ (x<<15)) + pm_rnd()));
+    }
+
+    x ^= Z;
+    if ((y ^= Y) == 0) {
+	y = pm_rnd();
+    }
+    for (i=0; i<NUM_RNDS; i++) {
+	for (j=32;j--;) {
+	    y ^= (y>>13);
+	    y ^= (y<<19);
+	    rdm_val = (rdm_val<<1) | (((x=LC3(x))^y)>>31);
+	}
+	RNDS[i] ^= rdm_val;
+    }
+}
+
+void
+slow_rnd_bytes(W,X,Y,Z,RNDS,NUM_RNDS)
+unsigned long W,X,Y,Z;
+unsigned char *RNDS;
+unsigned long NUM_RNDS;
+{
+    register unsigned long i,j;
+    register unsigned long rdm_val=0L;
+    register unsigned long x;
+    register unsigned long y;
+
+    pm_set_rnd_seed(W^Y);
+    x = W;
+    while ((x&1) == 0) {
+	x += pm_rnd();
+    }
+    if ((y=X) == 0) {
+	y = pm_rnd();
+    }
+    for (i=NUM_RNDS; i--;) {
+	for (j=8;j--;) {
+	    y ^= (y>>15);
+	    y ^= (y<<17);
+	    rdm_val = (rdm_val>>1) | (0x80000000 & ((x=LC2(x))+y));
+	}
+	RNDS[i] = rdm_val >> 24;
+    }
+
+    for (i=0; i<NUM_RNDS; i++) {
+	x=LC1(x);
+	y=LC3(y);
+	RNDS[i] ^= ((x>>24) + ((y>>25) ^ (1 + (pm_rnd() % 127))));
+    }
+
+    pm_set_rnd_seed(X^Z);
+    for (i=NUM_RNDS; i--;) {
+	x=LC3(x);
+	y=LC1(y);
+	RNDS[i] += (((x>>24) ^ (y>>24)) + (1 + (pm_rnd() % 127)));
+    }
+
+    x ^= Z;
+    if ((y ^= Y) == 0) {
+	y = pm_rnd();
+    }
+    for (i=0; i<NUM_RNDS; i++) {
+	for (j=8;j--;) {
+	    y ^= (y>>13);
+	    y ^= (y<<19);
+	    rdm_val = (rdm_val<<1) | (((x=LC3(x))^y)>>31);
+	}
+	RNDS[i] ^= rdm_val & 255;
+    }
+}
+
+======================= END CODE FRAGMENT =================================
+
+-- 
+Peter K. Boucher
+--
+DISCLAIMER:  I am solely responsible for the contents of this message,
+	     which should not be misconstrued as being in any way related
+	     to the opinions of my employer.

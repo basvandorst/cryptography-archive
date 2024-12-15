@@ -1,0 +1,181 @@
+
+HOWTO: INTERNATIONAL DATA ENCRYPTION ALGORITHM
+Implementation summary by Fauzan Mirza (F.U.Mirza@sheffield.ac.uk)
+
+This document was written to help programmers to understand how to
+implement the IDEA cryptosystem.
+
+Thanks to Colin Plumb (colin@nyx10.cs.du.edu) for helping to clear up
+the mistakes I made in the draft version of this document. Sources were
+taken from Colin Plumb's IDEA in 8086 assembly implementation, and the
+IDEA reference source by Richard De Moliner (demoliner@isi.ee.ethz.ch).
+Please let me know of any errors or ommisions.
+
+IDEA works on 16 bit units. If you're processing bytes, it's defined to
+be big-endian, so an Intel machine needs to swap the bytes around.
+
+IDEA has a user key size of 16 bytes (128 bits) which is expanded to a
+104 byte (832 bit) subkey. Data is processed in 8 byte (64 bit) blocks.
+
+The Idea function needs the subkey for input, not the user key. The
+following code example requires that the multiplication is done modulo
+65537 (as defined in the IDEA specification). A zero input is taken to
+be 65536.
+
+void Idea(u_int16 *in, u_int16 *out, u_int16 *key)
+{
+	u_int16 x0, x1, x2, x3, t0, t1, round;
+
+	x0 = *in++;
+	x1 = *in++;
+	x2 = *in++;
+	x3 = *in;
+
+	for (round = 0; round < 8; round++) {
+		x0 *= *key++;
+		x1 += *key++;
+		x2 += *key++;
+		x3 *= *key++;
+
+		t0  = x1;  
+		t1  = x2;
+		x2 ^= x0;  
+		x1 ^= x3;
+
+		x2 *= *key++;
+		x1 += x2;
+		x1 *= *key++;
+		x2 += x1;
+
+		x0 ^= x1;
+		x3 ^= x2;
+		x1 ^= t1;
+		x2 ^= t0;
+	}
+	*out++ = x0 * *key++;
+	*out++ = x2 + *key++;  /* NB: Order */
+	*out++ = x1 + *key++;
+	*out   = x3 * *key;
+}
+
+The following function can be used to perform the necessary
+multiplication modulo 65537 used in IDEA.
+
+u_int16 mul(u_int16 x, u_int16 y)
+{
+	u_int32 p=x*y;
+
+	if (p == 0)
+		x = 65537-x-y;
+	else {
+		x = p >> 16;
+		y = p;
+		x = y-x;
+
+		if (y < x) x += 65537;
+	}
+	return x;
+}
+
+The following function is used to expand the user key to the encryption
+subkey. The first 16 bytes are the user key, and the rest of the subkey
+is calculated by rotating the previous 16 bytes by 25 bits to the left,
+and so on until the subkey is completed. The following code could be
+optimised.
+
+void Expandkey(u_int16 *ukey, u_int16 *key)
+{
+	int i;
+
+	for (i=0; i<8; i++) key[i]=ukey[i];
+	for (i=8; i<52; i++) {
+		if ((i & 7) < 6)
+			key[i]=(key[i-7] & 127) << 9 | key[i-6] >> 7;
+		else if ((i & 7) == 6)
+			key[i]=(key[i-7] & 127) << 9 | key[i-14] >> 7;
+		else
+			key[i]=(key[i-15] & 127) << 9 | key[i-14] >> 7;
+	}
+}
+
+The function to invert the encryption subkey to the decryption subkey is
+required for decryption using ECB and CBC modes. It also involves the
+multiplicative inverse and the additive inverse functions.
+
+Rules: 
+ x + addinv(x) == 0
+ x * mulinv(x) == 1 (modulo 65537)
+
+void Invertkey(u_int16 *in, u_int16 *out)
+{
+	u_int16 t1, t2, t3, t4, round;
+	u_int16 *p = out + 52; /* We work backwards */
+
+	t1 = mulinv(*in++);
+	t2 = addinv(*in++);
+	t3 = addinv(*in++);
+	t4 = mulinv(*in++);
+	*--p = t4;
+	*--p = t3;
+	*--p = t2;
+	*--p = t1;
+
+	for (round = 1; round < 8; round++) {
+		t1 = *in++;
+		t2 = *in++;
+		*--p = t2;
+		*--p = t1;
+
+		t1 = mulinv(*in++);
+		t2 = addinv(*in++);
+		t3 = addinv(*in++);
+		t4 = mulinv(*in++);
+		*--p = t4;
+		*--p = t2; /* NB: Order */
+		*--p = t3;
+		*--p = t1;
+	}
+	t1 = *in++;
+	t2 = *in++;
+	*--p = t2;
+	*--p = t1;
+
+	t1 = mulinv(*in++);
+	t2 = addinv(*in++);
+	t3 = addinv(*in++);
+	t4 = mulinv(*in++);
+	*--p = t4;
+	*--p = t3;
+	*--p = t2;
+	*--p = t1;
+}
+
+u_int16 addinv(u_int16 x)
+{
+	return 0-x;
+}
+
+This function computes multiplicative inverse using Euclid's Greatest
+Common Divisor algorithm. Zero and one are self inverse.
+
+u_int16 mulinv(u_int16 x)
+{
+	u_int16 t0, t1, q, y;
+    
+	if (x < 2) return x;
+	t0 = 0;
+	t1 = 65537 / x;
+	y  = 65537 % x;
+	while (y != 1) {
+		q = x / y;
+		x = x % y;
+		t0 = t0 + (t1 * q);
+		if (x == 1) return t0;
+		q = y / x;
+		y = y % x;
+		t1 = t1 + (t0 * q);
+	}
+	return 65537-x;
+}
+
+END

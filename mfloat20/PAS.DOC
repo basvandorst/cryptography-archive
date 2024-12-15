@@ -1,0 +1,723 @@
+                       MFLOAT version 2.0 using PASCAL
+                       ===============================
+
+
+		    Installation of MFLOAT for TURBO PASCAL
+                    =======================================
+
+* Include following line as the first line in your source code, in front of
+  any declaration or function:
+  {$M 20000, 0, 650000}
+  This command installs a large stack (20000 bytes) for the program. This is
+  interesting, if you have many local variables. The maximum allowed stack
+  size is about 65000. Further you can install a large stack using the
+  compiler option: Options/Memory sizes,  but the {$M..} instruction
+  overrides this.
+  (For more information see TURBO PASCAL manual).
+
+
+* Define the maximum length of a mfloat number, if you want less precision
+  but more variables, otherwise skip this point.
+
+  Change the line 12 of "PFLOAT.PAS" :
+  for example CONST MfloatWords = 10;
+  Now you have 9 mantissa-words and one word for the exponent.
+  Range of MfloatWords: [2 .. max+1]
+  "max" is defined in MFLOATA.OBJ and can't be changed.
+  77   decimal digits ... max = 16   (mantissa-words)
+  2408 decimal digits ... max = 500  (mantissa-words)
+  If you can use 80386 instructions, it's good to use an odd number for
+  "mfloatwords" ( --> even number of mantissa-words --> faster calculation)
+  It has no sense to define more accurate numbers than "max+1", because
+  all procedures can handle only numbers of "max" mantissa-words.
+
+
+* Include the "USES" instruction at the begin of your source code.
+  All functions for the type mfloat are included:
+
+  USES pfloat;
+
+
+* Define the error handling, if you don't want to interrupt your program
+  at an error. Include at the beginning of your source code:
+
+  BEGIN
+    .
+    useInterruptAtError=false;  { defined in "PFLOAT.PAS" }
+    .
+  END.
+
+  Default value is true, that means, the program is terminated at an error.
+  Of course you can change it in the file "PFLOAT.PAS" too.
+
+
+* Define the accuracy of MFLOAT:
+  Include at the beginning of your source code:
+
+  BEGIN
+    .
+    SetMantissawords(5);  { defined in "PFLOAT.PAS" }
+    .
+  END.
+
+  Default value is 1, that means, MFLOAT calculates at minimum precision.
+  Please don't change the variable "mantissawords" directly, because if you
+  leave the allowed range, there is a fatal crash.
+
+
+* Choose compiler options:
+
+  Menu: Options/Compiler/Runtime errors: Stack checking: yes!!
+	This option is helpful for the development.
+	The stack test of the assembler part of MFLOAT is independent of this
+        check.
+
+
+Here is an example for the beginning of your source code:
+
+{$M 20000, 0, 650000}
+PROGRAM myprog(input,output);
+
+.
+.
+.
+
+BEGIN
+  { main program }
+  useInterruptAtError := false;
+  Setmantissawords(10);
+  .
+  .
+  .
+END.
+
+
+
+		    Description of mfloat basic functions
+		    =====================================
+
+
+There is following type available ("PFLOAT.PAS"):
+
+mfloat ... mfloat basic type:
+
+TYPE  mfloat = ARRAY[0..MfloatWords-1] OF integer;
+
+This type declaration for multiple-precision floating point numbers sets
+a maximal precision of 16 mantissa-words or about 77 decimal digits. The
+maximum precision is an assembly time constant. In this release it is fixed
+to 16 mantissa-words. It is possible to change the type declaration to reduce
+the number of mantissa-words. This leads to a saving in memory needs and to
+higher execution speed at the cost of precision. It is also possible to adjust
+the precision dynamically using the PROCEDURE "Setmantissawords".
+
+****************************************************************************
+++++++++++++++++++++     mfloat basic functions   ++++++++++++++++++++++++++
+****************************************************************************
+
+PROCEDURE Setmantissawords(number : integer);
+
+This procedure sets the length of the mantissa of mfloat numbers. The number
+of words must be in the range of [1..min(MfloatWords-1,max)], otherwise it
+is bounded to these values.
+max = 16 for 77 decimal digits version
+max = 500 for 2408 decimal digits version
+If the number of mantissa-words is increased and the numbers of former
+calculations are used further, the additional words are not initialised to
+zero, their values are not known. The error of the number due to this
+further mantissa-words is of course very small and is in the range of the
+accuracy of the former calculation. If it is important, that this further
+mantissa-words are zero, the user has to initialise them (see data format:
+"INTERNAL.DOC"). If the number of mantissa-words is reduced, every number
+can be seen as truncated, although nothing is changed at this numbers. The
+number of mantissa-words refers only to calculations.
+If 80386 instructions are used, only even number of mantissa-words are used.
+For example if you specify 5 mantissa-words, MFLOAT calculates at 6
+mantissa-words, because it is faster to calculate using 6 mantissa-words than
+to use 8086 instructions and only 5 mantissa-words.
+(see "TIME.DOC").
+
+****************************************************************************
+
+FUNCTION GetMantissawords : integer;
+
+The function returns the actual number of mantissa-words.
+
+****************************************************************************
+
+PROCEDURE ResetError;
+
+The error-flag is reset.
+
+****************************************************************************
+
+FUNCTION GetError : boolean;
+
+The error-flag is returned. If there occurs a runtime error during the
+calculation, the error-flag is set to true.
+
+****************************************************************************
+
+PROCEDURE mfloatError(Nr : integer);
+
+The error-flag is set. If the boolean variable "useInterruptAtError" is
+true, an error message is written to the screen and the program terminates.
+
+****************************************************************************
+
+PROCEDURE equm(VAR a, b : mfloat);                   { *** a <-- b *** }
+
+The value of "b" is copied to variable "a" with the defined accuracy. The
+value of "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE addm(VAR a, b : mfloat);                { *** a <-- a + b *** }
+
+The value of "b" is added to the value "a" with the defined accuracy. The
+result is variable "a". The value of "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE subm(VAR a, b : mfloat);                { *** a <-- a - b *** }
+
+The value of "b" is subtracted from the value "a" with the defined accuracy.
+The result is variable "a". The value of "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE multm(VAR a, b : mfloat);               { *** a <-- a * b *** }
+
+The value of "a" is multiplied by value "b" with the defined accuracy. The
+result is variable "a". The value of "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE divm(VAR a, b : mfloat);                { *** a <-- a / b *** }
+
+The value of "a" is divided by the value "b" with the defined accuracy.
+The result is variable "a". The value of "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE multi(VAR a : mfloat; b : integer);     { *** a <-- a * b *** }
+
+The value of "a" is multiplied by the integer value "b" with the defined
+accuracy. The result is variable "a".
+
+****************************************************************************
+
+PROCEDURE divi(VAR a : mfloat; b : integer);      { *** a <-- a / b *** }
+
+The value of "a" is divided by the integer value "b" with the defined
+accuracy. The result is variable "a".
+
+****************************************************************************
+
+PROCEDURE inversm(VAR a : mfloat);              { *** a <-- 1 / a *** }
+
+The number one is divided by the number "a" with the defined accuracy.
+The result is variable "a".
+
+****************************************************************************
+
+PROCEDURE negm(VAR a : mfloat);                 { *** a <--  - a *** }
+
+This procedure changes the sign of the number of variable "a".
+
+****************************************************************************
+
+FUNCTION eqZero(VAR a : mfloat) : boolean;    { *** eqZero <-- a = 0  *** }
+
+This function checks, if the multiple-precision number "a" is zero. The
+value of "a" is not changed.
+
+****************************************************************************
+
+FUNCTION gtZero(VAR a : mfloat) : boolean;    { *** gtZero <-- a > 0 *** }
+
+This function checks, if the multiple-precision number "a" is greater than
+zero. The value of "a" is not changed.
+
+****************************************************************************
+
+FUNCTION geZero(VAR a : mfloat) : boolean;    { *** geZero <-- a >= 0 *** }
+
+This function checks, if the multiple-precision number "a" is greater than
+zero or equal zero. The value of "a" is not changed.
+
+****************************************************************************
+
+FUNCTION gtm(VAR a, b : mfloat) : boolean;     { *** gtm <-- a > b *** }
+
+This function checks, if the multiple-precision number "a" is greater than
+the multiple-precision number "b". The values of "a" and "b" are not changed.
+
+****************************************************************************
+
+FUNCTION eqm(VAR a, b : mfloat) : boolean;     { *** eqm <-- a = b *** }
+
+This function checks, if the multiple-precision number "a" is equal to the
+multiple-precision number "b". The values of "a" and "b" are not changed.
+
+****************************************************************************
+
+PROCEDURE GetZerom(VAR a : mfloat);             { *** a <- 0 *** }
+
+This procedure copies the value zero = 0.0000.. to the variable "a".
+
+****************************************************************************
+
+PROCEDURE GetOnem(VAR a : mfloat);              { *** a <- 1 *** }
+
+This procedure copies the value one = 1.0000.. to the variable "a".
+
+****************************************************************************
+
+PROCEDURE GetPim(VAR a : mfloat);               { *** a <- pi *** }
+
+This procedure copies the value pi = 3.14159.. to the variable "a".
+
+****************************************************************************
+
+PROCEDURE GetLn2m(VAR a : mfloat);              { *** a <- ln(2) *** }
+
+This procedure copies the value ln(2) = 0.69314.. to the variable "a".
+
+****************************************************************************
+
+PROCEDURE GetLn10m(VAR a : mfloat);             { *** a <- ln(10) *** }
+
+This procedure copies the value ln(10) = 2.3025.. to the variable "a".
+
+****************************************************************************
+
+FUNCTION strtomf(VAR a : mfloat;               { *** a <-- string *** }
+		     b : string) : integer;
+
+This procedure converts the string "b" to the multiple-precision number "a".
+If the conversion is correct, zero is returned. Otherwise the number of the
+character, where the first error occurs, is returned. For conversion the
+accuracy of the calculation is set to one mantissaword more than specified
+and afterwards it is set back to the original value. This function is not
+optimised for speed, but for accuracy, because normally it is not used very
+often.
+
+****************************************************************************
+
+FUNCTION  mftoa(VAR a   : mfloat;               { *** string <-- a *** }
+		    len : integer) : string;
+
+This procedure converts the multiple-precision number "a" to a string "str"
+using the number of ASCII-characters, which is defined in "len". If the
+number of characters is too less, the string is set to stars '*'. The format
+used for this conversion is '.32767F' (see FUNCTION mftostr). For conversion
+the accuracy of the calculation is set to a value, that the error of the
+conversion has little effect to the shown digits and the conversion time
+isn't to large. Afterwards it is set back to the original value. This
+function is not optimised for speed, but for accuracy, because normally it
+is not used very often.
+The maximum length of a string is 255 characters. If you specify "len" higher
+than 255, the length is truncated to 255 characters.
+
+****************************************************************************
+
+FUNCTION  mftostr(VAR a      : mfloat;           { *** string <-- a *** }
+		      len    : integer;
+		      format : string) : string;
+
+This procedure converts the multiple-precision number "a" to a string "str"
+using the maximum number of ASCII-characters, which is defined in "len". If
+the number of characters is too less, the string is set to stars '*'.
+The characters in the format-string have following meaning:
+
+'.'   the point is shown every time, not significant zeros behind the point
+      are shown
+'E'   scientific format with an exponent of ten
+'F'   fixpoint format, if the number is too large, a scientific format
+      with an exponent of ten is used
+'G'   fixpoint format, if the number is too large, or less than 0.0001,
+      a scientific format is used.
+'1..' an integer, which declares the number of digits behind the point
+      for fixpoint and scientific format
+
+The order of the characters (but not those of the digits for the precision)
+in the format string is arbitrary. It is also allowed to use lower case
+characters for the format, but in this case the letter for the exponent of
+ten is also the lower case letter 'e'. For conversion the accuracy
+of the calculation is set to a value, that the error of the conversion has
+little effect to the shown digits and the conversion time isn't to large.
+Afterwards it is set back to the original value. This function is not
+optimised for speed, but for accuracy, because normally it is not used very
+often.
+The maximum length of a string is 255 characters. If you specify "len" higher
+than 255, the length is truncated to 255 characters.
+
+****************************************************************************
+
+FUNCTION MfToD(VAR a : mfloat) : double;           { *** MfToD <- a *** }
+
+This function converts a multiple-precision number to a double precision
+number. The value of "a" is not changed.
+
+****************************************************************************
+
+FUNCTION MfToLd(VAR a : mfloat) : extended;       { *** MfToLd <- a *** }
+
+This function converts a multiple-precision number to an extended number. The
+value of "a" is not changed.
+
+****************************************************************************
+
+PROCEDURE DToMf(VAR a : mfloat; b : double);  { *** a <- b *** }
+
+This procedure converts a double precision number to a multiple-precision
+number.
+
+****************************************************************************
+
+PROCEDURE LdToMf(VAR a : mfloat; b : extended);     { *** a <- b *** }
+
+This procedure converts an extended number to a multiple-precision number.
+
+****************************************************************************
+
+PROCEDURE IntToMf(VAR a : mfloat; b : integer);     { *** a <- b *** }
+
+This procedure converts an integer number to a multiple-precision number.
+
+****************************************************************************
+++++++++++++++++     standard functions (Borland C: MATH.H)   ++++++++++++++
+****************************************************************************
+
+PROCEDURE acosm(VAR a : mfloat);                 { *** a <- arccos(a) *** }
+
+This procedure calculates the inverse cos(x) function of the argument "a".
+The result is the variable "a".
+-1 <= a <= 1        range of the argument, otherwise the error-flag is set
+ 0 <= a <= pi       range of the result
+
+****************************************************************************
+
+PROCEDURE asinm(VAR a : mfloat);                 { *** a <- arcsin(a) *** }
+
+This procedure calculates the inverse sin(x) function of the argument "a".
+The result is the variable "a".
+-1 <= a <= 1        range of the argument, otherwise the error-flag is set
+-pi/2 <= a <= pi/2  range of the result
+
+****************************************************************************
+
+PROCEDURE atanm(VAR a : mfloat);                 { *** a <- arctan(a) *** }
+
+This procedure calculates the inverse tan(x) function of the argument "a".
+The result is the variable "a".
+-pi/2 <= a <= pi/2       range of the result
+
+****************************************************************************
+
+PROCEDURE atan2m(VAR a, b : mfloat);           { *** a <- arg(b + ia) *** }
+
+This function calculates the extended arctan function phi = arctan(a/b). If
+"a" is zero or less than zero, the correct value "phi" is returned, which is
+in the interval (-pi, pi]:
+a = r * sin(phi)
+b = r * cos(phi)
+r = sqrt(sqr(a) + sqr(b)) >= 0
+
+If a = 0 and b = 0, the value "phi" is not unique. The error-flag is set and
+the number zero is returned. The return variable is the variable "a".
+Variable "b" is not changed.
+
+****************************************************************************
+
+PROCEDURE ceilm(VAR a : mfloat);                 { *** a <-- ceil(a) *** }
+
+The least integer number, which is greater than or equal the mfloat number
+"a", is calculated and returned to the variable "a".
+
+****************************************************************************
+
+PROCEDURE cosm(VAR a : mfloat);                    { *** a <- cos(a) *** }
+
+This procedure calculates the cos(x) function of the argument "a". The result
+is the variable "a".
+
+****************************************************************************
+
+PROCEDURE coshm(VAR a : mfloat);                  { *** a <- cosh(a) *** }
+
+This procedure calculates the cosh(x) function of the argument "a". The result
+is the variable "a".
+-22712 < a < 22712    range of the argument without an overflow
+	 a >= 1       range of the result
+
+****************************************************************************
+
+PROCEDURE expm(VAR a : mfloat);                    { *** a <- exp(a) *** }
+
+This procedure calculates exponential function exp(x) of the argument "a". The
+result is the variable "a".
+
+ a < 22712   range of the argument without an overflow
+ a < -22712  there is an underflow => result = 0
+ a >= 0      range of the result
+
+****************************************************************************
+
+PROCEDURE fabsm(VAR a : mfloat);                 { *** a <-- fabs(a) *** }
+
+This procedure returns the absolute value of the number "a". The result is
+the variable "a".
+
+****************************************************************************
+
+PROCEDURE floorm(VAR a : mfloat);               { *** a <-- floor(a) *** }
+
+The greatest integer number, which is less than or equal the mfloat number
+"a", is calculated and returned to the variable "a".
+
+****************************************************************************
+
+PROCEDURE fmodm(VAR a, b : mfloat);             { *** a <-- fmod(a,b) *** }
+
+This is a floating point modul function. The number "a" is divided by "b", so
+that the result is an integer. The rest of this division is returned by the
+variable "a". The variable "b" is not changed.
+
+a = k * b + c;   "k" is an integer;   0 <= c / b < 1;  "c" is assigned to "a"
+
+If the variable "b" is zero, the error-flag is set. For negative "b", the
+result is negative or zero. For very large "k", which can not be represented
+by an mfloat number exactly, the result is zero.
+
+****************************************************************************
+
+PROCEDURE frexpm(VAR a : mfloat;                { *** a <-- frexp(a,b) *** }
+		 VAR b : integer);
+
+The mfloat number "a" is split into its exponent and mantissa:
+
+a = c * (2^b);  0.5 <= |c| < 1 if a <> 0;  c is assigned to a
+
+This procedure returns two results. If the mfloat number is zero, it remains
+zero and "b" is set to zero.
+
+****************************************************************************
+
+PROCEDURE hypotm(VAR a, b : mfloat);            { *** a <-- hypot(a,b) *** }
+
+This function is used for the calculation of the absolute value of a complex
+number:
+
+c = sqrt(sqr(a) + sqr(b)); "c" is assigned to "a", "b" remains unchanged.
+|a + i*b| = hypot(a,b);
+This procedure calculates the correct result also if sqr(a) can not be
+represented as a mfloat number, because it is too great or too small.
+
+****************************************************************************
+
+PROCEDURE ldexpm(VAR a : mfloat; b : integer); { *** a <-- a * 2^b *** }
+
+The mfloat number "a" is multiplied by the power of two: 2^b.
+
+a <-- a * (2^b);
+
+The calculation is very fast, because only the exponent of two is manipulated.
+
+****************************************************************************
+
+PROCEDURE logm(VAR a : mfloat);                   { *** a <- log(a) *** }
+
+This procedure calculates the natural logarithm ln(x) of the argument "a".
+The result is the variable "a".
+
+a > 0                  range of the argument
+-22712 <= a <= 22712   range of the result
+
+****************************************************************************
+
+PROCEDURE log10m(VAR a : mfloat);              { *** a <- log10(a)  *** }
+
+This procedure calculates the decade logarithm log(x) of the argument "a".
+The result is the variable "a".
+
+a > 0                  range of the argument
+-9864 <= a <= 9863     range of the result
+
+****************************************************************************
+
+PROCEDURE modfm(VAR a, b : mfloat);         { *** a, b <-- modf(a) *** }
+
+This procedure splits the number "a" in an integer part and in a fractional
+part:
+
+a = k + b;    "k" is an integer;    0 <= b < 1;    "k" is assigned to "a"
+
+****************************************************************************
+
+PROCEDURE powm(VAR a, b : mfloat);          { *** a <-- a^b  *** }
+
+This procedure calculates the power of the basis "a" by the exponent "b".
+The result is assigned to the variable "a", the variable "b" is not changed.
+If the exponent is an integer, the calculation is made by repeated
+multiplications. The number of multiplications is proportional to
+log(|b|). If "b" has a fractional, the calculation is made by logarithm. In
+this case, the base a must be positive, otherwise the error-flag is set,
+because the result is not real. If the number "b" is very large so that
+no fractional can be represented by the mfloat format and the base
+is negative, the error-flag is set too. If a = 0 and b <= 0 the result is
+not defined and the error-flag is set.
+
+****************************************************************************
+
+PROCEDURE powi(VAR a : mfloat; b : integer);   { *** a <-- a^b   *** }
+
+This procedure calculates the power of the basis "a" by the integer exponent
+"b". The result is assigned to the variable "a", the variable "b" is not
+changed. The calculation is made by repeated multiplications. The number of
+multiplications is proportional to log(|b|). If a = 0 and b <= 0 the result
+is not defined and the error-flag is set.
+
+****************************************************************************
+
+PROCEDURE pow10m(VAR a : mfloat; b : integer);  { *** a <-- 10^b *** }
+
+The power of the basis ten is built using the integer exponent "b". The
+result is assigned to "a".
+
+a <-- 10^b
+
+if b < -9864 then a = 0
+if b > 9863  then there is an overflow -> error-flag is set
+
+****************************************************************************
+
+PROCEDURE sinm(VAR a : mfloat);                    { *** a <- sin(a) *** }
+
+This procedure calculates the sin(x) function of the argument "a". The result
+is the variable "a".
+
+****************************************************************************
+
+PROCEDURE sinhm(VAR a : mfloat);                  { *** a <- sinh(a) *** }
+
+This procedure calculates the sinh(x) function of the argument "a". The result
+is the variable "a".
+-22712 < a < 22712   range of the argument without an overflow
+
+****************************************************************************
+
+PROCEDURE sqrtm(VAR a : mfloat);                  { *** a <- sqrt(a) *** }
+
+This procedure calculates the square root of the number "a". The result is
+variable "a". If "a" is negative, the error-flag is set.
+
+****************************************************************************
+
+PROCEDURE tanm(VAR a : mfloat);                   { *** a <- tan(a) *** }
+
+This procedure calculates the tan(x) function of the argument "a". The result
+is the variable "a". It is faster than the calculation of sin(a) / cos(a).
+
+****************************************************************************
+
+PROCEDURE tanhm(VAR a : mfloat);                  { *** a <- tanh(a) *** }
+
+This procedure calculates the tanh(x) function of the argument "a". The
+result is the variable "a".
+
+-1 <= a <= 1       range of the result
+
+****************************************************************************
+++++++++++++++++++    extended standard functions   ++++++++++++++++++++++++
+****************************************************************************
+
+PROCEDURE acoshm(VAR a : mfloat);                { *** a <- arcosh(a) *** }
+
+This procedure calculates the inverse cosh(x) function of the argument "a".
+The result is the variable "a".
+1 <= a          range of the argument
+0 <= a < 22712  range of the result
+
+****************************************************************************
+
+PROCEDURE acotm(VAR a : mfloat);                 { *** a <- arccot(a) *** }
+
+This procedure calculates the inverse cot(x) function of the argument "a".
+The result is the variable "a".
+0 <= a <= pi       range of the result
+
+****************************************************************************
+
+PROCEDURE acothm(VAR a : mfloat);                { *** a <- arcoth(a) *** }
+
+This procedure calculates the inverse coth(x) function of the argument "a".
+The result is the variable "a".
+ -1 > a   or   1 < a    range of the argument
+
+****************************************************************************
+
+PROCEDURE asinhm(VAR a : mfloat);                { *** a <- arsinh(a) *** }
+
+This procedure calculates the inverse sinh(x) function of the argument "a".
+The result is the variable "a".
+
+****************************************************************************
+
+PROCEDURE atanhm(VAR a : mfloat);                { *** a <- artanh(a) *** }
+
+This procedure calculates the inverse tanh(x) function of the argument "a".
+The result is the variable "a".
+-1 < a < 1  range of the argument
+
+****************************************************************************
+
+PROCEDURE cossinm(VAR a, b : mfloat); { *** a <-- cos(a), b <-- sin(a) *** }
+
+This procedure calculates the sin(x) and cos(x) function by only one
+evaluation of the series for the sine function. Therefore this procedure is
+faster than two individual calculations. It is recommended for example
+for the calculation of the exponential function of complex arguments.
+
+****************************************************************************
+
+PROCEDURE cotm(VAR a : mfloat);                     { *** a <- cot(a) *** }
+
+This procedure calculates the cot(x) function of the argument "a". The result
+is the variable "a". It is faster than the calculation of cos(a) / sin(a).
+
+****************************************************************************
+
+PROCEDURE cothm(VAR a : mfloat);                   { *** a <- coth(a) *** }
+
+This procedure calculates the coth(x) function of the argument "a". The
+result is the variable "a".
+range of the result: a >= 1 or a <= -1
+
+****************************************************************************
+
+PROCEDURE exp10m(VAR a : mfloat);                  { *** a <- 10^a *** }
+
+This procedure calculates the power of 10 of the argument "a". The result is
+the variable "a".
+ a < 9863    range of the argument without an overflow
+ a < -9864   there is an underflow, result = 0
+ a >= 0      range of the result
+
+****************************************************************************
+
+PROCEDURE sqrm(VAR a : mfloat);                     { *** a <- sqr(a) *** }
+
+This procedure calculates the square of "a". The result is variable "a".
+sqr(a) = a * a
+
+****************************************************************************
+
+PROCEDURE truncm(VAR a : mfloat);              { *** a <-- trunc(a) *** }
+
+This procedure returns the integer part of the number "a" (truncation). The
+result is variable "a". The sign has no influence and remains unchanged.
+
+****************************************************************************
+

@@ -1,0 +1,1403 @@
+head	1.3;
+access;
+symbols;
+locks
+	vince:1.3; strict;
+comment	@ * @;
+
+
+1.3
+date	94.06.06.10.57.48;	author vince;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	94.06.04.12.51.16;	author vince;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	94.06.04.12.24.05;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.3
+log
+@safety
+@
+text
+@/*
+ * $Author: vince $
+ * $Header: /res/usr/vince/src/dh/RCS/telnetd.c,v 1.2 1994/06/04 12:51:16 vince Exp vince $
+ * $Date: 1994/06/04 12:51:16 $
+ * $Revision: 1.2 $
+ * $Locker: vince $
+ */
+
+#ifndef	lint
+static char *rcsid = "@@(#) $Id: telnetd.c,v 1.2 1994/06/04 12:51:16 vince Exp vince $";
+#endif	lint
+
+
+#include <sys/param.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+
+#include <netinet/in.h>
+
+#include <arpa/telnet.h>
+
+#include <sys/pty.h>
+
+#include <stdio.h>
+#include <signal.h>
+#include <errno.h>
+#include <termios.h>
+#include <netdb.h>
+#include <syslog.h>
+#include <ctype.h>
+#ifdef hpux
+#include <unistd.h>
+#endif
+
+
+
+/* functions */
+static char 	*nextitem();
+static int	init_termbuf(), tty_setecho(), tty_binaryin(),
+		tty_binaryout(), set_termbuf(), netflush(),
+		netclear(), ptyflush(), sendbrk(), interrupt(),
+		suboption(), dontoption(), dooption(), wontoption(),
+		willoption(), telrcv(), telnet(), stilloob(),
+		fatal(), fatalperror();
+static void	getterminaltype(), ttloop();
+
+#define	OPT_NO			0		/* won't do this option */
+#define	OPT_YES			1		/* will do this option */
+#define	OPT_YES_BUT_ALWAYS_LOOK	2
+#define	OPT_NO_BUT_ALWAYS_LOOK	3
+char	hisopts[256];
+char	myopts[256];
+
+char	doopt[] = { IAC, DO, '%', 'c', 0 };
+char	dont[] = { IAC, DONT, '%', 'c', 0 };
+char	will[] = { IAC, WILL, '%', 'c', 0 };
+char	wont[] = { IAC, WONT, '%', 'c', 0 };
+
+/*
+ * I/O data buffers, pointers, and counters.
+ */
+char	ptyibuf[BUFSIZ], *ptyip = ptyibuf;
+
+char	ptyobuf[BUFSIZ], *pfrontp = ptyobuf, *pbackp = ptyobuf;
+
+char	netibuf[BUFSIZ], *netip = netibuf;
+#define	NIACCUM(c)	{   *netip++ = c; \
+			    ncc++; \
+			}
+
+char	netobuf[BUFSIZ], *nfrontp = netobuf, *nbackp = netobuf;
+char	*neturg = 0;		/* one past last bye of urgent data */
+	/* the remote system seems to NOT be an old 4.2 */
+int	not42 = 1;
+
+		/* buffer for sub-options */
+char	subbuffer[100], *subpointer= subbuffer, *subend= subbuffer;
+#define	SB_CLEAR()	subpointer = subbuffer;
+#define	SB_TERM()	{ subend = subpointer; SB_CLEAR(); }
+#define	SB_ACCUM(c)	if (subpointer < (subbuffer+sizeof subbuffer)) { \
+				*subpointer++ = (c); \
+			}
+#define	SB_GET()	((*subpointer++)&0xff)
+#define	SB_EOF()	(subpointer >= subend)
+
+int	pcc, ncc;
+
+int	pty, net;
+extern	char **environ;
+extern	int errno;
+char	*line;
+int	SYNCHing = 0;		/* we are in TELNET SYNCH mode */
+/*
+ * The following are some clocks used to decide how to interpret
+ * the relationship between various variables.
+ */
+
+struct {
+    int
+	system,			/* what the current time is */
+	echotoggle,		/* last time user entered echo character */
+	modenegotiated,		/* last time operating mode negotiated */
+	didnetreceive,		/* last time we read data from network */
+	ttypeopt,		/* ttype will/won't received */
+	ttypesubopt,		/* ttype subopt is received */
+	getterminal,		/* time started to get terminal information */
+	gotDM;			/* when did we last see a data mark */
+} clocks;
+
+struct termios termbuf;
+
+#define	settimer(x)	(clocks.x = ++clocks.system)
+#define	sequenceIs(x,y)	(clocks.x < clocks.y)
+#if defined(DIAGNOSTIC)
+#define DIAG(a) a
+#else
+#define DIAG(a)
+#endif
+#ifndef TCSIG
+#ifdef TIOCSIGSEND
+#define TCSIG TIOCSIGSEND
+#endif
+#endif
+
+char	*terminaltype = 0;
+char	*envinit[2];
+void	cleanup();
+
+/*
+ * ttloop
+ *
+ *	A small subroutine to flush the network output buffer, get some data
+ * from the network, and pass it through the telnet state machine.  We
+ * also flush the pty input buffer (by dropping its data) if it becomes
+ * too full.
+ */
+static void
+ttloop()
+{
+    if (nfrontp-nbackp) {
+	netflush();
+    }
+    ncc = read(net, netibuf, sizeof netibuf);
+    if (ncc < 0) {
+	syslog(LOG_INFO, "ttloop:  read: %m\n");
+	exit(1);
+    } else if (ncc == 0) {
+	syslog(LOG_INFO, "ttloop:  peer died: %m\n");
+	exit(1);
+    }
+    netip = netibuf;
+    telrcv();			/* state machine */
+    if (ncc > 0) {
+	pfrontp = pbackp = ptyobuf;
+	telrcv();
+    }
+}
+
+/*
+ * getterminaltype
+ *
+ *	Ask the other end to send along its terminal type.
+ * Output is the variable terminaltype filled in.
+ */
+static void
+getterminaltype()
+{
+    static char sbuf[] = { IAC, DO, TELOPT_TTYPE };
+
+    settimer(getterminal);
+    bcopy(sbuf, nfrontp, sizeof sbuf);
+    nfrontp += sizeof sbuf;
+    hisopts[TELOPT_TTYPE] = OPT_YES_BUT_ALWAYS_LOOK;
+    while (sequenceIs(ttypeopt, getterminal)) {
+	ttloop();
+    }
+    if (hisopts[TELOPT_TTYPE] == OPT_YES) {
+	static char sbbuf[] = { IAC, SB, TELOPT_TTYPE, TELQUAL_SEND, IAC, SE };
+
+	bcopy(sbbuf, nfrontp, sizeof sbbuf);
+	nfrontp += sizeof sbbuf;
+	while (sequenceIs(ttypesubopt, getterminal)) {
+	    ttloop();
+	}
+    }
+}
+
+#if 0
+main(argc, argv)
+	char *argv[];
+{
+	struct sockaddr_in from;
+	int on = 1, fromlen;
+
+#if	defined(DEBUG)
+	{
+	    int s, ns, foo;
+	    struct servent *sp;
+	    static struct sockaddr_in sin = { AF_INET };
+
+	    sp = getservbyname("vince", "tcp");
+	    if (sp == 0) {
+		    fprintf(stderr, "telnetd: tcp/vince: unknown service\n");
+		    exit(1);
+	    }
+	    sin.sin_port = sp->s_port;
+	    argc--, argv++;
+	    if (argc > 0) {
+		    sin.sin_port = atoi(*argv);
+		    sin.sin_port = htons((u_short)sin.sin_port);
+	    }
+
+	    s = socket(AF_INET, SOCK_STREAM, 0);
+	    if (s < 0) {
+		    perror("telnetd: socket");;
+		    exit(1);
+	    }
+	    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof (on)) < 0) {
+			syslog(LOG_WARNING, "setsockopt (SO_REUSEADDR): %m");
+	    }
+	    if (bind(s, &sin, sizeof sin) < 0) {
+		perror("bind");
+		exit(1);
+	    }
+	    if (listen(s, 1) < 0) {
+		perror("listen");
+		exit(1);
+	    }
+	    foo = sizeof sin;
+	    ns = accept(s, &sin, &foo);
+	    if (ns < 0) {
+		perror("accept");
+		exit(1);
+	    }
+	    close(0);
+	    close(1);
+	    dup2(ns, 0);
+	    close(s);
+	}
+#endif	/* defined(DEBUG) */
+	/*
+	openlog("telnetd", LOG_PID | LOG_ODELAY, LOG_DAEMON);
+	*/
+	fromlen = sizeof (from);
+	if (getpeername(0, &from, &fromlen) < 0) {
+		fprintf(stderr, "%s: ", argv[0]);
+		perror("getpeername");
+		_exit(1);
+	}
+	if (setsockopt(0, SOL_SOCKET, SO_KEEPALIVE, &on, sizeof (on)) < 0) {
+		syslog(LOG_WARNING, "setsockopt (SO_KEEPALIVE): %m");
+	}
+	close(2);
+	telnetd(0);
+}
+#endif
+
+telnetd(f)
+int		f;
+{
+	int i, p, t;
+	struct termios b;
+	int c;
+
+	int	test = 0;
+
+	close(2);
+
+	for (c = 'p'; c <= 's'; c++) {
+		struct stat stb;
+
+		line = "/dev/ptyXX";
+		line[strlen("/dev/pty")] = c;
+		line[strlen("/dev/ptyp")] = '0';
+		if (stat(line, &stb) < 0)
+			break;
+		for (i = 0; i < 16; i++) {
+			line[sizeof("/dev/ptyp") - 1] = "0123456789abcdef"[i];
+			p = open(line, O_RDWR);
+			if (p > 0)
+				goto gotpty;
+		}
+	}
+	fatal(f, "All network ports in use");
+	/*NOTREACHED*/
+gotpty:
+	dup2(f, 0);
+	line[strlen("/dev/")] = 't';
+#if !defined(hpux) && !defined(sun)
+	t = open("/dev/tty", O_RDWR);
+	if (t < 0)
+		fatalperror(f, line);
+	if (fchmod(t, 0))
+		fatalperror(f, line);
+#else
+	t = open(line, O_RDWR);
+	if (t < 0)
+		fatalperror(f, line);
+#endif
+	/* get terminal attributes */
+ 	tcgetattr(p, &b);
+#ifdef hpux
+	b.c_lflag |= ECHO | ECHOK | ECHOE | ICANON | ISIG;
+	b.c_iflag |= ICRNL | BRKINT | ISTRIP | IXON;
+	b.c_iflag &= ~IXANY;
+	b.c_iflag &= ~PARMRK;
+	/* can not get rid of ONLCR when running tset: hp bug? */
+	b.c_oflag |= /* ONLCR | */ OPOST;
+#else
+	b.c_lflag |= ECHO;
+	b.c_oflag |= ONLCR;
+	b.c_iflag |= ICRNL;
+#endif
+	b.c_cc[VERASE] = 0x7f;
+	b.c_cc[VKILL] = 'u'&0x1f;
+	b.c_cc[VEOF] = 'd'&0x1f;
+	b.c_cc[VINTR] = 0x3;
+	b.c_cc[VEOL] = b.c_cc[VSUSP] = 0;
+	tcsetattr(t, TCSANOW, &b);
+
+	net = f;
+	pty = p;
+
+	getterminaltype();
+
+	if ((i = fork()) < 0)
+		fatalperror(f, "fork");
+	if (i)
+		telnet(f, p);
+	close(f);
+	close(p);
+	dup2(t, 0);
+	dup2(t, 1);
+	dup2(t, 2);
+	close(t);
+	envinit[0] = terminaltype;
+	envinit[1] = 0;
+	environ = envinit;
+
+	/*
+	execl("/bin/sh", "-sh", NULL);
+	*/
+	return(0);
+}
+
+static int
+fatal(f, msg)
+	int f;
+	char *msg;
+{
+	char buf[BUFSIZ];
+
+	(void) sprintf(buf, "telnetd: %s.\r\n", msg);
+	(void) write(f, buf, strlen(buf));
+	exit(1);
+}
+
+static int
+fatalperror(f, msg)
+	int f;
+	char *msg;
+{
+	char buf[BUFSIZ];
+	extern char *sys_errlist[];
+
+	(void) sprintf(buf, "%s: %s\r\n", msg, sys_errlist[errno]);
+	fatal(f, buf);
+}
+
+
+/*
+ * Check a descriptor to see if out of band data exists on it.
+ */
+static int
+stilloob(s)
+int	s;		/* socket number */
+{
+    static struct timeval timeout = { 0 };
+    fd_set	excepts;
+    int value;
+
+    do {
+	FD_ZERO(&excepts);
+	FD_SET(s, &excepts);
+#ifdef hpux
+	value = select(s+1, (int *)0, (int *)0, (int *) &excepts, &timeout);
+#else
+	value = select(s+1, (fd_set *)0, (fd_set *)0, &excepts, &timeout);
+#endif
+    } while ((value == -1) && (errno == EINTR));
+
+    if (value < 0) {
+	fatalperror(pty, "select");
+    }
+    if (FD_ISSET(s, &excepts)) {
+	return 1;
+    } else {
+	return 0;
+    }
+}
+
+/*
+ * Main loop.  Select from pty and network, and
+ * hand data to telnet receiver finite state machine.
+ */
+static int
+telnet(f, p)
+{
+	int on = 1;
+#define	TABBUFSIZ	512
+#undef	TABBUFSIZ
+
+	ioctl(f, FIONBIO, &on);
+	ioctl(p, FIONBIO, &on);
+	ioctl(p, TIOCPKT, &on);
+#if	defined(SO_OOBINLINE)
+	(void)setsockopt(net, SOL_SOCKET, SO_OOBINLINE, &on, sizeof on);
+#endif	/* defined(SO_OOBINLINE) */
+	signal(SIGTSTP, SIG_IGN);
+	/*
+	 * Ignoring SIGTTOU keeps the kernel from blocking us
+	 * in ttioctl() in /sys/tty.c.
+	 */
+	signal(SIGTTOU, SIG_IGN);
+	signal(SIGCHLD, cleanup);
+#ifdef hpux
+	signal(SIGINT, SIG_IGN);
+	signal(SIGQUIT, SIG_IGN);
+	(void) setpgrp();
+#else
+	setpgrp(0, 0);
+#endif
+	/*
+	 * Request to do remote echo and to suppress go ahead.
+	 */
+	if (!myopts[TELOPT_ECHO]) {
+	    dooption(TELOPT_ECHO);
+	}
+	if (!myopts[TELOPT_SGA]) {
+	    dooption(TELOPT_SGA);
+	}
+	/*
+	 * Is the client side a 4.2 (NOT 4.3) system?  We need to know this
+	 * because 4.2 clients are unable to deal with TCP urgent data.
+	 *
+	 * To find out, we send out a "DO ECHO".  If the remote system
+	 * answers "WILL ECHO" it is probably a 4.2 client, and we note
+	 * that fact ("WILL ECHO" ==> that the client will echo what
+	 * WE, the server, sends it; it does NOT mean that the client will
+	 * echo the terminal input).
+	 */
+	(void) sprintf(nfrontp, doopt, TELOPT_ECHO);
+	nfrontp += sizeof doopt-2;
+	hisopts[TELOPT_ECHO] = OPT_YES_BUT_ALWAYS_LOOK;
+
+	ptyip = ptyibuf+1;		/* Prime the pump */
+	pcc = strlen(ptyip);		/* ditto */
+
+	/* Clear ptybuf[0] - where the packet information is received */
+	ptyibuf[0] = 0;
+	DIAG({sprintf(nfrontp, "td: Entering processing loop\r\n");
+	      nfrontp += strlen(nfrontp);});
+
+	/*
+	 * Call telrcv() once to pick up anything received during
+	 * terminal type negotiation.
+	 */
+	telrcv();
+
+	for (;;) {
+		fd_set ibits, obits, xbits;
+		register int c;
+
+		if (ncc < 0 && pcc < 0)
+			break;
+
+		FD_ZERO(&ibits);
+		FD_ZERO(&obits);
+		FD_ZERO(&xbits);
+		/*
+		 * Never look for input if there's still
+		 * stuff in the corresponding output buffer
+		 */
+		if (nfrontp - nbackp || pcc > 0) {
+			FD_SET(f, &obits);
+			FD_SET(p, &xbits);
+		} else {
+			FD_SET(p, &ibits);
+		}
+		if (pfrontp - pbackp || ncc > 0) {
+			FD_SET(p, &obits);
+		} else {
+			FD_SET(f, &ibits);
+		}
+		if (!SYNCHing) {
+			FD_SET(f, &xbits);
+		}
+		if ((c = select(16, (int *) &ibits, (int *) &obits,
+				(int *) &xbits, (struct timeval *)0)) < 1) {
+			if (c == -1) {
+				if (errno == EINTR) {
+					continue;
+				}
+			}
+			sleep(5);
+			continue;
+		}
+
+		/*
+		 * Any urgent data?
+		 */
+		if (FD_ISSET(net, &xbits)) {
+		    SYNCHing = 1;
+		}
+
+		/*
+		 * Something to read from the network...
+		 */
+		if (FD_ISSET(net, &ibits)) {
+#if	!defined(SO_OOBINLINE)
+			/*
+			 * In 4.2 (and 4.3 beta) systems, the
+			 * OOB indication and data handling in the kernel
+			 * is such that if two separate TCP Urgent requests
+			 * come in, one byte of TCP data will be overlaid.
+			 * This is fatal for Telnet, but we try to live
+			 * with it.
+			 *
+			 * In addition, in 4.2 (and...), a special protocol
+			 * is needed to pick up the TCP Urgent data in
+			 * the correct sequence.
+			 *
+			 * What we do is:  if we think we are in urgent
+			 * mode, we look to see if we are "at the mark".
+			 * If we are, we do an OOB receive.  If we run
+			 * this twice, we will do the OOB receive twice,
+			 * but the second will fail, since the second
+			 * time we were "at the mark", but there wasn't
+			 * any data there (the kernel doesn't reset
+			 * "at the mark" until we do a normal read).
+			 * Once we've read the OOB data, we go ahead
+			 * and do normal reads.
+			 *
+			 * There is also another problem, which is that
+			 * since the OOB byte we read doesn't put us
+			 * out of OOB state, and since that byte is most
+			 * likely the TELNET DM (data mark), we would
+			 * stay in the TELNET SYNCH (SYNCHing) state.
+			 * So, clocks to the rescue.  If we've "just"
+			 * received a DM, then we test for the
+			 * presence of OOB data when the receive OOB
+			 * fails (and AFTER we did the normal mode read
+			 * to clear "at the mark").
+			 */
+		    if (SYNCHing) {
+			int atmark;
+
+			ioctl(net, SIOCATMARK, (char *)&atmark);
+			if (atmark) {
+			    ncc = recv(net, netibuf, sizeof (netibuf), MSG_OOB);
+			    if ((ncc == -1) && (errno == EINVAL)) {
+				ncc = read(net, netibuf, sizeof (netibuf));
+				if (sequenceIs(didnetreceive, gotDM)) {
+				    SYNCHing = stilloob(net);
+				}
+			    }
+			} else {
+			    ncc = read(net, netibuf, sizeof (netibuf));
+			}
+		    } else {
+			ncc = read(net, netibuf, sizeof (netibuf));
+		    }
+		    settimer(didnetreceive);
+#else	/* !defined(SO_OOBINLINE)) */
+		    ncc = read(net, netibuf, sizeof (netibuf));
+#endif	/* !defined(SO_OOBINLINE)) */
+		    if (ncc < 0 && errno == EWOULDBLOCK)
+			ncc = 0;
+		    else {
+			if (ncc <= 0) {
+			    break;
+			}
+			netip = netibuf;
+		    }
+		    DIAG({sprintf(nfrontp,"td: netread %d chars\r\n",ncc);
+			  nfrontp += strlen(nfrontp);});
+		}
+
+		/*
+		 * Something to read from the pty...
+		 */
+		if (FD_ISSET(p, &xbits)) {
+			if (read(p, ptyibuf, 1) != 1) {
+				break;
+			}
+		}
+		if (FD_ISSET(p, &ibits)) {
+			pcc = read(p, ptyibuf, BUFSIZ);
+			if (pcc < 0 && errno == EWOULDBLOCK)
+				pcc = 0;
+			else {
+				if (pcc <= 0)
+					break;
+				/* Skip past "packet" */
+				pcc--;
+				ptyip = ptyibuf+1;
+			}
+		}
+		if (ptyibuf[0] & TIOCPKT_FLUSHWRITE) {
+			netclear();	/* clear buffer back */
+			*nfrontp++ = IAC;
+			*nfrontp++ = DM;
+			neturg = nfrontp-1;  /* off by one XXX */
+			ptyibuf[0] = 0;
+		}
+
+		while (pcc > 0) {
+			if ((&netobuf[BUFSIZ] - nfrontp) < 2)
+				break;
+			c = *ptyip++ & 0377, pcc--;
+			if (c == IAC)
+				*nfrontp++ = c;
+			if ((c == '\n') && (myopts[TELOPT_BINARY] == OPT_NO)) {
+			  *nfrontp++ = '\r';
+			}
+			*nfrontp++ = c;
+			/* Don't do CR-NUL if we are in binary mode */
+			if ((c == '\r') && (myopts[TELOPT_BINARY] == OPT_NO)) {
+				if (pcc > 0 && ((*ptyip & 0377) == '\n')) {
+					*nfrontp++ = *ptyip++ & 0377;
+					pcc--;
+				} else
+					*nfrontp++ = '\0';
+			}
+		}
+		if (FD_ISSET(f, &obits) && (nfrontp - nbackp) > 0)
+			netflush();
+		if (ncc > 0)
+			telrcv();
+		if (FD_ISSET(p, &obits) && (pfrontp - pbackp) > 0)
+			ptyflush();
+	}
+	cleanup();
+}
+	
+/*
+ * State for recv fsm
+ */
+#define	TS_DATA		0	/* base state */
+#define	TS_IAC		1	/* look for double IAC's */
+#define	TS_CR		2	/* CR-LF ->'s CR */
+#define	TS_SB		3	/* throw away begin's... */
+#define	TS_SE		4	/* ...end's (suboption negotiation) */
+#define	TS_WILL		5	/* will option negotiation */
+#define	TS_WONT		6	/* wont " */
+#define	TS_DO		7	/* do " */
+#define	TS_DONT		8	/* dont " */
+
+static int
+telrcv()
+{
+	register int c;
+	static int state = TS_DATA;
+
+	while (ncc > 0) {
+		if ((&ptyobuf[BUFSIZ] - pfrontp) < 2)
+			return;
+		c = *netip++ & 0377, ncc--;
+		switch (state) {
+
+		case TS_CR:
+			state = TS_DATA;
+			/* Strip off \n or \0 after a \r */
+			if ((c == 0) || (c == '\n')) {
+				break;
+			}
+			/* FALL THROUGH */
+
+		case TS_DATA:
+			if (c == IAC) {
+				state = TS_IAC;
+				break;
+			}
+			/*
+			 * We now map \r\n ==> \r for pragmatic reasons.
+			 * Many client implementations send \r\n when
+			 * the user hits the CarriageReturn key.
+			 *
+			 * We USED to map \r\n ==> \n, since \r\n says
+			 * that we want to be in column 1 of the next
+			 * printable line, and \n is the standard
+			 * unix way of saying that (\r is only good
+			 * if CRMOD is set, which it normally is).
+			 */
+			if ((c == '\r') && (hisopts[TELOPT_BINARY] == OPT_NO)) {
+				state = TS_CR;
+			}
+			*pfrontp++ = c;
+			break;
+
+		case TS_IAC:
+gotiac:			switch (c) {
+
+			/*
+			 * Send the process on the pty side an
+			 * interrupt.  Do this with a NULL or
+			 * interrupt char; depending on the tty mode.
+			 */
+			case IP:
+				interrupt();
+				break;
+
+			case BREAK:
+				sendbrk();
+				break;
+
+			/*
+			 * Are You There?
+			 */
+			case AYT:
+				strcpy(nfrontp, "\r\n[Yes]\r\n");
+				break;
+
+			/*
+			 * Abort Output
+			 */
+			case AO: {
+					ptyflush();	/* half-hearted */
+					netclear();	/* clear buffer back */
+					*nfrontp++ = IAC;
+					*nfrontp++ = DM;
+					neturg = nfrontp-1; /* off by one XXX */
+					break;
+				}
+
+			/*
+			 * Erase Character and
+			 * Erase Line
+			 */
+			case EC:
+			case EL: {
+					struct termios b;
+					char ch;
+
+					ptyflush();	/* half-hearted */
+					tcgetattr(pty, &b);
+					ch = (c == EC) ?
+					  b.c_cc[VERASE] : b.c_cc[VKILL];
+					if (ch != '\377') {
+						*pfrontp++ = ch;
+					}
+					break;
+				}
+
+			/*
+			 * Check for urgent data...
+			 */
+			case DM:
+				SYNCHing = stilloob(net);
+				settimer(gotDM);
+				break;
+
+
+			/*
+			 * Begin option subnegotiation...
+			 */
+			case SB:
+				state = TS_SB;
+				SB_CLEAR();
+				continue;
+
+			case WILL:
+				state = TS_WILL;
+				continue;
+
+			case WONT:
+				state = TS_WONT;
+				continue;
+
+			case DO:
+				state = TS_DO;
+				continue;
+
+			case DONT:
+				state = TS_DONT;
+				continue;
+
+			case IAC:
+				*pfrontp++ = c;
+				break;
+			}
+			state = TS_DATA;
+			break;
+
+		case TS_SB:
+			if (c == IAC) {
+				state = TS_SE;
+			} else {
+				SB_ACCUM(c);
+			}
+			break;
+
+		case TS_SE:
+			if (c != SE) {
+				if (c != IAC) {
+					SB_ACCUM(IAC);
+					SB_ACCUM(c);
+					subpointer -= 2;
+					SB_TERM();
+					suboption();
+					state = TS_IAC;
+					goto gotiac;
+				}
+				SB_ACCUM(c);
+				state = TS_SB;
+			} else {
+			  SB_ACCUM(IAC);
+			  SB_ACCUM(SE);
+			  subpointer -= 2;
+
+				SB_TERM();
+				suboption();	/* handle sub-option */
+				state = TS_DATA;
+			}
+			break;
+
+		case TS_WILL:
+			if (hisopts[c] != OPT_YES)
+				willoption(c);
+			state = TS_DATA;
+			continue;
+
+		case TS_WONT:
+			if (hisopts[c] != OPT_NO)
+				wontoption(c);
+			state = TS_DATA;
+			continue;
+
+		case TS_DO:
+			if (myopts[c] != OPT_YES)
+				dooption(c);
+			state = TS_DATA;
+			continue;
+
+		case TS_DONT:
+			if (myopts[c] != OPT_NO) {
+				dontoption(c);
+			}
+			state = TS_DATA;
+			continue;
+
+		default:
+			syslog(LOG_ERR, "telnetd: panic state=%d\n", state);
+			printf("telnetd: panic state=%d\n", state);
+			exit(1);
+		}
+	}
+}
+
+static int
+willoption(option)
+	int option;
+{
+	char *fmt;
+
+	switch (option) {
+
+	case TELOPT_BINARY:
+	  {
+	    init_termbuf();
+	    tty_binaryin(1);
+	    set_termbuf();
+	    fmt = doopt;
+	    break;
+	  }
+
+	case TELOPT_ECHO:
+		not42 = 0;		/* looks like a 4.2 system */
+		/*
+		 * Now, in a 4.2 system, to break them out of ECHOing
+		 * (to the terminal) mode, we need to send a "WILL ECHO".
+		 * Kludge upon kludge!
+		 */
+		if (myopts[TELOPT_ECHO] == OPT_YES) {
+		    dooption(TELOPT_ECHO);
+		}
+		fmt = dont;
+		break;
+
+	case TELOPT_TTYPE:
+		settimer(ttypeopt);
+		if (hisopts[TELOPT_TTYPE] == OPT_YES_BUT_ALWAYS_LOOK) {
+		    hisopts[TELOPT_TTYPE] = OPT_YES;
+		    return;
+		}
+		fmt = doopt;
+		break;
+
+	case TELOPT_SGA:
+		fmt = doopt;
+		break;
+
+	case TELOPT_TM:
+		fmt = dont;
+		break;
+
+	default:
+		fmt = dont;
+		break;
+	}
+	if (fmt == doopt) {
+		hisopts[option] = OPT_YES;
+	} else {
+		hisopts[option] = OPT_NO;
+	}
+	(void) sprintf(nfrontp, fmt, option);
+	nfrontp += sizeof (dont) - 2;
+}
+
+static int
+wontoption(option)
+	int option;
+{
+	char *fmt;
+
+	switch (option) {
+	case TELOPT_ECHO:
+		not42 = 1;		/* doesn't seem to be a 4.2 system */
+		break;
+
+	case TELOPT_BINARY:
+	  {
+	    init_termbuf();
+	    tty_binaryin(0);
+	    set_termbuf();
+	    fmt = doopt;
+	    break;
+	  }
+
+	case TELOPT_TTYPE:
+	    settimer(ttypeopt);
+	    break;
+	}
+
+	fmt = dont;
+	hisopts[option] = OPT_NO;
+	(void) sprintf(nfrontp, fmt, option);
+	nfrontp += sizeof (doopt) - 2;
+}
+
+static int
+dooption(option)
+	int option;
+{
+	char *fmt;
+
+	switch (option) {
+
+	case TELOPT_TM:
+		fmt = wont;
+		break;
+
+	case TELOPT_ECHO:
+		init_termbuf();
+		tty_setecho(1);
+		set_termbuf();
+		fmt = will;
+		break;
+
+	case TELOPT_BINARY:
+		init_termbuf();
+		tty_binaryout(1);
+		set_termbuf();
+		fmt = will;
+		break;
+
+	case TELOPT_SGA:
+		fmt = will;
+		break;
+
+	default:
+		fmt = wont;
+		break;
+	}
+	if (fmt == will) {
+	    myopts[option] = OPT_YES;
+	} else {
+	    myopts[option] = OPT_NO;
+	}
+	(void) sprintf(nfrontp, fmt, option);
+	nfrontp += sizeof (doopt) - 2;
+}
+
+
+static int
+dontoption(option)
+int option;
+{
+    char *fmt;
+
+    switch (option) {
+    case TELOPT_ECHO:		/* we should stop echoing */
+	init_termbuf();
+	tty_setecho(0);
+	set_termbuf();
+	fmt = wont;
+	break;
+
+    default:
+	fmt = wont;
+	break;
+    }
+
+    if (fmt = wont) {
+	myopts[option] = OPT_NO;
+    } else {
+	myopts[option] = OPT_YES;
+    }
+    (void) sprintf(nfrontp, fmt, option);
+    nfrontp += sizeof (wont) - 2;
+}
+
+/*
+ * suboption()
+ *
+ *	Look at the sub-option buffer, and try to be helpful to the other
+ * side.
+ *
+ *	Currently we recognize:
+ *
+ *	Terminal type is
+ */
+static int
+suboption()
+{
+    switch (SB_GET()) {
+    case TELOPT_TTYPE: {		/* Yaaaay! */
+	static char terminalname[46] = "TERM=";
+
+	settimer(ttypesubopt);
+
+	if (SB_EOF() || SB_GET() != TELQUAL_IS) {
+	    return;		/* ??? XXX but, this is the most robust */
+	}
+
+	terminaltype = terminalname+strlen(terminalname);
+
+	while ((terminaltype < (terminalname + sizeof terminalname-1)) &&
+								    !SB_EOF()) {
+	    register int c;
+
+	    c = SB_GET();
+	    if (isupper(c)) {
+		c = tolower(c);
+	    }
+	    *terminaltype++ = c;    /* accumulate name */
+	}
+	*terminaltype = 0;
+	terminaltype = terminalname;
+	break;
+    }
+
+    default:
+	;
+    }
+}
+
+/*
+ * Send interrupt to process on other side of pty.
+ * If it is in raw mode, just write NULL;
+ * otherwise, write intr char.
+ */
+static int
+interrupt()
+{
+	ptyflush();	/* half-hearted */
+
+#ifdef	TCSIG
+	(void) ioctl(pty, TCSIG, (char *)SIGINT);
+#else	/* TCSIG */
+	init_termbuf();
+	*pfrontp++ = termbuf.c_cc[VINTR] ?
+			(unsigned char)termbuf.c_cc[VINTR] : '\177';
+#endif	/* TCSIG */
+}
+
+/*
+ * Send quit to process on other side of pty.
+ * If it is in raw mode, just write NULL;
+ * otherwise, write quit char.
+ */
+static int
+sendbrk()
+{
+	ptyflush();	/* half-hearted */
+#ifdef	TCSIG
+	(void) ioctl(pty, TCSIG, (char *)SIGQUIT);
+#else	/* TCSIG */
+	init_termbuf();
+	*pfrontp++ = termbuf.c_cc[VQUIT] ?
+			(unsigned char)termbuf.c_cc[VQUIT] : '\034';
+#endif	/* TCSIG */
+}
+
+static int
+ptyflush()
+{
+	int n;
+
+	if ((n = pfrontp - pbackp) > 0)
+		n = write(pty, pbackp, n);
+	if (n < 0)
+		return;
+	pbackp += n;
+	if (pbackp == pfrontp)
+		pbackp = pfrontp = ptyobuf;
+}
+
+/*
+ * nextitem()
+ *
+ *	Return the address of the next "item" in the TELNET data
+ * stream.  This will be the address of the next character if
+ * the current address is a user data character, or it will
+ * be the address of the character following the TELNET command
+ * if the current address is a TELNET IAC ("I Am a Command")
+ * character.
+ */
+static char *
+nextitem(current)
+char	*current;
+{
+    if ((*current&0xff) != IAC) {
+	return current+1;
+    }
+    switch (*(current+1)&0xff) {
+    case DO:
+    case DONT:
+    case WILL:
+    case WONT:
+	return current+3;
+    case SB:		/* loop forever looking for the SE */
+	{
+	    register char *look = current+2;
+
+	    for (;;) {
+		if ((*look++&0xff) == IAC) {
+		    if ((*look++&0xff) == SE) {
+			return look;
+		    }
+		}
+	    }
+	}
+    default:
+	return current+2;
+    }
+}
+
+
+/*
+ * netclear()
+ *
+ *	We are about to do a TELNET SYNCH operation.  Clear
+ * the path to the network.
+ *
+ *	Things are a bit tricky since we may have sent the first
+ * byte or so of a previous TELNET command into the network.
+ * So, we have to scan the network buffer from the beginning
+ * until we are up to where we want to be.
+ *
+ *	A side effect of what we do, just to keep things
+ * simple, is to clear the urgent data pointer.  The principal
+ * caller should be setting the urgent data pointer AFTER calling
+ * us in any case.
+ */
+static int
+netclear()
+{
+    register char *thisitem, *next;
+    char *good;
+#define	wewant(p)	((nfrontp > p) && ((*p&0xff) == IAC) && \
+				((*(p+1)&0xff) != EC) && ((*(p+1)&0xff) != EL))
+
+    thisitem = netobuf;
+
+    while ((next = nextitem(thisitem)) <= nbackp) {
+	thisitem = next;
+    }
+
+    /* Now, thisitem is first before/at boundary. */
+
+    good = netobuf;	/* where the good bytes go */
+
+    while (nfrontp > thisitem) {
+	if (wewant(thisitem)) {
+	    int length;
+
+	    next = thisitem;
+	    do {
+		next = nextitem(next);
+	    } while (wewant(next) && (nfrontp > next));
+	    length = next-thisitem;
+	    bcopy(thisitem, good, length);
+	    good += length;
+	    thisitem = next;
+	} else {
+	    thisitem = nextitem(thisitem);
+	}
+    }
+
+    nbackp = netobuf;
+    nfrontp = good;		/* next byte to be sent */
+    neturg = 0;
+}
+
+/*
+ *  netflush
+ *		Send as much data as possible to the network,
+ *	handling requests for urgent data.
+ */
+static int
+netflush()
+{
+    int n;
+
+    if ((n = nfrontp - nbackp) > 0) {
+	/*
+	 * if no urgent data, or if the other side appears to be an
+	 * old 4.2 client (and thus unable to survive TCP urgent data),
+	 * write the entire buffer in non-OOB mode.
+	 */
+	if ((neturg == 0) || (not42 == 0)) {
+	    n = write(net, nbackp, n);	/* normal write */
+	} else {
+	    n = neturg - nbackp;
+	    /*
+	     * In 4.2 (and 4.3) systems, there is some question about
+	     * what byte in a sendOOB operation is the "OOB" data.
+	     * To make ourselves compatible, we only send ONE byte
+	     * out of band, the one WE THINK should be OOB (though
+	     * we really have more the TCP philosophy of urgent data
+	     * rather than the Unix philosophy of OOB data).
+	     */
+	    if (n > 1) {
+		n = send(net, nbackp, n-1, 0);	/* send URGENT all by itself */
+	    } else {
+		n = send(net, nbackp, n, MSG_OOB);	/* URGENT data */
+	    }
+	}
+    }
+    if (n < 0) {
+	if (errno == EWOULDBLOCK)
+	    return;
+	/* should blow this guy away... */
+	return;
+    }
+    nbackp += n;
+    if (nbackp >= neturg) {
+	neturg = 0;
+    }
+    if (nbackp == nfrontp) {
+	nbackp = nfrontp = netobuf;
+    }
+}
+
+void
+cleanup()
+{
+	char *p;
+
+	p = line + sizeof("/dev/") - 1;
+	*p = 't';
+	/* (void)chmod(line, 0666); */
+	(void)chmod(line, 0600);	/*  Play safe */
+	(void)chown(line, 0, 0);
+	*p = 'p';
+	/* (void)chmod(line, 0600); */
+	(void)chmod(line, 0600);	/* Play safe */
+	(void)chown(line, 0, 0);
+
+	shutdown(net, 2);
+	exit(1);
+}
+
+static int
+init_termbuf()
+{
+  tcgetattr(pty, &termbuf);
+}
+
+static int
+tty_setecho(on)
+int on;
+{
+  if(on)
+    termbuf.c_iflag |= ECHO;
+  else
+    termbuf.c_oflag &= ~ECHO;
+}
+
+static int
+tty_binaryin(on)
+int on;
+{
+  if(on)
+    termbuf.c_iflag &= ~ISTRIP;
+  else
+    termbuf.c_oflag |= ISTRIP;
+}
+
+static int
+tty_binaryout(on)
+int on;
+{
+  if(on) {
+    termbuf.c_cflag &= ~(CSIZE|PARENB);
+    termbuf.c_cflag |= CS8;
+    termbuf.c_oflag &= ~OPOST;
+  } else {
+    termbuf.c_cflag &= ~CSIZE;
+    termbuf.c_cflag |= CS7|PARENB;
+    termbuf.c_oflag |= OPOST;
+  }
+}
+static int
+set_termbuf()
+{
+  ptyflush();
+  tcsetattr(pty, TCSANOW, &termbuf);
+}
+@
+
+
+1.2
+log
+@safety
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/dh/RCS/telnetd.c,v 1.1 1994/06/04 12:24:05 vince Exp vince $
+ * $Date: 1994/06/04 12:24:05 $
+ * $Revision: 1.1 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: telnetd.c,v 1.1 1994/06/04 12:24:05 vince Exp vince $";
+d244 1
+d246 1
+@
+
+
+1.1
+log
+@safety
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/netshield/RCS/telnetd.c,v 1.3 1994/05/09 00:06:07 vince Exp vince $
+ * $Date: 1994/05/09 00:06:07 $
+ * $Revision: 1.3 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: telnetd.c,v 1.3 1994/05/09 00:06:07 vince Exp vince $";
+d341 1
+d343 1
+@

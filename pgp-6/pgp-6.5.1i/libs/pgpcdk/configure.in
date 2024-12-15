@@ -1,0 +1,414 @@
+d
+l
+dnl $Id: configure.in,v 1.21.14.1 1999/07/29 22:06:57 heller Exp $
+dnl
+dnl This file in input to autoconf.  It consists of a series of m4
+dnl macros which expand to produce the shell script "configure".
+dnl Anything which is not an m4 macro is copied directly to the output.
+dnl
+dnl Start things up.  If the specified file doesn't exist, configure
+dnl will complain.
+
+AC_INIT(pub/include/pgpBigNum.h)
+
+dnl The following tests need to know that we intend to produce a config.h
+dnl file, even though this won't expand to any shell script code until
+dnl AC_OUTPUT time.
+AC_CONFIG_HEADER(unix/pgpConfig.h)
+
+dnl The following directory is where we will find the ancillary scripts,
+dnl like install-sh, config.sub, and config.guess.
+AC_CONFIG_AUX_DIR(unix/config)
+
+dnl Platform configuration
+AC_CANONICAL_HOST
+
+dnl To See if the platform can be defined
+SHELL=/bin/sh
+
+case "$host" in
+*-*-solaris*)
+    PGPARCH=PGP_UNIX_SOLARIS
+    ;;
+*-*-linux)
+    PGPARCH=PGP_UNIX_LINUX
+    ;;
+*)
+    PGPARCH=PGP_UNIX_UNKNOWN
+    ;;
+esac
+
+
+# Export the host CPU to Makefiles for assembly-language use
+HOST_CPU=$host_cpu
+AC_SUBST(HOST_CPU)
+
+dnl Checks for programs.
+# Find a compiler to use.
+# Check 1) The $CC environment varaible, 2) gcc, 3) acc, and 4) cc.
+dnl This used to be just AC-CHECK-PROGS(CC, gcc acc, cc), but...
+# This deals with brain-damaged Sun systems that place a bogus cc or
+# acc executable in the $PATH, which just prints an error and exit.
+# We deal with this by actually trying to compile a trivial test program.
+if eval "test \"`echo '$''{'ac_cv_prog_CC'+set}'`\" = set"; then
+  AC_MSG_CHECKING(For C compiler (cached))
+  CC="$ac_cv_prog_CC"
+  AC_MSG_RESULT($CC)
+elif test -n "$CC"; then
+  ac_cv_prog_CC="$CC" # Let the user override the test.
+  AC_MSG_CHECKING(For C compiler)
+  AC_MSG_RESULT($CC)
+else
+  IFS="${IFS=	}"; ac_save_ifs="$IFS"; IFS="${IFS}:"
+  echo 'main(){return 0;}' > conftest.$ac_ext
+  for ac_prog in gcc acc cc; do
+# Extract the first word of "$ac_prog", so it can be a program name with args.
+    set dummy $ac_prog; ac_word=$2
+    AC_MSG_CHECKING(for $ac_word)
+    for ac_dir in $PATH; do
+      test -z "$ac_dir" && ac_dir=.
+      if test -r "$ac_dir/$ac_word"; then
+        CC="$ac_prog"
+        if eval $ac_compile; then
+          ac_cv_prog_CC="$ac_prog"
+        fi
+        break
+      fi
+    done
+    CC="$ac_cv_prog_CC"
+    if test -n "$CC"; then
+      AC_MSG_RESULT($ac_dir/$CC)
+      break;
+    fi
+    AC_MSG_RESULT(no)
+  done
+  if test ! -n "$CC"; then
+    AC_MSG_ERROR(no C compiler found)
+  fi
+  IFS="$ac_save_ifs"
+  rm -f conftest*
+fi
+AC_SUBST(CC)
+
+AC_CACHE_CHECK(whether we are using GNU CC, ac_cv_prog_gcc,
+[dnl The semicolon is to pacify NeXT's syntax-checking cpp.
+cat > conftest.c <<EOF
+#ifdef __GNUC__
+  yes;
+#endif
+EOF
+if ${CC-cc} -E conftest.c 2>&AC_FD_CC | egrep yes >/dev/null 2>&1; then
+  ac_cv_prog_gcc=yes
+else
+  ac_cv_prog_gcc=no
+fi])
+
+if test $ac_cv_prog_gcc = yes; then
+  if test "${CFLAGS+set}" != set; then
+AC_CACHE_CHECK(whether ${CC-cc} accepts -g, ac_cv_prog_gcc_g,
+[echo 'void f(){}' > conftest.c
+if test -z "`${CC-cc} -g -c conftest.c 2>&1`"; then
+  ac_cv_prog_gcc_g=yes
+else
+  ac_cv_prog_gcc_g=no
+fi
+rm -f conftest*
+])
+  fi
+fi
+
+dnl This is a rather ugly way to find out we are using the latest Sun compiler
+AC_CACHE_CHECK(whether we are using Sun CC, ac_cv_prog_suncc,
+[
+if $CC -flags 2>&1 | grep SUNWspro >/dev/null 2>&1; then
+  ac_cv_prog_suncc=yes
+else
+  ac_cv_prog_suncc=no
+fi
+])
+
+dnl check for HP-UX compiler
+AC_CACHE_CHECK(whether we are using HP-UX cc, ac_cv_prog_hpuxcc,
+[ac_cv_prog_hpuxcc=no
+ if test $ac_cv_prog_gcc = no; then
+   case $host_os in
+     *hpux*) ac_cv_prog_hpuxcc=yes;;
+   esac
+ fi])
+
+AC_CACHE_CHECK(setting C++ compiler based on C compiler, CCC,
+[
+if test $ac_cv_prog_gcc = yes; then
+  CCC="g++"
+elif test $ac_cv_prog_suncc = yes; then
+  CCC="CC"
+elif test $ac_cv_prog_hpuxcc = yes; then
+  CCC=aCC
+fi])
+AC_SUBST(CCC)
+
+dnl Set up the COMPILER define value
+if test "${COMPILER+set}" != set; then
+  if test $ac_cv_prog_gcc = yes; then
+    COMPILER="-DPGP_COMPILER_GCC=1"
+  elif test $ac_cv_prog_suncc = yes; then
+    COMPILER="-DPGP_COMPILER_SUN=1"
+  elif test $ac_cv_prog_hpuxcc = yes; then
+    COMPILER="-DPGP_COMPILER_HPUX=1"
+  fi
+fi
+AC_SUBST(COMPILER)
+
+AC_CACHE_CHECK(setting C++ AR value based on C compiler, NEWAR,
+[
+if test $ac_cv_prog_suncc = yes; then
+  NEWAR="AR=CC -xar"
+  NEWARFLAGS="ARFLAGS=-o"
+fi])
+AC_SUBST(NEWAR)
+AC_SUBST(NEWARFLAGS)
+
+# Now, figure out what CFLAGS we want.  If the user didn't ask specifically,
+# we're going to use some ideas of our own.
+if test "${CFLAGS+set}" != set; then
+
+# Prefer optimizing, with debugging a second
+if test $ac_cv_prog_gcc$ac_cv_prog_gcc_g = yesyes; then
+  CFLAGS="-O -g"
+elif test $ac_cv_prog_suncc = yes; then
+  CFLAGS="-O -g"
+else
+  CFLAGS=-O
+fi
+ 
+dnl This is to get warnings enabled where possible.
+AC_MSG_CHECKING(for useful warning options (\$WARN))
+# This currently only deals with gcc and Sun's V4.2 compiler.
+if test "${WARN+set}" != set; then
+  if test $ac_cv_prog_gcc = yes; then
+    WARN="-Wall -W -Wshadow -Wpointer-arith -Wmissing-prototypes \
+-Wwrite-strings"
+    WARNCC="-Wall -W -Wshadow -Wpointer-arith -Wmissing-prototypes \
+-Wwrite-strings"
+  elif test $ac_cv_prog_suncc = yes; then
+    WARN="-v -Xc -xstrconst"
+    WARNCC="+w2 +w "
+  elif test $ac_cv_prog_hpuxcc = yes; then
+    WARN=-Ae
+  fi
+  # Any other compiler's warning flags?
+fi
+AC_MSG_RESULT(${WARN-none})
+AC_SUBST(WARN)
+AC_SUBST(WARNCC)
+
+dnl currently, this only attempts to handle 386 linux/bsd difficulties
+
+case "$host_os" in
+        *aout* | *BSD* | *bsd*)
+                case "$host_cpu" in
+                        i[[3456]]86) host_obj_type=_aout;;
+                esac;;
+esac
+
+host_obj_type=$host_obj_type
+AC_SUBST(host_obj_type)
+
+AC_MSG_CHECKING(for useful tuning options (\$TUNE))
+if test "${TUNE+set}" != set; then
+  if test $ac_cv_prog_gcc = yes; then
+    TUNE="-O6 -fomit-frame-pointer"
+    case "$host_cpu" in
+    i486)
+      TUNE="$TUNE -m486"
+      ;;
+    i586 | i686)
+      TUNE="$TUNE -m486 -malign-loops=2 -malign-jumps=2 -malign-functions=2"
+      ;;
+    sparc)
+      # Try to use the architecture-detecting tool with SunPro CC.
+      if bn_tune=`(fpversion -foption) 2>/dev/null`; then
+	if test "$bn_tune" = xcg92 || test "$bn_tune" = cg92; then
+	  TUNE="$TUNE -mv8"
+	elif test "$bn_tune" != xcg89 && test "$bn_tune" != cg89; then
+	  TUNE="$TUNE -mv8"
+	  bn_tune_guess=yes
+	fi
+      else
+	TUNE="$TUNE -mv8"
+	bn_tune_guess=yes
+      fi
+      ;;
+    esac
+  elif test $ac_cv_prog_suncc = yes; then
+    TUNE=-xO5
+
+    # Architecture: -native if avail., else as fpversion says, else guess -mv8
+    if $CC -flags 2>&1 | grep '^-native' >/dev/null 2>&1; then
+      TUNE="$TUNE -native"
+    elif bn_tune=`(fpversion -foption) 2>/dev/null`; then
+      TUNE="$TUNE -$bn_tune"
+    elif $CC -flags 2>&1 | grep '^-xcg92' >/dev/null 2>&1; then
+      TUNE="$TUNE -xcg92"
+      bn_tune_guess=yes
+    fi
+  fi
+fi
+bn_tune_set=${TUNE+set}
+# If nothing better is available, turn on -O
+: ${TUNE=-O}
+AC_MSG_RESULT(${TUNE-none})
+if test "$bn_tune_set" != set; then
+  AC_MSG_WARN(not optimizing heavily - try setting \$CFLAGS)
+elif test "$bn_tune_guess" = yes; then
+  AC_MSG_WARN([architecture guessed.  If incorrect, use explicit \$TUNE.])
+fi
+AC_SUBST(TUNE)
+
+fi
+# ^^ end of CFLAGS inference section
+
+
+# Now, figure out what C++ FLAGS we want.  If the user didn't ask specifically,
+# we're going to use some ideas of our own.
+if test "${CCFLAGS+set}" != set; then
+  # C++ flags based on compiler being used
+  if test $ac_cv_prog_gcc = yes; then
+    CCFLAGS="-fhandle-exceptions"
+  fi 
+fi
+AC_SUBST(CCFLAGS)
+
+AC_REQUIRE_CPP
+# Finally, figure out the command to generate dependencies.
+AC_CACHE_CHECK(how to make dependencies, ac_cv_prog_DEPEND,
+[if test -n "$DEPEND"; then
+  ac_cv_prog_DEPEND="$DEPEND"
+else
+  IFS="${IFS=	}"; ac_save_ifs="$IFS"; IFS="${IFS}:"
+  echo '#include "confdefs.h"' > conftest.c
+  for ac_prog in "$CPP -M" "$CC -xM" "$CC -M"; do
+    echo $ac_prog $CPPFLAGS conftest.c 1>&AC_FD_CC;
+    if $ac_prog $CPPFLAGS conftest.c 2>&AC_FD_CC \
+                    | egrep "conftest\.o" >/dev/null 2>&1; then
+      ac_cv_prog_DEPEND="$ac_prog $CPPFLAGS"
+      break
+    fi
+  done
+  if test ! -n "$ac_cv_prog_DEPEND"; then
+    ac_cv_prog_DEPEND=:
+  fi
+  IFS="$ac_save_ifs"
+  rm -f conftest*
+fi])
+DEPEND="$ac_cv_prog_DEPEND"
+AC_SUBST(DEPEND)
+
+# Sun CC requires different depend flags
+if test $ac_cv_prog_suncc = yes; then
+	CCDEPEND="CC -xM"
+else
+	# use the same as for the C compiler by default
+	CCDEPEND="$DEPEND"
+fi
+AC_SUBST(CCDEPEND)
+
+# Find a BSD-compatibile install program, with install-sh as a fallback.
+AC_PROG_INSTALL
+
+# Find "ranlib".  Sone systems don't have or need ranlib.  If so,
+# ":" (do nothing) is used instead.
+AC_PROG_RANLIB
+
+# Use symlinks (ln -s) if possible.  If not, use hard links (ln).
+AC_PROG_LN_S
+
+# Figure out how to test for symlinks...  Check 'test -L' and then 'test -h'
+AC_CACHE_CHECK(how to test for symlinks, ac_cv_prog_TEST_L,
+[rm -f conftest
+$ac_cv_prog_LN_S foo conftest
+IFS="${IFS=	}"; ac_save_ifs="$IFS"; IFS="${IFS}:"
+if ( test -L conftest ); then
+  ac_cv_prog_TEST_L="test -L"
+elif ( test -h conftest ); then
+  ac_cv_prog_TEST_L="test -h"
+else
+  ac_cv_prog_TEST_L="test ! -f"
+fi
+IFS="$ac_save_ifs"
+rm -f conftest*])
+TEST_L="$ac_cv_prog_TEST_L"
+AC_SUBST(TEST_L)
+
+dnl Checks for libraries.
+AC_CHECK_LIB(thread, main, 
+  THREADLIB="-lthread", 
+  AC_CHECK_LIB(pthread, main, THREADLIB="-lpthread"))
+AC_SUBST(THREADLIB)
+
+dnl Checks for library functions.
+dnl (we don't have any)
+
+# The big bang!  Produce the output files.  This is config.cache, and
+# config.status, which builds the config.h file and a long list of
+# Makefiles.
+dnl The value specified to AC_CONFIG_HEADER at the top if the file is
+dnl used here.
+PGP_AC_OUTPUT(
+	Makefile
+	priv/Makefile
+	priv/clientlib/Makefile
+	priv/crypto/Makefile
+	priv/crypto/bignum/Makefile
+	priv/crypto/cipher/Makefile
+	priv/crypto/compress/Makefile
+	priv/crypto/hash/Makefile
+	priv/crypto/pipe/Makefile
+	priv/crypto/pipe/crypt/Makefile
+	priv/crypto/pipe/file/Makefile
+	priv/crypto/pipe/parser/Makefile
+	priv/crypto/pipe/sig/Makefile
+	priv/crypto/pipe/text/Makefile
+	priv/crypto/pipe/utils/Makefile
+	priv/crypto/random/Makefile
+	priv/crypto/secshare/Makefile
+	priv/debug/Makefile
+	priv/encrypt/Makefile
+	priv/regexp/Makefile
+	priv/include/Makefile
+	priv/keys/Makefile
+	priv/keys/keydb/Makefile
+	priv/keys/keys/Makefile
+	priv/keys/pubkey/Makefile
+	priv/ui/Makefile
+	priv/ui/common/Makefile
+	priv/utilities/Makefile
+	priv/utilities/helper/Makefile
+	priv/utilities/prefs/Makefile
+	priv/utilities/utils/Makefile
+	priv/utilities/errors/Makefile
+	priv/networklib/Makefile
+	priv/networklib/keyserver/Makefile
+	priv/networklib/pgpsockets/Makefile
+	priv/networklib/pgpsockets/common/Makefile
+	priv/networklib/tls/Makefile
+	priv/external/Makefile
+	priv/external/common/Makefile
+	priv/external/common/tis/Makefile
+	priv/external/common/tis/casupport/Makefile
+	priv/external/common/tis/pkcs7/Makefile
+	priv/external/common/tis/pkcs7/libpkcs7/Makefile
+	priv/external/common/tis/pkcs8/Makefile
+	priv/external/common/tis/pkcs12/Makefile
+	priv/external/common/tis/cms/Makefile
+	priv/external/common/tis/cms/src/Makefile
+	pub/Makefile
+	pub/clientlib/Makefile
+	unix/ui/Makefile
+	pub/include/Makefile, unix/config/pre.in, unix/config/post.in)
+cat >> ./unix/pgpConfig.h << END
+#ifndef $PGPARCH
+#define $PGPARCH 1
+#endif
+END
+

@@ -1,0 +1,1470 @@
+head	1.30;
+access;
+symbols;
+locks
+	vince:1.30; strict;
+comment	@ * @;
+
+
+1.30
+date	96.04.26.11.43.45;	author vince;	state Exp;
+branches;
+next	1.29;
+
+1.29
+date	96.03.28.10.13.17;	author vince;	state Exp;
+branches;
+next	1.28;
+
+1.28
+date	95.11.29.16.25.19;	author vince;	state Exp;
+branches;
+next	1.27;
+
+1.27
+date	95.11.29.15.19.52;	author vince;	state Exp;
+branches;
+next	1.26;
+
+1.26
+date	95.11.27.15.52.56;	author vince;	state Exp;
+branches;
+next	1.25;
+
+1.25
+date	95.05.10.17.10.48;	author vince;	state Exp;
+branches;
+next	1.24;
+
+1.24
+date	95.04.22.09.56.56;	author vince;	state Exp;
+branches;
+next	1.23;
+
+1.23
+date	95.04.22.09.47.01;	author vince;	state Exp;
+branches;
+next	1.22;
+
+1.22
+date	95.04.20.17.31.25;	author vince;	state Exp;
+branches;
+next	1.21;
+
+1.21
+date	95.04.18.12.08.40;	author vince;	state Exp;
+branches;
+next	1.20;
+
+1.20
+date	95.04.14.16.51.41;	author vince;	state Exp;
+branches;
+next	1.19;
+
+1.19
+date	95.02.25.14.54.11;	author vince;	state Exp;
+branches;
+next	1.18;
+
+1.18
+date	95.01.24.15.23.58;	author vince;	state Exp;
+branches;
+next	1.17;
+
+1.17
+date	95.01.24.12.50.43;	author vince;	state Exp;
+branches;
+next	1.16;
+
+1.16
+date	95.01.02.17.31.33;	author vince;	state Exp;
+branches;
+next	1.15;
+
+1.15
+date	94.12.28.20.28.08;	author vince;	state Exp;
+branches;
+next	1.14;
+
+1.14
+date	94.12.18.13.21.12;	author vince;	state Exp;
+branches;
+next	1.13;
+
+1.13
+date	94.12.14.09.56.46;	author vince;	state Exp;
+branches;
+next	1.12;
+
+1.12
+date	94.12.10.19.44.49;	author vince;	state Exp;
+branches;
+next	1.11;
+
+1.11
+date	94.12.10.14.17.28;	author vince;	state Exp;
+branches;
+next	1.10;
+
+1.10
+date	94.12.10.13.15.55;	author vince;	state Exp;
+branches;
+next	1.9;
+
+1.9
+date	94.12.10.13.12.11;	author vince;	state Exp;
+branches;
+next	1.8;
+
+1.8
+date	94.12.10.12.59.47;	author vince;	state Exp;
+branches;
+next	1.7;
+
+1.7
+date	94.12.10.10.43.44;	author vince;	state Exp;
+branches;
+next	1.6;
+
+1.6
+date	94.12.10.08.44.21;	author vince;	state Exp;
+branches;
+next	1.5;
+
+1.5
+date	94.12.09.18.08.34;	author vince;	state Exp;
+branches;
+next	1.4;
+
+1.4
+date	94.12.09.17.54.20;	author vince;	state Exp;
+branches;
+next	1.3;
+
+1.3
+date	94.12.09.16.33.17;	author vince;	state Exp;
+branches;
+next	1.2;
+
+1.2
+date	94.12.09.14.25.05;	author vince;	state Exp;
+branches;
+next	1.1;
+
+1.1
+date	94.12.08.18.00.33;	author vince;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.30
+log
+@automatic
+@
+text
+@/*
+ * $Author: vince $
+ * $Header: /users/vince/src/stel-dist/skey/RCS/skeyd.c,v 1.29 1996/03/28 10:13:17 vince Exp $
+ * $Date: 1996/03/28 10:13:17 $
+ * $Revision: 1.29 $
+ * $Locker:  $
+ */
+
+#ifndef	lint
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.29 1996/03/28 10:13:17 vince Exp $";
+#endif	lint
+
+#ifndef SKEYD
+main(argc, argv)
+int	argc;
+char	*argv[];
+{
+	printf("No-no! %s is a null program when compiler without -DSKEYD\n",
+								argv[0]);
+}
+#else /* SKEYD */
+
+#include <stdio.h>
+#if defined(__ultrix) || defined(AIX)
+#include <fcntl.h>
+#else
+#include <sys/fcntl.h>
+#endif
+#include <syslog.h>
+#include <errno.h>
+#include <unistd.h>
+#include <signal.h>
+#include <string.h>
+#ifdef FLOCK
+#include <sys/file.h>
+#endif
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include "skey.h"
+#include "des.h"
+#include "md4.h"
+
+static char	*skeyserver;
+static int	skeyport;
+
+#define LOCKFILE	"/etc/skeyd.lock"
+#define NUMTRY		20
+
+static char	*hname;
+
+static int		fdlock = -1;
+
+main(argc, argv)
+int	argc;
+char	*argv[];
+{
+	struct skeymessage	talk;
+	char			*userline;
+	int			i, fromlen;
+	static void		timeout();
+
+	char			*getskeyfield(), *peername();
+
+#ifdef __ultrix
+	openlog("skeyd", LOG_WARNING);
+#else
+	openlog("skeyd", LOG_PID | LOG_ODELAY, LOG_DAEMON);
+#endif
+
+	if ((hname = peername(0)) == NULL) {
+		perror("getpeername()");
+		exit(1);
+	}
+
+	if (readskeydconf()) {
+		syslog(LOG_INFO, "readskeydconf(): %m");
+		exit(1);
+	}
+
+	(void)signal(SIGALRM, timeout);
+	(void)alarm(SKEYDTIMEOUT);
+
+	if (skey_read_data(0, &talk, sizeof(talk)) != sizeof(talk)) {
+		syslog(LOG_INFO, "reading data from %s: %m", hname);
+		exit(1);
+	}
+	if (talkdecode(&talk)) {
+		syslog(LOG_INFO, "received corrupted data from %s", hname);
+		bzero(&talk, sizeof(talk));
+		talk.flag = SKEYDFAILED;
+		talkencode(&talk);
+		goto sendpoint;
+	}
+	alarm(0);
+
+#ifdef DEBUG
+	syslog(LOG_INFO, "received: `%s' from %s", talk.buf, hname);
+#endif
+
+	/* fix: decrypt and check checksum */
+
+	switch (talk.flag) {
+		case	GIVEMEINFO:
+#ifdef DEBUG
+			syslog(LOG_INFO, "GIVEMEINFO");
+#endif
+			/* get entry in keyfile */
+			userline = getskeyfield(talk.buf);
+
+			bzero(&talk, sizeof(talk));
+			if (userline) {
+				strncpy(talk.buf, userline, sizeof(talk.buf));
+				syslog(LOG_INFO, "information request succeeded");
+				talk.flag = SKEYDOK;
+			}
+			else {
+				syslog(LOG_INFO, "information request failed");
+				/* this query failed anyway, but we provide
+				a sutably encrypted numll pointer as a
+				response to the client */
+				talk.flag = SKEYDOK;
+			}
+			break;
+
+		case	UPDATEKEYS:
+#ifdef SKEYINITINSECURE
+		case	FORCEKEYUPDATE:
+#endif
+#ifdef DEBUG
+			syslog(LOG_INFO, "UPDATEKEYS");
+#endif
+			if (lock(LOCKFILE))
+				exit(1);
+			/* update record */
+			i = updatekeys(talk.buf, talk.flag);
+			if (unlock())
+				exit(1);
+			bzero(&talk, sizeof(talk));
+			talk.flag =  i ? SKEYDFAILED : SKEYDOK;
+			syslog(LOG_INFO, "update %s", 
+				i == SKEYDFAILED ? "rejected" : "succeeded");
+			break;
+
+		default:
+			syslog(LOG_INFO, "panic (flag = %d), from %s",
+							talk.flag, hname);
+			exit(1);
+	}
+
+#ifdef DEBUG
+	syslog(LOG_INFO, "sending: `%s'", talk.buf);
+#endif
+
+	talkencode(&talk);
+
+sendpoint:
+	(void)alarm(SKEYDTIMEOUT);
+	if (skey_write_data(1, &talk, sizeof(talk)) != sizeof(talk)) {
+		syslog(LOG_INFO, "writing data to %s: %m", hname);
+		exit(1);
+	}
+	alarm(0);
+	return(0);
+}
+
+char *
+getskeyfield(username)
+char	*username;
+{
+	static char	line[256];
+	char		line2[256], *p;
+	FILE		*fp;
+	int		found = 0;
+
+	syslog(LOG_INFO, "GIVEMEINFO requested for user %s from %s",
+						username, hname);
+
+	if ((fp = fopen(KEYFILE, "r")) == NULL) {
+		syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+		return(NULL);
+	}
+
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		rip(line);
+		if (line[0] == '#' || !strlen(line))
+			continue;
+		strncpy(line2, line, sizeof(line2));
+		p = strtok(line2, SEPARATOR);
+		if (strcmp(p, username) || strlen(username) != strlen(p))
+			continue;
+		found = 1;
+		break;
+	}
+
+	(void)fclose(fp);
+
+	return (found ? line : NULL);
+}
+
+updatekeys(newline, flag)
+char	*newline;
+int	flag;
+{
+	char		line[256], buf[256], *name, *p;
+	extern int	errno;
+	FILE		*in, *out;
+	int		found = 0;
+	long		omask;
+
+	rip(newline);
+	strncpy(buf, newline, sizeof(buf));
+	name = strtok(buf, SEPARATOR);
+	if (*name == '\0')
+		return(1);
+	
+	syslog(LOG_INFO, "UPDATE requested for %s from %s",
+						name, hname);
+	
+	/* check that /etc/skeykeys exists */
+	if ((in = fopen(KEYFILE, "r")) == NULL) {
+#ifdef SKEYINITINSECURE
+		/* if is does not exist, so there, create it */
+		if (errno != ENOENT) {
+			syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+			return(1);
+		}
+		syslog(LOG_INFO, "%s: %m -- creating it", KEYFILE);
+		if ((out = fopen(KEYFILE, "w")) == NULL) {
+			syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+			(void)fclose(in);
+			return(1);
+		}
+		if (fprintf(out, "%s\n", newline) < 0) {
+			syslog(LOG_INFO, "fprintf(): %m");
+			(void)fclose(out);
+			return(1);
+		}
+		if (fclose(out) == -1) {
+			syslog(LOG_INFO, "fclose(): %m");
+			return(1);
+		}
+		return(0);
+#else
+		/* it does not exist, and we do not trust remote clients to
+		perform a network update */
+		return(1);
+#endif
+	}
+
+	/* temporary file */
+	(void)unlink(PTMPKEYFILE);
+	omask = umask(077);
+	if ((out = fopen(PTMPKEYFILE, "w")) == NULL) {
+		syslog(LOG_INFO, "fopen(%s): %m", PTMPKEYFILE);
+		(void)fclose(in);
+		return(1);
+	}
+	(void)umask(omask);
+
+	/* scan all /etc/skeykeys keys and check matching */
+	errno = 0;
+	while (fgets(line, sizeof(line), in) != NULL) {
+		rip(line);
+		p = line;
+		/* a match occours */
+		if (!strncmp(name, line, strlen(name)) &&
+						strlen(line) >= strlen(name)) {
+			if (found) {
+				/* two usernames in the same password file! */
+				syslog(LOG_INFO,
+					"DUPLICATED SKEY RECORD for %s\n", name);
+				(void)fclose(in);
+				(void)fclose(out);
+				return(1);
+			}
+
+			/* Perform some important sanity checks; in particular
+			   check that the new key is really fff(old key).
+			   The client is supposed to have done the check
+			   already but we want to play it safe, just in case
+			   of biased client performing replay attacks */
+			if (
+#ifdef SKEYINITINSECURE
+			/* skip sanity check, so inits are viable. we
+			   trust clients and the security of clients.
+			 */
+			    flag != FORCEKEYUPDATE &&
+#endif
+			    /* important sanity anti-spoofing check */
+			    sanitychk(newline, line)) {
+				(void)fclose(in);
+				(void)fclose(out);
+				return(1);
+			}
+			found = 1;
+			p = newline;
+		}
+		if (fprintf(out, "%s\n", p) < 0) {
+			syslog(LOG_INFO, "fprintf(): %m");
+			(void)fclose(in);
+			(void)fclose(out);
+			return(1);
+		}
+	}
+	
+	if (errno) {
+		syslog(LOG_INFO, "fgets(): %m");
+		return(1);
+	}
+
+	/* this is a new user; we add it at the end of file */
+	if (!found) {
+		if (fprintf(out, "%s\n", newline) < 0) {
+			syslog(LOG_INFO, "fprintf(): %m");
+			(void)fclose(in);
+			(void)fclose(out);
+			return(1);
+		}
+	}
+
+	if (fclose(in) || fclose(out)) {
+		syslog(LOG_INFO, "fclose(): %m");
+		return(1);
+	}
+	
+	if (rename(PTMPKEYFILE, KEYFILE)) {
+		syslog(LOG_INFO, "rename(): %m");
+		return(1);
+	}
+	return(0);
+}
+
+lock(lockfile)
+char	*lockfile;
+{
+	extern int	errno;
+	int		count = 0;
+
+	if (fdlock != -1) {
+		syslog(LOG_INFO, "lock already set");
+		return(1);
+	}
+	if ((fdlock = open(lockfile, O_CREAT | O_WRONLY, 0600)) == -1) {
+		syslog(LOG_INFO, "%s: %m", lockfile);
+		return(1);
+	}
+
+	for (count = 0; count < NUMTRY; count++) {
+#ifdef FLOCK
+		if (flock(fdlock, LOCK_EX) == -1)
+#else
+		if (lockf(fdlock, F_TLOCK, 0) == -1)
+#endif
+							{
+			if (errno == EACCES)
+				sleep(1);
+			else {
+#ifdef FLOCK
+				perror("lockf(LOCK_EX)");
+#else
+				perror("lockf(F_TLOCK)");
+#endif
+				return(1);
+			}
+		}
+		else
+			break;
+	}
+
+	if (count == NUMTRY) {
+		return(1);
+	}
+	return(0);
+}
+
+unlock()
+{
+	if (fdlock == -1) {
+		syslog(LOG_INFO, "no lock is set");
+		return(1);
+	}
+#ifdef FLOCK
+	if (flock(fdlock, LOCK_UN) == -1) {
+		perror("lock(LOCK_UN)");
+		return(1);
+	}
+#else
+	if (lockf(fdlock, F_ULOCK, 0) == -1) {
+		perror("lock(F_ULOCK)");
+		return(1);
+	}
+#endif
+	(void)close(fdlock);
+	fdlock = -1;
+	return(0);
+}
+
+static void
+timeout(s)
+{
+	(void)signal(s, timeout);
+	syslog(LOG_INFO, "time out (%d seconds)", SKEYDTIMEOUT);
+	exit(1);
+}
+
+sanitychk(l1, l2)
+char	*l1, *l2;
+{
+	int	n1, n2;
+	char	key1[8], key2[8], *p;
+	char	*get4thtoken();
+
+
+	/* gtet 2nd field (sequence number) */
+	if ((n1 = get2ndtoken(l1)) == -2 ||
+	    (n2 = get2ndtoken(l2)) == -2)
+		return (1);
+	
+	if (n1 != n2 - 1) {
+		syslog(LOG_INFO,
+"REPLAY ATTACK (sequence mismatch) from %s (new: %d, old: %d)", hname, n1, n2);
+		return(1);
+	}
+
+	/* get 4th field (key field) */
+	/* first string */
+	if ((p = get4thtoken(l1)) == NULL)
+		return (1);
+	if (atob8(key1, p) == -1) {
+		syslog(LOG_INFO, "atob8(%s)", p);
+		return (1);
+	}
+	/* second string */
+	if ((p = get4thtoken(l2)) == NULL)
+		return (1);
+	if (atob8(key2, p) == -1) {
+		syslog(LOG_INFO, "atob8(%s)", p);
+		return (1);
+	}
+
+	fff(key1);
+
+	if (memcmp(key1, key2, 8)) {
+		syslog(LOG_INFO,
+"REPLAY ATTACK (password mismatch) from %s (new: %s, old: %s)", hname, l1, l2);
+		return(1);
+	}
+	return(0);
+}
+
+char *
+get4thtoken(str)
+char	*str;
+{
+	static char	*p, x[BUFLEN];
+
+	strncpy(x, str, sizeof(x));
+
+	if (strtok(x, SEPARATOR) == NULL ||
+	    strtok(NULL, SEPARATOR) == NULL ||
+	    strtok(NULL, SEPARATOR) == NULL ||
+	    (p = strtok(NULL, SEPARATOR)) == NULL) {
+		syslog(LOG_INFO, "received invalid data from %s", hname);
+		return (NULL);
+	}
+
+	return(p);
+}
+
+get2ndtoken(str)
+char	*str;
+{
+	char	x[BUFLEN], *p;
+
+	strncpy(x, str, sizeof(x));
+
+	if (strtok(x, SEPARATOR) == NULL ||
+	    (p = strtok(NULL, SEPARATOR)) == NULL )  {
+		syslog(LOG_INFO, "received invalid data from %s", hname);
+		return (-2);
+	}
+
+	return(atoi(p));
+}
+
+
+char *
+peername(fd)
+int	fd;
+{
+	struct sockaddr_in	addr;
+	struct hostent		*he;
+	static char		name[128];
+	int			addrlen = sizeof(addr);
+	int			on = 1;
+
+	if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE,
+					(char *)&on, sizeof (on)) == -1) {
+		syslog(LOG_INFO, "setsockopt (SO_KEEPALIVE): %m");
+		return(NULL);
+	}
+
+	if (getpeername(fd, (struct sockaddr *)&addr, &addrlen) == -1) {
+		perror("getpeername()"); /* so frequent */
+		syslog(LOG_INFO, "getpeername() failed");
+		return(NULL);
+	}
+	if ((he = gethostbyaddr((char *)&addr.sin_addr,
+				sizeof(struct in_addr), AF_INET)) == NULL)
+		(void)strcpy(name, (char *) inet_ntoa(addr.sin_addr));
+	else
+		(void)strncpy(name, he->h_name, sizeof(name));
+	return(name);
+}
+
+#endif /* SKEYD */
+@
+
+
+1.29
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.28 1995/11/29 16:25:19 vince Exp vince $
+ * $Date: 1995/11/29 16:25:19 $
+ * $Revision: 1.28 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.28 1995/11/29 16:25:19 vince Exp vince $";
+d245 2
+a246 1
+		/* it does not exist, and we do not trust remote clients */
+@
+
+
+1.28
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.27 1995/11/29 15:19:52 vince Exp vince $
+ * $Date: 1995/11/29 15:19:52 $
+ * $Revision: 1.27 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.27 1995/11/29 15:19:52 vince Exp vince $";
+d24 1
+a24 1
+#ifdef __ultrix
+@
+
+
+1.27
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.26 1995/11/27 15:52:56 vince Exp vince $
+ * $Date: 1995/11/27 15:52:56 $
+ * $Revision: 1.26 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.26 1995/11/27 15:52:56 vince Exp vince $";
+d119 4
+a122 1
+				talk.flag = SKEYDFAILED;
+@
+
+
+1.26
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.25 1995/05/10 17:10:48 vince Exp $
+ * $Date: 1995/05/10 17:10:48 $
+ * $Revision: 1.25 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.25 1995/05/10 17:10:48 vince Exp $";
+d112 1
+a112 1
+			if (userline)
+d114 7
+a120 1
+			talk.flag = SKEYDOK;
+d138 2
+d173 3
+d214 4
+d219 2
+d241 4
+d247 1
+d257 1
+d262 1
+a264 1
+			/* two usernames in the same password file! */
+d266 1
+d282 2
+a283 1
+			   trust clients and the security of clients. */
+d286 1
+d500 1
+a500 1
+	if (getpeername(fd, &addr, &addrlen) == -1) {
+@
+
+
+1.25
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.24 1995/04/22 09:56:56 vince Exp $
+ * $Date: 1995/04/22 09:56:56 $
+ * $Revision: 1.24 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.24 1995/04/22 09:56:56 vince Exp $";
+d92 2
+a93 1
+		goto sendpoint; /* no data, no encryption */
+d254 1
+a254 1
+			   of replay attacks */
+@
+
+
+1.24
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.23 1995/04/22 09:47:01 vince Exp vince $
+ * $Date: 1995/04/22 09:47:01 $
+ * $Revision: 1.23 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.23 1995/04/22 09:47:01 vince Exp vince $";
+d24 3
+d28 1
+d37 3
+d50 2
+d60 1
+a60 2
+	char			*getskeyfield();
+	int			i;
+d63 5
+d69 6
+d84 2
+a85 2
+	if (read_data(0, &talk, sizeof(talk)) != sizeof(talk)) {
+		syslog(LOG_INFO, "read_data: %m");
+d89 1
+a89 1
+		syslog(LOG_INFO, "received corrupted data");
+d97 1
+a97 1
+	syslog(LOG_INFO, "received: `%s'", talk.buf);
+d134 2
+a135 1
+			syslog(LOG_INFO, "panic (flag = %d)", talk.flag);
+d147 2
+a148 2
+	if (write_data(1, &talk, sizeof(talk)) != sizeof(talk)) {
+		syslog(LOG_INFO, "write_data: %m");
+d249 5
+a253 5
+			/* Perform some important sany checks, in particular
+			   check that the new key is really fff(x), where x
+			   is the key. The client is supposed to have
+			   done the check already but we want to play it extra
+			   safe, just in case of reply attacks */
+d257 1
+a257 2
+			   trust clients and the security of clients.
+			   the resulting security level is very low */
+d390 2
+a391 1
+		syslog(LOG_INFO, "REPLAY ATTACK (NEW: %d, OLD: %d)", n1, n2);
+d414 2
+a415 1
+		syslog(LOG_INFO, "REPLAY ATTACK (NEW: %s, OLD: %s)", l1, l2);
+d433 1
+a433 1
+		syslog(LOG_INFO, "received invalid data");
+d449 1
+a449 1
+		syslog(LOG_INFO, "received invalid data");
+d454 30
+@
+
+
+1.23
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.22 1995/04/20 17:31:25 vince Exp vince $
+ * $Date: 1995/04/20 17:31:25 $
+ * $Revision: 1.22 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.22 1995/04/20 17:31:25 vince Exp vince $";
+d73 1
+a73 1
+		goto sendpoint; /* no encryption */
+d124 2
+a125 2
+sendpoint: /* when received corrupted data we do not want to offer
+	      the hacker the chance to start a plaintext attack */
+@
+
+
+1.22
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.21 1995/04/18 12:08:40 vince Exp $
+ * $Date: 1995/04/18 12:08:40 $
+ * $Revision: 1.21 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.21 1995/04/18 12:08:40 vince Exp $";
+d55 1
+a55 1
+	openlog(argv[0], LOG_PID | LOG_ODELAY, LOG_DAEMON);
+@
+
+
+1.21
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.20 1995/04/14 16:51:41 vince Exp vince $
+ * $Date: 1995/04/14 16:51:41 $
+ * $Revision: 1.20 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.20 1995/04/14 16:51:41 vince Exp vince $";
+d237 2
+a238 1
+			   trust clients and security is very bad */
+@
+
+
+1.20
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.19 1995/02/25 14:54:11 vince Exp $
+ * $Date: 1995/02/25 14:54:11 $
+ * $Revision: 1.19 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.19 1995/02/25 14:54:11 vince Exp $";
+d30 3
+d299 6
+a304 1
+		if (lockf(fdlock, F_TLOCK, 0) == -1) {
+d308 5
+a312 1
+				perror("lockf()");
+d332 6
+d342 1
+@
+
+
+1.19
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.18 1995/01/24 15:23:58 vince Exp $
+ * $Date: 1995/01/24 15:23:58 $
+ * $Revision: 1.18 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.18 1995/01/24 15:23:58 vince Exp $";
+d14 8
+a21 2
+#define SKEYD /* it's me! */
+#endif
+d95 1
+d97 1
+d231 7
+a237 1
+			if (flag != FORCEKEYUPDATE && sanitychk(newline, line)) {
+d414 2
+@
+
+
+1.18
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.17 1995/01/24 12:50:43 vince Exp vince $
+ * $Date: 1995/01/24 12:50:43 $
+ * $Revision: 1.17 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.17 1995/01/24 12:50:43 vince Exp vince $";
+d54 1
+a55 1
+	alarm(SKEYDTIMEOUT);
+@
+
+
+1.17
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.16 1995/01/02 17:31:33 vince Exp $
+ * $Date: 1995/01/02 17:31:33 $
+ * $Revision: 1.16 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.16 1995/01/02 17:31:33 vince Exp $";
+a31 1
+#define TIMEOUT		30
+d44 1
+a44 1
+	void			timeout();
+d55 1
+a55 1
+	alarm(TIMEOUT);
+d115 1
+a115 1
+	(void)alarm(TIMEOUT);
+d315 1
+a315 1
+void
+d319 1
+a319 1
+	syslog(LOG_INFO, "time out (%d seconds)", TIMEOUT);
+@
+
+
+1.16
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.15 1994/12/28 20:28:08 vince Exp $
+ * $Date: 1994/12/28 20:28:08 $
+ * $Revision: 1.15 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.15 1994/12/28 20:28:08 vince Exp $";
+d90 1
+d97 1
+a97 1
+			i = updatekeys(talk.buf);
+d156 1
+a156 1
+updatekeys(newline)
+d158 1
+d224 1
+a224 1
+			if (sanitychk(newline, line)) {
+@
+
+
+1.15
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.14 1994/12/18 13:21:12 vince Exp vince $
+ * $Date: 1994/12/18 13:21:12 $
+ * $Revision: 1.14 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.14 1994/12/18 13:21:12 vince Exp vince $";
+d32 1
+a32 1
+#define TIMEOUT		10
+d84 2
+a85 1
+			strncpy(talk.buf, userline, sizeof(talk.buf));
+d161 1
+d171 20
+a190 2
+		syslog(LOG_INFO, "fopen(%s): %m", KEYFILE);
+		return(1);
+d208 9
+d227 1
+d241 10
+@
+
+
+1.14
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.13 1994/12/14 09:56:46 vince Exp vince $
+ * $Date: 1994/12/14 09:56:46 $
+ * $Revision: 1.13 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.13 1994/12/14 09:56:46 vince Exp vince $";
+d50 1
+a50 1
+		syslog("readskeydconf(): %m");
+d57 1
+a57 1
+	if (read_data(0, &talk, sizeof(talk)) == -1) {
+d115 1
+a115 1
+	if (write_data(1, &talk, sizeof(talk)) == -1) {
+d188 3
+a190 3
+			/* perform some important sany checks, in particular
+			   check that the new key is really f(x), where x
+			   is the key. the client is supposed to have
+@
+
+
+1.13
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.12 1994/12/10 19:44:49 vince Exp vince $
+ * $Date: 1994/12/10 19:44:49 $
+ * $Revision: 1.12 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.12 1994/12/10 19:44:49 vince Exp vince $";
+d286 1
+a286 1
+	char	*key1, *key2;
+d300 3
+a302 2
+	/* get 4th field (key field) in binary format */
+	if ((key1 = strdup(get4thtoken(l1))) == NULL)
+d304 11
+a314 3
+
+	if ((key2 = get4thtoken(l2)) == NULL)
+		return(1);
+d329 1
+a329 2
+	char		*p, x[BUFLEN];
+	static char	key[8];
+d341 1
+a341 5
+	if (atob8(key, p) == -1) {
+		syslog(LOG_INFO, "atob8(%s)", p);
+		return(NULL);
+	}
+	return(key);
+@
+
+
+1.12
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.11 1994/12/10 14:17:28 vince Exp $
+ * $Date: 1994/12/10 14:17:28 $
+ * $Revision: 1.11 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.11 1994/12/10 14:17:28 vince Exp $";
+d188 2
+a189 1
+			/* check that the new key is really f(x), where x
+d285 1
+d289 11
+d338 16
+@
+
+
+1.11
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.10 1994/12/10 13:15:55 vince Exp vince $
+ * $Date: 1994/12/10 13:15:55 $
+ * $Revision: 1.10 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.10 1994/12/10 13:15:55 vince Exp vince $";
+a12 1
+
+d20 1
+a21 1
+#include <errno.h>
+@
+
+
+1.10
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.9 1994/12/10 13:12:11 vince Exp vince $
+ * $Date: 1994/12/10 13:12:11 $
+ * $Revision: 1.9 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.9 1994/12/10 13:12:11 vince Exp vince $";
+d66 1
+a66 1
+		goto sendpoint;
+a107 2
+sendpoint:
+
+d113 2
+@
+
+
+1.9
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.8 1994/12/10 12:59:47 vince Exp $
+ * $Date: 1994/12/10 12:59:47 $
+ * $Revision: 1.8 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.8 1994/12/10 12:59:47 vince Exp $";
+d63 1
+a63 1
+		syslog(LOG_INFO, "received corrupted data (wrong password?)");
+d317 1
+a317 1
+		syslog(LOG_INFO, "invalid data");
+@
+
+
+1.8
+log
+@automatic
+@
+text
+@d3 3
+a5 3
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.7 1994/12/10 10:43:44 vince Exp $
+ * $Date: 1994/12/10 10:43:44 $
+ * $Revision: 1.7 $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.7 1994/12/10 10:43:44 vince Exp $";
+d298 1
+a298 1
+		syslog(LOG_INFO, "REPLAY ATTACK (new: %s, old: %s", l1, l2);
+@
+
+
+1.7
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.6 1994/12/10 08:44:21 vince Exp vince $
+ * $Date: 1994/12/10 08:44:21 $
+ * $Revision: 1.6 $
+ * $Locker: vince $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.6 1994/12/10 08:44:21 vince Exp vince $";
+d24 1
+a131 1
+	char		*strtok();
+d143 1
+a143 1
+		p = strtok(line2, " \t\n\r");
+a161 1
+	char		*strtok();
+d165 1
+a165 1
+	name = strtok(buf, "\t \n\r");
+d188 10
+a197 1
+						strlen(line) >= strlen(name))
+d199 1
+d280 46
+@
+
+
+1.6
+log
+@automatic
+@
+text
+@d3 4
+a6 4
+ * $Header: /res/usr/vince/src/skey/RCS/skeyd.c,v 1.4 1994/12/09 17:54:20 vince Exp $
+ * $Date: 1994/12/09 17:54:20 $
+ * $Revision: 1.4 $
+ * $Locker:  $
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id: skeyd.c,v 1.4 1994/12/09 17:54:20 vince Exp $";
+a28 1
+static char	*skeypwd;
+@
+
+
+1.5
+log
+@automatic
+@
+text
+@d23 1
+d46 1
+a47 1
+#ifdef DEBUG
+a48 1
+#endif
+d55 2
+d63 4
+a66 2
+		syslog(LOG_INFO, "corrupted data");
+		exit(1);
+a67 1
+	/************** NON si accorge dei corrupted?????????????????
+d76 1
+a76 1
+	switch (talk.querytype) {
+d81 1
+d83 1
+d86 1
+d95 1
+d100 1
+a100 1
+			strcpy(talk.buf, i ? SKEYDFAILED : SKEYDOK);
+d104 1
+a104 2
+			syslog(LOG_INFO, "panic (querytype = %d)",
+								talk.querytype);
+d108 2
+d264 8
+@
+
+
+1.4
+log
+@automatic
+@
+text
+@d2 5
+a6 5
+ * $Author:$
+ * $Header:$
+ * $Date:$
+ * $Revision:$
+ * $Locker:$
+d10 1
+a10 1
+static char *rcsid = "@@(#) $Id:$";
+d64 1
+@
+
+
+1.3
+log
+@automatic
+@
+text
+@d1 13
+a17 2
+#define DEBUG
+
+d22 1
+d31 6
+d55 1
+d64 1
+d66 1
+d68 1
+d86 2
+d89 2
+d96 2
+a97 1
+			syslog(LOG_INFO, "ERROR - querytype = %d", talk.querytype);
+d101 1
+d103 1
+d106 1
+d111 2
+a161 2
+	syslog(LOG_INFO, "NAME: %s", name);
+
+d205 49
+@
+
+
+1.2
+log
+@automatic
+@
+text
+@d12 2
+d15 4
+d32 5
+d41 4
+d76 1
+@
+
+
+1.1
+log
+@auto
+@
+text
+@d1 6
+d10 1
+d18 7
+a24 4
+
+	openlog("skeyd", LOG_PID | LOG_ODELAY, LOG_DAEMON);
+
+	syslog(LOG_INFO, "starting up...");
+d31 2
+d37 1
+d39 4
+a42 1
+			syslog(LOG_INFO, "received username `%s'", talk.buf);
+d46 1
+d48 6
+a53 1
+			exit(1);
+d55 1
+a55 1
+			syslog(LOG_INFO, "ERROR");
+d59 1
+a59 3
+	bzero(&talk, sizeof(talk));
+
+	strcpy(talk.buf, "vince 0995 thisissomerandO0 b368da5d789e8e9b  Dec 07,1994 19:01:06");
+d62 1
+a62 1
+		syslog("write_data: %m");
+d65 95
+@

@@ -1,0 +1,717 @@
+// $Id: registry.rul,v 1.33 1999/04/29 22:46:42 philipn Exp $
+//____________________________________________________________________________
+//	Copyright (C) 1998 Pretty Good Privacy, Inc.
+//	All rights reserved.
+//	
+//  Author: Philip Nathan
+//____________________________________________________________________________
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: SetupRegistry
+//
+//  Purpose: This function makes the registry entries for this setup.
+//
+///////////////////////////////////////////////////////////////////////////////
+function SetupRegistry()
+    NUMBER nResult, nvResult, nvType, AsciNum, nvSize;
+    NUMBER nvPathLen, nType, IndexNumber, Index;
+	STRING svResult, szKey, szLocalDB, szValue, szName;
+	STRING svTarget, svNetTarget, KeyStub, svValue, szInsertLine;
+
+begin
+    // Add all registry entry keys here.
+    svTarget = TARGETDIR;
+
+    RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	GetSystemInfo (DATE, nvResult, svResult);
+	
+	//This is cleanup for PGP6.5 bug
+	RegDBDeleteKey ("HKEY_LOCAL_MACHINE\\SOFTWARE\\Network Associates\\PGP");
+	
+	RegDBSetKeyValueEx
+	("SOFTWARE\\Network Associates\\PGP","Version",
+	REGDB_STRING, PRODUCT_VERSION,-1);
+
+    //If this is a client install set the Date entry
+	if (bImAdminInstall = TRUE) then
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		GetSystemInfo (DATE, nvResult, svResult);
+		RegDBSetKeyValueEx
+		("SOFTWARE\\Network Associates\\PGP","InstallDate",
+		REGDB_STRING, svResult,-1);
+	endif;
+	
+	//PGPnet Entries
+	if (ComponentIsItemSelected(MEDIA,"PGPnet") = TRUE) then
+		VarSave(SRCTARGETDIR);
+		SRCDIR = TARGETDIR;
+		LongPathToShortPath (TARGETDIR);
+		szInsertLine = "StartDetachedProcess ExitCode \"\" \"\" " + TARGETDIR ^ "SetAdapter.exe delreg";
+		FileInsertLine ( "PGPRebind.inf" , szInsertLine , 2 , AFTER );
+		VarRestore(SRCTARGETDIR);
+	
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		szLocalDB = "SOFTWARE\\Network Associates";
+		
+		RegDBSetKeyValueEx (szLocalDB ^ "PGP\\PGPnet" ,"InstallPath",REGDB_STRING,svTarget,-1);
+		svNetTarget = svTarget;
+		
+		//Ensure no old cancelled entry exists
+		RegDBDeleteValue (szLocalDB ^ "PGP\\PGPnet" , "PGPnetCancelled");
+		
+		//Launch the lister for card selection
+		LongPathToShortPath (svNetTarget);
+		ChangeDirectory(svNetTarget);
+		if (bEasyInstall) then
+			LaunchAppAndWait (svNetTarget ^ "SetAdapter.exe","installs", WAIT);
+		else
+			LaunchAppAndWait (svNetTarget ^ "SetAdapter.exe","install", WAIT);
+		endif;
+		
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		if (RegDBGetKeyValueEx (szLocalDB ^ "PGP\\PGPnet" , "PGPnetCancelled" , nvType , svValue , nvSize )<0) then
+			//Set service entries(IkeService writes them)
+			//-i writes -u removes.
+			if ((bIsWindows95)||(bIsWindows98)) then
+				/*service entry for pgpike95*/
+				RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+				szLocalDB = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\RunServices";
+				RegDBSetKeyValueEx (szLocalDB ,"IKEService95",REGDB_STRING,svTarget ^ "IKEService.exe",-1);
+				else
+				LaunchApp(svTarget ^ "IKEservice.exe","-i");
+			endif;
+		else
+			//PGPnet Lister was cancelled by the user
+			UninstallPGPnet (svTarget);
+			ComponentSelectItem(MEDIA,"PGPnet",FALSE);
+		endif;
+	endif;
+	
+	//If this is NT set the PGPmemlock entries
+	if (bIsWindowsNT4 = TRUE) then
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		szKey = "SYSTEM\\CurrentControlSet\\Services\\PGPmemlock";
+		RegDBSetKeyValueEx (szKey ,"ErrorControl",REGDB_NUMBER,"1",-1);
+		RegDBSetKeyValueEx (szKey ,"Type",REGDB_NUMBER,"1",-1);
+		RegDBSetKeyValueEx (szKey ,"Start",REGDB_NUMBER,"2",-1);
+		RegDBSetKeyValueEx (szKey ,"DisplayName",REGDB_STRING,"PGP secure memory driver",-1);
+	endif;
+	
+	//set reg. key to remove shared files (SDK)
+	if (ComponentIsItemSelected( MEDIA , "SDK" ) = TRUE) then
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		szLocalDB = "\\SOFTWARE" ^ "Network Associates";
+		RegDBSetKeyValueEx
+		(szLocalDB ^ @REGAPP_NAME,"DelSharedFiles",REGDB_STRING,"1",-1);
+	endif;
+
+	//This is old 4.5 check	
+	nvType = REGDB_STRING;
+	RegDBSetDefaultRoot(HKEY_CURRENT_USER);
+	if (RegDBGetKeyValueEx("Software\\PGP\\PNDetect\\Modules","PGP Plugin"
+	,nvType,szEudoraPath,nvPathLen) = 0) then
+		if (bEasyInstall = FALSE) then
+			// ask if they want to remove the 4.5 plugin
+			SetDialogTitle
+			(DLG_ASK_YESNO,"Disable the PGPmail 4.5 Eudora/Netscape Plugin?");
+			if (AskYesNo
+			("Do you wish to disable the PGPmail 4.5 Eudora/Netscape Plugin?"
+			,YES) = YES) then
+				RegDBDeleteValue
+				("Software\\PGP\\PNDetect\\Modules","PGP Plugin");
+			endif;
+		else
+			RegDBDeleteValue
+			("Software\\PGP\\PNDetect\\Modules","PGP Plugin");
+		endif;
+	endif;
+	
+	//These are the PGPdisk entries
+	if (ComponentIsItemSelected(MEDIA,"PGPdisk") = TRUE) then
+		//SETTING WINDOWS 95 SPECIFIC REGISTRY VALUES
+		if (bIsWindowsNT4 = FALSE) then
+			RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+			szKey = "Enum\\Root\\PGPdisk\\0000";
+			szName = "Class";
+			nType = REGDB_STRING;
+			szValue = "PGPdisk";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "ConfigFlags";
+			nType = REGDB_BINARY;
+			szValue = "";
+			for Index = 0 to 3
+				AsciNum = 0;
+				if (Index = 0) then
+					AsciNum = 4;
+				endif;
+				SetByte (szValue, Index, AsciNum);
+			endfor;
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, 4);
+
+			szName = "DeviceDesc";
+			nType = REGDB_STRING;
+			szValue = "PGPdisk Volume Driver";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "Driver";
+			nType = REGDB_STRING;
+			szValue = "PGPdisk\\0000";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "ForcedConfig";
+			nType = REGDB_BINARY;
+			szValue = "";
+			for Index = 0 to 11
+				AsciNum = 0;
+				if (Index = 1) then
+					AsciNum = 4;
+				endif;
+				SetByte (szValue, Index, AsciNum);
+			endfor;
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, 12);
+
+			szName = "HardwareID";
+			nType = REGDB_STRING;
+			szValue = "*PGPdisk";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "Mfg";
+			nType = REGDB_STRING;
+			szValue = "Network Associates, Inc.";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+		
+			szKey = "Enum\\Root\\PGPdisk\\0000\\LogConfig";
+
+			szName = "0";
+			nType = REGDB_BINARY;
+			szValue = "";
+			for Index = 0 to 11
+				AsciNum = 0;
+				if (Index = 1) then
+					AsciNum = 4;
+				endif;
+				if (Index = 5) then
+					AsciNum = 224;
+				endif;
+				SetByte (szValue, Index, AsciNum);
+			endfor;
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, 12);
+		
+			szKey = "System\\CurrentControlSet\\Services\\Class\\PGPdisk";
+
+			szName = "";
+			nType = REGDB_STRING;
+			szValue = "PGPdisk Volume Driver";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "Icon";
+			nType = REGDB_STRING;
+			szValue = "-9";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+		
+			szKey = "System\\CurrentControlSet\\Services\\Class\\PGPdisk\\0000";
+
+			szName = "DevLoader";
+			nType = REGDB_STRING;
+			szValue = "*IOS";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "DriverDesc";
+			nType = REGDB_STRING;
+			szValue = "PGPdisk Volume Driver";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "PortDriver";
+			nType = REGDB_STRING;
+			szValue = "PGPDISK.pdr";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		// NT SPECIFIC ENTRIES
+		else
+				RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+			szKey = "System\\CurrentControlSet\\Services\\PGPdisk";
+			
+			szName = "Type";
+			nType = REGDB_NUMBER;
+			szValue = "1";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "Start";
+			nType = REGDB_NUMBER;
+			szValue = "2";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "ErrorControl";
+			nType = REGDB_NUMBER;
+			szValue = "1";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "Group";
+			nType = REGDB_STRING;
+			szValue = "Extended Base";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szKey = "System\\CurrentControlSet\\Services\\EventLog\\System\\PGPdisk";
+
+			szName = "EventMessageFile";
+			nType = REGDB_STRING;
+			szValue = WINSYSDIR ^ "Drivers" ^ "PGPdisk.sys";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+			szName = "TypesSupprted";
+			nType = REGDB_NUMBER;
+			szValue = "7";
+			RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+		endif;
+
+		//
+		//SETTING WINDOWS 95 / WINDOWS NT COMMON REGISTRY VALUES
+		//HKEY_CLASSES_ROOT
+		//
+		RegDBSetDefaultRoot (HKEY_CLASSES_ROOT);
+
+		szKey = ".pgd";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "PGPdisk Volume";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = ".pgd\\ShellNew";
+
+		szName = "Command";
+		nType = REGDB_STRING;
+		LongPathToShortPath (svTarget);
+		szValue = svTarget ^ "PGPDISK.EXE create \"%2\"";
+
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);	
+
+		szKey = "PGPdisk Volume";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "PGPdisk Volume";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);	
+
+		szKey = "PGPdisk Volume\\DefaultIcon";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = svTarget ^ "PGPDISK.EXE,5";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = "PGPdisk Volume\\shell\\open\\command";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = svTarget ^ "PGPDISK.EXE open \"%1\"";
+		//LongPathToShortPath (szValue);
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = "CLSID\\{F8B14440-3785-11D1-B363-5C6F08C10000}";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "PGPdisk Shell Extension";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = "CLSID\\{F8B14440-3785-11D1-B363-5C6F08C10000}\\InProcServer32";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "PGPdskSE.dll";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "ThreadingModel";
+		nType = REGDB_STRING;
+		szValue = "Apartment";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = "PGPdisk Volume\\shellex\\ContextMenuHandlers\\PGPdisk Shell Extension";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "{F8B14440-3785-11D1-B363-5C6F08C10000}";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szKey = "Drive\\shellex\\ContextMenuHandlers\\PGPdisk Shell Extension";
+
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = "{F8B14440-3785-11D1-B363-5C6F08C10000}";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		//HKEY_LOCAL_MACHINE
+		RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+		szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+
+		szName = "{F8B14440-3785-11D1-B363-5C6F08C10000}";
+		nType = REGDB_STRING;
+		szValue = "PGPdisk Shell Extension";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		//HKEY_LOCAL_MACHINE
+		RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+		szKey = "SOFTWARE\\Network Associates\\PGPdisk";
+
+		szName = "LastOpenDir";
+		nType = REGDB_STRING;
+		szValue = "c:\\";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "LastSaveDir";
+		nType = REGDB_STRING;
+		szValue = "c:\\";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "AllowFAT32";
+		nType = REGDB_NUMBER;
+		szValue = "1";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "AutoUnmount";
+		nType = REGDB_NUMBER;
+		szValue = "1";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "HotKeyCode";
+		nType = REGDB_NUMBER;
+		szValue = "00000379";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "HotKeyEnabled";
+		nType = REGDB_NUMBER;
+		szValue = "0";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "UnmountOnSleep";
+		nType = REGDB_NUMBER;
+		szValue = "1";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "UnmountTimeout";
+		nType = REGDB_NUMBER;
+		szValue = "15";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "LastCreateSize";
+		nType = REGDB_NUMBER;
+		szValue = "00102400";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "LastDateSplashed";
+		nType = REGDB_NUMBER;
+		szValue = "00";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName = "WasMainDialogSmall";
+		nType = REGDB_NUMBER;
+		szValue = "00";
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		//HKEY_LOCAL_MACHINE
+		RegDBSetDefaultRoot (HKEY_LOCAL_MACHINE);
+
+		szKey = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\PGPdisk.exe";
+		szName = "";
+		nType = REGDB_STRING;
+		szValue = svTarget ^ "PGPDISK.EXE";
+		LongPathToShortPath (szValue);
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+
+		szName  = "Path";
+		nType   = REGDB_STRING;
+		szValue = svTarget;
+		LongPathToShortPath (szValue);
+		RegDBSetKeyValueEx (szKey, szName, nType, szValue, -1);
+	endif;
+	
+	//ROOT
+	RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+	RegDBSetKeyValueEx
+	("\\.asc" ,"",REGDB_STRING,"PGP Armored File",-1);
+	RegDBSetKeyValueEx
+	("\\.aexpk" ,"",REGDB_STRING,"PGP Armored Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\.bexpk" ,"",REGDB_STRING,"PGP Binary Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\.pgp" ,"",REGDB_STRING,"PGP Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\.prvkr" ,"",REGDB_STRING,"PGP Private Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.pubkr" ,"",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.sig" ,"",REGDB_STRING,"PGP Detached Signature File",-1);
+	RegDBSetKeyValueEx
+	("\\.pkr" ,"",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.skr" ,"",REGDB_STRING,"PGP Private Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\.shf" ,"",REGDB_STRING,"PGP Share",-1);
+	RegDBSetKeyValueEx
+	("\\.rnd" ,"",REGDB_STRING,"PGP Random Seed",-1);
+	RegDBSetKeyValueEx
+	("\\.pgr" ,"",REGDB_STRING,"PGP Groups",-1);
+
+	szLocalDB = "\\*\\shellex\\ContextMenuHandlers\\" +
+	"{969223c0-26aa-11d0-90ee-444553540000}";
+
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"",-1);
+
+	szLocalDB = "\\Folder\\shellex\\ContextMenuHandlers\\" +
+				"{969223c0-26aa-11d0-90ee-444553540000}";
+
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"",-1);
+	szLocalDB = "\\CLSID\\{969223c0-26aa-11d0-90ee-444553540000}";
+	RegDBSetKeyValueEx
+	(szLocalDB ,"",REGDB_STRING,"PGP Shell Extension",-1);
+	RegDBSetKeyValueEx
+	(szLocalDB ^ "InProcServer32","" ,
+	REGDB_STRING,"pgpmn.dll",-1);
+	RegDBSetKeyValueEx
+	(szLocalDB ^"InProcServer32","ThreadingModel" ,
+	REGDB_STRING,"Apartment",-1);
+
+	//FILE ASSOCIATED ICONS
+	szLocalDB = "\\PGP Encrypted File";
+	RegDBSetKeyValueEx
+	(szLocalDB,"",
+	REGDB_STRING,"PGP Encrypted File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Encrypted File" ^ "DefaultIcon","",
+	REGDB_STRING,"pgpsc.dll,-144",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored File","",
+    REGDB_STRING,"PGP Armored File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored File" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-143",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key","",
+	REGDB_STRING,"PGP Armored Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-147",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key","",
+	REGDB_STRING,"PGP Binary Extracted Public Key",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-147",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File","",
+	REGDB_STRING,"PGP Detached Signature File",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-142",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring","",
+	REGDB_STRING,"PGP Private Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-145",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring","",REGDB_STRING,"PGP Public Keyring",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-146",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Share","",REGDB_STRING,"PGP Share",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Share" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-107",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Random Seed","",REGDB_STRING,"PGP Random Seed",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Random Seed" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-148",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Groups","",REGDB_STRING,"PGP Groups",-1);
+	RegDBSetKeyValueEx
+	("\\PGP Groups" ^ "DefaultIcon" ,"",
+	REGDB_STRING,"pgpsc.dll,-149",-1);
+	
+	//HKEY_LOCAL_MACHINE
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+	szLocalDB = "\\SOFTWARE" ^ @COMPANY_NAME;
+	LongPathToShortPath (svTarget);
+	// path to install dir includeing trailing "\\"
+	RegDBSetKeyValueEx
+	(szLocalDB ^ @REGAPP_NAME,"Installpath",REGDB_STRING,
+	svTarget  +  "\\" ,-1);
+	
+	if (ComponentIsItemSelected
+	(MEDIA,"Eudora Plugin") = TRUE) then
+		LongPathFromShortPath (EudoraPluginDir);
+		// add "where is EudoraPlugin" key value
+		RegDBCreateKeyEx
+		( szLocalDB ^ @REGAPP_NAME ^ "EudoraPlugin","");
+		RegDBSetKeyValueEx
+		(szLocalDB ^ @REGAPP_NAME ^ "EudoraPlugin","PluginPath",REGDB_STRING,
+		EudoraPluginDir,-1);
+	endif;
+
+	if (ComponentIsItemSelected
+		(MEDIA,"Outlook Exp Plugin") = TRUE) then
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		RegDBSetKeyValueEx (szLocalDB ^ @REGAPP_NAME ^ "OE",
+				 "OutlookExpress", REGDB_STRING, szOEdir, -1);
+	endif;
+
+	RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+
+	RegDBSetKeyValueEx
+	("\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\" +
+	"Approved","{969223c0-26aa-11d0-90ee-444553540000}"
+	,REGDB_STRING,"Shell Extension",-1);
+
+	if (ComponentIsItemSelected
+		(MEDIA,"Exch Plugin") = TRUE) then
+		RegDBCreateKeyEx
+		( "SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions\\PGP Plugin","");
+		RegDBSetKeyValueEx
+		("SOFTWARE\\Microsoft\\Exchange\\Client\\Extensions","PGP Plugin"
+		,REGDB_STRING,"4.0;pgpExch.dll;1;01000111111100;1001110" ,-1);
+	endif;
+
+//Left Click and Launch
+	RegDBSetDefaultRoot(HKEY_CLASSES_ROOT);
+
+	RegDBCreateKeyEx
+	("\\PGP Encrypted File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Encrypted File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Armored File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Armored File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Armored Extracted Public Key" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Armored Extracted Public Key" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Binary Extracted Public Key" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Binary Extracted Public Key" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Detached Signature File" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Detached Signature File" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Private Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Public Keyring" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Share" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Share" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgptools.exe %1",-1);
+	RegDBCreateKeyEx
+	("\\PGP Random Seed" ^ "shell\\open\\command","");
+	RegDBSetKeyValueEx
+	("\\PGP Random Seed" ^ "shell\\open\\command" ,"",
+	REGDB_STRING,svDir ^ "pgpkeys.exe %1",-1);
+	
+    nResult = CreateRegistrySet( "" );
+
+	return nResult;
+ end;
+
+
+///////////////////////////////////////////////////////////////////////////////
+//
+// Function: CleanHardwareSettings
+//
+//  Purpose: This function deletes reg. entries that cannot exist.
+//
+///////////////////////////////////////////////////////////////////////////////
+function CleanHardwareSettings()
+	STRING szKey, szName, svValue, szAdapterNumber, szCardType, szServiceName;
+	NUMBER nvType, nvSize, nReturn;
+begin
+	
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		szKey = "SOFTWARE\\Network Associates\\PGP\\PGPnet";
+		szName = "AdapterNum";
+		if (RegDBGetKeyValueEx ( szKey , szName , nvType , szAdapterNumber , nvSize ) <0) then
+			return;
+		endif;
+		
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		szName = "CardType";
+		RegDBGetKeyValueEx ( szKey , szName , nvType , szCardType , nvSize );
+
+		RegDBSetDefaultRoot(HKEY_LOCAL_MACHINE);
+		if (szCardType = "NdisWan") then
+			szServiceName = szCardType + "PGPmacMP" + szAdapterNumber;
+		else
+			szServiceName = "PGPmacMP" + szAdapterNumber;
+		endif;
+		szKey = "SYSTEM\\CurrentControlSet\\Services" ^ szServiceName ^ "Parameters";
+	
+		nReturn=RegDBDeleteValue ( szKey , "InterruptNumber" );
+		nReturn=RegDBDeleteValue ( szKey , "IOAddress" );
+		nReturn=RegDBDeleteValue ( szKey , "Slot" );
+		nReturn=RegDBDeleteValue ( szKey , "SlotNumber" );
+		nReturn=RegDBDeleteValue ( szKey , "CardType" );
+		nReturn=RegDBDeleteValue ( szKey , "TranseiverType" );
+
+end;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

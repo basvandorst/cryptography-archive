@@ -1,0 +1,329 @@
+From: jabowery@netcom.com (Jim Bowery)
+Subject: PGPCHAT Release 1.0
+Date: Mon, 6 Jun 1994 19:45:05 GMT
+
+
+
+                         PGP WIN-DOS CHAT
+                             --- ---
+                           Release 1.0
+
+
+                       A MODEM-CHAT FACILITY
+
+                      WITH PRETTY GOOD PRIVACY
+
+
+                                by
+
+                            Jim Bowery
+
+
+
+PGP Win-DOS Chat is a sloppy little facility which allows people
+to conduct a rather slow 2-way PGP-encrypted chat via modems.
+
+It requires Telix (the comm program), so if you don't have Telix,
+get a copy and make sure you have the "cs.exe" Telix script compiler
+with it.
+
+It requires PGP.
+You should be familiar with encrypting and decrypting messages with
+PGP before you attempt to run this facility.  It uses default key
+rings and for decryption it uses your default private key.
+
+
+INSTALLATION
+
+I)
+
+You should probably make sure your PGP "config.txt" file contains
+a line that says:
+
+VERBOSE = 0
+
+This is to keep the PGP "noise" messages from interfering with
+your chat.
+
+
+II)
+
+There are 3 script files included below.  Follow the directions
+for the installation of each of them.
+
+
+FILE: sendpgp.bat
+
+The following batch file should be placed in your PGP directory
+with the name sendpgp.bat.
+
+------------------------- CUT HERE -------------------------
+echo off
+rem Run this with one argument -- PGP userid of person you are sending to.
+rem Be sure to set PGPPASS in environment.
+:abc
+echo Enter PGP chat message (end with CTRL-Z):
+copy con sendpgp.txt
+:def
+if exist sendpgp.asc goto def
+pgp -esa sendpgp.txt %1
+del sendpgp.txt
+goto abc
+------------------------- CUT HERE -------------------------
+
+FILE: recvpgp.bat
+
+The following batch file should be placed in your PGP directory
+with the name recvpgp.bat.
+------------------------- CUT HERE -------------------------
+echo off
+rem Receives PGP chat messages.  Be sure to set PGPPASS in environment.
+:abc
+if not exist recvpgp.pgp goto abc
+pgp recvpgp.pgp -o recvpgp.txt
+type recvpgp.txt
+del recvpgp.txt
+del recvpgp.pgp
+goto abc
+------------------------- CUT HERE -------------------------
+
+FILE: pgpchat.slt
+
+The following Telix script should be placed in your Telix directory
+with the name pgpchat.slt.  If your PGP directory is somewhere
+other than "\pgp\" relative to your Telix directory, you will
+have to edit "pgpchat.slt" and change all references to the
+"\pgp\" path to the path of your PGP directory relative to your
+Telix directory.
+
+Then you should execute the command:
+
+C:\telix>cs pgpchat.slt
+
+This will generate a file named "pgpchat.slc" which is your Telix
+script executable.
+------------------------- CUT HERE -------------------------
+main()
+
+{
+ int t1;
+ str buf[80];
+
+ t1=track("-----END PGP MESSAGE-----",0);
+ capture("\pgp\recvpgp.asc");
+
+ while (1)
+  {
+   terminal();
+   if(track_hit(0) == t1){
+    capture("*CLOSE*");
+    frename("\pgp\recvpgp.asc","\pgp\recvpgp.pgp");
+    capture("\pgp\recvpgp.asc");
+   }
+   if(filefind("\pgp\sendpgp.asc",0,buf)){
+     frename("\pgp\sendpgp.asc","\pgp\sendasc.txt");
+     type_file("\pgp\sendasc.txt");
+     fdelete("\pgp\sendasc.txt");
+   }
+   delay(10);
+  }
+}
+
+type_file(str fname)
+
+{
+ int f;
+ str buf[100];
+ int ichar, lines_sent = 0;
+
+ f = fopen(fname, "r");
+ if (!f)
+  return -1;
+
+ host_send("^M^J");
+
+ while (1)
+  {
+
+   if (fgets(buf, 80, f) == -1)
+    {
+     fclose(f);
+     return 1;
+    }
+
+   host_send(buf);
+   host_send("^M^J");
+   terminal();
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+host_send(str outstr)
+
+{
+
+ cputs(outstr);
+
+}
+
+//////////////////////////////////////////////////////////////////////////////
+
+------------------------- CUT HERE -------------------------
+
+
+
+STARTING UP PGP WIN-DOS CHAT
+
+
+
+1)
+
+From the Windows Program Manager, bring up three DOS Prompt windows.
+
+
+2)
+
+In one window, enter the PGP directory and execute:
+
+C:\pgp>SET PGPPASS=<your pgp pass phrase>
+C:\pgp>recvpgp
+
+
+3)
+
+In another window, enter the PGP directory and execute:
+
+C:\pgp>SET PGPPASS=<your pgp pass phrase>
+C:\pgp>sendpgp <userid>
+
+Where <userid> is the PGP userid you would use to encrypt a message
+to the person you will be chatting with.
+
+
+4)
+
+In the third and last window, enter the Telix directory and execute:
+
+C:\telix>telix
+
+
+5)
+
+To test out your end of the chat system without bothering your friends,
+make sure your modem is echoing your commands by typing:
+
+ATZ<cr>
+
+It should echo the "ATZ" on your terminal screen and respond with "OK".
+
+
+6)
+
+Press ALT-G in Telix and enter "pgpchat" at the prompt to activate
+the Telix script.
+
+
+7)
+
+Activate the "sendpgp.bat" window.
+
+You should see the prompt:
+
+"Enter PGP chat message (end with CTRL-Z):"
+
+
+8)
+
+Do what the prompt says.
+
+It should then begin encrypting what you typed and return you
+to the prompt.
+
+You should then see the Telix window scroll (painfully slowly)
+a PGP encryption block.
+
+Sometime later, the "recvpgp.bat" window should display the
+same message you entered in the "sendpgp.bat" window.
+
+If so, your end of the system is working.
+
+CAVEAT:  You WILL see errors crop up in about 1 in 5 test messages
+that you try to send.  This is due to the fact that the "self-test"
+is using the modem's character echo to simulate the presence of
+another user and the modem will, from time to time, see an
+"AT" command in the middle of a PGP encyption block.  When this
+happens, you should see a modem response in the middle of the
+PGP encryption block on the Telix screen and PGP error messages
+later cropping up on the "recvpgp" screen.  Ignore these errors.
+
+
+9)
+
+Go to the Telix window and press ALT-X to quit Telix.
+
+
+10)
+
+Reenter Telix, but this time, hold off on executing the
+"pgpchat" script.
+
+
+11)
+
+Dialed your friend's modem and make sure you are connected.
+
+
+12)
+
+Once the modem connection is established with your friend, press
+ALT-G in Telix and enter "pgpchat" at the prompt to activate the
+Telix script.
+
+
+13)
+
+Activate the "sendpgp.bat" window and start typing.
+
+You should see your friend's messages pop up in the "recvpgp.bat"
+window.
+
+When you are ready to quit, just kill all three DOS windows.
+
+
+TIPS ON USAGE
+
+
+I)
+
+Don't send more than about a message per 30 seconds.  If you send
+faster than that, the PGP data stream might get backed up.  The
+flow control is there but it is minimal.
+
+
+II)
+
+You can send text files by the following procedure:
+
+1) Go into Windows' Notepad program and open the file you want to send.
+2) Press SHIFT-CONTROL-END to select the entire file.
+3) Press CONTROL-INS to copy the file to your clipboard.
+4) Reactivate the "sendpgp.bat" window.
+5) Press SHIFT-SPACE.
+6) Press "e".
+7) Press "p".
+8) Press CONTROL-Z
+
+This should cause the entire text file to be typed into your
+"sendpgp.bat" window, encrypted and sent to your friend.
+
+
+III)
+
+Your and your friend may have a bit of trouble reading more than
+25 lines of text at a time since the "recvpgp.bat" window just
+scrolls off the top (its just a DOS window after all).  You might
+want to run that DOS window under one of the "scroll buffer"
+programs that lets you scroll back and see what has scrolled
+off the DOS prompt window.
+

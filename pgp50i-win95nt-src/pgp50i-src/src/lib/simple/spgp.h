@@ -1,0 +1,857 @@
+/*
+ * spgp.h -- Simple PGP API
+ *
+ * NOTICE:
+ * THE API DESCRIBED HERE WAS DESIGNED BY VIACRYPT, INC. AND IS NOT
+ * INTENDED TO BE SUPPORTED BY PGP, INC. BEYOND THE CURRENT VERSION.
+ * IT WAS USED AS AN INTERIM MEASURE FOR THE CURRENT RELEASE ONLY.
+ *
+ * STAY TUNED FOR A NEW, IMPROVED ENCRYPTION API IN THE NEXT RELEASE.
+ *
+ * Copyright (C) 1996,1997 Pretty Good Privacy, Inc. All rights reserved.
+ *
+ * $Id: spgp.h,v 1.24.2.3.2.1 1997/06/27 15:36:22 cbertsch Exp $
+ */
+
+#ifndef SPGP_H
+#define SPGP_H
+
+/* Standard includes needed by PGP */
+
+/*#include <stdio.h> */
+
+/* PGP library */
+#if HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#if PRAGMA_IMPORT_SUPPORTED
+#pragma import on
+#endif
+
+#include "pgpUsuals.h"
+#include "pgpFileRef.h"
+#include "pgpFileMod.h"
+#include "pgpTextFilt.h"
+#include "pgpEncPipe.h"
+
+/*
+ * Defines
+ */
+
+
+/* Line ending types */
+
+typedef enum PGPLineEndType_
+{
+	kPGPLineEndLF	 = PGP_TEXTFILT_LF,
+	kPGPLineEndCR	 = PGP_TEXTFILT_CR,
+	kPGPLineEndCRLF	= (kPGPLineEndLF | kPGPLineEndCR)
+} PGPLineEndType;
+
+typedef PGPFileReadCallBack SPGPProgressCallBack;
+
+/*
+ * Return codes
+ */
+
+/* Kernel return codes */
+
+#define KERNEL_EXIT_OK					0
+#define KERNEL_EXIT_OK_NOSIG			1
+#define KERNEL_FILE_NOT_FOUND_ERROR		2
+#define KERNEL_UNKNOWN_FILE_ERROR		 3
+#define KERNEL_NO_BATCH					4
+#define KERNEL_BAD_ARG_ERROR			5
+#define KERNEL_INTERRUPT				6
+#define KERNEL_OUT_OF_MEM		 		 7
+#define KERNEL_INVALID_FILE_OP_ERROR	8
+
+/* Keyring errors: Base value = 10 */
+#define KERNEL_KEYGEN_ERROR				10
+#define KERNEL_NONEXIST_KEY_ERROR		 11
+#define KERNEL_KEYRING_ADD_ERROR		12
+#define KERNEL_KEYRING_EXTRACT_ERROR	13
+#define KERNEL_KEYRING_EDIT_ERROR		 14
+#define KERNEL_KEYRING_VIEW_ERROR		 15
+#define KERNEL_KEYRING_REMOVE_ERROR		16
+#define KERNEL_KEYRING_CHECK_ERROR		17
+#define KERNEL_KEY_SIGNATURE_ERROR		18
+#define KERNEL_KEYSIG_REMOVE_ERROR		19
+
+/* Encode errors: Base value = 20 */
+#define KERNEL_SIGNATURE_ERROR			20
+#define KERNEL_RSA_ENCR_ERROR		 	21
+#define KERNEL_ENCR_ERROR		 		 22
+#define KERNEL_COMPRESS_ERROR		 	23
+
+/* Decode errors: Base value = 30 */
+#define KERNEL_SIGNATURE_CHECK_ERROR	30
+#define KERNEL_RSA_DECR_ERROR		 	31
+#define KERNEL_DECR_ERROR		 		 32
+#define KERNEL_DECOMPRESS_ERROR			33
+
+/* Things missing from the full SPGP spec */
+#define SIMPLEPGP_UNIMPLEMENTED			50
+
+/* Unseeded RNG */
+#define SIMPLEPGP_RNGNOTSEEDED			51
+
+/* Incorrect secret key passphrase */
+#define SIMPLEPGP_BADKEYPASSPHRASE		52
+
+/* Incorrect conventional key passphrase */
+#define SIMPLEPGP_BADCONVENTIONALPASSPHRASE 53
+
+/* The keyring is currently open for writing */
+#define SIMPLEPGP_KEYRINGWRITELOCKED	54
+
+/* Insufficient access to open keyrings */
+#define SIMPLEPGP_KEYRINGPERMISSIONS	55
+
+/* No PGP data in input buffer */
+#define SIMPLEPGP_NOPGPDATA				56
+
+/* Wrong keys or key types */
+#define SIMPLEPGP_NONEXISTENTRECIPIENTKEY	60
+#define SIMPLEPGP_NONEXISTENTSIGNERKEY		61
+#define SIMPLEPGP_NONEXISTENTDECRYPTIONKEY	62
+#define SIMPLEPGP_NONEXISTENTEXTRACTIONKEY	63
+#define SIMPLEPGP_RECIPIENTKEYSIGNATUREONLY	64
+#define SIMPLEPGP_SIGNERKEYENCRYPTIONONLY	65
+
+/* Detached sigs found or not found when we didn't wantem */
+#define SIMPLEPGP_DETACHEDSIGNATURENOTFOUND	66
+#define SIMPLEPGP_DETACHEDSIGNATUREFOUND	67
+
+/* Problems reading keyrings */
+#define SIMPLEPGP_ERRORREADINGPUBRING		 68
+#define SIMPLEPGP_ERRORREADINGSECRING		 69
+
+/* Recipients could not agree on an encryption algorithm */
+#define SIMPLEPGP_INCONSISTENTRECIPIENTSET	70
+
+
+/* PGP-detected problems */
+					/* Unexpected conditions found */
+					/* (Use this code if no other code */
+					/* fits, and the conditions seem so */
+					/* wildly unlikely as to not need */
+					/* a unique exit code - */
+					/* expect the unexpected.) */
+#define KERNEL_EXIT_UNEXPECTED		80
+					/* Evaluation copy of executable */
+					/* expire date has passed. */
+#define KERNEL_EXIT_EXPIRED		81
+
+					/* -r pgpoutfile */
+					/* syntax or cannot open */
+#define KERNEL_EXIT_STDOUT_FAIL	82
+					/* @cmdfile or -@ cmdfile */
+					/* syntax or cannot open */
+#define KERNEL_EXIT_CMDFILE_OPEN	83
+					/* @cmdfile mem alloc failure */
+					/* arg list too big */
+					/* avail mem too small */
+					/* or ctrl value problem */
+#define KERNEL_EXIT_CMDFILE_MEM	84
+					/* @cmdfile unrecognized directive */
+#define KERNEL_EXIT_CMDFILE_UNREC	85
+					/* OK exit status, non-zero value */
+					/* used with setjmp()/longjmp() */
+					/* to resume pgp_cmd_ln()/main() */
+#define KERNEL_EXIT_OK_NZ		 86
+					/* Problem with kbhit() */
+					/* simulation - raw terminal IO */
+#define KERNEL_EXIT_TERM_IO		87
+					/* Attempt to create session with */
+					/* cryptographic engine - failed */
+#define KERNEL_NO_CRYPT_ENGINE		88
+#define KERNEL_VERSION_MISMATCH		90
+#define KERNEL_CANCEL_ON_BUSY		 91
+
+#define KERNEL_EXIT_CODE_NOT_WRITTEN	100
+
+/* keysel return codes */
+#define KEYSEL_OK 	0
+#define KEYSEL_LOCKED 	201
+#define KEYSEL_BADKEYRINGTYPE 202 /* The KeyRingType argument is invalid */
+#define KEYSEL_BADKEYTYPE 203
+#define KEYSEL_NOKEYRINGNAME 204
+#define KEYSEL_USERABORT 205
+#define KEYSEL_NOPGPPATH 206	/* No PGPPATH env variable set */
+#define KEYSEL_OPENFAILED 207	/* fopen of keyring failed */
+#define KEYSEL_EOF 208	/* End-Of-File in keyring encountered */
+#define KEYSEL_BADCTBLENOFLEN 209 /* Unexpected CTB length-of-length code */
+									/*in ringfile. Possible keyring corruption */
+#define KEYSEL_READFAILURE 210	/* fread of ringfile failed unexpectedly */
+#define KEYSEL_BADUIDLEN 211	/* User ID longer than 255 (bad!) */
+#define KEYSEL_UIDTOOLONG 212	/* the length of the userid is longer */
+									/* than the size of the userid element */
+									/* of the pgpkey struct. */
+#define KEYSEL_BADCREATIONDATE 213 /* Creation date in key is 0 */
+#define KEYSEL_UNKNOWNUID 214
+#define KEYSEL_NOMEMORY 215 /* malloc failed */
+#define KEYSEL_BADPKT 216 /* unexpected for malformed packet found */
+#define KEYSEL_BADPOINTER 217 /* one of the pointer args is invalid */
+#define KEYSEL_USEIDEAONLY 218
+#define KEYSEL_CANCEL_ON_BUSY 219
+
+#define KEYSEL_UNKNOWN 225
+
+/* Function return status codes */
+
+#define SIMPLEPGPKEYSEL_KEYLIBOK										0
+#define SIMPLEPGPKEYSEL_USEIDEAONLY										301
+#define SIMPLEPGPKEYSEL_CANCEL											302
+#define SIMPLEPGPKEYSEL_NULLCAPTIONSTRINGPOINTER						303
+#define SIMPLEPGPKEYSEL_EMPTYCAPTIONSTRING								304
+#define SIMPLEPGPKEYSEL_KEYRINGTYPENOTPUBLICORSECRET					305
+#define SIMPLEPGPKEYSEL_NULLPOINTERTOSELECTEDLIST		 		 		 306
+#define SIMPLEPGPKEYSEL_SELECTEDLISTLENGTHTOOSMALL						307
+#define SIMPLEPGPKEYSEL_NULLPOINTERTOSELECTEDLISTCOUNT					308
+#define SIMPLEPGPKEYSEL_BADINCLUDEWHATVALUE								309
+#define SIMPLEPGPKEYSEL_NULLPOINTERTOUIDKIDSEARCHSTRING					310
+#define SIMPLEPGPKEYSEL_BADKEYTYPEBITMAP								311
+#define SIMPLEPGPKEYSEL_BADDISPLAYTYPEBITMAP							312
+#define SIMPLEPGPKEYSEL_BADSHAREDBUTTONIDBITMAP							313
+#define SIMPLEPGPKEYSEL_KEYRINGFILENOTFOUND								314
+
+#define SIMPLEPGPENCRYPTFILE_OK											0
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTOINPUTFILENAME					401
+#define SIMPLEPGPENCRYPTFILE_EMPTYINPUTFILENAMESTRING		 		 	402
+#define SIMPLEPGPENCRYPTFILE_INPUTFILEDOESNOTEXIST						403
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTOOUTPUTFILENAME				404
+#define SIMPLEPGPENCRYPTFILE_EMPTYOUTPUTFILENAMESTRING					405
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTORECIPIENTLIST					406
+#define SIMPLEPGPENCRYPTFILE_EMPTYRECIPIENTLISTSTRING		 		 	407
+#define SIMPLEPGPENCRYPTFILE_RECIPIENTLISTDOESNOTENDWITHNEWLINE			408
+#define SIMPLEPGPENCRYPTFILE_RECIPIENTLISTDOESNOTSTARTWITHGOODCODECHAR	409
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTOSIGNERKEYIDSTRING				410
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTOSIGNERPASSPHRASESTRING		411
+#define SIMPLEPGPENCRYPTFILE_NULLPOINTERTOIDEAPASSPHRASESTRING			412
+#define SIMPLEPGPENCRYPTFILE_NOTENOUGHMEMORYFORINPUTSTRUCTURE		 	413
+#define SIMPLEPGPENCRYPTFILE_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE			414
+#define SIMPLEPGPENCRYPTFILE_KEYSELCANCEL		 		 		 		 415
+#define SIMPLEPGPENCRYPTFILE_SIGNERPWDBUFFERTOOSMALL					416
+#define SIMPLEPGPENCRYPTFILE_IDEAPWDBUFFERTOOSMALL						417
+#define SIMPLEPGPENCRYPTFILE_CANNOTUSEUNTRUSTEDKEY						418
+#define SIMPLEPGPENCRYPTFILE_ENCRYPTNOTSIGN_FUNCTIONNOTENABLED			419
+#define SIMPLEPGPENCRYPTFILE_ENCRYPTANDSIGN_FUNCTIONNOTENABLED			420
+#define SIMPLEPGPENCRYPTFILE_CANNOTUSEUNCERTIFIEDKEY					421
+#define SIMPLEPGPENCRYPTFILE_OUTPUTFILECREATIONERROR					431
+
+#define SIMPLEPGPREADRECIPIENTLIST_OK		 		 		 		 	0
+#define SIMPLEPGPREADRECIPIENTLIST_NULLPOINTEROREMPTYLIST		 		 501
+#define SIMPLEPGPREADRECIPIENTLIST_LISTDOESNOTSTARTWITHGOODCODECHAR		502
+#define SIMPLEPGPREADRECIPIENTLIST_AUSERIDSTRINGISTOOLONG		 		 503
+#define SIMPLEPGPREADRECIPIENTLIST_OUTOFMEMORYFORUSERIDLIST				504
+#define SIMPLEPGPREADRECIPIENTLIST_AKEYIDSTRINGISTOOLONG				505
+#define SIMPLEPGPREADRECIPIENTLIST_OUTOFMEMORYFORKEYIDLIST				506
+#define SIMPLEPGPREADRECIPIENTLIST_LISTDOESNOTENDWITHNEWLINE			507
+#define SIMPLEPGPREADRECIPIENTLIST_CANNOTUSEUNTRUSTEDKEY				508
+
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTOINPUTBUFFER					601
+#define SIMPLEPGPENCRYPTBUFFER_INPUTBUFFERLENGTHISZERO					602
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTOOUTPUTBUFFER				603
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTORECIPIENTLIST		 		 604
+#define SIMPLEPGPENCRYPTBUFFER_EMPTYRECIPIENTLISTSTRING					605
+#define SIMPLEPGPENCRYPTBUFFER_RECIPIENTLISTDOESNOTENDWITHNEWLINE		 606
+#define SIMPLEPGPENCRYPTBUFFER_RECIPIENTLISTDOESNOTSTARTWITHGOODCODECHAR \
+																		607
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTOSIGNERKEYIDSTRING		 	608
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTOSIGNERPASSPHRASESTRING		609
+#define SIMPLEPGPENCRYPTBUFFER_NULLPOINTERTOIDEAPASSPHRASESTRING		610
+#define SIMPLEPGPENCRYPTBUFFER_NOTENOUGHMEMORYFORINPUTSTRUCTURE			611
+#define SIMPLEPGPENCRYPTBUFFER_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE		612
+#define SIMPLEPGPENCRYPTBUFFER_KEYSELCANCEL								613
+#define SIMPLEPGPENCRYPTBUFFER_SIGNERPWDBUFFERTOOSMALL					614
+#define SIMPLEPGPENCRYPTBUFFER_IDEAPWDBUFFERTOOSMALL					615
+#define SIMPLEPGPENCRYPTBUFFER_OUTPUTBUFFERTOOSMALL						616
+#define SIMPLEPGPENCRYPTBUFFER_CANNOTUSEUNTRUSTEDKEY					617
+#define SIMPLEPGPENCRYPTBUFFER_ENCRYPTNOTSIGN_FUNCTIONNOTENABLED		618
+#define SIMPLEPGPENCRYPTBUFFER_ENCRYPTANDSIGN_FUNCTIONNOTENABLED		619
+#define SIMPLEPGPENCRYPTBUFFER_CANNOTUSEUNCERTIFIEDKEY					620
+#define SIMPLEPGPENCRYPTBUFFER_16BITINPUTBUFFERLENGTHGTR65500		 	621
+#define SIMPLEPGPENCRYPTBUFFER_16BITOUTPUTBUFFERLENGTHGTR65500			622
+
+#define SIMPLEPGPSIGNFILE_NULLPOINTERTOINPUTFILENAME					701
+#define SIMPLEPGPSIGNFILE_EMPTYINPUTFILENAMESTRING						702
+#define SIMPLEPGPSIGNFILE_INPUTFILEDOESNOTEXIST							703
+#define SIMPLEPGPSIGNFILE_NULLPOINTERTOOUTPUTFILENAME		 		 	704
+#define SIMPLEPGPSIGNFILE_EMPTYOUTPUTFILENAMESTRING						705
+#define SIMPLEPGPSIGNFILE_NULLPOINTERTOSIGNERKEYIDSTRING				706
+#define SIMPLEPGPSIGNFILE_NULLPOINTERTOSIGNERPASSPHRASESTRING		 	707
+#define SIMPLEPGPSIGNFILE_NOTENOUGHMEMORYFORINPUTSTRUCTURE				708
+#define SIMPLEPGPSIGNFILE_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE				709
+#define SIMPLEPGPSIGNFILE_KEYSELCANCEL									710
+#define SIMPLEPGPSIGNFILE_SIGNERPWDBUFFERTOOSMALL		 		 		 711
+#define SIMPLEPGPSIGNFILE_FUNCTIONNOTENABLED							712
+#define SIMPLEPGPSIGNFILE_CANNOTUSEUNCERTIFIEDKEY		 		 		 713
+#define SIMPLEPGPSIGNFILE_OUTPUTFILECREATIONERROR		 		 		 731
+
+#define SIMPLEPGPSIGNBUFFER_NULLPOINTERTOINPUTBUFFER					801
+#define SIMPLEPGPSIGNBUFFER_INPUTBUFFERLENGTHISZERO						802
+#define SIMPLEPGPSIGNBUFFER_NULLPOINTERTOOUTPUTBUFFER		 		 	803
+#define SIMPLEPGPSIGNBUFFER_NULLPOINTERTOSIGHERKEYIDSTRING				804
+#define SIMPLEPGPSIGNBUFFER_NULLPOINTERTOSIGNERPASSPHRASESTRING			805
+#define SIMPLEPGPSIGNBUFFER_NOTENOUGHMEMORYFORINPUTSTRUCTURE			806
+#define SIMPLEPGPSIGNBUFFER_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE		 	807
+#define SIMPLEPGPSIGNBUFFER_KEYSELCANCEL								808
+#define SIMPLEPGPSIGNBUFFER_SIGNERPWDBUFFERTOOSMALL						809
+#define SIMPLEPGPSIGNBUFFER_OUTPUTBUFFERTOOSMALL						810
+#define SIMPLEPGPSIGNBUFFER_FUNCTIONNOTENABLED							811
+#define SIMPLEPGPSIGNBUFFER_CANNOTUSEUNCERTIFIEDKEY						812
+#define SIMPLEPGPSIGNBUFFER_16BITINPUTBUFFERLENGTHGTR65500				813
+#define SIMPLEPGPSIGNBUFFER_16BITOUTPUTBUFFERLENGTHGTR65500				814
+
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NULLPOINTERTOINPUTDATAFILENAME \
+																		901
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_EMPTYINPUTDATAFILENAMESTRING \
+																		902
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_INPUTDATAFILEDOESNOTEXIST 903
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NULLPOINTERTOINPUTSIGFILENAME \
+																		904
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_EMPTYINPUTSIGFILENAMESTRING \
+																		905
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_INPUTSIGFILEDOESNOTEXIST	906
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NULLPOINTERTOSIGNATURESTATUS \
+																		907
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NULLPOINTERTOSIGNERSTRING 908
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_SIGNERBUFLENGTHTOOSMALL	909
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NULLPOINTERTOSIGNDATE		910
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_SIGNDATEBUFLENGTHTOOSMALL 911
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NOTENOUGHMEMORYFORINPUTDATASTRUCTURE \
+																		912
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_NOTENOUGHMEMORYFORINPUTSIGSTRUCTURE \
+																		913
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_FUNCTIONNOTENABLED			914
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREFILE_CANNOTUSEUNCERTIFIEDKEY 915
+
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NULLPOINTERTOINPUTDATABUFFER \
+																		1001
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_INPUTDATABUFFERLENGTHISZERO \
+																		1002
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NULLPOINTERTOINPUTSIGBUFFER \
+																		1003
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_INPUTSIGBUFFERLENGTHISZERO \
+																		1004
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NULLPOINTERTOSIGNATURESTATUS \
+																		1005
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NULLPOINTERTOSIGNERSTRING \
+																		1006
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_SIGNERBUFLENGTHTOOSMALL 1007
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NULLPOINTERTOSIGNDATE	1008
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_SIGNDATEBUFLENGTHTOOSMALL \
+																		1009
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NOTENOUGHMEMORYFORINPUTDATASTRUCTURE \
+																		1010
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_NOTENOUGHMEMORYFORINPUTSIGSTRUCTURE \
+																		1011
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_FUNCTIONNOTENABLED		 1012
+#define SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_CANNOTUSEUNCERTIFIEDKEY	1013
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_16BITINPUTDATABUFFERLENGTHGTR65500 \
+																		1014
+#define \
+SIMPLEPGPVERIFYDETACHEDSIGNATUREBUFFER_16BITINPUTSIGBUFFERLENGTHGTR65500 \
+																		1015
+
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTOINPUTFILENAME					1101
+#define SIMPLEPGPRECEIVEFILE_EMPTYINPUTFILENAMESTRING		 		 	1102
+#define SIMPLEPGPRECEIVEFILE_INPUTFILEDOESNOTEXIST						1103
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTOOUTPUTFILENAME				1104
+#define SIMPLEPGPRECEIVEFILE_EMPTYOUTPUTFILENAMESTRING					1105
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTODECRYPTPASSPHRASE				1106
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTOSIGNATURESTATUS		 		 1107
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTOSIGNERSTRING					1108
+#define SIMPLEPGPRECEIVEFILE_SIGNERBUFLENGTHTOOSMALL					1109
+#define SIMPLEPGPRECEIVEFILE_NULLPOINTERTOSIGNDATE						1110
+#define SIMPLEPGPRECEIVEFILE_SIGNDATEBUFLENGTHTOOSMALL					1111
+#define SIMPLEPGPRECEIVEFILE_NOTENOUGHMEMORYFORINPUTSTRUCTURE		 	1112
+#define SIMPLEPGPRECEIVEFILE_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE			1113
+#define SIMPLEPGPRECEIVEFILE_DECRYPTPWDBUFFERTOOSMALL		 		 	1114
+#define SIMPLEPGPRECEIVEFILE_ISKEY										1115
+#define SIMPLEPGPRECEIVEFILE_FUNCTIONNOTENABLED							1116
+#define SIMPLEPGPRECEIVEFILE_CANNOTUSEUNCERTIFIEDKEY					1117
+#define SIMPLEPGPRECEIVEFILE_OUTPUTFILENAMETOOLONG						1118
+#define SIMPLEPGPRECEIVEFILE_OUTPUTFILECREATIONERROR					1131
+
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTOINPUTBUFFER					1201
+#define SIMPLEPGPRECEIVEBUFFER_INPUTBUFFERLENGTHISZERO					1202
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTOOUTPUTBUFFER				1203
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTODECRYPTPASSPHRASE		 	1204
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTOSIGNATURESTATUS				1205
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTOSIGNERSTRING				1206
+#define SIMPLEPGPRECEIVEBUFFER_SIGNERBUFLENGTHTOOSMALL					1207
+#define SIMPLEPGPRECEIVEBUFFER_NULLPOINTERTOSIGNDATE					1208
+#define SIMPLEPGPRECEIVEBUFFER_SIGNDATEBUFLENGTHTOOSMALL				1209
+#define SIMPLEPGPRECEIVEBUFFER_NOTENOUGHMEMORYFORINPUTSTRUCTURE			1210
+#define SIMPLEPGPRECEIVEBUFFER_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE		1211
+#define SIMPLEPGPRECEIVEBUFFER_DECRYPTPWDBUFFERTOOSMALL					1212
+#define SIMPLEPGPRECEIVEBUFFER_OUTPUTBUFFERTOOSMALL						1213
+#define SIMPLEPGPRECEIVEBUFFER_ISKEY									1214
+#define SIMPLEPGPRECEIVEBUFFER_FUNCTIONNOTENABLED		 		 		 1215
+#define SIMPLEPGPRECEIVEBUFFER_CANNOTUSEUNCERTIFIEDKEY					1216
+#define SIMPLEPGPRECEIVEBUFFER_16BITINPUTBUFFERLENGTHGTR65500		 	1217
+#define SIMPLEPGPRECEIVEBUFFER_16BITOUTPUTBUFFERLENGTHGTR65500			1218
+
+#define SIMPLEPGPGENERATEKEY_FUNCTIONNOTENABLED							1301
+#define SIMPLEPGPGENERATEKEY_NULLPOINTERTOUSEIDSTRING		 		 	1302
+#define SIMPLEPGPGENERATEKEY_USERIDSTRINGISEMPTY						1303
+#define SIMPLEPGPGENERATEKEY_KEYLENGTHOUTOFRANGE						1304
+#define SIMPLEPGPGENERATEKEY_BADKEYTYPE									1305
+#define SIMPLEPGPGENERATEKEY_VALIDDAYSOUTOFRANGE						1306
+#define SIMPLEPGPGENERATEKEY_NULLPOINTERTOGENKEYID						1308
+#define SIMPLEPGPGENERATEKEY_PWDBUFFERTOOSMALL							1309
+
+#define SIMPLEPGPEXTRACTKEY_FUNCTIONNOTENABLED							1401
+#define SIMPLEPGPEXTRACTKEY_NULLPOINTERTOUIDKIDSTRING		 		 	1402
+#define SIMPLEPGPEXTRACTKEY_UIDKIDSTRINGISEMPTY							1403
+#define SIMPLEPGPEXTRACTKEY_NULLPOINTERTOOUTPUTFILENAME					1404
+#define SIMPLEPGPEXTRACTKEY_OUTPUTFILENAMESTRINGISEMPTY					1405
+#define SIMPLEPGPEXTRACTKEY_NOTENOUGHMEMORYFOROUTPUTSTRUCTURE		 	1406
+#define SIMPLEPGPEXTRACTKEY_OUTPUTFILECREATIONERROR						1407
+#define	SIMPLEPGPEXTRACTKEY_NULLPOINTERTOOUTPUTBUFFER		 		 	1408
+#define	SIMPLEPGPEXTRACTKEY_NULLPOINTERTOOUTPUTBUFFERLEN				1409
+#define SIMPLEPGPEXTRACTKEY_OUTPUTBUFFERTOOSMALL						1410
+
+#define SIMPLEPGPADDKEY_FUNCTIONNOTENABLED								1501
+#define SIMPLEPGPADDKEY_NULLPOINTERTOINPUTFILENAME						1502
+#define SIMPLEPGPADDKEY_INPUTFILENAMESTRINGISEMPTY						1503
+#define SIMPLEPGPADDKEY_INPUTFILENAMEDOESNOTEXIST		 		 		 1504
+#define SIMPLEPGPADDKEY_NOTENOUGHMEMORYFORINPUTSTRUCTURE				1505
+#define SIMPLEPGPADDKEY_NULLPOINTERTOINPUTBUFFER						1506
+#define SIMPLEPGPADDKEY_OTHERINSTANCERUNNING							1507
+
+#define SIMPLEPGPREMOVEKEY_FUNCTIONNOTENABLED		 		 		 	1601
+#define SIMPLEPGPREMOVEKEY_NULLPOINTERTOUIDKIDSTRING					1602
+#define SIMPLEPGPREMOVEKEY_UIDKIDSTRINGISEMPTY							1603
+
+#define SIMPLEPGPCERTIFYKEY_FUNCTIONNOTENABLED							1701
+#define SIMPLEPGPCERTIFYKEY_NULLPOINTERTOKEYTOCERTIFY		 		 	1702
+#define SIMPLEPGPCERTIFYKEY_KEYTOCERTIFYSTRINGISEMPTY		 		 	1703
+#define SIMPLEPGPCERTIFYKEY_NULLPOINTERTOSIGNERSTRING		 		 	1704
+#define SIMPLEPGPCERTIFYKEY_KEYSELCANCEL								1706
+#define SIMPLEPGPCERTIFYKEY_SIGNERPWDBUFFERTOOSMALL						1707
+#define SIMPLEPGPCERTIFYKEY_CANNOTUSEUNCERTIFIEDKEY						1708
+
+#define SIMPLEPGPOPENPUBLICKEYRING_OK		 		 		 		 	0
+#define SIMPLEPGPOPENPUBLICKEYRING_USERCANCELONTASKBUSY					1801
+#define SIMPLEPGPOPENPUBLICKEYRING_CANTOPENKEYRINGFILE					1802
+#define SIMPLEPGPOPENPUBLICKEYRING_OUTOFMEMORY							1803
+
+#define SIMPLEPGPGETNEXTPUBLICKEY_OK									0
+#define SIMPLEPGPGETNEXTPUBLICKEY_EOF		 		 		 		 	8
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLUSERIDSTRINGPOINTER		 		 1901
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLKEYIDSTRINGPOINTER				1902
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLKEYLENGTHPOINTER					1903
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLCREATIONDATEPOINTER		 		 1904
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLEXPIRATIONDATEPOINTER				1905
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLVALIDDAYSPOINTER					1906
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLKEYTYPEPOINTER					1907
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLKEYTYPEESPOINTER					1908
+#define SIMPLEPGPGETNEXTPUBLICKEY_NULLKEYSTATEPOINTER		 		 	1909
+#define SIMPLEPGPGETNEXTPUBLICKEY_BADHANDLE								1910
+
+#define SIMPLEPGPCLOSEPUBLICKEYRING_OK									0
+#define SIMPLEPGPCLOSEPUBLICKEYRING_BADHANDLE		 		 		 	1911
+
+#define SIMPLEPGPOPENPRIVATEKEYRING_OK									0
+#define SIMPLEPGPOPENPRIVATEKEYRING_USERCANCELONTASKBUSY				2001
+#define SIMPLEPGPOPENPRIVATEKEYRING_CANTOPENKEYRINGFILE					2002
+
+#define SIMPLEPGPGETNEXTPRIVATEKEY_OK		 		 		 		 	0
+#define SIMPLEPGPGETNEXTPRIVATEKEY_EOF									8
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLUSERIDSTRINGPOINTER				2101
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLKEYIDSTRINGPOINTER		 		 2102
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLKEYLENGTHPOINTER					2103
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLCREATIONDATEPOINTER				2104
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLEXPIRATIONDATEPOINTER			2105
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLVALIDDAYSPOINTER					2106
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLKEYTYPEPOINTER		 		 	2107
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLKEYTYPEESPOINTER					2108
+#define SIMPLEPGPGETNEXTPRIVATEKEY_NULLKEYSTATEPOINTER					2109
+#define SIMPLEPGPGETNEXTPRIVATEKEY_BADHANDLE							2110
+
+#define SIMPLEPGPCLOSEPRIVATEKEYRING_OK									0
+#define SIMPLEPGPCLOSEPRIVATEKEYRING_BADHANDLE							2111
+
+#define SIMPLEPGPANALYZEFILE_FILENAMEPOINTERISNULL						2201
+#define SIMPLEPGPANALYZEFILE_FILENAMESTRINGISEMPTY						2202
+#define SIMPLEPGPANALYZEFILE_FILENAMEDOESNOTEXIST		 		 		 2203
+#define SIMPLEPGPANALYZEFILE_NOTENOUGHMEMORY							2204
+
+#define SIMPLEPGPANALYZEBUFFER_BUFFERPOINTERISNULL						2301
+#define SIMPLEPGPANALYZEBUFFER_BUFFERLENGTHISZERO		 		 		 2302
+#define SIMPLEPGPANALYZEBUFFER_CANTOPENTEMPFILE							2304
+#define SIMPLEPGPANALYZEBUFFER_ERRORWRITINGTEMPFILE						2305
+
+#define SIMPLEPGPWIPEFILE_OK											0
+#define SIMPLEPGPWIPEFILE_CANTOPENFILE									2401
+#define SIMPLEPGPWIPEFILE_CANTREMOVEFILE								2402
+
+#define SIMPLEPGPGETVERSION_OK											0
+#define SIMPLEPGPGETVERSION_BUFFERPOINTERISNULL							2501
+#define SIMPLEPGPGETVERSION_BUFFERTOOSMALL								2502
+
+#define SIMPLEPGPCHECKRECIPIENT_OK										0
+#define SIMPLEPGPCHECKRECIPIENT_NULLPOINTERTORECIPIENT					2601
+#define SIMPLEPGPCHECKRECIPIENT_RECIPIENTLENGTHISZERO		 		 	2602
+#define SIMPLEPGPCHECKRECIPIENT_NOTENOUGHMEMORYFORINPUTSTRUCTURE		2603
+#define SIMPLEPGPCHECKRECIPIENT_CANNOTUSEUNTRUSTEDKEY		 		 	2604
+
+
+/*
+ * Signature status codes
+ */
+#define SIGSTS_NOTSIGNED			1
+#define SIGSTS_VERIFIED				2
+#define SIGSTS_NOTVERIFIED			3
+#define SIGSTS_BADSIG		 		 4
+#define SIGSTS_VERIFIED_UNTRUSTED	5
+
+
+/*
+ * SimpleAnalyze codes
+ */
+#define SIMPLEANALYZE_UNKNOWN		 	0
+#define SIMPLEANALYZE_ENCR				1
+#define SIMPLEANALYZE_SIGN				2
+#define SIMPLEANALYZE_KEY		 		 3
+#define SIMPLEANALYZE_IOERROR		 	4
+#define SIMPLEANALYZE_DETACHEDSIG		 5
+
+
+/*
+ * KeySelect codes
+ */
+
+/* Keyring Types: */
+#define KEYSEL_PUBLIC	1
+#define KEYSEL_SECRET	2
+#define KEYSEL_GROUP	3
+
+/* Show or Hide goups or expired, disabled, or revoked keys */
+#define KEYSEL_SHOW_GROUPS		0x0100
+#define KEYSEL_SHOW_EXP			0x0200
+#define KEYSEL_SHOW_DIS			0x0400
+#define KEYSEL_SHOW_REV			0x0800
+
+/* Identify the shared button to use */
+#define KEYSEL_GROUP_DEF				1
+#define KEYSEL_DISABLE_SHARED_BUTTONS	4
+
+
+/*
+ * KeyType codes
+ */
+
+#define KEYS_OLD 01 /* Tradional PGP RSA Keys */
+#define KEYS_ENCR 02 /* New style PGP Encryption-only keys */
+#define KEYS_SIGN 04 /* New style PGP Signature-only keys */
+
+
+/*
+ * RecipientList codes
+ */
+
+#define INCLUDE_ONLYUSERIDS 1
+#define INCLUDE_ONLYKEYIDS 2
+#define INCLUDE_BOTH 3
+
+
+/*
+ * XXX: If SPGP_SIGNATURE_ONLY_PGPMIME_HACK is passed for <SignatureOnly>
+ * then the detached signature will say "BEGIN PGP MESSAGE" instead
+ * of "BEGIN PGP SIGNATURE". This is only a hack until PGP/MIME is
+ * implemented in the library.
+ */
+#define SPGP_SIGNATURE_ONLY_PGPMIME_HACK	PGP_SEPSIGMSG
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Prototypes
+ */
+
+int SPGPExport
+SimplePGPEncryptFile (void *handle,
+	char *InputFileName, char *OutputFileName,
+	int SignIt, int Wipe, int Armor, int Textmode, int IDEAOnly,
+	int UseUntrustedKeys, char *RecipientList,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *IDEAPassphrase, size_t IDEAPwdBufferLen,
+	char *PublicKeyRingName, char *PrivateKeyRingname);
+
+int SPGPExport
+SimplePGPEncryptBuffer (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	int SignIt, int Armor, int Textmode, int IDEAOnly,
+	int UseUntrustedKeys, char *RecipientList,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *IDEAPassphrase, size_t IDEAPwdBufferLen,
+	char *PublicKeyRingName, char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPSignFile (void *handle,
+	char *InputFileName, char *OutputFileName,
+	int Armor, int Textmode, int SignatureOnly, int ClearSign,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPSignBuffer (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	int Armor, int Textmode, int SignatureOnly, int ClearSign,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPReceiveFile (void *handle,
+	char *InputFileName, char *OutputFileName,
+	char *DecryptPassPhrase, size_t decryptPwdBufferLen,
+	int *SignatureStatus, char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	char *PublicKeyRingName, char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPReceiveBuffer (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	char *DecryptPassPhrase, size_t decryptPwdBufferLen,
+	int *SignatureStatus, char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	char *PublicKeyRingName, char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPVerifyDetachedSignatureFile (void *handle,
+	char *InputDataFileName, char *InputSignatureFileName,
+	int *SignatureStatus, char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	char *PublicKeyRingName);
+
+int SPGPExport
+SimplePGPVerifyDetachedSignatureBuffer (void *handle,
+	char *InputDataBuffer, size_t InputDataBufferLen,
+	char *InputSignatureBuffer, size_t InputSignatureBufferLen,
+	int *SignatureStatus, char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	char *PublicKeyRingName);
+
+int SPGPExport
+SimplePGPAnalyzeFile (char *Filename);
+
+int SPGPExport
+SimplePGPAnalyzeBuffer (char *Buffer, size_t Len);
+
+int SPGPExport
+SimplePGPOpenPublicKeyRing (void *handle, char *PublicKeyRingName);
+
+int SPGPExport
+SimplePGPGetNextPublicKey (void *handle, char *UserID, char *KeyID,
+	int *KeyLength, char *CreationDate, char *ExpirationDate,
+	int *ValidityDays, int *KeyType, char *KeyTypeES, char *KeyState);
+
+int SPGPExport
+SimplePGPClosePublicKeyRing (void *handle);
+
+int SPGPExport
+SimplePGPOpenPrivateKeyRing (void *handle, char *PrivateKeyRingName);
+
+int SPGPExport
+SimplePGPGetNextPrivateKey (void *handle, char *UserID, char *KeyID,
+	int *KeyLength, char *CreationDate, char *ExpirationDate,
+	int *ValidityDays, int *KeyType, char *KeyTypeES, char *KeyState);
+
+int SPGPExport
+SimplePGPClosePrivateKeyRing (void *handle);
+
+int SPGPExport
+SimplePGPAddKey (void *handle, char *InputFileName, char *KeyRingName);
+
+int SPGPExport
+SimplePGPAddKeyBuffer (void *handle, byte *InputBuffer,
+	size_t InputBufferLen, char *KeyRingName);
+
+int SPGPExport
+SimplePGPExtractKey (void *handle, char *UserIDKeyID,
+	char *OutputFileName, char *KeyRingName);
+
+int SPGPExport
+SimplePGPExtractKeyBuffer (void *handle, char *UserIDKeyID,
+	byte *OutputBuffer, size_t *OutputBufferLen, char *KeyRingName);
+
+int SPGPExport
+SimplePGPCheckRecipient (void *handle, char *Recipient, int UseUntrustedKeys,
+	char *PublicKeyRingName);
+
+PGPLineEndType SPGPExport
+SimplePGPGetLineEndType (void);
+
+PGPLineEndType SPGPExport
+SimplePGPSetLineEndType (PGPLineEndType lineEndType);
+
+
+/* Extended versions of the above */
+
+/*
+ * The <localEncode> params below are used to convey MacBinary mode:
+ *		Never:	0
+ *		Auto:	 kPGPFileOpenMaybeLocalEncode
+ *		Force:	kPGPFileOpenForceLocalEncode
+ * (The above constants are defined in pgpFileRef.h)
+ */
+
+int SPGPExport
+SimplePGPEncryptFileX (void *handle,
+	PGPFileRef *InputFileRef, PGPFileRef *OutputFileRef,
+	int SignIt, int Wipe, int Armor, int Textmode, int IDEAOnly,
+	int UseUntrustedKeys, int ForYourEyesOnly, char *RecipientList,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *IDEAPassphrase, size_t IDEAPwdBufferLen,
+	PGPFileRef *PublicKeyRingRef, PGPFileRef *PrivateKeyRingRef,
+	PGPFileOpenFlags localEncode, SPGPProgressCallBack callBack,
+	void *callBackArg);
+
+int SPGPExport
+SimplePGPEncryptBufferX (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	int SignIt, int Armor, int Textmode, int IDEAOnly,
+	int UseUntrustedKeys, int ForYourEyesOnly, char *RecipientList,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	char *IDEAPassphrase, size_t IDEAPwdBufferLen,
+	PGPFileRef *PublicKeyRingRef, PGPFileRef *PrivateKeyRingRef,
+	SPGPProgressCallBack callBack, void *callBackArg);
+
+int SPGPExport
+SimplePGPSignFileX (void *handle,
+	PGPFileRef *InputFileRef, PGPFileRef *OutputFileRef,
+	int Armor, int Textmode, int SignatureOnly, int ClearSign,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	PGPFileRef *PrivateKeyRingRef, PGPFileOpenFlags localEncode,
+	SPGPProgressCallBack callBack, void *callBackArg);
+
+int SPGPExport
+SimplePGPSignBufferX (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	int Armor, int Textmode, int SignatureOnly, int ClearSign,
+	char *SignerKeyID, size_t SignerBufferLen,
+	char *SignerPassphrase, size_t SignerPwdBufferLen,
+	PGPFileRef *PrivateKeyRingRef, SPGPProgressCallBack callBack,
+	void *callBackArg);
+
+int SPGPExport
+SimplePGPReceiveFileX (void *handle,
+	PGPFileRef *InputFileRef, PGPFileRef *OutputFileRef,
+	char *DecryptPassPhrase, size_t decryptPwdBufferLen,
+	int *SignatureStatus, byte *SignerKeyID, size_t SignerKeyIDBufLen,
+	char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen, Boolean *ForYourEyesOnly,
+	PGPFileRef *PublicKeyRingRef, PGPFileRef *PrivateKeyRingRef,
+	PGPFileOpenFlags localEncode, SPGPProgressCallBack callBack,
+	void *callBackArg);
+
+int SPGPExport
+SimplePGPReceiveBufferX (void *handle,
+	char *InputBuffer, size_t InputBufferLen, char *InputBufferName,
+	char *OutputBuffer, size_t *OutputBufferLen,
+	char *DecryptPassPhrase, size_t decryptPwdBufferLen,
+	int *SignatureStatus, byte *SignerKeyID, size_t SignerKeyIDBufLen,
+	char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen, Boolean *ForYourEyesOnly,
+	PGPFileRef *PublicKeyRingRef, PGPFileRef *PrivateKeyRingRef,
+	SPGPProgressCallBack callBack, void *callBackArg);
+
+int SPGPExport
+SimplePGPVerifyDetachedSignatureFileX (void *handle,
+	PGPFileRef *InputDataFileRef, PGPFileRef *InputSignatureFileRef,
+	int *SignatureStatus, byte *SignerKeyID, size_t SignerKeyIDBufLen,
+	char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	PGPFileRef *PublicKeyRingRef, PGPFileOpenFlags localEncode,
+	SPGPProgressCallBack callBack, void *callBackArg);
+
+int SPGPExport
+SimplePGPVerifyDetachedSignatureBufferX (void *handle,
+	char *InputDataBuffer, size_t InputDataBufferLen,
+	char *InputSignatureBuffer, size_t InputSignatureBufferLen,
+	int *SignatureStatus, byte *SignerKeyID, size_t SignerKeyIDBufLen,
+	char *Signer, size_t SignerBufLen,
+	byte *SignDate, size_t SignDateBufLen,
+	PGPFileRef *PublicKeyRingRef, SPGPProgressCallBack callBack,
+	void *callBackArg);
+
+int SPGPExport
+SimplePGPAnalyzeFileX (PGPFileRef *Fileref, SPGPProgressCallBack callBack,
+	void *callBackArg);
+
+int SPGPExport
+SimplePGPAnalyzeBufferX (char *Buffer, size_t Len,
+	SPGPProgressCallBack callBack, void *callBackArg);
+
+int SPGPExport
+SimplePGPOpenPublicKeyRingX (void *handle, PGPFileRef *PublicKeyRingRef);
+
+int SPGPExport
+SimplePGPOpenPrivateKeyRingX (void *handle, PGPFileRef *PrivateKeyRingRef);
+
+int SPGPExport
+SimplePGPAddKeyX (void *handle, PGPFileRef *InputFileRef,
+	PGPFileRef *KeyRingRef);
+
+int SPGPExport
+SimplePGPAddKeyBufferX (void *handle, byte *InputBuffer,
+	size_t InputBufferLen, PGPFileRef *KeyRingRef);
+
+int SPGPExport
+SimplePGPExtractKeyX (void *handle, char *UserIDKeyID,
+	PGPFileRef *OutputFileRef, PGPFileRef *KeyRingRef);
+
+int SPGPExport
+SimplePGPExtractKeyBufferX (void *handle, char *UserIDKeyID,
+	byte *OutputBuffer, size_t *OutputBufferLen, PGPFileRef *KeyRingRef);
+
+int SPGPExport
+SimplePGPCheckRecipientX (void *handle, char *Recipient, int UseUntrustedKeys,
+	PGPFileRef *PublicKeyRingRef);
+
+int SPGPExport
+SimplePGPRandomNeeded (void *handle);
+
+
+#ifdef __cplusplus
+}
+#endif
+
+#if PRAGMA_IMPORT_SUPPORTED
+#pragma import reset
+#endif
+
+#endif /* SPGP_H */
+
+/*
+ * Local Variables:
+ * tab-width: 4
+ * End:
+ * vi: ts=4 sw=4
+ * vim: si
+ */

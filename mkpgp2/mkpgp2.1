@@ -1,0 +1,2183 @@
+#!/bin/csh -f
+onintr WIPEOUT
+set VERSION = `basename ${0}`
+if ( ! ${?PGPPATH} ) then
+	echo " " ; echo " " | tr " " "\007" 
+	echo The PGPPATH environment variable should be set to use $VERSION.
+	echo " " 
+	if ( -d ~/.pgp ) then
+		echo -n Found ~/.pgp\!\ 
+		echo -n " " | tr " " "\007"
+		echo -n Use it\?\ \[n\]\ 
+		if ( $< == y ) then
+			setenv PGPPATH ~/.pgp
+		else 
+			exit
+		endif
+	else
+		echo Didn\'t find ~/.pgp\! ; echo " "
+		echo Please read the pgp docs and set up your pgp directory.
+		if ( ! $#argv ) exit
+		set dots = 1
+		while ( $dots <= 5 )
+			echo -n \.
+			sleep 1
+			@ dots ++
+		end
+		echo " "
+		exit
+	endif 
+endif
+# Source or write, edit & source the configuration file.
+if ( -e $PGPPATH/$VERSION.rc ) then
+	source $PGPPATH/$VERSION.rc
+else
+	clear ; echo " " | tr " " "\007" ; echo " "
+	echo Writing a fresh copy of $PGPPATH/$VERSION.rc
+	set dots = 1
+	while ( $dots <= 5 )
+		echo -n \.
+		sleep 1
+		@ dots ++
+	end
+	set REQUESTMAILER = /usr/ucb/Mail
+	foreach n ( /usr/ucb/Mail /usr/ucb/mail /bin/mail /usr/bin/mail )
+		if ( -e $n ) then
+			set REQUESTMAILER = $n
+			break
+		endif
+	end
+	if ( -e /bin/mkdirs ) then
+		set MKDIRS = /bin/mkdirs
+	else
+		set MKDIRS = mkdir\ -p
+	endif
+	if ( -e /usr/bin/nl ) then
+		set LINENUMBERS = /usr/bin/nl
+	else
+		set LINENUMBERS = cat\ -n
+	endif
+	foreach n ( $path )
+		if ( `/bin/ls $n | fgrep -c -x sum` ) then
+			set CKSUM = $n/sum
+			break
+		endif
+	end
+	if ( ! $?CKSUM ) then
+		foreach n ( $path )
+			if ( `/bin/ls $n | fgrep -c -x md5` ) then
+				set CKSUM = $n/md5
+				break
+			endif
+		end
+	endif
+	cat << ENDMKPGPRC > $PGPPATH/$VERSION.rc
+#
+# Configuration file for $VERSION.
+#
+# Set the real alternate editor. Pine 3.9.x users, see IMPLICITALTEDIT.
+#
+set MKPGPEDITOR = none
+#
+# Does Pine use the alternate editor implicitly?  Unless you change 
+# MKPGPEDITOR to something other than "none" when IMPLICITALTEDIT = yes,
+# $VERSION will try to use "pico -z -n -t".  I can only hope that you have it...
+#
+set IMPLICITALTEDIT = no                  # (no yes)
+#
+# Routinely check $VERSION against $PGPPATH/$VERSION.sig to detect
+# tampering.  $VERSION can verify itself never, only when called with no
+# arguments, only when pgp functions are used, or anytime it is called for
+# any reason.  Any other files you wish to routinely check can be listed
+# in \$PGPPATH/mkpgpChecklist, and should be listed by absolute pathname.  
+# Place detached signatures for each file in \$PGPPATH.
+#
+set CHECKMKPGP = never                    # (never noargs pgp always)
+#
+# When WIPEAFTERREAD = both, $VERSION wipes and deletes an unaltered message 
+# after you read it in an alternate editor.  You can restrict this behavior to
+# a reply or forward.
+#
+set WIPEAFTERREAD = no                    # (no both reply forward)
+#
+# mkpgp uses a check-sum program to determine if a message has changed.
+# "/bin/sum" is good enough if you have it. md5 is better and is distributed
+# with pgp and some BSD operating systems.
+#
+set CKSUM = $CKSUM                        # (/bin/sum  md5)
+#
+# When Pine is configured to include-header-in-reply, $VERSION can try to pick
+# the right keyid (e-mail address) from the "From:" line.  Whatever it finds 
+# is presented as the default recipient keyid instead of "none".  Entering 
+# other keys will replace the default.  Entering + will let you add to the 
+# default.  Enter = at either prompt for a searchable menu.  Entering - will 
+# delete the default so that the message is not encrypted. See "Replacement 
+# lists" below. 
+# 
+set AUTORECRYPT = no                      # (no yes)
+#
+# Beginning with mkpgp2.0 (and with extreme trepidation) I'm including a script
+# (pph) that serves as a proxy for mkpgp whenever pgp functions requiring your
+# passphrase are needed.  pph reads your passphrase and is placed in the 
+# background.  It alternates between sleeping and checking a directory named
+# \$PGPPATH/tmp/pgpFunctions for a file named pico.XXXX.YYYY. Here, XXXX is the
+# number of a Pine process and YYYY is the number of a $VERSION process. 
+# When $VERSION detects a condition requiring your passphrase, pico.XXXX.YYYY 
+# is moved to \$PGPPATH/tmp/pgpFunctions and the appropriate pgp command (and
+# some others) will be written to a file named PGPCOMMAND.XXXX.YYYY.  $VERSION
+# then begins checking \$PGPPATH/tmp for pico.XXXX.YYYY between 1 second naps.
+# If pph determines that pico.XXXX.YYYY could have been placed in pgpFunctions
+# by a running Pine and ${VERSION}, then pph runs the commands found in 
+# PGPCOMMAND.XXXX.YYYY. (If this doesn't represent a gaping security breach,
+# I don't know what does.)  When pico.XXXX.YYYY is processed, the pgp dialog
+# is written to PGPOUTPUT.  The last command in PGPCOMMAND.XXXX.YYYY moves
+# the processed pico.XXXX.YYYY up to \$PGPPATH/tmp and $VERSION takes over.
+# PGPOUTPUT is written (by $VERSION) to the screen and $VERSION resumes as 
+# normal provided pph didn't attempt to decrypt a message "For your eyes only."
+# pph can't cope with these messages, so you are given a chance to enter your
+# passphrase manually.
+#
+# If USE_PPH = quiet and pph is not running but needed, mkpgp will (re)start
+# pph.  If pph is still running, it will attempt process the message.  If 
+# USE_PPH = yes, $VERSION will ask to start pph if it is needed and not running
+# with a default of yes.  If USE_PPH = no, $VERSION will ask to start pph if it
+# is needed and not running with a default of no.  As before, pph will process
+# the message if it is running.  If USE_PPH = never, pph is never used, running
+# or not.
+#
+set USE_PPH = never                       # (never no yes quiet)
+#
+# The absolute path to pph.
+#
+set PPH_PATH = pph
+#
+# When AUTORECRYPT = yes and KEYSERVER is set to the e-mail address of
+# a key server (see \$PGPPATH/doc/keyserv.doc), $VERSION will search
+# \$REPLACELISTS for the e-mail address found in the "From:" line.  If
+# this search fails to locate the address of the sender, your default
+# pubring is searched provided \$PGPPATH/mkpgpKeyList doesn't exist.
+# \$PGPPATH/mkpgpKeyList is searched first if it exists (this might be
+# faster if you have a really large keyring).  If the address of the
+# sender is not found, you get the following menu:  
+#
+#You don't appear to have someone@some.site.somewhere's public key.
+#
+#    a) Search \$BIGKEYRING for someone@some.site.somewhere.
+#    b) finger someone@some.site.somewhere for key.
+#    c) Query Web keyserver \$WEBKEYSERVER.
+#    d) Request someone@some.site.somewhere from \$KEYSERVER.
+#    e) Send key request directly to someone@some.site.somewhere.
+#    f) Add someone@some.site.somewhere to \$REPLACELISTS and continue.
+#    g) Wipe & delete /tmp/pico.XXXXX and exit $VERSION.
+#    h) All of the above.
+#    i) Some of the above (\$SOMEOFABOVEi).
+#    j) Some of the above (\$SOMEOFABOVEj).
+#    k) Some of the above (\$SOMEOFABOVEk).
+#
+#Enter any combination of letters. [continue] 
+#
+# Create \$PGPPATH/politeKeyRequest for case e.  Otherwise, "Please send 
+# your PGP public key to me." is sent.  
+#
+set KEYSERVER = none # pgp-public-keys@pgp.ai.mit.edu
+set BIGKEYRING = public-keys.pgp
+set GETKEYCOMMAND = http://www-swiss.ai.mit.edu/htbin/pks-extract-key.pl\?op=get\&search
+set WEBKEYSERVER = http://www-swiss.ai.mit.edu/~bal/pks-commands.html 
+set OTHERSERVERS = http://world.std.com/~franl/pgp/pgp-keyservers.html
+#
+# The sequences to execute for options i,j,k of the key retrieval menu.
+#
+set SOMEOFABOVEi = abcdef
+set SOMEOFABOVEj = abcdf
+set SOMEOFABOVEk = acdf
+#
+# If BREAKAFTERKEY = yes, $VERSION will continue to the editor as soon as the
+# target key is found.  If BREAKAFTERKEY = no, $VERSION will continue
+# searching or return to the menu after a key is found.
+#
+set BREAKAFTERKEY = no                     # (no yes)
+#
+# The mailer used by options d) and e) of the above menu.  Some possibilities
+# are  /usr/ucb/Mail /usr/ucb/mail /bin/mail /usr/bin/mail.
+#
+set REQUESTMAILER = $REQUESTMAILER 
+#
+# $VERSION usually starts a little web page when option c of the key 
+# retrieval menu is selected.  You can just dump the key directly into your
+# keyring if you prefer.  Use C at the menu to toggle this setting.
+#
+set USE_LYNX = PAGE                        # ( PAGE DUMP )
+#
+# Ask to encrypt the message. yes = ask with a default of yes, no = ask 
+# with a default of no, quiet = don't ask, just run. 
+#
+set ASKTORUN = quiet                      # (quiet no yes)
+#
+# External spell checking program.  I suggest "ispell -x" if you use ispell.
+#
+set MKPGPSPELL = none
+#
+# Ask to spell check the message. yes = ask with a default of yes, no = ask
+# with a default of no, quiet = don't ask, just run. ASKTOSPELL is ignored
+# when MKPGPSPELL = none.
+#
+set ASKTOSPELL = no                       # (no yes quiet)
+#
+# Show pubring before asking for encryption keys.
+#
+set SHOWPUBRING = yes                     # (yes no menu)
+#
+# Public keyring used by $VERSION.
+#
+set MKPGPPUBRING = $PGPPATH/pubring.pgp
+#
+# Secret keyring used by $VERSION.
+#
+set MKPGPSECRING = $PGPPATH/secring.pgp
+#
+# Show secring before signing.
+#
+set SHOWSECRING = yes                     # (yes/no)
+#
+# Signature file shared by $VERSION & pine.  If signature-file= is set to a
+# value in .pinerc, you can ensure $VERSION will always use the same one by
+# removing the "# " from the second "set SIGFILE" line.  Also see MOVESIG.
+#
+set SIGFILE = \~/.signature
+# set SIGFILE = \`grep ^signature-file= ~/.pinerc | sed s/signature-file=//\`
+#
+# [Re]move the signature before signing or encrypting.  Setting MOVESIG = no 
+# will leave the sigfile in the message. When MOVESIG = clear,  the sigfile is
+# removed from the message before clearsigning, and append afterward.  When
+# MOVESIG = crypt, the sigfile is removed from the message before encrypting.
+# MOVESIG = both does both.  I have absolutely no idea if routine inclusion of
+# a given string represents a security risk.
+#
+set MOVESIG = no                          # (no both clear crypt)
+#
+# Number of seconds to pause.
+#
+set PAUSE = 5
+#
+# Determine if sender can read encrypted messages. 
+#
+set ENCRYPTTOSELF = on			  # (on off)
+#
+# Circumvent version 2.6.[1] legal kluge. When set to yes, $VERSION uses the 
+# (U.S.) pgp2.6 options: "+ce=0 +le" to create ciphertext readable by earlier
+# versions.  When set to no, it is ignored by all versions of pgp. 
+#
+set LEGALKLUGE = no                       # (no yes)
+#
+# In view of the legal kluge, you may wish to use different versions of pgp for
+# encryption and decryption. \$PGPE is used for encryption;  \$PGPD is used for
+# decryption and key additions.  If you want $VERSION to verify these also,
+# use absolute paths and place detached signatures of each in 
+# $PGPPATH.  Absolute pathnames should be used!
+#
+set PGPE = pgp
+#
+set PGPD = \$PGPE
+#
+# Warn sender about MIME attachments and signed cleartext.  Since $VERSION can
+# only encrypt the message text, MIME attachments aren't encrypted.  $VERSION 
+# can include attachments in the message text for encryption. 
+#
+set WARNUSER = yes                        # (yes no)
+#
+# When ATTACHMENTSINREPLY = no, the attachments included in the text for 
+# encryption are clipped from a reply.  They are always retained when you 
+# forward a message.
+#
+set ATTACHMENTSINREPLY = no               # (no yes)
+#
+# If you won't be sending sensitive attachments, you might want to lose the
+# prompt.
+#
+set ENCRYPTATTACHMENTS = yes              # (yes no)
+#
+# Set SIGNWITH to the default keyid (e-mail address) used for signing messages.
+# When SIGNWITH is not equal to none, suppress signing by entering - at the 
+# "Sign the message with which secret key? " prompt.
+#
+set SIGNWITH = none
+#
+# $VERSION normally signs and encrypts with one pass of pgp.  If CPTCLRSIGN 
+# is set to yes, $VERSION will encrypt signed cleartext.
+#
+set CPTCLRSIGN = no                       # (no yes)
+#
+# Shell to start when looking at attachments. 
+#
+set MKPGPSHELL = /bin/csh
+#
+# Your "make path" command.  
+#
+set MKDIRS = "$MKDIRS"
+# set MKDIRS = /bin/mkdirs                  # NeXT
+# set MKDIRS = "mkdir -p"                   # HP, SCO, DG & Sun
+#
+# A line numbering program.
+#
+set LINENUMBERS = "$LINENUMBERS"
+# set LINENUMBERS = /usr/bin/nl             # HP
+# set LINENUMBERS = "cat -n"                # NeXT, SCO, DG & Sun
+#
+# Pager used by $VERSION.  
+#
+set MKPGPPAGER = more
+#
+# Quote characters supplied by pine must be stripped before decryption, and
+# replaced with something afterward.  There seems to be some variation, so 
+# this may need tuning.
+#
+set PINEQUOTE = "> "
+#
+# While you're at it, you might as well use the quote characters of your 
+# choice.
+#
+set QUOTECHAR = "> "
+#
+# A blurb for ASCII armor.  Precede any special characters with \  .
+# If your flavor of pgp doesn't support the +comment option, running these
+# commands will strip the offending code from $VERSION .
+# cp  $VERSION $VERSION.orig
+# sed s/'+comment="\$COMMENT"'//g < $VERSION.orig > $VERSION
+#
+set COMMENT = "Processed by \$VERSION, a Pine/PGP interface."
+#
+# An alternate mailer.  A script can be used here to chain remailers.
+#
+set ALTMAILER = none                      # (none/mixwrap)
+#
+# $VERSION uses "pgp -w" to remove most temporary files it creates.  The
+# exceptions are files copied to mkpgpAttach, a temporary directory, when 
+# dealing with encrypted attachments.  mkpgpWipe is an alternative utility 
+# that can descend a directory tree, wiping plain files, removing links and 
+# directories as it goes.  mkpgpWipe uses md5 and the +makerandom option 
+# of pgp to randomly rename each item before it is removed by pgp -w 
+# (plain files), rm (links), or rmdir (directories).  By default, plain files
+# are wiped three times (you can change NWIPES near the top of mkpgpWipe).  Since,
+# for this function, pgp seeds its random number generator from the file size,
+# a small file is created and appended to the target between wipes.  Use
+# mkpgpWipe at your own peril; it's slow and I don't know its limitations.
+#
+set RMDIR = "/bin/rm -rf"                      # ("/bin/rm -rf" mkpgpWipe)
+set RMFILE = "\$PGPE -w"                       # ("pgp -w" mkpgpWipe
+#
+# Location of replacement lists. If IMPLICITALTEDIT = yes and 
+# AUTORECRYPT = yes, you can automatically replace a key (e-mail address) 
+# with other keys.
+#
+set REPLACELISTS = $PGPPATH/$VERSION.rc
+#
+# Below is an example that replaces deviate@lipschitz.sfasu.edu
+# with deviate@lipschitz.sfasu.edu and kelly@home.  Be sure to place such lists
+# behind a # with the first word against the #.  Do not include the < >.
+#
+#deviate@lipschitz.sfasu.edu deviate@lipschitz.sfasu.edu kelly@home
+#
+# Mooncalf here won't use pgp, so I have AUTORECRYPT set this key back to none. 
+# 
+#sends@mail.on.postcards none
+#
+ENDMKPGPRC
+#
+#
+	clear ; more $PGPPATH/$VERSION.rc
+	echo " " ; echo -n Edit $PGPPATH/$VERSION.rc now\? \[n\]\ 
+	if ( $< == y ) then
+		echo -n Name your favorite editor...\ \[pico -z -t\]\ 
+		set EDITMKPGPRC = $<
+		if ( `echo $EDITMKPGPRC | wc -l` ) then
+			"$EDITMKPGPRC" $PGPPATH/$VERSION.rc
+		else
+			pico -z -t $PGPPATH/$VERSION.rc
+		endif
+	endif
+	source $PGPPATH/$VERSION.rc
+endif
+if ( ! -e $PGPPATH/tmp ) then
+	clear ; echo " " | tr " " "\007" ; echo " "
+	echo Didn\'t find $PGPPATH/tmp.  Making an empty one for $VERSION... 
+	mkdir $PGPPATH/tmp ; 
+	set dots = 1
+	while ( $dots <= $PAUSE )
+		echo -n \.
+		sleep 1
+		@ dots ++
+	end
+endif
+if ( ! -e $SIGFILE ) then
+        clear ; echo " " | tr " " "\007" ; echo " "
+        echo Didn\'t find $SIGFILE.  Making an empty one for $VERSION...
+        touch $SIGFILE
+        set dots = 1
+        while ( $dots <= $PAUSE )
+                echo -n \.
+                sleep 1
+@ dots ++
+        end
+endif
+if ( $CHECKMKPGP == always ) then
+	clear
+	$PGPD $PGPPATH/`basename $0.sig` $0
+	if ( -e $PGPPATH/mkpgpChecklist ) then
+		foreach ckfile ( `cat $PGPPATH/mkpgpChecklist` )
+			$PGPD $PGPPATH/`basename $ckfile.sig` $ckfile
+		end
+	endif
+endif
+if ( ! $#argv ) then
+	if ( $CHECKMKPGP == noargs ) then
+		$PGPD $PGPPATH/`basename $0.sig` $0
+		if ( -e $PGPPATH/mkpgpChecklist ) then
+			foreach ckfile ( `cat $PGPPATH/mkpgpChecklist` )
+				$PGPD $PGPPATH/`basename $ckfile.sig` $ckfile
+			end
+		endif
+	endif
+	exit
+endif
+clear
+#
+# When AUTORECRYPT == yes, snag the address of the sender on the first pass.
+# When AUTORECRYPT == yes, set keys = that address on the second pass.
+if ( $AUTORECRYPT == yes ) then
+	if ( $#argv == 1 ) then
+		set keys = `grep From:\  < $1 | head -1 | sed "s/>\ From:\ //"`
+		if ( `echo $keys | wc -l` ) then
+			set keys = `echo $keys[$#keys] | tr '<>' ' ' `
+			if ( $KEYSERVER != none ) then
+				if ( `grep -c ^-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1` ) then
+					set IsaKey
+					@ Sline = `grep -n -e -----BEGIN\ PGP\ SIGNED\ MESSAGE----- $1 | tr : " " | awk '{print $1}' | head -1`
+					@ Mline = `grep -n -e -----BEGIN\ PGP\ MESSAGE----- $1 | tr : " " | awk '{print $1}' | head -1`
+					@ Kline = `grep -n -e -----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1 | tr : " " | awk '{print $1}' | head -1`
+					if ( $Sline || $Mline ) then
+						if ( $Sline < $Kline || $Mline < $Kline ) then
+							$PGPD -ka $1 $MKPGPPUBRING
+							$RMFILE $1 >& /dev/null
+							if ( -e $PGPPATH/mkpgpKeyList ) then
+								echo Updating $PGPPATH/mkpgpKeyList
+								$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+							endif
+						endif
+					endif
+				else if ( `grep -c ^"$PINEQUOTE"-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1` ) then
+					set IsaKey
+					@ Sline = `grep -n  ^"$PINEQUOTE"-----BEGIN\ PGP\ SIGNED\ MESSAGE----- $1 | tr : " " | awk '{print $1}' | head -1`
+					@ Mline = `grep -n  ^"$PINEQUOTE"-----BEGIN\ PGP\ MESSAGE----- $1 | tr : " " | awk '{print $1}' | head -1`
+					@ Kline = `grep -n  ^"$PINEQUOTE"-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1 | tr : " " | awk '{print $1}' | head -1`
+					if ( $Sline || $Mline ) then
+						if ( $Sline < $Kline || $Mline < $Kline ) then
+							sed s/^"$PINEQUOTE"//g < $1 > ${PGPPATH}$1.$$
+							$PGPD -ka ${PGPPATH}$1.$$ $MKPGPPUBRING
+							$RMFILE ${PGPPATH}$1.$$ >& /dev/null
+							if ( -e $PGPPATH/mkpgpKeyList ) then
+								echo Updating $PGPPATH/mkpgpKeyList
+								$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+							endif
+						endif
+					endif
+				endif
+				if ( ! ${?IsaKey} ) then
+					if ( `grep -c $keys $REPLACELISTS` ) then
+						set foundIt
+					else if ( -e $PGPPATH/mkpgpKeyList ) then
+						if (`grep -c $keys $PGPPATH/mkpgpKeyList`) set foundIt
+					endif
+					if ( ! ${?foundIt} ) then
+						set keyid = `(sed s/^"$PINEQUOTE"//g < $1 | $PGPD -f +batch > /dev/null) |& grep match.\*not\ found | head -1 | awk '{print $6}' `
+						if ( ! `echo $keyid | wc -w` ) set keyid = $keys
+						if ( `$PGPD -kv $MKPGPPUBRING | grep -c $keyid` ) set foundIt
+						if ( $keys != $keyid) set keyid = 0x$keyid	
+					endif
+					if ( ! ${?foundIt} ) then
+						set keyans = toGetByWhile
+						while ( `echo $keyans | wc -l` )
+							clear
+							if ( $BREAKAFTERKEY == yes ) set pubsum = `$CKSUM < $MKPGPPUBRING | awk '{print $1}'`
+cat << ENDINST
+
+You don't appear to have $keys's public key.
+
+   a) Search $BIGKEYRING for $keyid.
+   b) finger $keys for key.
+   c) Query Web key servers (requires Lynx2.4.2 (c)1995 University of Kansas).
+   d) Request $keyid from $KEYSERVER.
+   e) Send key request directly to $keys.
+   f) Add $keys to $REPLACELISTS and continue.
+   g) Wipe & delete $1 and exit $VERSION.
+   h) All of the above.
+   i) Some of the above ($SOMEOFABOVEi).
+   j) Some of the above ($SOMEOFABOVEj).
+   k) Some of the above ($SOMEOFABOVEk).
+
+ENDINST
+							echo -n Enter any combination of letters.\ \[continue\]\ 
+							set keyans = $<
+							if ( `echo $keyans | wc -l` ) then
+								if (`echo $keyans | grep -c h` ) set keyans = abcdefg
+								if (`echo $keyans | grep -c i` ) set keyans = $SOMEOFABOVEi
+								if (`echo $keyans | grep -c j` ) set keyans = $SOMEOFABOVEj
+								if (`echo $keyans | grep -c k` ) set keyans = $SOMEOFABOVEk
+								if (`echo $keyans | grep -c a` ) then
+									if ( -e $BIGKEYRING ) then
+										onintr AFTER_PGP
+										pgp -kx +verbose=0 $keyid $PGPPATH/tmp/$keys $BIGKEYRING
+										AFTER_PGP: ; onintr WIPEOUT
+										if ( -e $PGPPATH/tmp/${keys}.pgp ) then
+											$PGPD -ka $PGPPATH/tmp/$keys $MKPGPPUBRING
+											if ( -e $PGPPATH/mkpgpKeyList ) then
+												echo Updating $PGPPATH/mkpgpKeyList
+												$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+											endif
+											if ( $keyid == $keys ) then
+												( pgp -f +verb=0 < $PGPPATH/tmp/${keys}.pgp > $PGPPATH/tmp/$keys ) >& /dev/null
+												set keyid = 0x`grep ^pub $PGPPATH/tmp/$keys | tr "/" " " | awk '{print $3}'`
+												$RMFILE $PGPPATH/tmp/$keys >& /dev/null
+											endif
+											$RMFILE $PGPPATH/tmp/$keys.pgp >& /dev/null
+										else
+        										set dots = 1
+        										while ( $dots <= $PAUSE )
+                										echo -n \.
+                										sleep 1
+												@ dots ++
+        										end
+												echo " "
+										endif
+									else
+										echo I can\'t find $BIGKEYRING\!
+									endif
+									if (  $BREAKAFTERKEY == yes ) then
+										if ( `$CKSUM < $MKPGPPUBRING | awk '{print $1}'` != $pubsum ) then
+											if ( `echo $keyans | grep -c f` ) then
+												set keyans = `echo $keyans | sed "s/[a|b|c|d|e]//g"`
+											else
+												if ( `echo $keyans | grep -c g` ) then
+													$RMFILE $1 >& /dev/null
+													exit
+												else
+													break
+												endif
+											endif
+										endif
+									endif
+								endif
+								if ( `echo $keyans | grep -c b` ) then
+									if ( `echo $keyans | grep -c a` ) echo " "
+									echo Trying finger...
+									onintr AFTER_FINGER
+									finger -l $keys | tee $PGPPATH/tmp/$keys.asc
+									AFTER_FINGER: ; onintr WIPEOUT
+									if ( `grep -c ^-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $PGPPATH/tmp/$keys.asc` ) then
+										$PGPD -ka $PGPPATH/tmp/$keys.asc $MKPGPPUBRING
+										if ( -e $PGPPATH/mkpgpKeyList ) then
+											echo Updating $PGPPATH/mkpgpKeyList
+											$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList																																									
+										endif
+										if ( $keyid == $keys ) then
+											( pgp -f +verb=0 < $PGPPATH/tmp/$keys.asc > $PGPPATH/tmp/$keys ) >& /dev/null
+											set keyid = 0x`grep ^pub $PGPPATH/tmp/$keys | tr "/" " " | awk '{print $3}'`
+											$RMFILE $PGPPATH/tmp/$keys >& /dev/null
+										endif
+										$RMFILE $PGPPATH/tmp/$keys.asc >& /dev/null
+										if ( $BREAKAFTERKEY == yes ) then
+											if ( `$CKSUM < $MKPGPPUBRING | awk '{print $1}'` != $pubsum ) then
+												if ( `echo $keyans | grep -c f` ) then
+													set keyans = `echo $keyans | sed "s/[a|b|c|d|e]//g"`
+												else
+													if ( `echo $keyans | grep -c g` ) then
+														$RMFILE $1 >& /dev/null
+														exit
+													else
+														break
+													endif
+												endif
+											endif
+										endif
+									endif
+									$RMFILE $PGPPATH/tmp/$keys.asc >& /dev/null
+								endif
+								if ( `echo $keyans | grep -ic c` ) then
+									if ( `echo $keyans | grep -c C` ) then
+										if ( $USE_LYNX == DUMP ) then
+											set USE_LYNX = PAGE
+										else if ( $USE_LYNX == PAGE ) then
+											set USE_LYNX = DUMP
+										endif
+									endif
+									if ( $USE_LYNX == DUMP ) then
+										onintr AFTER_LYNX_DUMP
+										echo Trying lynx...
+										lynx -dump -force_html "$GETKEYCOMMAND=$keyid" |& tee $PGPPATH/tmp/pksExtractKey
+										AFTER_LYNX_DUMP:
+										onintr WIPEOUT
+										if ( `grep -c ^-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $PGPPATH/tmp/pksExtractKey` ) then
+											$PGPD -ka $PGPPATH/tmp/pksExtractKey $MKPGPPUBRING
+											if ( -e $PGPPATH/mkpgpKeyList ) then
+												echo Updating $PGPPATH/mkpgpKeyList
+												$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+											endif
+										endif
+										$RMFILE $PGPPATH/tmp/pksExtractKey >& /dev/null
+										if ( $BREAKAFTERKEY == yes ) then
+											if ( `$CKSUM < $MKPGPPUBRING | awk '{print $1}'` != $pubsum ) then
+												if ( `echo $keyans | grep -c f` ) then
+													set keyans = `echo $keyans | sed "s/[a|b|c|d|e]//g"`
+												else
+													if ( `echo $keyans | grep -c g` ) then
+														$RMFILE $1 >& /dev/null
+														exit
+													else
+														break
+													endif
+												endif
+											endif
+										endif
+								else if ( $USE_LYNX == PAGE ) then
+cat << ENDHTMLFILE > $PGPPATH/tmp/getkeys.html
+
+Follow the first link to search for the specific key.  Save each key
+to the suggested file name.  $VERSION will try to add them to keyring:
+$MKPGPPUBRING when you exit lynx.
+<p>
+Search for public key: <a href="$GETKEYCOMMAND=$keyid" >$keyid</a>
+<p>
+<LI><a href="$WEBKEYSERVER">Other public keys...</a>
+<p>
+<LI><a href="$OTHERSERVERS">Other PGP Public Keyservers...</a>
+<p>
+
+ENDHTMLFILE
+										set currentDir = $cwd
+										cd $PGPPATH/tmp
+										mkdir webKeys ; cd webKeys
+										onintr AFTER_LYNX_PAGE
+										lynx -force_html $PGPPATH/tmp/getkeys.html
+										AFTER_LYNX_PAGE: ; onintr WIPEOUT
+										cd $PGPPATH/tmp
+										$RMFILE $PGPPATH/tmp/getkeys.html >& /dev/null
+										set gotKeys = `ls webKeys | wc -l`
+										if ( $gotKeys ) then
+											if ( $keyid == $keys ) then
+												if ( `ls webKeys | grep ${keyid}$ | wc -l` ) then
+													( pgp -f +verb=0 < $PGPPATH/tmp/webKeys/*$keyid > $PGPPATH/tmp/$keyid ) >& /dev/null
+													set keyid = 0x`grep ^pub $PGPPATH/tmp/$keyid | tr "/" " " | awk '{print $3}'`
+													if ( $keyid == 0x ) set keyid = $keys
+													$RMFILE $PGPPATH/tmp/$keys >& /dev/null
+												endif
+											endif
+									  		cat webKeys/* > pksExtractKey
+											if ( `grep -c ^-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- pksExtractKey` ) then
+												$PGPD -ka pksExtractKey $MKPGPPUBRING
+											endif
+											$RMFILE pksExtractKey >& /dev/null
+											if ( -e $PGPPATH/mkpgpKeyList ) then
+												echo Updating $PGPPATH/mkpgpKeyList
+												$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+											endif
+										endif	
+										$RMDIR $PGPPATH/tmp/webKeys
+										cd $currentDir
+										if ( $BREAKAFTERKEY == yes ) then
+											if ( `$CKSUM < $MKPGPPUBRING | awk '{print $1}'` != $pubsum ) then
+												if ( `echo $keyans | grep -c f` ) then
+													set keyans = `echo $keyans | sed "s/[a|b|c|d|e]//g"`
+												else
+													if ( `echo $keyans | grep -c g` ) then
+														$RMFILE $1 >& /dev/null
+														exit
+													else
+														break
+													endif
+												endif
+											endif
+										endif
+									endif
+								endif
+								if ( `echo $keyans | grep -c d` ) then
+									echo " " | $REQUESTMAILER -s "GET $keyid" $KEYSERVER
+									echo Request for $keyid sent to $KEYSERVER.
+								endif
+								if ( `echo $keyans | grep -c e` ) then
+									if ( -e $PGPPATH/politeKeyRequest ) then
+										$REQUESTMAILER -s "pgp key request" $keys < $PGPPATH/politeKeyRequest
+									else
+										echo "Please send your PGP public key to me." | $REQUESTMAILER -s "pgp key request" $keys
+									endif
+									echo Key request sent to $keys.
+								endif
+								if ( `echo $keyans | grep -c f` ) then
+									if ( $keys != $keyid ) then
+										echo -n Replace $keys with \[$keyid\]:\ 
+										set replaceKey = $<
+										if ( "$replaceKey" == "-" ) then
+											set keys = $keyid
+										else
+											if ( "$replaceKey" == "=" ) then
+												set replaceKey ; set keyLines ; set moreKeys ; set inbrackets = none
+												echo Building public key menu...
+												$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+												while ( $?moreKeys )
+													less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+													echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+													set inbrackets = "no more"
+													if ( `echo $newLines | wc -l` ) then
+														set keyLines = ($keyLines $newLines)
+													else
+														unset moreKeys
+													endif
+												end
+												if ( `echo $keyLines | wc -l` ) then
+													foreach n ( $keyLines ) 
+														sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+													end
+													compress -f $PGPPATH/tmp/shortList
+													zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+													$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null
+													clear
+													echo $keys will be replaced with the key\(s\) for:
+													$MKPGPPAGER $PGPPATH/tmp/shortList
+													set replaceKey = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+													$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+												endif
+												$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+
+											endif
+											if ( `echo $replaceKey | wc -l` ) then
+												echo \#$keys "$replaceKey" >> $REPLACELISTS
+												echo \# >> $REPLACELISTS
+												set keys = "$replaceKey"
+											else				
+												echo \#$keys $keyid >> $REPLACELISTS
+												echo \# >> $REPLACELISTS
+												set keys = $keyid
+											endif
+										endif
+									else
+										echo -n Replace $keys with \[none\]:\ 
+										set replaceKey = $<
+										if ( "$replaceKey" == "-" ) then
+											set keys = none
+										else
+											if ( "$replaceKey" == "=" ) then
+												set replaceKey ; set keyLines ; set moreKeys ; set inbrackets = none
+												echo Building public key menu...
+												$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+												while ( $?moreKeys )
+													less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+													echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+													set inbrackets = "no more"
+													if ( `echo $newLines | wc -l` ) then
+														set keyLines = ($keyLines $newLines)
+													else
+														unset moreKeys
+													endif
+												end
+												if ( `echo $keyLines | wc -l` ) then
+													foreach n ( $keyLines ) 
+														sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+													end
+													compress -f $PGPPATH/tmp/shortList
+													zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+													$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null
+													clear
+													echo $keys will be replaced with the key\(s\) for:
+													$MKPGPPAGER $PGPPATH/tmp/shortList
+													set replaceKey = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+													$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+												endif
+												$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+
+											endif
+											if ( `echo $replaceKey | wc -l` ) then
+												echo \#$keys "$replaceKey" >> $REPLACELISTS
+												echo \# >> $REPLACELISTS
+												set keys = "$replaceKey"
+											else				
+												echo \#$keys none >> $REPLACELISTS
+												echo \# >> $REPLACELISTS
+												set keys = none
+											endif
+										endif
+									endif
+									clear
+									if ( ! `echo $keyans | grep -c g` ) break
+								endif
+								if ( `echo $keyans | grep -c g` ) then
+									$RMFILE $1 >& /dev/null
+									exit
+								endif								
+							endif
+						end
+					endif
+				endif
+			endif
+			set altkeys = `grep ^\#$keys[1] $REPLACELISTS | head -1`
+			if ( `echo $altkeys | wc -l` ) then
+				set keys = `echo $altkeys | sed "s/\#$keys//"`
+			endif
+		else
+			set keys = none
+		endif
+	else if ( $#argv == 2 && "$2" != call2 ) then
+		set keys = "$2"
+	endif
+else
+	set keys = none
+endif
+if ( `echo $MKPGPEDITOR | awk '{print $1}'` == none && $IMPLICITALTEDIT == yes ) set MKPGPEDITOR = "pico -z -n -t" 
+if ( $LEGALKLUGE == yes ) then 
+	set LEGALKLUGE = "+ce=0 +le"
+else
+	set LEGALKLUGE = " "
+endif
+clear
+# Run pgp if message is encrypted, signed cleartext, or cleartext with pubkey.
+if ( $#argv == 1 ) then
+	if ( `grep -c ^-----BEGIN\ PGP\ MESSAGE----- $1` ) then
+		set DECRYPT = BEGINPGPMESSAGE
+	else if ( `grep -c ^"$PINEQUOTE"-----BEGIN\ PGP\ MESSAGE----- $1` ) then
+		set DECRYPT = BEGINPGPMESSAGE
+	else if ( `grep -c ^-----BEGIN\ PGP\ SIGNED\ MESSAGE----- $1` ) then
+		set DECRYPT = BEGINPGPSIGNEDMESSAGE
+	else if ( `grep -c ^"$PINEQUOTE"-----BEGIN\ PGP\ SIGNED\ MESSAGE----- $1` ) then
+		set DECRYPT = BEGINPGPSIGNEDMESSAGE
+	else if ( `grep -c ^-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1` ) then
+		 set DECRYPT = BEGINPGPPUBLICKEYBLOCK
+	else if ( `grep -c ^"$PINEQUOTE"-----BEGIN\ PGP\ PUBLIC\ KEY\ BLOCK----- $1` ) then
+		 set DECRYPT = BEGINPGPPUBLICKEYBLOCK
+	endif
+endif
+if ( ${?DECRYPT} ) then
+	if ( $CHECKMKPGP == pgp ) then
+		clear
+		$PGPD $PGPPATH/`basename $0.sig` $0
+		if ( -e $PGPPATH/mkpgpChecklist ) then
+			foreach ckfile ( `cat $PGPPATH/mkpgpChecklist` )
+				$PGPD $PGPPATH/`basename $ckfile.sig` $ckfile
+			end
+		endif
+	endif
+# Message is treated as a Reply if the first line is "On\.\*wrote:".
+# Strip the quote characters, run pgp, unpack attachments, prepend Reply stuff
+# on cleartext, wipe temp file, edit message, run mkpgp again to recrypt.
+	if ( `head -1 < $1 | grep -c ^On\.\*wrote: ` ) then
+		set Onwrote=`head -1 < $1 | grep On\.\*wrote: ` 
+		touch ${PGPPATH}$1.$$ ; chmod 600 ${PGPPATH}$1.$$
+		sed s/^"$PINEQUOTE"//g < $1 > ${PGPPATH}$1.$$
+		echo $Onwrote > $1 ; echo " " >> $1
+		if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+			switch ( $USE_PPH )
+				case yes:
+					echo -n Start pph\?\ \[y\]\ ; 
+					if ( $< != n ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case no:
+					echo -n Start pph\?\ \[n\]\ ; 
+					if ( $< == y ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case quiet:
+					$PPH_PATH
+					breaksw
+				case never:
+					breaksw
+				default:
+					breaksw
+			endsw
+		endif
+		if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+			set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+			touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo echo \$pp " | ($PGPD +pager= +tmp=$PGPPATH/tmp +force +batch +interactive=off +keepbinary=off ./`basename $1.$$`)>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo mv `basename $1.$$` $PGPPATH/tmp >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			mv ${PGPPATH}$1.$$ $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+			echo -n Decrypting the message
+			while ( ! -e ${PGPPATH}$1.$$ )
+				echo -n \.
+				sleep 1
+			end
+			echo " Done\!"
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+			if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT ) then
+				echo " " >> $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+				if ( ! `grep -c "For your eyes only" < $PGPPATH/tmp/pgpFunctions/PGPOUTPUT` ) then
+					cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+				else
+					echo This message is for your eyes only, pph can\'t decrypt it.
+					$PGPD +pager= +tmp=$PGPPATH/tmp +interactive=on +keepbinary=off ${PGPPATH}$1.$$
+					$RMFILE ${PGPPATH}$1.$$ >& /dev/null ; touch ${PGPPATH}$1.$$ ; chmod 600 ${PGPPATH}$1.$$
+				endif						
+			endif
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+		else
+			$PGPD +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off ${PGPPATH}$1.$$
+		endif
+		if ( $DECRYPT == BEGINPGPPUBLICKEYBLOCK && -e  $PGPPATH/mkpgpKeyList ) then
+			echo -n Updating $PGPPATH/mkpgpKeyList
+			$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+		endif
+# Extract attachments in mkpgpAttach. Wipe mkpgpAttach.tar.Z. Move 
+# mkpgpAttach into $PGPPATH.
+		if ( `grep -c ^begin\ 600\ mkpgpAttach.tar.Z < ${PGPPATH}$1.$$` ) then
+			echo " " ; echo Attachments: ; echo " "
+			uudecode ${PGPPATH}$1.$$ ; zcat mkpgpAttach.tar.Z | tar tf - | $MKPGPPAGER
+			echo " " ; echo -n Extract the attachments\?\ \[n\]\ 
+			if ( $< == y ) then
+				zcat mkpgpAttach.tar.Z | tar xvf -
+				$RMFILE  mkpgpAttach.tar.Z >& /dev/null
+				set newname = mkpgpAttach
+				while ( -e $PGPPATH/$newname ) 
+					clear
+					echo -n Subdirectories of $PGPPATH : `(cd $PGPPATH ; ls -F | grep / )`
+					echo " " ; echo " "
+					echo -n $PGPPATH/$newname exists\; enter a new name.\ 
+					set newname = $<
+				end
+				mv mkpgpAttach $PGPPATH/$newname
+				echo " " ; echo Attachments are in $PGPPATH/$newname.
+				echo -n Examine the attachments in $PGPPATH/$newname\?\ \[n\]\ 
+					if ( $< == y ) then
+						clear ; echo " "
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						set currentDir = $cwd ; cd $PGPPATH/$newname
+						$MKPGPSHELL ; cd $currentDir
+						echo -n Keep the attachments in $PGPPATH/$newname\?\ \[y\]\ 
+						if ( $< == n ) $RMDIR $PGPPATH/$newname >& /dev/null 
+					endif
+			else
+				$RMFILE  mkpgpAttach.tar.Z >& /dev/null
+			endif
+			if ( `grep -c ^\#beginMkpgpAttachments < ${PGPPATH}$1.$$`) then
+				set lln = `grep -n ^\#beginMkpgpAttachments < ${PGPPATH}$1.$$ | head -1 | sed "s/:/\ /" | awk '{print $1}'`
+			else
+				set lln = `grep -n ^begin\ 600\ mkpgpAttach.tar.Z < ${PGPPATH}$1.$$ | head -1 | sed "s/:/\ /" | awk '{print $1}'`
+			endif
+			set lln = `expr $lln - 1`
+			head -$lln < ${PGPPATH}$1.$$ | sed -e s/^/"$QUOTECHAR"/ >> $1
+			echo " " | tr " " "\012" >> $1 
+			cat $SIGFILE >> $1 
+			if ( $ATTACHMENTSINREPLY != no ) then
+				echo " " >> $1 
+				set lln = `expr $lln + 1`
+				tail +$lln < ${PGPPATH}$1.$$ >> $1
+			endif
+			$RMFILE  ${PGPPATH}$1.$$ >& /dev/null
+			if ( $DECRYPT == BEGINPGPSIGNEDMESSAGE ) then
+				set dots = 1
+				while ( $dots <= $PAUSE )
+					echo -n \.
+					sleep 1
+					@ dots ++
+				end
+			endif
+			if ( `echo $MKPGPEDITOR | awk '{print $1}'` != none ) then
+				if ( $WIPEAFTERREAD == reply || $WIPEAFTERREAD == both ) then
+					set cksumBefore = `$CKSUM < $1 | awk '{print $1}'`
+				endif
+				$MKPGPEDITOR $1
+				if ( $WIPEAFTERREAD == reply || $WIPEAFTERREAD == both ) then
+					set cksumAfter = `$CKSUM < $1 | awk '{print $1}'`
+					if ( $cksumBefore == $cksumAfter ) then
+						$RMFILE  $1 >& /dev/null ; exit
+					endif
+				endif
+				if ( `echo $MKPGPSPELL | awk '{print $1}'` != none ) then
+					if ( $ASKTOSPELL == no ) then
+						clear ; echo " " ; echo -n Spell check message\?\ \[n\]\ 
+						if ( $< == y ) $MKPGPSPELL $1
+					else if ( $ASKTOSPELL == yes ) then
+						clear ; echo " " ; echo -n Spell check message\?\ \[y\]\ 
+						if ( $< != n ) $MKPGPSPELL $1
+					else if ( $ASKTOSPELL == quiet ) then
+						clear ; $MKPGPSPELL $1 
+					endif
+				endif
+			endif
+			if ( $ASKTORUN == no ) then
+				clear ; echo " " ; echo -n Encrypt or sign message\?\ \[n\]\ 
+				if ( $< != y ) exit
+			else if ( $ASKTORUN == yes ) then
+				clear ; echo " " ; echo -n Encrypt or sign message\?\ \[y\]\ 
+				if ( $< == n ) exit
+			endif
+                        if ( $IMPLICITALTEDIT == yes ) then
+                                if ( $AUTORECRYPT == yes ) then
+                                        $0 $1 "$keys"
+                                else
+                                        $0 $1 call2
+                                endif
+                        endif
+			exit
+		else
+			if ( $DECRYPT == BEGINPGPPUBLICKEYBLOCK ) then
+				fgrep -vx "$Onwrote" < ${PGPPATH}$1.$$ | fgrep -vx -f $SIGFILE | sed -e s/^/"$QUOTECHAR"/ >> $1 
+			else 
+				sed -e s/^/"$QUOTECHAR"/ < ${PGPPATH}$1.$$ >> $1
+			endif
+			echo " " | tr " " "\012" >> $1
+			cat $SIGFILE >> $1 ; $RMFILE ${PGPPATH}$1.$$ >& /dev/null
+				set dots = 1
+				while ( $dots <= $PAUSE )
+				      echo -n \.
+				      sleep 1
+					@ dots ++
+				end
+			if ( `echo $MKPGPEDITOR | awk '{print $1}'` != none ) then 
+				if ( $WIPEAFTERREAD == reply || $WIPEAFTERREAD == both ) then
+					set cksumBefore = `$CKSUM < $1 | awk '{print $1}'`
+				endif
+				$MKPGPEDITOR $1
+				if ( $WIPEAFTERREAD == reply || $WIPEAFTERREAD == both ) then
+					set cksumAfter = `$CKSUM < $1 | awk '{print $1}'`
+					if ( $cksumBefore == $cksumAfter ) then
+						$RMFILE  $1 >& /dev/null ; exit
+					endif
+				endif
+				if ( `echo $MKPGPSPELL | awk '{print $1}'` != none ) then
+					if ( $ASKTOSPELL == no ) then
+						clear ; echo " " ; echo -n Spell check message\?\ \[n\]\ 
+						if ( $< == y ) $MKPGPSPELL $1
+					else if ( $ASKTOSPELL == yes ) then
+						clear ; echo " " ; echo -n Spell check message\?\ \[y\]\ 
+						if ( $< != n ) $MKPGPSPELL $1
+					else if ( $ASKTOSPELL == quiet ) then
+						clear ; $MKPGPSPELL $1 
+					endif
+				endif
+			endif
+			if ( $ASKTORUN == no ) then
+				clear ; echo " " ; echo -n Encrypt or sign message\?\ \[n\]\ 
+				if ( $< != y ) exit
+			else if ( $ASKTORUN == yes ) then
+				clear ; echo " " ; echo -n Encrypt or sign message\?\ \[y\]\ 
+				if ( $< == n ) exit
+			endif
+                        if ( $IMPLICITALTEDIT == yes || `echo $MKPGPEDITOR | awk '{print $1}'` != none ) then
+                                if ( $AUTORECRYPT == yes ) then
+                                        $0 $1 "$keys"
+                                else
+                                        $0 $1 call2
+                                endif
+                        endif
+			exit
+		endif
+# Message is treated as a Forward if a line begining with
+# "---------- Forwarded message ----------" is found. Run pgp, unpack 
+# attachments, add 3 blank lines, add Forward message line, cleartext, wipe 
+# temp file, edit message, run mkpgp.
+	else if ( `grep -c ^----------\ Forwarded\ message\ ---------- < $1` ) then
+		if ( $DECRYPT != BEGINPGPPUBLICKEYBLOCK ) then
+			mv $1 ${PGPPATH}$1.$$ ; touch $1 ; chmod 600 $1
+			echo " " | tr " " "\012" > $1
+			cat $SIGFILE >> $1 ; echo " " | tr " " "\012" >> $1
+			echo ---------- Forwarded message ---------- >> $1
+			if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+				switch ( $USE_PPH )
+					case yes:
+						echo -n Start pph\?\ \[y\]\ ; 
+						if ( $< != n ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case no:
+						echo -n Start pph\?\ \[n\]\ ; 
+						if ( $< == y ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case quiet:
+						$PPH_PATH
+						breaksw
+					case never:
+						breaksw
+					default:
+						breaksw
+				endsw
+			endif
+			if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+				set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+				touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo echo \$pp " | ($PGPD +pager= +tmp=$PGPPATH/tmp +force +batch +interactive=off +keepbinary=off $PGPPATH/tmp/pgpFunctions/`basename $1.$$`)>& PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo "mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$` $PGPPATH/tmp" >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				mv ${PGPPATH}$1.$$ $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+				echo -n Decrypting the message
+				while ( ! -e ${PGPPATH}$1.$$ )
+					echo -n \.
+					sleep 1
+				end
+				echo " Done\!"
+				$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+				if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT ) then
+					echo " " >> $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+					if ( ! `grep -c "For your eyes only" < $PGPPATH/tmp/pgpFunctions/PGPOUTPUT` ) then
+						cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+					else
+						$PGPD +pager= +tmp=$PGPPATH/tmp +interactive=on +keepbinary=off ${PGPPATH}$1.$$
+						$RMFILE ${PGPPATH}$1.$$ >& /dev/null ; touch ${PGPPATH}$1.$$ ; chmod 600 ${PGPPATH}$1.$$
+					endif						
+				endif
+				$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+			else
+				$PGPD +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off ${PGPPATH}$1.$$
+			endif
+			cat ${PGPPATH}$1.$$ >> $1 ; $RMFILE ${PGPPATH}$1.$$ >& /dev/null
+		else
+			$PGPD +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off $1
+			if ( $DECRYPT == BEGINPGPPUBLICKEYBLOCK && -e  $PGPPATH/mkpgpKeyList ) then
+				echo -n Updating $PGPPATH/mkpgpKeyList
+					$PGPD -kv $MKPGPPUBRING | tr " " "\012" | grep @ | sed "s/[<>]//g" > $PGPPATH/mkpgpKeyList
+			endif
+		endif
+		if ( $DECRYPT == BEGINPGPSIGNEDMESSAGE ) then
+			set dots = 1
+			while ( $dots <= $PAUSE )
+				echo -n \.
+				sleep 1
+				@ dots ++
+			end
+		endif
+# Extract attachments in mkpgpAttach. Wipe mkpgpAttach.tar.Z. Move 
+# mkpgpAttach into $PGPPATH.
+		if ( `grep -c ^begin\ 600\ mkpgpAttach.tar.Z < $1` ) then
+			echo " " ; echo Attachments: ; echo " "
+			uudecode $1 ; zcat mkpgpAttach.tar.Z | tar tf - | $MKPGPPAGER
+			echo " " ; echo -n Extract the attachments\?\ \[n\]\ 
+			if ( $< == y ) then
+				zcat mkpgpAttach.tar.Z | tar xvf -
+				$RMFILE  mkpgpAttach.tar.Z >& /dev/null
+				set newname = mkpgpAttach
+				while ( -e $PGPPATH/$newname ) 
+					clear
+					echo -n Subdirectories of $PGPPATH : `(cd $PGPPATH ; ls -F | grep / )`
+					echo " " ; echo " "
+					echo -n $PGPPATH/$newname exists\; enter a new name.\ 
+					set newname = $<
+				end
+				mv mkpgpAttach $PGPPATH/$newname
+				echo " " ; echo Attachments are in $PGPPATH/$newname.
+				echo -n Examine the attachments in $PGPPATH/$newname\?\ \[n\]\ 
+				if ( $< == y ) then
+					clear ; echo " "
+					echo -n Type \"exit\" to return to $VERSION.
+					set dots = 1
+					while ( $dots <= $PAUSE )
+						echo -n \.
+						sleep 1
+						@ dots ++
+					end
+					set currentDir = $cwd ; cd $PGPPATH/$newname
+					$MKPGPSHELL ; cd $currentDir
+					clear ; echo -n Keep the attachments in $PGPPATH/$newname\?\ \[y\]\ 
+					if ( $< == n ) $RMDIR $PGPPATH/$newname >& /dev/null 
+				endif
+			else
+				$RMFILE  mkpgpAttach.tar.Z >& /dev/null
+			endif
+		endif
+		if ( `echo $MKPGPEDITOR | awk '{print $1}'` != none ) then 
+			if ( $WIPEAFTERREAD == forward || $WIPEAFTERREAD == both ) then
+				set cksumBefore = `$CKSUM < $1 |awk '{print $1}'`
+			endif
+			$MKPGPEDITOR $1
+			if ( $WIPEAFTERREAD == forward || $WIPEAFTERREAD == both ) then
+				set cksumAfter = `$CKSUM < $1 | awk '{print $1}'`
+				if ( $cksumBefore == $cksumAfter ) then
+					$RMFILE  $1 >& /dev/null ; exit
+				endif
+			endif
+			if ( `echo $MKPGPSPELL | awk '{print $1}'` != none ) then
+				if ( $ASKTOSPELL == no ) then
+					clear ; echo " " ; echo -n Spell check message\?\ \[n\]\ 
+					if ( $< == y ) $MKPGPSPELL $1
+				else if ( $ASKTOSPELL == yes ) then
+					clear ; echo " " ; echo -n Spell check message\?\ \[y\]\ 
+					if ( $< != n ) $MKPGPSPELL $1
+				else if ( $ASKTOSPELL == quiet ) then
+					clear ; $MKPGPSPELL $1 
+				endif
+			endif
+		endif
+		if ( $ASKTORUN == no ) then
+			clear ; echo " " ; echo -n Encrypt or sign message\?\ \[n\]\ 
+			if ( $< != y ) exit
+		else if ( $ASKTORUN == yes ) then
+			clear ; echo " " ; echo -n Encrypt or sign message\?\ \[y\]\ 
+			if ( $< == n ) exit
+		endif
+		if ( $IMPLICITALTEDIT == yes || `echo $MKPGPEDITOR | awk '{print $1}'` != none ) $0 $1 call2
+		exit
+	else
+# I don't know what this is, so I'll just decrypt and edit it.
+#		$PGPD +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off $1
+		if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+			switch ( $USE_PPH )
+				case yes:
+					echo -n Start pph\?\ \[y\]\ ; 
+					if ( $< != n ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case no:
+					echo -n Start pph\?\ \[n\]\ ; 
+					if ( $< == y ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case quiet:
+					$PPH_PATH
+					breaksw
+				case never:
+					breaksw
+				default:
+					breaksw
+			endsw
+		endif
+		if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && $DECRYPT == BEGINPGPMESSAGE ) then
+			set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+			touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo echo \$pp " | ($PGPD +pager= +tmp=$PGPPATH/tmp +force +batch +interactive=off +keepbinary=off $PGPPATH/tmp/pgpFunctions/`basename $1.$$`)>& $PGPPATH/tmp/pgpFunctions/PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo mv $PGPPATH/tmp/pgpFunctions/`basename $1`.$$ $1 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1`.$$
+			echo -n Decrypting the message
+			while ( ! -e $1 )
+				echo -n \.
+				sleep 1
+			end
+			echo " Done\!"
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+			if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT ) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+		else
+			$PGPD +pager= +tmp=$PGPPATH/tmp +force +interactive=on +keepbinary=off $1
+		endif
+		if ( $DECRYPT == BEGINPGPSIGNEDMESSAGE ) then
+			set dots = 1
+			while ( $dots <= $PAUSE )
+				echo -n \.
+				sleep 1
+				@ dots ++
+			end
+		endif
+		if ( `echo $MKPGPEDITOR | awk '{print $1}'` != none ) then 
+			if ( $WIPEAFTERREAD == forward || $WIPEAFTERREAD == both ) then
+				set cksumBefore = `$CKSUM < $1 | awk '{print $1}'`
+			endif
+			$MKPGPEDITOR $1
+			if ( $WIPEAFTERREAD == forward || $WIPEAFTERREAD == both ) then
+				set cksumAfter = `$CKSUM < $1 | awk '{print $1}'`
+				if ( $cksumBefore == $cksumAfter ) then
+					$RMFILE  $1 >& /dev/null ; exit
+				endif
+			endif
+			if ( `echo $MKPGPSPELL | awk '{print $1}'` != none ) then
+				if ( $ASKTOSPELL == no ) then
+					clear ; echo " " ; echo -n Spell check message\?\ \[n\]\ 
+					if ( $< == y ) $MKPGPSPELL $1
+				else if ( $ASKTOSPELL == yes ) then
+					clear ; echo " " ; echo -n Spell check message\?\ \[y\]\ 
+					if ( $< != n ) $MKPGPSPELL $1
+				else if ( $ASKTOSPELL == quiet ) then
+					clear ; $MKPGPSPELL $1 
+				endif
+			endif
+		endif
+		if ( $ASKTORUN == no ) then
+			clear ; echo " " ; echo -n Encrypt or sign message\?\ \[n\]\ 
+			if ( $< != y ) exit
+		else if ( $ASKTORUN == yes ) then
+			clear ; echo " " ; echo -n Encrypt or sign message\?\ \[y\]\ 
+			if ( $< == n ) exit
+		endif
+		if ( $IMPLICITALTEDIT == yes || `echo $MKPGPEDITOR | awk '{print $1}'` != none ) $0 $1 call2
+		exit
+	endif
+	exit
+endif
+# Ok, we may want to encrypt a message if we get this far.
+if ( $#argv == 1 ) then
+	if ( "$PINEQUOTE" != "$QUOTECHAR" && `head -1 < $1 | grep -c ^On\.\*wrote: `) then
+		touch ${PGPPATH}$1.$$ ; chmod 600 ${PGPPATH}$1.$$
+		sed s/^"$PINEQUOTE"/"$QUOTECHAR"/g < $1 > ${PGPPATH}$1.$$
+		cp ${PGPPATH}$1.$$ $1 ; $RMFILE ${PGPPATH}$1.$$ >& /dev/null
+	endif
+	if ( `echo $MKPGPEDITOR | awk '{print $1}'` != none ) $MKPGPEDITOR $1
+	if ( `echo $MKPGPSPELL | awk '{print $1}'` != none  && $#argv == 1 ) then
+		if ( $ASKTOSPELL == no ) then
+			clear ; echo " " ; echo -n Spell check message\?\ \[n\]\ 
+			if ( $< == y ) $MKPGPSPELL $1
+		else if ( $ASKTOSPELL == yes ) then
+			clear ; echo " " ; echo -n Spell check message\?\ \[y\]\ 
+			if ( $< != n ) $MKPGPSPELL $1
+		else if ( $ASKTOSPELL == quiet ) then
+			clear ; $MKPGPSPELL $1 
+		endif
+	endif
+	if ( $ASKTORUN == no) then
+		clear ; echo " " ; echo -n Encrypt or sign message\?\ \[n\]\ 
+			if ( $< != y ) exit
+	else if ( $ASKTORUN == yes ) then
+		clear ; echo " " ; echo -n Encrypt or sign message\?\ \[y\]\ 
+		if ( $< == n ) exit
+	endif
+endif
+clear
+if ( `grep -c ^begin\ 600\ mkpgpAttach.tar.Z $1` ) then
+	if ( WARNUSER == yes ) then
+		echo " "
+		echo This message already has attachments.  No more can be added.
+		echo -n " " | tr " " "\007"
+		set dots = 1
+	        while ( $dots <= $PAUSE )
+	            echo -n \.
+	            sleep 1
+			@ dots ++
+	        end
+	endif
+	goto SKIPATTACHMENTS
+endif
+if ( `grep -c FOR-YOUR-EYES-ONLY $1` ) then
+	if ( WARNUSER == yes ) then
+		echo " "
+		echo This is an \"eyes only\" message.  No attachments can be added.
+		echo -n " " | tr " " "\007"
+		set dots = 1
+        	while ( $dots <= $PAUSE )
+                	echo -n \.
+                	sleep 1
+			@ dots ++
+        	end
+	endif
+	goto SKIPATTACHMENTS
+endif
+if ( $ENCRYPTATTACHMENTS == no ) then
+	goto SKIPATTACHMENTS
+endif
+# Find and copy any attachments into $PGPPATH/tmp/mkpgpAttach. Tar, compress, 
+# uuencode into the message text. Remove $PGPPATH/tmp/mkpgpAttach.
+echo " " ; echo -n Include encrypted attachment\(s\)\?\ \[n\]\ 
+if ( $< == y ) then
+	set startdir = $cwd
+	$MKDIRS $PGPPATH/tmp/mkpgpAttach
+	while ( 1 )
+		echo Current Directory:\ $cwd
+		set dirsandfiles = `ls -F | tr "@" " " `
+		echo $dirsandfiles | tr " " "\012" | $LINENUMBERS | $MKPGPPAGER
+		echo Current Directory:" "$cwd
+		set upto = $cwd:h
+		if ( ! `echo $upto | wc -w` ) set upto = /
+		echo -n List attachments by number, \<return\> up to $upto, enter f if finished...\ 
+		set dofIndex = $<
+		if ( `echo $dofIndex | grep -c f ` ) break
+		set dofIndex = `echo $dofIndex | tr "a-zA-Z" " "`
+		if (`echo $dofIndex | wc -l` == 0 ) then
+			cd $upto
+		else if ( `echo $dofIndex | wc -w` > 1 ) then
+			foreach i ( $dofIndex )
+				echo Attaching $dirsandfiles[$i] ; sleep 1	
+				if ( `echo $dirsandfiles[$i] | grep -c "\/" ` ) then
+						$MKDIRS $PGPPATH/tmp/mkpgpAttach/$dirsandfiles[$i]
+						(cd $dirsandfiles[$i]; tar cf - . | (cd $PGPPATH/tmp/mkpgpAttach/$dirsandfiles[$i]; tar xf -))
+				else
+						cp $dirsandfiles[$i] $PGPPATH/tmp/mkpgpAttach
+				endif
+			end
+		else if ( `echo $dirsandfiles[$dofIndex] | grep -c "\/"  `) then
+			echo -n Enter or Attach\?\ \[e\]\   
+			if ( $< == a ) then
+				echo Attaching $dirsandfiles[$dofIndex] ; sleep 1		
+				$MKDIRS $PGPPATH/tmp/mkpgpAttach/$dirsandfiles[$dofIndex]
+				(cd $dirsandfiles[$dofIndex]; tar cf - . | (cd $PGPPATH/tmp/mkpgpAttach/$dirsandfiles[$dofIndex]; tar xf -))
+			else 
+				cd $dirsandfiles[$dofIndex]
+			endif
+		else 
+			echo Attaching $dirsandfiles[$dofIndex] ; sleep 1
+			cp $dirsandfiles[$dofIndex] $PGPPATH/tmp/mkpgpAttach
+		endif
+		clear
+	end
+	if ( `ls $PGPPATH/tmp/mkpgpAttach | wc -l` > 0 ) then
+		clear
+		echo -n Attached files:\  ; ls -CF $PGPPATH/tmp/mkpgpAttach | $MKPGPPAGER
+		echo " " ; echo -n Edit the attachment directory\?\ \[n\]\ 
+		if ( $< == y ) then
+			clear ; echo " "
+			echo -n Type \"exit\" to return to $VERSION.
+			set dots = 1
+			while ( $dots <= $PAUSE )
+				echo -n \.
+				sleep 1
+				@ dots ++
+			end
+			set currentDir = $cwd ; cd $PGPPATH/tmp/mkpgpAttach
+			$MKPGPSHELL ; cd $currentDir
+		endif
+		if ( `ls $PGPPATH/tmp/mkpgpAttach | wc -l` > 0 ) then
+			cd $PGPPATH/tmp
+cat << TOPCODE >> $1
+#beginMkpgpAttachments
+# If your mailer won't unpack this for you...
+#       (1) Save this message to fileName
+#       (2) Delete everything above the "beginMkpgpAttachments" line
+#       (3) Type csh < fileName
+# You will find the attachments in a directory named mkpgpAttach.
+#
+if ( -e mkpgpAttach.tar.Z ) then
+	echo "mkpgpAttach.tar.Z exists. Please rename, move, or delete it."
+	exit
+endif
+if ( -e mkpgpAttach ) then
+	echo "mkpgpAttach exists. Please rename, move, or delete it."
+	exit
+endif
+uudecode << \ENDATTACH
+TOPCODE
+			tar cf - mkpgpAttach/* | compress | uuencode mkpgpAttach.tar.Z | sed "s/begin\ [1-7][1-7][1-7]\ mkpgpAttach.tar.Z/begin\ 600\ mkpgpAttach.tar.Z/" >> $1
+cat << BOTTOMCODE >> $1
+
+\ENDATTACH
+zcat mkpgpAttach.tar.Z | tar xvf -
+pgp -w mkpgpAttach.tar.Z
+exit
+#endMkpgpAttachments
+BOTTOMCODE
+		endif
+	endif 
+	$RMDIR $PGPPATH/tmp/mkpgpAttach >& /dev/null 
+	cd $startdir
+endif
+SKIPATTACHMENTS:
+# Get encryption keys if any.
+clear
+if ( $SHOWPUBRING == menu ) then
+	set keys ; set keyLines ; set moreKeys ; set inbrackets = none
+	echo Building public key menu...
+	$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+	while ( $?moreKeys )
+		less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+		echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+		set inbrackets = "no more"
+		if ( `echo $newLines | wc -l` ) then
+			set keyLines = ($keyLines $newLines)
+		else
+			unset moreKeys
+		endif
+	end
+	if ( `echo $keyLines | wc -l` ) then
+		foreach n ( $keyLines ) 
+			sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+		end
+		compress -f $PGPPATH/tmp/shortList
+		zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+		$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null
+		clear
+		echo Your message will be encrypted to:
+		$MKPGPPAGER $PGPPATH/tmp/shortList
+		set keys = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+		$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+	endif
+	$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+endif
+if ( $SHOWPUBRING == yes ) then
+	$PGPD -kv $MKPGPPUBRING | $MKPGPPAGER
+endif
+echo " " 
+if ( ! ${?keys} ) set keys = none
+if ( $SHOWPUBRING != menu ) then
+	if ( "$keys" != none ) then
+		if ( `echo $keys | wc -l` ) then
+			echo -n Enter recipient key id\(s\).  \[${keys}\]\ 
+			set newkeys = $<
+			if ( "$newkeys" == \+ ) then
+				echo -n Add recipients to: ${keys}\ ; set addkeys = $<
+				if ( $addkeys == "=" ) then
+					set keyLines ; set moreKeys ; set inbrackets = none
+						echo Building public key menu...
+						$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+						while ( $?moreKeys )
+							less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+							echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+							set inbrackets = "no more"
+							if ( `echo $newLines | wc -l` ) then
+								set keyLines = ($keyLines $newLines)
+							else
+								unset moreKeys
+							endif
+						end
+						if ( `echo $keyLines | wc -l` ) then
+							foreach n ( $keyLines ) 
+								sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+							end
+							compress -f $PGPPATH/tmp/shortList
+							zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+							$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null
+							clear
+							echo In addition to $keys, your message will be encrypted to:
+							$MKPGPPAGER $PGPPATH/tmp/shortList
+							set addkeys = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+							$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+						endif
+						$RMFILE $PGPPATH/tmp/bigList >& /dev/null				
+				endif
+				set keys = ($keys $addkeys)
+			else if ( "$newkeys" == "-" ) then
+				echo -n Message will not be encrypted.
+				set dots = 1
+				while ( $dots <= $PAUSE )
+					echo -n \.
+					sleep 1
+					@ dots ++
+				end
+				set keys = " "
+			else if ( "$newkeys" == "=" ) then
+				set keyLines ; set moreKeys ; set inbrackets = none
+					echo Building public key menu...
+					$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+					while ( $?moreKeys )
+						less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+						echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+						set inbrackets = "no more"
+						if ( `echo $newLines | wc -l` ) then
+							set keyLines = ($keyLines $newLines)
+						else
+							unset moreKeys
+						endif
+					end
+					if ( `echo $keyLines | wc -l` ) then
+						foreach n ( $keyLines ) 
+							sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+						end
+						compress -f $PGPPATH/tmp/shortList
+						zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+						$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null
+						clear	
+						echo Rather than $keys, your message will be encrypted to:
+						$MKPGPPAGER $PGPPATH/tmp/shortList
+						set keys = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+						$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+					endif
+					$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+			else if ( `echo $newkeys | wc -l` ) then
+				echo -n Replacing $keys with $newkeys.
+				set dots = 1
+				while ( $dots <= $PAUSE )
+					echo -n \.
+					sleep 1
+					@ dots ++
+				end
+				set keys = "$newkeys"
+			endif
+		else
+			echo -n Enter recipient key id\(s\)  \[none\].\ 
+			set keys = $<
+			if ( "$keys" == "-" ) then
+				set keys
+			else if ( "$keys" == "=" ) then
+				set keys ; set keyLines ; set moreKeys ; set inbrackets = none
+					echo Building public key menu...
+					$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+					while ( $?moreKeys )
+						less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+						echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+						set inbrackets = "no more"
+						if ( `echo $newLines | wc -l` ) then
+							set keyLines = ($keyLines $newLines)
+						else
+							unset moreKeys
+						endif
+					end
+					if ( `echo $keyLines | wc -l` ) then
+						foreach n ( $keyLines ) 
+							sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+						end
+						compress -f $PGPPATH/tmp/shortList
+						zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+						$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null	
+						echo Your message will be encrypted to:
+						$MKPGPPAGER $PGPPATH/tmp/shortList
+						set keys = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+						$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+					endif
+					$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+			endif
+		endif
+	else
+		echo -n Enter recipient key id\(s\).  \[none\]\ 
+		set keys = $<
+		if ( "$keys" == "-" ) then
+			set keys
+		else if ( "$keys" == "=" ) then
+			set keys ; set keyLines ; set moreKeys ; set inbrackets = none
+				echo Building public key menu...
+				$PGPD -kv $MKPGPPUBRING | grep ^pub | sed "s/pub\ \ //g" | $LINENUMBERS | sed "s/^\ \ //g" > $PGPPATH/tmp/bigList
+				while ( $?moreKeys )
+					less -c -P"<space> forward, b back, /pattern, \?pattern, h help, q Add recipient(s)" $PGPPATH/tmp/bigList
+					echo -n "List keys by number [$inbrackets]: " ; set newLines = $<
+					set inbrackets = "no more"
+					if ( `echo $newLines | wc -l` ) then
+						set keyLines = ($keyLines $newLines)
+					else
+						unset moreKeys
+					endif
+				end
+				if ( `echo $keyLines | wc -l` ) then
+					foreach n ( $keyLines ) 
+						sed -n ${n}p < $PGPPATH/tmp/bigList >> $PGPPATH/tmp/shortList
+					end
+					compress -f $PGPPATH/tmp/shortList
+					zcat $PGPPATH/tmp/shortList.Z | sort | uniq >> $PGPPATH/tmp/shortList
+					$RMFILE $PGPPATH/tmp/shortList.Z >& /dev/null	
+					echo Your message will be encrypted to:
+					$MKPGPPAGER $PGPPATH/tmp/shortList
+					set keys = `sed "s@/@\ 0x@g" < $PGPPATH/tmp/shortList | awk '{print $3}' `
+					$RMFILE $PGPPATH/tmp/shortList >& /dev/null
+				endif
+				$RMFILE $PGPPATH/tmp/bigList >& /dev/null
+		endif
+	endif
+endif
+if ( $ALTMAILER != none && $ENCRYPTTOSELF == on && `echo $keys | wc -l` ) then
+	echo -n Disable the \"Encrypt to self\" option for this message\?\ \[y\]\ 
+	if ( $< != n ) then
+		set ENCRYPTTOSELF = off
+	endif
+	echo -n Disable the \"Comment\" option for this message\?\ \[y\]\ 
+	if ( $< != n ) then
+		set COMMENT
+	endif
+endif
+if ( $SHOWPUBRING != menu ) clear
+if ( $SHOWSECRING == yes ) then
+	$PGPD -kv $MKPGPSECRING | $MKPGPPAGER
+endif
+echo " "
+# Get secret key for signature.  Encrypt and/or sign message.
+echo -n Sign the message with which secret key\?\ \[${SIGNWITH}\]\ 
+set sign = $<
+if ( $CHECKMKPGP == pgp ) then
+	clear
+	$PGPD $PGPPATH/`basename $0.sig` $0
+	if ( -e $PGPPATH/mkpgpChecklist ) then
+		foreach ckfile ( `cat $PGPPATH/mkpgpChecklist` )
+			$PGPD $PGPPATH/`basename $ckfile.sig` $ckfile
+		end
+	endif
+endif
+if ( "$SIGNWITH" != none ) then
+	if ( ! `echo "$sign" | wc -w` ) then
+		set sign = "$SIGNWITH"
+	else if ( "$sign" == "-" ) then
+		set sign
+	endif
+endif
+if ( `echo "$sign" | wc -w` ) then
+	if ( "$sign" == y ) then
+		set sign = " "
+	else 
+		set sign = "-u "$sign
+	endif
+	if ( `echo $keys | wc -l` ) then
+		if ( $MOVESIG == crypt || $MOVESIG == both ) then
+			mv $1 ${PGPPATH}$1.$$ ; touch $1 ; chmod 600 $1
+			fgrep -vx -f $SIGFILE < ${PGPPATH}$1.$$ > $1 
+			$RMFILE  ${PGPPATH}$1.$$ >& /dev/null 
+		endif
+		if ( `grep -c FOR-YOUR-EYES-ONLY $1` ) then
+				if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && `echo $sign | wc -l` ) then
+					switch ( $USE_PPH )
+						case yes:
+							echo -n Start pph\?\ \[y\]\ ; 
+							if ( $< != n ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case no:
+							echo -n Start pph\?\ \[n\]\ ; 
+							if ( $< == y ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case quiet:
+							$PPH_PATH
+							breaksw
+						case never:
+							breaksw
+						default:
+							breaksw
+					endsw
+				endif
+				if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+					set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+					touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo echo \$pp " | ($PGPE -setm $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="\"$COMMENT\"" +force +batch +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp `basename $1.$$` $keys $sign )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null " >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$`.asc $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+					echo -n Signing and encrypting the message
+					while ( ! -e $1.asc )
+						echo -n \.
+						sleep 1
+					end
+					echo " Done\!"
+					if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+					$RMFILE $PGPPATH/tmp/pgpFunctions/PGP* >& /dev/null
+				else
+					$PGPE -setm $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys $sign
+					if ( -e $1.asc ) $RMFILE $1
+				endif
+
+
+		else
+			if ( $CPTCLRSIGN == yes) then
+				if ( $MOVESIG == clear || $MOVESIG == both ) then
+					if ( `fgrep -cx -f $SIGFILE < $1 ` ) set SIGPRESENT
+					mv $1 ${PGPPATH}$1.$$ ; touch $1 ; chmod 600 $1
+					fgrep -vx -f $SIGFILE < ${PGPPATH}$1.$$ > $1
+					$RMFILE  ${PGPPATH}$1.$$ >& /dev/null
+				endif
+				if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+					switch ( $USE_PPH )
+						case yes:
+							echo -n Start pph\?\ \[y\]\ ; 
+							if ( $< != n ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case no:
+							echo -n Start pph\?\ \[n\]\ ; 
+							if ( $< == y ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case quiet:
+							$PPH_PATH
+							breaksw
+						case never:
+							breaksw
+						default:
+							breaksw
+					endsw
+				endif
+				if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+					set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+					touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo echo \$pp " | ($PGPE -sat $LEGALKLUGE +clearsig=on +comment="\"$COMMENT\"" +keepbinary=off +tmp=$PGPPATH/tmp `basename $1.$$` $sign )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null ">> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$.asc` $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+					echo -n Signing the message
+					while ( ! -e $1.asc )
+						echo -n \.
+						sleep 1
+					end
+					echo " Done\!"
+					$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+					if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+					$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+				else
+					$PGPE -sat $LEGALKLUGE +clearsig=on +comment="$COMMENT" +keepbinary=off +tmp=$PGPPATH/tmp $1 $sign
+					if ( -e $1.asc ) $RMFILE $1
+				endif
+				if ( $MOVESIG == clear || $MOVESIG == both ) then
+					if ( ${?SIGPRESENT} ) then
+						echo " " | tr " " "\012" >> $1.asc ; cat $SIGFILE >> $1.asc
+					endif
+				endif
+				mv $1.asc $1
+				$PGPE -et  $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys
+				if ( -e $1.asc) $RMFILE $1
+			else
+				if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+					switch ( $USE_PPH )
+						case yes:
+							echo -n Start pph\?\ \[y\]\ ; 
+							if ( $< != n ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case no:
+							echo -n Start pph\?\ \[n\]\ ; 
+							if ( $< == y ) then
+								echo -n Type \"exit\" to return to $VERSION.
+								set dots = 1
+								while ( $dots <= $PAUSE )
+									echo -n \.
+									sleep 1
+									@ dots ++
+								end
+								$PPH_PATH
+							endif
+							breaksw
+						case quiet:
+							$PPH_PATH
+							breaksw
+						case never:
+							breaksw
+						default:
+							breaksw
+					endsw
+				endif
+				if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+					set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+					touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo echo \$pp " | ($PGPE -set $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="\"$COMMENT\"" +force +batch +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp `basename $1.$$` $keys $sign )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null " >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$`.asc $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+					mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+					echo -n Signing and encrypting the message
+					while ( ! -e $1.asc )
+						echo -n \.
+						sleep 1
+					end
+					echo " Done\!"
+					$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+					if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+					$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+				else
+					$PGPE -set $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys $sign
+					if ( -e $1.asc ) $RMFILE $1
+				endif
+			endif
+		endif
+	else
+		if ( $MOVESIG == clear || $MOVESIG == both ) then
+			if ( `fgrep -cx -f $SIGFILE < $1 ` ) set SIGPRESENT
+			mv $1 ${PGPPATH}$1.$$ ; touch $1 ; chmod 600 $1
+			fgrep -vx -f $SIGFILE < ${PGPPATH}$1.$$ > $1 
+			$RMFILE  ${PGPPATH}$1.$$ >& /dev/null 
+		endif
+		if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+			switch ( $USE_PPH )
+				case yes:
+					echo -n Start pph\?\ \[y\]\ ; 
+					if ( $< != n ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case no:
+					echo -n Start pph\?\ \[n\]\ ; 
+					if ( $< == y ) then
+						echo -n Type \"exit\" to return to $VERSION.
+						set dots = 1
+						while ( $dots <= $PAUSE )
+							echo -n \.
+							sleep 1
+							@ dots ++
+						end
+						$PPH_PATH
+					endif
+					breaksw
+				case quiet:
+					$PPH_PATH
+					breaksw
+				case never:
+					breaksw
+				default:
+					breaksw
+			endsw
+		endif
+		if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+			set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+			touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo echo \$pp " | ($PGPE -sat $LEGALKLUGE +clearsig=on +comment="\"$COMMENT\"" +keepbinary=off +tmp=$PGPPATH/tmp `basename $1.$$` $sign )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null " >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$.asc` $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+			mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+			echo -n Signing the message
+			while ( ! -e $1.asc )
+				echo -n \.
+				sleep 1
+			end
+			echo " Done\!"
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+			if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+			$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+		else
+			$PGPE -sat $LEGALKLUGE +clearsig=on +comment="$COMMENT" +keepbinary=off +tmp=$PGPPATH/tmp $1 $sign
+			if ( -e $1.asc ) $RMFILE $1
+		endif
+		if ( $MOVESIG == clear || $MOVESIG == both ) then
+			if ( ${?SIGPRESENT} ) then
+				if ( -e $1.asc ) then
+					echo " " | tr " " "\012" >> $1.asc ; cat $SIGFILE >> $1.asc
+				else
+					cat $SIGFILE >> $1
+				endif
+			endif
+		endif
+	endif
+else
+	if ( `echo $keys | wc -l` ) then
+		if ( $MOVESIG == crypt || $MOVESIG == both ) then
+			mv $1 ${PGPPATH}$1.$$ ; touch $1 ; chmod 600 $1
+			fgrep -vx -f $SIGFILE < ${PGPPATH}$1.$$ > $1 
+			$RMFILE  ${PGPPATH}$1.$$ >& /dev/null 
+		endif
+		if ( `grep -c FOR-YOUR-EYES-ONLY $1` ) then
+			if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` ) then
+				switch ( $USE_PPH )
+					case yes:
+						echo -n Start pph\?\ \[y\]\ ; 
+						if ( $< != n ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case no:
+						echo -n Start pph\?\ \[n\]\ ; 
+						if ( $< == y ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case quiet:
+						$PPH_PATH
+						breaksw
+					case never:
+						breaksw
+					default:
+						breaksw
+				endsw
+			endif
+			if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && `echo $sign | wc -l` ) then
+				set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+				touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo echo \$pp " | ($PGPE -etm $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="\"$COMMENT\"" +force +batch +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp `basename $1.$$` $keys )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null " >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$`.asc $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+				echo -n Signing and encrypting the message
+				while ( ! -e $1.asc )
+					echo -n \.
+					sleep 1
+				end
+				echo " Done\!"
+				$RMFILE $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.* >& /dev/null
+				if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+				$RMFILE $PGPPATH/tmp/pgpFunctions/PGPOUTPUT >& /dev/null
+			else
+				$PGPE -etm  $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys
+				if ( -e $1.asc ) $RMFILE $1
+			endif
+		else
+			if ( $USE_PPH != never && ! `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && `echo $sign | wc -l` ) then
+				switch ( $USE_PPH )
+					case yes:
+						echo -n Start pph\?\ \[y\]\ ; 
+						if ( $< != n ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case no:
+						echo -n Start pph\?\ \[n\]\ ; 
+						if ( $< == y ) then
+							echo -n Type \"exit\" to return to $VERSION.
+							set dots = 1
+							while ( $dots <= $PAUSE )
+								echo -n \.
+								sleep 1
+								@ dots ++
+							end
+							$PPH_PATH
+						endif
+						breaksw
+					case quiet:
+						$PPH_PATH
+						breaksw
+					case never:
+						breaksw
+					default:
+						breaksw
+				endsw
+			endif
+			if ( $USE_PPH != never && `ps uxww | grep $PPH_PATH | grep -v grep | wc -l` && `echo $sign | wc -l` ) then
+				set PINE_PID = `echo $1 | sed "s@/tmp/pico\.@@"`
+				touch $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$ ; chmod 600 $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo echo \$pp " | ($PGPE -et $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="\"$COMMENT\"" +force +batch +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp `basename $1.$$` $keys )>&PGPOUTPUT" > $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo unsetenv PGPPASSFD >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo "$RMFILE $PGPPATH/tmp/pgpFunctions/`basename $1.$$` >& /dev/null " >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo setenv PGPPASSFD 0 >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				echo mv $PGPPATH/tmp/pgpFunctions/`basename $1.$$`.asc $1.asc >> $PGPPATH/tmp/pgpFunctions/PGPCOMMAND.$PINE_PID.$$
+				mv $1 $PGPPATH/tmp/pgpFunctions/`basename $1.$$`
+				echo -n Signing and encrypting the message
+				while ( ! -e $1.asc )
+					echo -n \.
+					sleep 1
+				end
+				echo " Done\!"
+				if ( -e $PGPPATH/tmp/pgpFunctions/PGPOUTPUT) cat $PGPPATH/tmp/pgpFunctions/PGPOUTPUT
+				$RMFILE $PGPPATH/tmp/pgpFunctions/PGP* >& /dev/null
+			else
+				$PGPE -et  $LEGALKLUGE +encrypttoself=$ENCRYPTTOSELF +comment="$COMMENT" +armor=on +keepbinary=off +armorlines=0 +tmp=$PGPPATH/tmp $1 $keys
+				if ( -e $1.asc ) $RMFILE $1
+			endif
+		endif
+	endif
+endif
+if ( -e $1.asc ) mv $1.asc $1
+if ( $ALTMAILER != none ) then
+	$ALTMAILER $1
+else
+	set dots = 1
+	while ( $dots <= $PAUSE )
+		echo -n \.
+		sleep 1
+	@ dots ++
+	end
+endif
+clear
+if ( $WARNUSER == yes ) then
+	if ( `echo $sign | wc -l` && `echo $keys | wc -l` == 0 ) then
+		echo " "
+		echo "             "WARNING: Do \*NOT\* alter signed cleartext.
+		echo " " | tr " " "\007"
+		set dots = 1
+		while ( $dots <= $PAUSE )
+			echo -n \.
+			sleep 1
+@ dots ++
+		end
+	endif
+	if ( `echo $keys | wc -l` ) then
+		echo " "
+		echo "             "WARNING: MIME attachments are \*NOT\* encrypted. 
+		echo " " | tr " " "\007"
+		set dots = 1
+		while ( $dots <= $PAUSE )
+			echo -n \.
+			sleep 1
+@ dots ++
+		end
+	endif
+endif
+exit 
+WIPEOUT:
+if ( -e ${PGPPATH}$1.$$) $RMFILE ${PGPPATH}$1.$$ >& /dev/null
+exit 

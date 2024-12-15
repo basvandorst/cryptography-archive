@@ -1,0 +1,54 @@
+From: ben@algroup.co.uk (Ben Laurie)
+Subject: Cure scoreboard race condition
+Affects: http_main.c scoreboard.h
+Changelog: On heavily loaded servers it was possible for the scoreboard to
+	get out of sync with reality, as a result of a race condition. The
+	observed symptoms are far more Apaches running than should be, and
+	heavy system loads, generally followed by catastrophic system failure.
+
+*** http_main.c.old	Fri Dec  8 18:59:11 1995
+--- http_main.c	Fri Dec  8 19:26:22 1995
+***************
+*** 433,439 ****
+      int res = 0;
+  
+      for (i = 0; i < HARD_SERVER_MAX; ++i)
+! 	if (scoreboard_image[i].status == SERVER_READY)
+  	    ++res;
+  
+      return res;
+--- 433,440 ----
+      int res = 0;
+  
+      for (i = 0; i < HARD_SERVER_MAX; ++i)
+! 	if (scoreboard_image[i].status == SERVER_READY
+! 	  || scoreboard_image[i].status == SERVER_STARTING)
+  	    ++res;
+  
+      return res;
+***************
+*** 963,969 ****
+--- 964,973 ----
+  	if ((count_idle_servers() < daemons_min_free)
+  	    && (child_slot = find_free_child_num()) >= 0
+  	    && child_slot <= daemons_limit)
++ 	    {
++ 	    update_child_status(child_slot,SERVER_STARTING);
+  	    make_child(server_conf, child_slot);
++ 	    }
+      }
+  
+  } /* standalone_main */
+*** scoreboard.h.old	Fri Dec  8 18:59:47 1995
+--- scoreboard.h	Fri Dec  8 19:04:49 1995
+***************
+*** 65,70 ****
+--- 65,71 ----
+  #define SERVER_DEAD 0		/* Unused scoreboard entry */
+  #define SERVER_READY 1		/* Waiting for connection (or accept() lock) */
+  #define SERVER_BUSY 2		/* Processing a client request */
++ #define SERVER_STARTING 3	/* Launched, but not yet live */
+  
+  typedef struct {
+      pid_t pid;
+

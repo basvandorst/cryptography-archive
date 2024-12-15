@@ -1,0 +1,148 @@
+#!/bin/csh -f
+onintr WIPEOUT
+# Maximum number of cycles pph will last without being used.
+@ MAXLIFE = 1801
+# How many seconds to sleep between cycles.
+@ SLEEP = 2
+# Keyid used to authenticate the stored passphrase.
+set KEYID = 0x1A2B3C4D
+# Absolute path to pgp.
+set PGP = /the/absolute/path/to/pgp
+# The command you use to run Pine. This should be the absolute path to pine.
+set PINE = /this/should/be/the/absolute/path/to/pine
+# Absolute path to mkpgp.
+set MKPGP = /the/absolute/path/to/mkpgp2.1
+# Absolute path to md5
+set MD5 = /the/absolute/path/to/md5
+# The directory wiping program.
+set RMDIR = "/bin/rm -rf"
+#set RMDIR = /the/absolute/path/to/mkpgpWipe
+# Try to find a running pine process.  Complain and exit if Pine isn't running,
+# get the process id and controlling terminal if it is.
+set PINE_PS_LINE = `ps uxww | grep $PINE | grep -v grep`
+if ( ! `echo $PINE_PS_LINE | wc -l` ) then
+	echo Pine must be running before trying to start `basename $0`.
+	exit
+else
+	set START_PINE_PID = $PINE_PS_LINE[2]
+	set START_PINE_TTY = $PINE_PS_LINE[7]
+endif
+# If called with an arg, assume that the correct passphrase is piped to pph.
+# Otherwise, ask for, and authenticate, the passphrase.  The passphrase is
+# authenticated by trying to decrypt a snippet of data encrypted to the keyid
+# stored in KEYID.
+if ( $#argv ) then
+	set pp = `cat`
+	setenv PGPPASSFD 0
+# Clean up and exit if the Pine process id or controlling terminal don't
+# agree with the calling pph args.
+	if ( $1 != $START_PINE_PID || $2 != $START_PINE_TTY ) then
+		goto WIPEOUT
+	endif
+else
+	set PASSPHRASE = INCORRECT
+	while ( $PASSPHRASE == INCORRECT )
+		$PGP -kv $KEYID
+		echo " "
+		echo -n Enter the passphrase for this key...\ 
+		stty -echo
+		set pp = $<
+		stty echo
+		echo " "
+# Immediately exit if no passphrase was offered.
+		if ( ! `echo "$pp" | wc -w` ) exit
+# Change working directory to $PGPPATH/tmp, replace or create
+# $PGPPATH/tmp/pgpFunctions. 
+		cd $PGPPATH/tmp
+		if ( -e $PGPPATH/tmp/pgpFunctions) $RMDIR $PGPPATH/tmp/pgpFunctions
+		mkdir pgpFunctions
+		echo -n The passphrase is\ 
+# Encrypt the current process number.
+		echo $$ | $PGP -fe $KEYID > $PGPPATH/tmp/pgpFunctions/auth.pgp
+# Try and decrypt auth.pgp
+		setenv PGPPASSFD 0
+		echo "$pp" | $PGP +batch $PGPPATH/tmp/pgpFunctions/auth.pgp >& /dev/null
+		unsetenv PGPPASSFD
+# Try again if the current process number isn't found.
+		if ( -e $PGPPATH/tmp/pgpFunctions/auth ) then
+			if ( `grep -c $$ $PGPPATH/tmp/pgpFunctions/auth` ) then
+				echo correct.
+				set PASSPHRASE = CORRECT
+				rm $PGPPATH/tmp/pgpFunctions/auth*
+			else
+				echo incorrect.
+			endif
+		else
+				echo incorrect.
+		endif
+	end
+# Report the between usage lifetime.
+	@ LIFETIME = ( $MAXLIFE * $SLEEP )
+	@ MINUTES = ( $LIFETIME / 60 )
+	@ SECONDS = ( $LIFETIME % 60 )
+	echo Your passphrase will expire if left unused for $MINUTES minutes and $SECONDS seconds.
+# Since the passphrase is correct, pipe it to a background pph process and 
+# exit. Any output that might "leak" is hashed twice before going to /dev/null.
+	( (echo "$pp" | $0 $START_PINE_PID $START_PINE_TTY ) |& $MD5 | $MD5 >& /dev/null & )
+	exit
+endif
+# We only get this far if the passphrase was piped to pph. pph will only pipe
+# a correct passphrase to a second pph process.
+# Initialize the cycle counter.
+@ i = 0
+#Initialize the old mkpgp process list.
+set MKPGP_PID_LIST
+# While $PGPPATH/tmp/pgpFunctions exists, i is small, and pine is running...
+while ( -e $PGPPATH/tmp/pgpFunctions && $i < $MAXLIFE && `ps ww$START_PINE_PID | fgrep -c $PINE` )
+# ... check to see if something with a name beginning with pico is in pgpFunctions.
+	if ( `ls $PGPPATH/tmp/pgpFunctions | grep ^pico | wc -l` == 1 ) then
+# Go to to pgpFunctions if there is...
+		cd $PGPPATH/tmp/pgpFunctions
+# ...and get a list of process numbers associated with the file.
+		set PICO = `ls pico* | tr "." " "` 
+		set PINE_PID = $PICO[2]
+		set MKPGP_PID = $PICO[3]
+# If the Pine process id matches the Pine process id used when pph started...
+		if ( $START_PINE_PID != $PINE_PID ) then
+			mv pico.$PICO[2].$PICO[3] `grep ^mv PGPCOMMAND.$PICO[2].$PICO[3] | awk '{print $3}'`
+			$RMDIR $PGPPATH/tmp/pgpFunctions
+			exit
+		endif
+# ... carry on.  Otherwise, move $PICO to $PGPPATH/tmp and exit.
+# If we can find a Pine process with this process id...
+		if ( `ps $PINE_PID | grep -c $PINE` ) then
+# ...make sure we haven't seen this mkpgp process before.  If not...
+			if ( ! `echo $MKPGP_PID_LIST | grep -c $MKPGP_PID` ) then
+# ...make sure the mkpgp process is running from the same tty as the Pine process and that its input is the file pine wrote.
+#				set MKPGP_PS_LINE = `ps uxww | grep -v grep | grep $MKPGP_PID\.\*$START_PINE_TTY\.\*$MKPGP\.\*/tmp/pico.$PINE_PID`
+				set MKPGP_PS_LINE = `ps $MKPGP_PID | grep $MKPGP_PID\.\*$START_PINE_TTY\.\*$MKPGP\.\*/tmp/pico.$PINE_PID`
+				if ( `echo $MKPGP_PS_LINE | wc -l` ) then
+# Keep track of the old mkpgp processes.  We only want to process one file from a 
+# given mkpgp process.
+					set MKPGP_PID_LIST = ( $MKPGP_PID_LIST $MKPGP_PID )
+# Run the pgp commands for mkpgp.
+					source PGPCOMMAND.$START_PINE_PID.$MKPGP_PID
+				else
+					$RMDIR $PGPPATH/tmp/pgpFunctions
+					exit
+				endif
+			else
+				$RMDIR $PGPPATH/tmp/pgpFunctions
+				exit
+			endif
+		else
+			$RMDIR $PGPPATH/tmp/pgpFunctions
+			exit
+		endif
+# Go back to $PGPPATH/tmp and give pph a new lease on life.
+		cd $PGPPATH/tmp
+		@ i = 0
+	endif
+	@ i ++
+# Take a short nap...
+	sleep $SLEEP
+# ...and do it all again.
+end
+WIPEOUT:
+unsetenv PGPPASSFD
+if ( -e $PGPPATH/tmp/pgpFunctions) $RMDIR $PGPPATH/tmp/pgpFunctions

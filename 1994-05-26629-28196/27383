@@ -1,0 +1,182 @@
+Path: msuinfo!agate!howland.reston.ans.net!EU.net!Germany.EU.net!netmbx.de!zrz.TU-Berlin.DE!marie!wpp
+From: wpp@marie.physik.tu-berlin.de (Kai Petzke)
+Newsgroups: sci.crypt
+Subject: authentification over a network
+Date: 12 May 94 07:35:08 GMT
+Organization: TUBerlin/ZRZ
+Lines: 170
+Message-ID: <wpp.768728108@marie>
+NNTP-Posting-Host: marie.physik.tu-berlin.de
+Summary: How can I have cheap but good authentification done over a network?
+Keywords: authentification, server, client, network, DES, password, encryption
+
+
+Hi,
+
+I am looking for a good scheme to do login authentification
+over a network.  I want to use it with the database Postgres,
+but if I have to write new code for it, I will put it into
+an library, which should be of use with other STREAM type
+connections as well.
+
+In general:
+
+A server S is offering some service to clients C.  S wants to be
+sure, that C is allowed to use that service.  Therefore, they
+have agreed on a secret password some time ago.  Now C connects
+to S.  How do we check, that the password of C is correct?
+
+The two concepts for this authentifictation, which I am aware of
+right now, are:
+
+- Shadow password.  The password is used as a key to encrypt
+  the value 0.  The encrypted value is stored in a hidden file
+  or database available to S.  To check the password, C has
+  to send the password, and S repeats the encryption process
+  with that password, and compares the result with the stored
+  value.
+
+  The problem is, that the password is transferred unencrypted.
+  Charlie and his packet sniffer do a good job in compromising.
+
+- Kerberos.  The Kerberos server runs a database, which holds the
+  passwords in cleartext.  To log in, you request a "ticket" from
+  that server, which contains (among other information) a random
+  session key, which is encrypted with your password.
+
+  If you type your password correctly, then you can decrypt the
+  session key.  This can then be used to request further tickets,
+  like one, that gives C access to S.
+
+  However, Kerberos is not easy to install, and you have to
+  dedicate hardware to it, because the kerberos server machine
+  is very vulnerable.
+
+
+I am looking for something, which fits the following design goals:
+
+	a) Withstands the packet sniffer.
+	b) Does not store the plaintext passwords in a database.
+	c) Does not require additional servers.
+
+Do you know of free software, which serves these aspects?  If
+not, I might want to implement the following concept:
+
+- S holds a database with two values for each user:
+  * a "request code" q
+  * a "reply code" r
+
+- q has two parts:
+  * one random number.
+  * one number, which must be incremented after access was granted
+    to the server.
+
+- r is the same as q encrypted by a session key k:
+
+	r = E(q, k)
+
+  E(plaintext, key) is an encryption "function" like DES.  The
+  key k is not stored in the server.  Access is only granted, if
+  the client is able to present the correct value for k.
+
+- The session key itself is derived from the secret password p
+  and the "request code":
+
+	k = E(q, p)
+
+- When C connects to S, S transmits q to C.
+
+- C requests the password p from the user, then calculates k and
+  r using p and q.  Furthermore, it creates a new number q' by
+  incrementing the enumerative part and doing some random things
+  (like encryption with the current date) on the other half.  k'
+  and r' are derived from q'.
+
+- C encrypts the values k and r' using r as key:
+
+	  ke = E(k, r); re' = E(r', r);
+
+  ke, re' and q' are put into a block and transferred back to S.
+
+- S uses r to decrypt k and r' again.  The value of k is checked
+  by performing: r == f(q, k).  It is also tested, that the
+  enumerative half of q' was really incremented.
+
+- If both tests went ok, access is granted.  q' and r' are stored
+  as new values for q and r.
+
+
+The last things drawn as a picture:
+
+
+    +--------+            q              +--------+   q, r    +-------+
+    |        |   <-------------------    |        | <-------- | data- |
+    | client |                           | server |           | base  |
+    |        |   ------------------->    |        | --------> |       |
+    +--------+        q', k, r'          +--------+   q', r'  +-------+
+         ^                ^  ^
+         |                |  |
+         |            encrypted with r
+      Password
+
+
+I am not a crypto expert.  My question is, whether the following
+statements are true, or whether I have overseen some weakness:
+
+- Mr. Packet Sniffer (P) has quite a complicated life.  All he
+  gets, is:
+
+  * a random number q
+  * a reply, which contains:
+    . another random number q',
+    . ke = E(k, r) = E(k, E(q, k))
+    . re' = E(r', r) = E(E(q', k), E(q, k))
+
+  He will be able to deduce the session k by using a brute force
+  attack, but that requires to break at least a combination of
+  two ciphers.
+
+- After P broke into one session key k, he can calculate all future
+  reply codes r, if he can listen to every connection made.  He is
+  not able, though, to derive the future session keys k without
+  doing another attack:
+
+	r = E(q, k).
+
+- Hacker H, who already achieved read access to the S' database,
+  can use a known plaintext attack to derive a session k:
+
+	r = E(q, k).
+
+- If H and P meet, they form quite a good time.  H knows r, and P
+  can spy ke, when it is transmitted.  So they can find out each
+  session key k just after it has been used.  Nevertheless,
+  session keys are throw away goods, and mostly worthless after
+  their use.
+
+- If they have the session key for the next session, they can get
+  access to S.  However, they will not be able to create the new
+  session key k' from the q' they choose.  But they can use their
+  own value instead.  So they will have further access, while the
+  old password will no longer work.  The next time, that the
+  correct client C connects, he will get repeated login failures.
+  He cannot avoid to notice, that something bad happened.
+
+- H(acker) and P(acket Sniffer) can try to deduct the password p
+  from k and q.  This requires an attack of the cipher:
+
+	k = E(q, p)
+
+  C is completely indepandent in its choice of the function E.
+  If the password is long enough, C can discard some of the
+  information from k, before it is transmitted.  Then H and P
+  cannot reconstruct the full password from only one session key.
+
+
+
+Kai
+-- 
+Kai Petzke                      | How fast can computers get?
+Technical University of Berlin  |
+Berlin, Germany                 | Sol 9, of course, on Star Trek.
+wpp@marie.physik.tu-berlin.de   |

@@ -1,0 +1,139 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!uunet!mnemosyne.cs.du.edu!nyx10!astrashe
+From: astrashe@nyx10.cs.du.edu (Alex Strasheim)
+Subject: Using Secure Drive with dblspace
+Message-ID: <1993Dec16.032332.14907@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Thu, 16 Dec 93 03:23:32 GMT
+Lines: 126
+
+I got a letter from someone asking me how to use secure drive and double 
+space on the same hard disk partition, so I wrote up a quick and dirty 
+explanation.  Even though there doesn't seem to be much demand for it, I 
+figured I'd post it anyway, as long as I had taken the trouble to write it.
+
+Secure drive is a set of programs that lets you do transparent sector by 
+sector encryption and decryption on disks.  It uses the IDEA cypher, and 
+it comes with source code.
+
+I'm not competent to say whether or not it's cryptographically sound, but 
+I can say that it's very usable and well designed from a functional point 
+of view.
+
+As far as I know, secure drive isn't available via ftp.  I've heard that 
+the author has had some trouble getting it accepted at a major site.
+
+If you want a copy, I suggest you write to the author, Mike Ingle:
+
+	mikeingle@delphi.com
+
+Please don't ask me for a copy;  I won't send you one.  I don't have any 
+connection to Mr. Ingle or secure drive, and he doesn't have any 
+connection to this post.
+
+===
+
+Combining secure drive and double space on a hard drive:
+
+(DISCLAIMER:  This is how I did it;  there are probably easier or more
+efficient ways to pull this off.)
+
+(ANOTHER DISCLAIMER:  This document isn't very well thought out;  I'm 
+sure I could explain it better if I thought about it a little.)
+
+General principles:
+
+1.	You can't boot from an encrypted partition.  That means you need
+	two partitions:  a small one (c:) to boot from, and another (d:) for
+	everything else.  If that really bothers you, I suppose you could
+	use the assign command to make drive d: look like drive c:.
+
+2.	On boot up, you need to mount the compressed and encrypted partition
+	(the d: drive) twice:  first with secure drive, and then with
+	double space.  Unlike using dblspace in a more conventional setup
+	you must *explicitly* tell double space to mount the drive.
+
+3.	Dblspace assigns a new drive letter (like I:) to the host
+	(uncompressed) drive.  Secure drive doesn't recognize these
+	letters.  Use D: instead.
+
+4.	Because of the way dblspace reboots the system when compressing
+	the hard drive, you have to compress the drive before you encrypt
+	it.
+
+Step-by-step instructions (sort of, anyway):
+
+First, set up two partitions on your hard drive:  a small (1 meg) one to 
+boot from, and another that will contain everything else.  Format both 
+partitions, using the /s option for the boot partition.
+
+On the boot partition, you'll need:
+
+	command.com, autoexec.bat, config.sys
+	all of the drivers loaded via config.sys
+	the secure drive software
+	the double space files (DON'T put dlbspace.bin here, though,
+		because doublespace will copy it later.)
+	(you don't need the help files, either.)
+
+Set up the basic stuff on the d: partition:
+
+I put the actual dos directory on the d: partiton, mostly because I 
+wanted to have as little as possible on the non-encrypted partition;  a 
+matter of form more than anything else.
+
+Install ms-windows, if you use it, so the swap file is handled properly 
+when you compress the d: drive.
+
+The main idea is to be able to boot without reading the d: drive, so make 
+sure your config.sys doesn't call it.  Your autoexec.bat can call files 
+on d: as long you can add commands to mount the d: drive first.
+
+Compress the d: drive with the following command:
+
+	dblspace /compress d:
+
+After the compression is complete, you can resize the drive to get rid of 
+the non-compressed space, and adjust the ratio if you want.
+
+Next, you have to encrypt the d: partition.  Use cryptdsk.exe.  (Note:
+dblspace assigns a new drive letter to the "host" (non-compressed) 
+drive.  For example, I:.  Don't use I: as the drive letter for cryptdsk.  
+Use d:.)
+
+Another note:  cryptdsk won't work on a hard drive if you've loaded 
+sectsr first, so make sure the tsr isn't in memory.
+
+Once that's done, load sectsr and then run login d:.  You can now read 
+your hard disk again.
+
+Unfortunately, if you boot your machine and try to access d:, you won't be
+able to, even after running sectsr and login.  Why?  Because dblspace has
+to mount the disk.  Ordinarily, dblspace will mount the disk automatically
+when you boot.  It can't do that with an encrypted drive, though.  You 
+can get around this by explicitly telling dblspace to mount the drive 
+after you've mounted it with secure drive.
+
+I set up my autoexec file something like this:
+
+...
+sectsr
+login d: /s
+login d:
+dblspace /mount d:
+...
+
+The first login, with the /s, protects the drive in the event that 
+someone boots up and can't enter the correct pass-phrase.  The second 
+login is the one that makes it possible to access the drive.
+
+For some reason dblspace seems to mount the partition MUCH more slowly 
+than it does when it boots a non-encrypted hard drive.
+
+
+--
+Alex Strasheim | astrashe@nyx.cs.du.edu | pgp public key available via finger

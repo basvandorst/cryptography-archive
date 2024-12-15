@@ -1,0 +1,56 @@
+#!/bin/sh
+#
+# decryptmail <encrypted-email >plain-email        (c) Wolfgang Schreiner, 1994
+# decrypt an email using pgp                    <schreiner@risc.uni-linz.ac.at>
+#
+trap "" 0 1 2 3
+if [ -z "$PGPPATH" ] ; then
+  exec tee
+fi
+file0=$$.asc
+file1=$$
+file2=$$.err
+tee >$file0
+# try to validate signature
+pgp +verbose=0 +batchmode=on $file0 1>$file2 
+ret=$?
+# invalid file format, probably plain text
+if [ "$ret" = "3" ] ; then
+  cat $file0
+  rm -f $file0 $file1 $file2
+  exit 0
+fi
+# print everything before pgp header
+awk '/^-----BEGIN PGP/ {exit} {print}' $file0
+# file not encrypted, only signature
+if [ "$ret" = "0"  -o "$ret" = "1"  ] ; then
+  # print eventual result file
+  if [ -f $file1 ] ; then
+    cat $file1
+  fi
+  # print pgp diagnostics
+  echo "-----BEGIN PGP DIAGNOSTICS-----"
+  cat $file2
+  # print everything after pgp header
+  awk '/^-----BEGIN PGP/ {f = 1} {if (f == 1) print}' $file0
+  rm -f $file0 $file1 $file2
+  exit 0
+fi
+# file encrypted, need pass phrase
+if [ -n "$DISPLAY" ] ; then
+  xterm -title pgp -geometry 80x9 -e \
+  /bin/sh -c "pgp +verbose=0 $file0 | tee $file2"
+else
+  pgp +verbose=0 $file0 | tee $file2 >/dev/tty
+fi
+# print eventual result file
+if [ -f $file1 ] ; then
+  cat $file1
+fi
+# print pgp diagnostics
+echo "-----BEGIN PGP DIAGNOSTICS-----"
+cat $file2
+# print everything after pgp header
+awk '/^-----BEGIN PGP/ {f = 1} {if (f == 1) print}' $file0
+rm -f $file0 $file1 $file2
+exit 0

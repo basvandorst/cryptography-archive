@@ -1,0 +1,109 @@
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: Combining crypto algorithms with randomized encryption
+Date: Sat, 19 Mar 94 16:37:12 CST
+Organization: University of Missouri, Columbia
+Lines: 98
+Message-ID: <16F7EE9BAS86.C445585@mizzou1.missouri.edu>
+References: <2mfack$j2k@euas20.eua.ericsson.se> <16F7EE4D6S86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+   I read an article in Crypto '82 a long time ago (about 2 years, I think)
+that talked about randomized encryption methods.  One of the authors was
+Rivest.  Anyway, they discussed the idea that you could safely use random-
+ization techniques to combine encryption algorithms.
+ 
+   Some of this may duplicate what they said in the article, at least some
+of it is probably mine.  At any rate:
+ 
+   Suppose you have two encryption routines, with two different keys.
+You want to combine them, so that an attacker must be able to break both
+of them to read your message.
+ 
+   Generate 2 random blocks, A and B.  If you're using block ciphers
+with the same size, this is simple, but it can be adapted pretty easily
+to anything you want to use.  Now, you're basically going to be using
+A XOR B as a random one-time pad, and encrypting A and B under different
+algorithms.  If an attacker can't retrieve both of them, she can't read
+the message.
+ 
+   To encrypt M, transmit E1(A), E2(B), M XOR A XOR B.  If our
+attacker can break E1, she can get A, M XOR B.  But she still has
+to attack E2 to get B.  Since you're generating these blocks randomly
+for each message block, the best she can do (if she knows or chooses
+every M) is to get a lot of known-plaintext against E2().  If she
+doesn't know a known-plaintext attack against E2(), she's stuck.
+ 
+   Now, with a chosen-ciphertext attack, things might get a little
+more interesting.  If our attacker simply sent chosen values to the
+recipient, this wouldn't necessarily give her anything interesting:
+she gets back D1(X) XOR D2(Y) XOR Z, where X,Y, Z are the chosen
+blocks sent by the attacker.  (If we leak the random values chosen,
+the attacker doesn't *need* an attack on any of the encryption
+schemes shown--she can just do the XOR herself.)
+ 
+   However, what if our attacker makes small changes to our messages?
+If she's broken E1 and retrieved the key somehow (most attacks don't
+seem to work when only random data is encrypted), now what can she do?
+ 
+   I see a couple possible ways to do this.  First, when I send something
+to you, it's in the form  X = E1(A), Y = E2(B), Z = A XOR B XOR M.  For
+readability, let's also start using communications from Alice to Bob,
+intercepted and attacked by Eve.
+ 
+   Alice sends X,Y,Z to Bob.  En route, Eve changes this to X',Y,Z,
+where X' = E1(0).  Bob decrypts Z as M = Z XOR D1(X') XOR D2(Y).
+He thus leaks M XOR B XOR A to Eve.  Eve knows A (she's broken E1()),
+so she can retrieve M XOR B for each message block sent.  Since B is
+a random number, and she doesn't know how to break E2, however, she
+can't get any advantage I can see out of knowing M XOR B.  If she
+knows M, she retrieves B--a random number of no particular significance
+to any later message block.  Otherwise, she can't retrieve M, because
+all she knows is M XORed with a random number.
+ 
+   I don't see any manipulation she can do to X = E1(A) as particularly
+damaging.  She's just changing one half of the XOR value.  Even if she
+convinces Alice to re-transmit the same blocks again and again, while
+she changes her chosen value of X, I can't see an advantage.
+ 
+   The other possiblilty for Eve is to alter Y = E2(B).
+ 
+   Again, Alice sends X = E1(A), Y = E2(B), Z = M XOR A XOR B.
+ 
+   This time, Eve alters Y to some randomly-chosen value, Q.  This
+means that Eve gets back D2(Q) XOR A XOR M XOR B.  Since she knows
+A and some M, she can reduce this to D2(Q) XOR B.  Again, this doesn't
+look like it gives her any help in attacking the next M she doesn't
+know.  However, by choosing Y = Q and Z = R, where R can be any random
+value she knows, she retrieves from Bob D2(Q) XOR A XOR R.  Since she
+knows A, R, she now has a chosen-ciphertext attack on E2().  If
+a chosen-ciphertext attack that Eve knows of can break E2(), it's
+broken.  If not, the scheme remains secure.
+ 
+   The scheme can be extended in an obvious way to use more encryption
+schemes.  I believe that the chosen-ciphertext attacks against one
+encryption algorithm require that the attacker know all the other
+encryption algorithms--else she can't ever get D2(Q) alone.
+ 
+   The most obvious modifications of this scheme, using one more
+encryption, don't seem to prevent the chosen-ciphertext attack against
+the last encryption algorithm Eve can't break.  Ie
+ 
+   X = E1(A) Y = E2(B) Z = E1(A XOR B XOR M)  and
+   X = E1(A) Y = E2(B) Z = A XOR B XOR E1(M)  and
+   X = E1(A) Y = E2(B) Z = A XOR B XOR E1(A XOR B XOR M)
+ 
+   all still allow chosen-ciphertext attacks against E2 if E1 is broken.
+ 
+   This sort of chosen-ciphertext attack is trivial if we assume that
+Bob leaks the decrypted random values.  However, as I said, this doesn't
+compromise later message blocks (where he doesn't leak random values)
+unless Eve knows a chosen-ciphertext attack on both ciphers.  The same
+seems to apply for more different ciphers used.
+ 
+   Does anyone know of a better way of combining these random values, so
+I don't give my opponent a chosen=plaintext attack?  I'm going to keep
+playing with these schemes...maybe I'll come up with something better.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

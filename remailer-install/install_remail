@@ -1,0 +1,204 @@
+#!/bin/sh
+# Cypherpunks anonymous remailer easy installation
+# Version 1.0 Sameer <sameer@soda.berkeley.edu>
+# Remailer written by Eric Hughes and Hal Finney
+
+# This script suite cleanly installs a cypherpunks remailer into
+# a UNIX account, simply by executing this script. This script
+# modifies the .forward file. It shouldn't mess up your
+# day-to-day mail, even if you're already using the .forward file.
+# (No guarantees)
+
+# Check the README for more information
+
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+
+# Configuration details
+
+DEFAULTPERL=/usr/local/bin/perl
+DEFAULTPGP=/usr/local/bin/pgp
+EXECTEST=-x
+export DEFAULTPGP EXECTEST
+
+###################
+###################
+#
+# YOU SHOULDN'T EDIT ANYTHING BELOW THIS LINE
+#
+###################
+###################
+
+# Define all the programs
+
+# $ECHO should be /bin/echo or plain echo
+if [ $EXECTEST /bin/echo ]
+then
+  ECHO=/bin/echo
+else
+  ECHO=echo
+fi
+export ECHO
+
+# Where is perl
+$ECHO -n "Where is perl? [$DEFAULTPERL] "
+read PERL
+if [ ! "$PERL" ]
+then
+  PERL=$DEFAULTPERL
+fi
+export PERL
+
+VERSION=1.0
+AUTHOR=sameer@soda.berkeley.edu
+NOTIFY=sameer@soda.berkeley.edu
+export VERSION AUTHOR NOTIFY
+
+# Check to make sure that ~/.remail don't exist
+if [ -s $HOME/.remail ]
+then
+  $ECHO "Can't run-- $HOME/.remail exists already"
+  exit 1
+fi
+
+$ECHO "Installation version $VERSION"
+OLDDIR=$PWD
+export OLDDIR
+
+$ECHO "Making remail dir"
+mkdir $HOME/.remail
+
+$ECHO "Preparing forward file"
+# This is a task.. if the forward file already exists
+# If not then it's easy
+
+if [ -s $HOME/.forward ]
+then
+  $PERL $OLDDIR/edit-forward < $HOME/.forward > $HOME/.newforward
+  mv $HOME/.forward $HOME/.forward.0
+  mv $HOME/.newforward $HOME/.forward
+else
+  $ECHO \"\|$HOME/.remail/slocal.pl `whoami` \>\> $MAIL\" \
+	 > $HOME/.forward
+fi
+chmod +r $HOME/.forward
+
+$ECHO "De-archiving remail scripts"
+cd $HOME/.remail
+tar xfo $OLDDIR/scripts.tar
+
+# add proper perls
+$ECHO "Adding proper perls"
+for I in pgpmail recurse slocal remail append
+do
+  $ECHO \#\!$PERL > $I.pl
+  cat $I >>$I.pl
+  rm $I
+  chmod a+x $I.pl
+done
+chmod a+r maildelivery
+
+$ECHO -n "Log remailer traffic? [N]/y "
+read YN
+if [ "$YN" = 'y' -o "$YN" = 'Y' ]
+then
+  LOGGING=on
+else
+  LOGGING=off
+  fgrep -v "file A" maildelivery | sed -e 's/pipe R/pipe A/' > md.$$
+  mv md.$$ maildelivery
+fi
+
+# Fix remailer-owner
+$ECHO -n "What should be put in the Remailed-By: header? "
+read OWNER
+$ECHO -n "What should be put in the Complaints-To: header? "
+read COMPLAINTS
+
+sed -e /Remailed-By:/s/remailerowner/"$OWNER"/ remail.pl > newremail.pl
+sed -e /Complaints-To:/s/complaints/"$COMPLAINTS"/ newremail.pl >remail.pl
+rm newremail.pl
+chmod a+x remail.pl
+
+# Notify Sameer of new remailer
+ADDRESS=`whoami`@`hostname`
+
+$ECHO -n "Would you like to notify $AUTHOR of remailer? [N]/y "
+read YN
+
+if [ "$YN" = 'n' -o "$YN" = 'N' ]
+then
+  $ECHO "Not notifying $AUTHOR"
+else
+
+  cat <<EOF
+
+	Please write up how strong you think your site is, politically
+and otherwise.  (I.e.: Do you have physical control of the computer?
+Are you paying for your account? Are there severe policy limitations
+on the use of your account? What sort of logging of mail is done by
+the system-at-large?
+
+	(Whether you are logging locally or not is automatically noted)
+(End with EOF [Most likely Ctrl-D or Ctrl-Shift-@])
+
+EOF
+
+  POLICY=`cat`
+  $ECHO "Notifying $AUTHOR of new remailer"
+  /usr/lib/sendmail $ADDRESS <<EOF
+Subject: New Remailer
+To: $ADDRESS
+Anon-To: $NOTIFY
+
+Address: $ADDRESS
+Owner: $OWNER
+Logging: $LOGGING
+Policy:
+$POLICY
+
+--
+This is an automated posting sent by Sameer's installation script
+Version $VERSION
+
+EOF
+  $ECHO "Notified $AUTHOR of new remailer"
+fi
+
+
+$ECHO -n "Would you like to run a self-test? [Y]/n "
+read YN
+if [ "$YN" = 'n' -o "$YN" = 'N' ]
+then
+  $ECHO "Not testing self"
+else
+  $ECHO "Sending anon mail to self"
+  /usr/lib/sendmail $ADDRESS <<EOF
+Subject: Remailer test
+To: $ADDRESS
+Anon-To: $ADDRESS
+
+	Testing anonymous remailer $ADDRESS
+EOF
+  $ECHO "Remailer test complete"
+fi
+
+$ECHO "Ok.. done creating the anonymous remailer"
+$ECHO "Your old .forward file (if it existed) is now in .forward.0"
+$ECHO "Run \"remailer_remove\" (It will be installed in $HOME/bin)"
+$ECHO "To erase the remailer and restore your old .forward file"
+
+export ADDRESS
+$OLDDIR/install_pgp
+
+$ECHO "Installing remailer_remove"
+
+if [ -d $HOME/bin ]
+then
+  cp $OLDDIR/remailer_remove $HOME/bin
+else
+  mkdir $HOME/bin
+  cp $OLDDIR/remailer_remove $HOME/bin
+fi

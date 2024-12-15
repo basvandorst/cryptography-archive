@@ -1,0 +1,127 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!xlink.net!math.fu-berlin.de!jiri
+From: jiri@kirk.chemie.fu-berlin.de (Jiri Pittner)
+Subject: WIPE in PGP
+Message-ID: <LF5GBLES@math.fu-berlin.de>
+Summary: The wipe in PGP2.1 has a possible timing hazard in UNIX implem.
+Keywords: wipe, PGP
+Sender: news@math.fu-berlin.de (Math Department)
+Nntp-Posting-Host: kirk.chemie.fu-berlin.de
+Organization: Free University of Berlin, Germany
+Date: Thu, 9 Sep 1993 15:56:51 GMT
+Lines: 114
+
+Hello,
+
+I have posted some time ago in this group simple file wiping program for unix
+and I wanted to improve it a bit. Therefore I looked at the source of PGP
+and I was really surprized:
+
+It overwrites the file by 0's, what 
+1) probably does not physically wipe the data, so that they could be
+   recovered by special devices, if somebody would be REALLY interested in them
+2) according to sombody's comment to my old posting, on a 'compressing file system'
+   it would not overwrite all the data (by the way, I did not ever hear about
+   such disc unit on the market, it could probably slow down the speed a lot)
+3) but what I am MAINLY missing here is fsync() call before the file is unlinked.
+   I am not a system programer, but I can imagine, that the data written on file,
+   which is immediatelly then unlinked, are NOT transferred from the system's
+   buffer to the RAW disc.
+
+   There is another problem: We have HP stations 755 735 etc. and the
+   fast-wide SCSI discs have optionally internal buffering. If I would use
+   such device, I would not be sure at all what is happening, if there is not
+   at least 10s sleep delay between fsync and unlink.
+
+4) All these 'user-level' wipes rely on the assumption, that if new content
+   is written into any file, its old data blocks are overwritten and not just
+   freed and new ones allocated. Several people replied on my old posting telling
+   that this assumption is true, but
+   Why does not exist a system call wipe(int fd) in Unix? Everything would be
+   much simpler (for appl. programers, of course)!
+
+
+Jiri
+
+
+
+
+Below is part of relevant code from PGP v2.1
+
+
+int wipeout(FILE *f)
+{	/*	Completely overwrite and erase file, so that no sensitive
+		information is left on the disk.
+		NOTE:  File MUST be open for read/write.
+	*/
+
+	long flength;
+	int count = 0;
+
+	fseek(f, 0L, SEEK_END);
+	flength = ftell(f);
+	rewind(f);
+
+	fill0(textbuf, sizeof(textbuf));
+	while (flength > 0L)
+	{	/* write zeros to the whole file... */
+		if (flength < (word32) DISKBUFSIZE)
+			count = (int)flength;
+		else
+			count = DISKBUFSIZE;
+		fwrite(textbuf,1,count,f);
+		flength -= count;
+	}
+	rewind(f);	/* maybe this isn't necessary */
+	return(0);	/* normal return */
+}	/* wipeout */
+
+
+int wipefile(char *filename)
+{	/*	Completely overwrite and erase file, so that no sensitive
+		information is left on the disk.
+	*/
+	FILE *f;
+	/* open file f for read/write, in binary (not text) mode...*/
+	if ((f = fopen(filename,FOPRWBIN)) == NULL)
+		return(-1);	/* error - file can't be opened */
+	wipeout(f);
+/* here should come probably something like */
+#ifdef unix 
+fsync(f)
+#ifdef
+	fclose(f);
+	return(0);	/* normal return */
+}	/* wipefile */
+
+void rmtemp(char *name)
+{
+	int i;
+
+	for (i = 0; i < MAXTMPF; ++i)
+		if (tmpf[i].flags && strcmp(tmpf[i].path, name) == 0)
+			break;
+
+	if (i < MAXTMPF)
+	{	if (strlen(name) > 3 && name[strlen(name)-3] == TMP_EXT)
+		{	/* only remove file if name hasn't changed */
+			if (verbose)
+				fprintf(pgpout, "rmtemp: removing '%s'\n", name);
+			if (tmpf[i].flags & TMP_WIPE)
+				wipefile(name);
+			if (!remove(name)) {
+			    tmpf[i].flags = 0;
+			} else if (verbose) {
+			    fprintf(stderr,"\nrmtemp: Failed to remove %s",name);			    
+			    perror ("\nError");
+			}
+		} else if (verbose)
+			fprintf(pgpout, "rmtemp: not removing '%s'\n", name);
+	}
+}	/* rmtemp */
+
+--
+-------------------------------------------------------------------------------
+Jiri Pittner
+
+jiri@hpsiepsi.chemie.fu-berlin.de

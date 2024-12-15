@@ -1,0 +1,121 @@
+Subject: PGP 2.2 w/ just about any mailer
+Date: 8 Mar 93 06:46:24 EST
+From: jsteiner@anwsun.phya.utoledo.edu (jason 'Think!' steiner)
+
+i've got an exam in 2 & 1/2 hours i haven't studied for yet, but i've
+gotten something really important done in the meantime. :^)
+
+i haven't been satisfied with the PGP mailers that get invoked every
+time you call your editor. it's a pain if you need to edit a file after
+it's already been encrypted. on top of that you've got to remember just
+who you're sending the mail to so you can tell PGP what keys to use
+to encrypt.
+
+so, being the lazy bum i am, i spent hours !@#$ing around with perl
+(i'm still a novice, but at this rate i should know 90% of the quirks
+in about 5 years...) and elm (recompiling that damn program gets
+-really- annoying) in order to save myself what will probably amount
+to 5 minutes of work in the long run.
+
+(grammar flamers can go to hell or /dev/null. i'm tired.)
+
+here it is: a program to solve both those problems. instead of wrapping
+your editor it fits around sendmail, automatically encrypting & signing
+outgoing mail & generally being obsequiously helpful.
+
+have fun. it should be fairly clean. i've tried to use pipes instead
+of temp files when possible. it seems to be returning error codes ok
+& won't mail stubs anymore. (-that- was fun.)
+
+-----8<--cut-here--8<-----
+#!/usr/local/perl
+
+# PGPmail (C) Copyright 1993, by Jason L. Steiner
+#
+# Permission is hearby granted to freely modify, use and copy this code.
+# This notice must be retained in all distributions and derivatives.
+
+# version 8.3.93
+
+# to use with elm (2.4):
+#     run Configure & substitute this program for /usr/lib/sendmail.
+#     mailmsg2.c, line 585: remove ampersand to make elm hang on.
+#     also add Raw(OFF) & Raw(ON) before & after the system_call func.
+#     recompile... *yawn*
+
+# to use with mail: 
+#     add the following two lines to your .mailrc.
+#     set sendwait
+#     set sendmail='<full pathname of this program>'
+# amazing how nice plain old Berkeley mail can be.
+
+$| = 1;
+$sendmail = "/usr/lib/sendmail";
+$tmpfile = "/tmp/.pgp.$logname.$$";
+umask (077);
+
+if (open (INPUT, "/dev/tty")) {
+	print "PGPmail (C) Copyright 1993, Jason L. Steiner\n";
+	for ($i = 0; $i <= $#ARGV; $i++) {
+		if ($ARGV [$i] =~ /^-/) {
+			push (@flags, $ARGV [$i]);
+		} else {
+			push (@names, $ARGV [$i]);
+		}
+	}
+	while (! $q) {
+		print "Sign this message? [Y]: ";
+		chop ($q = <INPUT>);
+		if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+			push (@opts, '-st', '+clearsig=on');
+			$q = "y";
+		} elsif (($q ne 'N') && ($q ne 'n')) {
+			$q = '';
+		}
+	}
+	$q = '';
+	while (! $q) {
+		print "Encrypt this message? [Y]: ";
+		chop ($q = <INPUT>);
+		if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+			push (@opts, '-e');
+			$q = "y";
+		} elsif (($q ne 'N') && ($q ne 'n')) {
+			$q = '';
+		}
+	}
+	if (@opts) {
+		$head = 1;
+		open (MESG, ">$tmpfile");
+		while ($in = <STDIN>) {
+			print MESG $in; 
+			if ($head && ($in =~ /^$/)) {
+				$head = 0;
+				close (MESG);
+				$pid = open (MESG, "|pgp -af @opts @names >>$tmpfile");
+			}
+		}
+		close (MESG);
+		$err = $?;
+		waitpid ($pid, 0);
+		if (! $err) {
+			open (MESG, "<$tmpfile");
+			open (SENDMAIL, "|$sendmail @flags @names");
+			while (<MESG>) {
+				print SENDMAIL;
+			}
+			close (SENDMAIL);
+			$err = $?;
+		}
+		unlink ($tmpfile);
+		exit ($err / 256);
+	}
+}
+open (SENDMAIL, "|$sendmail @ARGV");
+while (<STDIN>) {
+	print SENDMAIL;
+}
+close (SENDMAIL);
+$err = $?;
+exit ($err / 256);
+-----8<--cut-here--8<-----

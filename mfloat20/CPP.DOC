@@ -1,0 +1,465 @@
+		          MFLOAT version 2.0 using C++
+                          ============================
+
+
+The natural method to use MFLOAT is the programming language C++. It's best
+suited to mathematical problems, because you can write a program for high
+precision numbers like a program using "double" or "long double" numbers.
+Look at the examples of mfloat and the comparison of different languages
+in "EXAMPLES.DOC".
+
+
+		        Installation of MFLOAT for C++:
+		        -------------------------------
+
+
+A) Using integrated development environment (IDE) of BORLAND C++ 3.1:
+   ------------------------------------------------------------------
+
+ 1. To make the functions available specify "MFLOATA.OBJ" and "MFLOATB.OBJ"
+    and "MF_CPP.CPP" in your project file:
+    Menu: Project/Open project..."MYPRO";
+	  Project/Add item... "MFLOATA.OBJ";
+	  Project/Add item... "MFLOATB.OBJ";
+	  Project/Add item... "MF_CPP.CPP";
+	  Project/Add item... "MYFILE.CPP";
+
+      "MYFILE.CPP" ... Filename of the program
+      "MYPRO.CPP"  ... Filename for the project
+
+    For further use the created project file can be recalled:
+    Menu: Project/Open project..."MYPRO";
+
+
+ 2. Include following line as the first line in your source code, in front of
+    any declaration or function:
+    "extern unsigned _stklen = 20000U;"
+    This command installs a large stack (20000 bytes) for the program. This is
+    interesting, if you have many local variables. The maximum allowed stack
+    size is about 65000.
+    (For more information see BORLAND C++ manual).
+
+
+ 3. Define the maximum length of a mfloat number, if you want less precision
+    but more variables, otherwise skip this point.
+
+    The definition is for example:
+    "#define mfloatwords 10"
+    Now you have 9 mantissa-words and one word for the exponent.
+    Range of mfloatwords: [2 .. max+1]
+    "max" is defined in MFLOATA.OBJ and can't be changed.
+    77   decimal digits ... max = 16   (mantissa-words)
+    2408 decimal digits ... max = 500  (mantissa-words)
+    If you can use 80386 instructions, it's good to use an odd number for
+    "mfloatwords" ( --> even number of mantissa-words --> faster calculation)
+    It has no sense to define more accurate numbers than "max+1", because
+    all procedures can handle only numbers of "max" mantissa-words.
+
+ 4. If you want, that the IEEE floating point numbers are converted to
+    mfloat numbers if necessary, use the definition:
+    "#define convert_IEEE_float"
+    But remember, that the mfloat number has the same accuracy as the IEEE
+    floating point number!
+    (see : "Advantage and disadvantage of C++" at the end of this file)
+
+
+ 5. Include the header file "MF_CPP.H" in your source code. All functions
+    for the classes mfloat and mcomplex are included.
+
+
+ 6. Define the error handling, if you don't want to interrupt your program
+    at an error. Include at the first part of your source code:
+
+    void main() {
+      .
+      useInterruptAtError=0; //defined in "MFLOAT.H"
+      .
+    }
+    Default value is 1, that means, the program is terminated at an error. Of
+    course you can change it in the file "MFLOAT.H" too.
+
+
+ 7. Define the accuracy of MFLOAT:
+    Include at the first part of your source code:
+
+    void main() {
+      .
+      setmantissawords(5); //defined in "MFLOAT.H"
+      .
+    }
+
+    Default value is (mfloatwords - 1), that means, MFLOAT calculates at
+    maximum precision. (See function "initalize_and_get_pi()" in "MF_CPP.CPP").
+    Please don't change the variable "mantissa-words" directly, because if you
+    leave the allowed range, there is a fatal crash.
+
+
+ 8. Choose compiler options:
+
+    Menu: Options/Compiler/Code generation...
+    recommended memory models: "compact", "large" and perhaps "huge"
+    Its also possible to use the memory models "small" and "medium", but the
+    built in check of a stack overflow in the assembler subroutines has no
+    effect. Therefore there could be a crash without any comment. Use little
+    stack-size for these models.
+    Menu: Options/Compiler/Code generation...
+	  Unsigned characters: no!! ... linking problem
+    Menu: Options/Compiler/Entry/Exit Code...Stack Options:Test stack overflow
+	  This option is helpful for the development.
+	  The stack test of the assembler part of MFLOAT is independent of
+          this stack test and is available for PASCAL too.
+
+ 9. Look at the installation of the BORLAND C++ compiler:
+    specially: Options/Directories...
+    Standard installation:
+
+    Include Directories : C:\BC\INCLUDE
+    Library Directories : C:\BC\LIB
+    Output Directory    :
+    Source Directory    :
+
+ 10. Use for the first time: "Menu:Compile\Build all". You avoid linking
+    problems, because every object-file corresponds to the correct source
+    code and has the same memory model.
+
+  Here is an example for the first part of your source code:
+
+  extern unsigned _stklen = 20000U;
+  #define mfloatwords 10
+  #define convert_IEEE_float
+  #include "MF_CPP.H"
+
+  void main(void) {
+    useInterruptAtError=0;
+    setmantissawords(7);
+    .
+    .
+  }
+
+
+B) Using command lines for BORLAND C++ 3.1:
+   ----------------------------------------
+
+  1. Make the same as above for 2.,3.,4.,5.,6.,7.
+  2. Compile the file:
+     for example:
+
+     bcc -ml pi.cpp mf_cpp.cpp mfloata.obj mfloatb.obj
+
+     The compiler switch "-ml" defines the memory model large. The
+     program pi.cpp and the library mf_cpp.cpp is compiled and linked
+     using mfloata.obj mfloatb.obj.
+
+
+
+
+
+		      Description of MFLOAT basic functions
+		      =====================================
+
+All operators and functions available for the type "double" are also defined
+for the class "mfloat" and all operators and functions available for the
+class "complex" (see "COMPLEX.H") are also defined for the class "mcomplex".
+So it is very easy to convert a program using double and complex variables to
+use the mfloat library. Please note that it is not allowed to assign 'mfloat'
+variables to other numeric types. To solve this problem please use 'mftod'
+and 'mftold' (see the example programs!).
+
+There are following types available ("MFLOAT.H" and "MF_CPP.H"):
+mfloata  ... basic mfloat type     typedef int mfloata[mfloatwords];
+				   (defined in "MFLOAT.H")
+mfloat   ... class of mfloata      class mfloat { ... mfloata mf;}
+				   (defined in "MF_CPP.H")
+mcomplex ... class of two mfloats  class mcomplex { ... mfloat re, im; }
+				   (defined in "MF_CPP.H")
+mfloat_  ... pointer to mfloat     #define mfloat_ int far *
+				   (defined in "MFLOAT.H")
+
+examples:
+
+mfloat_ a;
+mfloata b;
+mfloat c;
+mcomplex d;
+
+c=d.re;        //the realpart of "d" is assigned to the mfloat "c"
+c=real(d);     //equivalent
+getpim(c.mf);  //The number "pi" is copied to mfloat number "c".(see "C.DOC")
+
+Following types are converted to mfloat directly (constructors):
+unsigned char, signed char, unsigned int, signed int, unsigned long,
+signed long, string constants: char* .
+If you define the symbol "convert_IEEE_float", following types are converted
+too: float, double, long double
+
+examples:
+mfloat a,c;
+a=1;                         //conversion for a "int" constant
+a=2.345;                     //conversion for a "double" constant
+a="3.5453453453";            //conversion for a string constant
+c="1.43232"*mfloat("3.45");
+
+remark: Don't use the conversion of a string to mfloat in a loop, because it
+needs much time!
+
+overloaded operators for the class "mfloat":
+  =
+  ++ (prefix, suffix)     -- (prefix, suffix)
+  + (unary, binary)       -  (unary, binary)
+  *     /
+  +=    -=    *=    /=
+  <     >     <=    >=    ==    !=
+  <<  (output to stream)  >>  (input from stream)
+
+The following functions are overloaded mfloat equivalents of the
+functions defined in "MATH.H" of BORLAND C++:
+
+acos, asin, atan, atan2, ceil, cos, cosh, exp, fabs, floor, fmod, frexp,
+hypot, ldexp, log, log10, modf, pow, sin, sinh, sqrt, tan, tanh.
+
+Instead of 'atof' use 'atofm' (overloading problem).
+Instead of 'pow10' use 'pow10m' (overloading problem).
+
+The following functions are extensions to "MATH.H" of BORLAND C++:
+
+acosh, asinh, atanh, acoth, cot, coth, exp10, sqr, trunc.
+
+
+Following types are converted to mcomplex directly (constructors):
+unsigned char, signed char, unsigned int, signed int, unsigned long,
+signed long, mfloat, string constants: char*
+If you define the symbol "convert_IEEE_float", following types are converted
+too: float, double, long double
+
+examples:
+mcomplex a,c;
+mfloat t;
+a=1;                         //conversion of a "int" constant to mcomplex
+a=2.345;                     //conversion of a "double" constant to mcomplex
+a="3.5453453453";            //conversion of a string constant to mcomplex
+a=t;                         //conversion of a mfloat number to mcomplex
+a="(1.2,4.6)";               //conversion of a string constant to mcomplex
+c="(1.43232,1)"/mcomplex("(3.45,1)");
+
+remark: Don't use the conversion of a string to mfloat in a loop, because it
+needs much time!
+
+overloaded operators for the class "mcomplex":
+  =
+  ++ (prefix, suffix)     -- (prefix, suffix)
+  + (unary, binary)       -  (unary, binary)
+  *     /
+  +=    -=    *=    /=
+  ==    !=
+  <<  (output to stream)  >>  (input from stream)
+
+The following functions are overloaded mcomplex equivalents of the
+functions defined in "COMPLEX.H" of BORLAND C++:
+
+abs, acos, asin, arg, atan, conj, cos, cosh, exp, imag, log, log10, norm,
+polar, pow, real, sin, sinh, sqrt, tan, tanh.
+
+The following functions are extensions to "COMPLEX.H" of BORLAND C++:
+
+acosh, asinh, atanh, acot, acoth, cot, coth, exp10, sqr.
+
+Further functions are available (see "C.DOC"):
+
+void setmantissawords(int number);    //set the desired precision
+int  getmantissawords(void);          //recall the actual precision
+void reseterror(void);                //reset error flag
+char geterror(void);                  //returns the value of the error-flag
+int strtomf(mfloat &a,
+	    const char *s);           //converts a string to a mfloat number
+char * mftoa(char *str,
+       const mfloat &a, int len);     //converts a mfloat number to a string
+char * mftostr(char *str,
+       const mfloat &a, int len,      //converts a mfloat to a string using
+       const char * format);          //formats like "C"
+double mftod(const mfloat &b);        //converts a mfloat to a double
+long double mftold(const mfloat &b);  //converts a mfloat to a long double
+
+All functions are mapped to the functions defined in "MATH.H" of BORLAND C++.
+So please take a look in description for using the functions with BORLAND C++
+above.
+
+
+                        Input and output using streams:
+                        ===============================
+
+In C++ its very easy to write data to the screen and read data form the
+console. Example:
+
+  mfloat a("1.321");
+  mcomplex b("(3.42,1.34)");
+  cout << a << "  " << b << "\n";
+  cin >> b;
+  cout << b;
+
+You will see at the screen:
+
+1.321000E+00  (3.420000E+00, 1.340000E+00)
+
+Now the program waits for an input: for example 34 <ENTER>
+Now you will see at the screen:
+
+1.321000E+00  (3.420000E+00, 1.340000E+00)
+34
+(3.400000E+01, 0.000000E+00)
+
+
+It is possible to change the format of the output using modifier:
+
+example:
+cout << setprecision(20) << a << "\n"; //a has 20 digits
+(The "\n" is the return and line feed character).
+
+There are following modifiers possible:
+
+setiosflags(ios::scientific)  ... forces scientific format: 1.2E+01
+setiosflags(ios::fixed)       ... forces fixpoint format:   12.00
+				  If both flags are set, the fixpoint
+				  format is used, if none is set, the
+				  fixpoint format is used for numbers
+				  greater that 0.0001, otherwise the
+				  scientific representation is used.
+setiosflags(ios::uppercase)   ... use uppercase letter: for example 1.2E3
+resetiosflags(ios::uppercase) ... use lowercase letter: for example 1.2e3
+setiosflags(ios::showpoint)   ... show the point and don't remove zeros
+resetiosflags(ios::showpoint) ... don't show the point and remove zeros
+setiosflags(ios::showpos)     ... show '+' for a positive number
+resetiosflags(ios::showpos)   ... don't show '+' for a positive number
+setw(25)                      ... use a minimum length of 25 characters
+setprecision(18)              ... use a precision of 18 digits
+setiosflags(ios::showpoint)   ... show the point and don't remove zeros
+
+following header files are necessary:
+#include <iostream.h>
+#include <iomanip.h>
+
+For more information see C++ streams in the manual of BORLAND C++.
+
+Here is an example for an input of a mfloat number, which checks the
+input string:
+
+---------------------------------------------------------------------------
+
+mfloat realinput(char * name) {
+
+  mfloat x;
+  do {
+    cout << name;
+    //clear stream buffer of cin, only last "CR" remains
+    streambuf * bp=cin.rdbuf();
+    while (bp->in_avail() > 1) bp->snextc();
+    //clear state of cin
+    cin.clear();
+    cin >> x;
+    if (cin.rdstate() == ios::goodbit) break;
+    cout << "Error in input!\n\n";  // error-message
+  } while (1);
+  return x;
+}
+
+void main() {
+  mfloat x;
+  x=realinput("x = ");
+  cout << x;
+}
+
+---------------------------------------------------------------------------
+
+
+                   Advantage and disadvantage of C++
+                   =================================
+
+The advantage of C++ is, that the user can use operators and functions without
+thinking about data-types, the compiler finds the right function or operator
+for the desired data-type. The formulas in C++ are much easier to read, and
+the programmer finds much easier an error of the algorithm. Temporary help-
+variables are created automatically, if they are needed for the evaluation of
+an expression. The compiler does much work for the programmer.
+
+There are problems too, because the user doesn't see the type conversion
+directly which results in problems.
+For example:
+
+#define convert_IEEE_float
+#include "MF_CPP.H"
+
+void main() {
+   mfloat eps=1e-6;
+   cout << setprecision(70) << eps << "\n";
+}
+
+This program produces the output:
+
+9.99999999999999954748111825886258685613938723690807819366455078125e-07
+
+The error of this result is because the value 1e-6 is stored as a double
+value, which has 53 bits of mantissa, and is converted to a mfloat number.
+To avoid such terrible error, please don't use the conversion of IEEE
+floating point numbers to mfloat, if you aren't sure, that the IEEE floating
+point numbers are exact. Use constant numbers as string constants and don't
+use "#define convert_IEEE_float":
+For example:
+
+#include "MF_CPP.H"
+
+void main() {
+   mfloat eps="1e-6";
+   cout << setprecision(70) << eps << "\n";
+}
+
+Here the string constant is converted directly to a mfloat number, which
+results in a correct value. Therefore don't assign any floating point
+constant to a mfloat number. If it is necessary, use a string. The string
+is stored in the code and at runtime it is converted to a mfloat number.
+It's clear, that this method needs more time. Therefore don't use it in
+loops. If you use a floating point constant, which is an integer, the
+floating point constant is exact. For this purpose, the assignment of a
+floating point number (float, double or long double) results in an exact
+mfloat number (for example "eps=1e6").
+
+
+
+
+             Hints for the development of programs using C++
+             ===============================================
+
+If you want to solve a mathematical problem using MFLOAT, please test the
+algorithm first by using the type "double" instead of MFLOAT and afterwards
+change this type to "mfloat". The methods of debugging for the type "double"
+are much better than for the type "mfloat". For testing take simple examples,
+where you know the results or you can calculate the result easily.
+
+If you have a program ready, but there are problems due to rounding errors,
+you can use MFLOAT very simply. Use following precompiler command:
+
+#define double mfloat
+
+at the begin of your source code and include MFLOATA.OBJ, MFLOATB.OBJ
+and MF_CPP.CPP in your project.
+
+
+
+                         Creating a library
+                         ==================
+
+To make the project simpler, you can build a library file. First choose a
+memory model and compile the C++ file MF_CPP.CPP:
+
+Memory model               command line
+
+compact                    BCC -c -mc MF_CPP.CPP
+large                      BCC -c -ml MF_CPP.CPP
+huge                       BCC -c -mh MF_CPP.CPP
+
+Now you can build the library file (delete the file MFLOAT.LIB, if there is
+such a file):
+
+TLIB MFLOAT +MFLOATA.OBJ +MFLOATB.OBJ +MF_CPP.OBJ
+
+You will get the file MFLOAT.LIB, which includes these three object-files.
+Use this library file instead of including MFLOATA.OBJ, MFLOATB.OBJ and
+MF_CPP.CPP in you project file.

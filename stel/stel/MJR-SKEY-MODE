@@ -1,0 +1,94 @@
+
+
+	The way S/key's algorithm works is to take a secret seed
+that you know (which can be any size, practically) and a second seed,
+which it hashes with MD4 'N' times to generate the Nth response, which
+is used to authenticate. The server knows the N+1th response and performs
+one more round of hashing to verify that the response you gave is the
+correct one. Very clever!
+
+	Well, the problem is that if you're like most of us, your
+secret seed is going to be short -- 8 characters or so, and may or
+may not be in the dictionary. If I intercept your communications,
+I obtain:
+	The sequence number (it's in the challenge)
+	The public seed (ot18722 or whatever it is)
+	Your response
+
+	I can then perform a dictionary attack to see if your secret
+seed is in my dictionary, by performing a lot of hashing. This is one
+place where MD4/5 is a loser: it's a lot faster than DES. So my
+dictionary attack may be quite a bit faster.
+
+	I have a version of the S/key client program "key" that I
+have modified (mostly for fun) to work a wee bit differently. Instead
+of using the value I give it as a "private seed" it uses it as a
+DES key to unlock an encrypted block of random data. The block can
+be any size. One kb is more than enough. That block is used as my
+private seed and everything else proceeds normally. Note that with
+the Ranum "key" program, everything is still completely interoperable
+with the existing S/key code -- you just use skey.init -s to set
+the response value and it all just works from there. The disadvantage
+of my approach is that I can only generate keys on a machine where
+I have a copy of my DES-encrypted seed block. That's OK because you
+only *WANT* to generate keys on a machine you trust. You can forget
+a dictionary attack because you need to know the hash value of
+my block of random noise, which, presumably, you haven't got, and
+even if you had it, you haven't got the ability to decrypt it. (It
+is assumed that knowing when you have correctly decrypted a block
+of white noise is *hard*)
+
+	This version adds a new option to "skey.c" to implement a
+"-d" flag, telling it to use a DES seed block. If the DES seed
+block is in use, it calls deskeycrunch() "deskeyc.c" to generate
+the hash seed, instead of the usual keycrunch(). deskeycrunch()
+checks for an environment variable "SKEYPADFILE" and uses that
+as the file name for the DES-encrypted seed block. It simply
+decrypts it and hashes it. If you gave the wrong DES password,
+you get an incorrect value -- there's no warning. Generating
+the DES-encrypted seed block is fairly simple. I did something
+like:
+
+	setenv SKEYPADFILE ~/.skeypad
+	cat /etc/termcap | compress | dd bs=1024 count=1 > /tmp/xx
+	des -e < /tmp/xx > $SKEYPADFILE
+
+	The password I give to encrypt the pad file need not be
+the same one I use to decrypt it, as long as I always use the same
+one to decrypt it, my protocol is secure. In fact, whenever I want
+to change keys there's really no need to replace my pad file --
+it'll be decrypted completely differently if I alter the key the
+slightest.
+
+
+	Let's say I want to use S/key. I can simply initialize
+myself using my version, as follows:
+
+otter-> skey.init -s
+Updating mjr:
+Old key: ot5720000
+Reminder you need the 6 english words from the skey command.
+Enter sequence count from 1 to 10000: 999
+Enter new key [default ot5720001]: 
+s/key 999 ot5720001
+s/key access password: ^Z[1] + Stopped                  skey.init -s
+otter-> SKEYPADFILE=/etc/termcap
+otter-> export SKEYPADFILE
+otter-> ./key -d 999 ot5720001
+Reminder - Do not use key while logged in via telnet or dial-in.
+Enter secret password: 
+GUST BIRD WEAK EGG FUNK SHOE
+otter-> fg
+skey.init -s
+GUST BIRD WEAK EGG FUNK SHOE
+
+ID mjr s/key is 999 ot5720001
+GUST BIRD WEAK EGG FUNK SHOE
+otter-> 
+
+	I will give a shiny new quarter to anyone who can dictionary
+attack *that*.
+
+Marcus J. Ranum
+Senior Scientist
+Trusted Information Systems, Inc.

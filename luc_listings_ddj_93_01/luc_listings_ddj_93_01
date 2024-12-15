@@ -1,0 +1,475 @@
+- from DDJ Jan 1993  - mch
+
+_LUC PUBLIC-KEY ENCRYPTION_
+by Peter Smith
+
+
+[LISTING ONE]
+
+{ To calculate Ve(P,1) modulo N }
+ Procedure LUCcalc;
+ {Initialise}
+ BEGIN
+ D := P*P - 4; ut := 1; vt := P; u := ut; v := vt;
+ If not odd(e) then BEGIN u := 0; v := 2; END;
+ e := e div 2;
+ {Start main}
+ While e > 0 do
+   BEGIN
+   ut := ut*vt mod N; vt := vt*vt mod N;
+   If vt < 3 then vt := vt + N;
+   vt := vt - 2;
+   If odd(e) then
+     BEGIN
+     c := (ut*v + u*vt) mod N;
+     v := (vt*v + D*u*ut) mod N;
+     If odd(v) then v := v + N; v := v/2;
+     If odd(c) then c := c + N; u := c/2;
+     END;
+   e := e div 2;
+   END;
+ END;    {LUCcalc}
+
+{ The required result is the value of v.}
+
+
+[LISTING TWO] 
+
+
+Procedure wiluc  {   V = V(M) Mod N, the Mth Lucas number(P,1) }
+Var
+                    V,Vb,P,Vf,N,M,NP, Vd, Vf : LargeInteger ;
+                    carry, high_bit_set      : boolean ;
+                    bz                        : word ;
+  BEGIN
+  Va := 2 ;   { V[0] }  Vb = P ;   { V[1] }
+  NP := N - P; bz := bits(M) -1 ; { test bits from high bit downwards }
+  For j := 1 to bz do
+      BEGIN
+      Vc := Vb * Vb; Vf = Vc ; If Vf < 2 then Vf := Vf + N
+      Vf := Vf - 2; Vd := Va * Vb
+      {  Vc := V, Vd := V*Vb, Vf := V-2}
+     If high_bit_set Then
+          BEGIN
+          Vb := P * Vc; If Vb < Vd then Vb := Vb + N; Vb := Vb - Vd;
+          If Vb < P then Vb := Vb + N; Vb := Vb - P; Va := Vf
+          END ;
+     Else BEGIN { "even" ie high bit not set }
+          Va := Vd; If Va < P then Va := Va + N; Va := Va - P;
+          Vb := Vf;
+          END ;
+     High_bit_set := next_bit_down(M);
+     {This boolean function determines the setting of the next bit down}
+     Va := Va Mod N; Vb := Vb Mod N
+     END ; { for j to bz }
+END ; {wiluc}
+
+
+[LISTING THREE]
+
+{ Pseudocode for splitting decryption/signing over p and q 
+  (N = p*q) }
+Procedure hafluc ( var s,p,q,m,e : LargeInteger ; qix : word ) ;
+var                            ep,emq,
+                               temp,pi,qi,
+                               b,n,pa,qa : LargeInteger ;
+
+{ This procedure applies only to decipherment and signing, where the primes
+  making up the modulus N ( = p * q) are known (or can be easily deduced, 
+  since both keys are known). Applying it allows us to halve the amount of 
+  work. Encipherment is usually done with a small key - standard is 65537. }
+  Begin
+  Qpr (pa,qa,p,q,m,qix ) ; {} {assumes qix already calculated }
+  ep  = e ;              ep  = ep  Mod pa
+  emq = e ;   emq  = emq Mod qa
+  mp  = m ;    mp  = mp Mod p
+  mq  = m ;    mq  = mq Mod q
+  wiluc(q2,mq,emq,q) ;        wiluc(p2,mp,ep,p) ;
+  if p2 < q2 then
+      Begin
+      temp = q         q  = p    p  = temp
+      temp = q2        q2 = p2   p2 = temp
+      End ;
+  temp = p2   temp = temp - q2
+  n = p * q
+{ Solve with Extended Euclidean algorithm qi = 1/q Mod p. The algorithm 
+for the Extended Euclidean calculation can be found in Knuth. }
+  r = temp * p
+  r = r mod N
+  s = r * qi
+  s = s Mod n
+  s = s + p2
+End ; { hafluc }
+Procedure SignVerify ;
+  Begin
+  h4 = 4
+  p = large prime...
+  q = large prime...
+  n = p * q
+  bz := bits(n) ;
+    {write(cf,'  generate 4 keysets (d,e)  for p1,q1') ;}
+{
+      qix table for T[qix]
+     Convention for qix
+ This calculation is explained below.
+   Lehmer totient      qix   Legendre values for p  and   q
+   i.e. T[qix] = LCM
+   (p - 1),(q - 1)     1                         1        1
+   (p - 1),(q + 1)     2                         1       -1
+   (p + 1),(q - 1)     3                        -1        1
+   (p + 1),(q + 1)     4                        -1       -1              
+    e = encryption key,  small prime eg 65537
+    mu = message as large integer less than n
+    Solve e * d[qix] = 1 Mod T[qix] using Extended Euclidean Algorithm
+    where T[qix] is lcm(p1,q1), the Lehmer totient function of N
+    with repect to mu, according to the above table.
+    This gives 4 possible values of d, the decryption/signing key.
+    The particular value used depends on the message mu, as follows:
+    Let D = mu2 - 4. Calculate the Legendre values of D with respect to
+    both p and q. This value is -1 if D is a quadratic non-residue of
+    p (or q), and equal to 1 if D is a quadratic residue of p (or q).
+    N.B. This part is the most difficult part of LUC! Take care.
+
+    Signing (Deciphering):
+    hafluc (a,pu,qu,mu,d,qix) 
+
+    Verifying (Enciphering):
+    Use Wiluc.
+End.
+
+
+[LISTING FOUR]
+
+Algorithm D in 32-bit Intel assmbler
+Author: Christopher T. Skinner
+Short version of Mod32.Txt with scalings just as comments
+               Modulus routine for Large Integers
+                        u = u Mod v
+Based on:
+D.E.Knuth  The Art of Computer Programming
+           Vol 2 Semi-Numerical Algorithms 2ed 1981
+           Algorithm D page 257
+We use a Pascal Type called "har" ( for "hexadecimal array")
+Type
+            har = Array[0..255] of byte ;
+Var         u,v : har ;
+Note that u[0] is the length of u and that the
+integer begins in u[1]
+It is desirable that u[1] is on a double word boundary.
+
+; Turbo Pascal Usage:      ( Turbo Pascal v6.0)
+; {$L Mod32a}   { contains mod32 far }
+; {$F+}   { far pointers }
+; procedure Mod32 ( var u,v : har ) ;
+; Turbo Assembler code: (TASM v2.01)--requires 32-bit chip ie 386 or 486
+; nb FS and GS can be used as temporary storage. Don't try to use them as 
+; segment registers because Windows 3.0 restricts their allowed range, even
+; after you have finished out of Windows. You will hang for sure, unless you
+; have used a well-behaved protected-mode program to reset them, or cold boot.
+
+Data    Segment Word Public Use16
+    vdz     dw ?        ; size  v    words
+    va  dd ?            ;     hi dword v
+    vb  dd ?            ; 2nd     "    v
+    vi  dw ?        ; ^v[1]
+        savdi   dw ?            ; used in addback
+Data    EndS
+
+Code    Segment Word Public  Use16
+    Assume  cs:Code, ds:Data ,es:Nothing
+        Public  mod32
+; Pascal Parameters:
+u   Equ DWord Ptr ss:[bp+10]      ; Parameter 1 of 2   (far)
+v       Equ DWord Ptr ss:[bp+ 6]      ; parameter 2 of 2
+uof     equ word ptr  ss:[bp+10]
+vinof   equ word ptr  ss:[bp+ 6]
+
+mod32   Proc    far
+    push bp
+    mov  bp,sp
+        push di
+        push si
+        push ds          ; save the DS
+
+        ; Before using Mod32 check that:
+        ;     v > 0
+        ;     v < u         u <= 125 words
+        ;     v[0] is a multiple of 4   and at least 8
+        ;     v[top] >= 80h           (may need to scale u & v)
+        ;     make u[0] = 0 Mod 4     (add 1..3 if required)
+domod:
+        ; now point to our v
+        mov ax,seg v
+        mov ds,ax
+        assume ds:Data   
+        mov si, offset v
+        cld
+        assume es:Nothing
+    xor ah,ah
+    mov al,es:[di]   ; ax = size of u in bytes    "uz"
+    mov cx,ax        ; cx = uz
+    mov bx,ax        ; bx = uz
+    mov al,[si]
+    mov dx,ax    ; dx  = size v bytes
+    shr ax,2
+    mov vdz,ax   ; vdz    "     dwords   vz = 0 mod 4
+    sub bx,dx        ; bx = uz - vz  difference in bytes
+    mov ax,bx        ; ax = uz - vz
+    sub ax,3     ; ax = uz - vz - 3     ->  gs
+    sub cx,3     ; cx =  uz - 3
+    add cx,di        ; cx = ^top dword u
+    add ax,di
+    mov gs,ax    ; gs = ^(uz-vz-3)  u start   (by -4  down to 1)
+        inc di
+        mov fs,di    ; fs = uf = ^u[1] , end point
+    inc si
+    mov vi,si    ; vi = ^v[1]
+    add si,dx
+    mov eax,[si-4]
+    mov va,eax   ;  va = high word of v
+    mov eax,[si-8]
+    mov vb,eax       ;  vb = 2nd highest word v
+    mov di,cx    ; set di to ut , as at bottom of loop
+d3:
+    mov edx,es:[di]  ; dx is current high dword of u
+    sub di,4
+        mov eax,es:[di]  ; ax is current 2nd highest dword of u
+    mov ecx,va
+    cmp edx,ecx
+    jae  aa          ; if high word u is 0 , never greater than
+    div ecx      ;          mov ebx,eax
+        mov esi,edx  ; si = rh
+    jmp short ad     ; Normal route -- -- -- -- -->
+aa:     mov eax,0FFFFFFFFh
+    mov edx,es:[di]  ; 2nd highest wrd u
+    jmp short ac
+ab: mov eax,ebx      ; q2
+    dec eax
+    mov edx,esi      ;  rh
+ac: mov ebx,eax      ; q3
+    add edx,ecx
+    jc d4        ; Knuth tests overflow,
+    mov esi,edx
+; normal route:
+ ad:
+        mul vb       ; Quotient by 2nd digit of divisor
+    cmp edx,esi  ; high word of product : remainder
+    jb  d4           ; no correction to quot, drop thru to mulsub
+        ja  ab           ; nb unsigned use ja/b not jg/l
+    cmp eax,es:[di-4] ; low word of product : 3rd high of u
+    ja  ab
+d4:          ; Multiply & subtract * * * * * * *
+    mov cx,gs
+    mov di,cx    ; low start pos in u for subtraction of q * v
+        sub cx,4
+        mov gs,cx
+        xor ecx,ecx
+    Mov  cx,vdz  ; word count for q * v
+        mov  si,vi   ; si points to v[1]
+        xor ebp,ebp      ; carry 14Oct90 bp had problems in mu-lp
+        even
+;    ** ** ** ** **  **  **  **
+ba:     lodsd        ; eax <- ds[si]
+    mul ebx      ; dx:ax contains product   carry set if dx > 0
+        add eax,ebp
+        adc edx,0
+    sub es:[di],eax
+        adc edx,0
+        mov ebp,edx
+        add di,4
+    loop ba      ; dec cx , jmp if not 0
+; .. .. .. . .. .. . .. .. . .. . . ..
+        sub es:[di],edx
+        jnc d7
+
+    mov si,vi    ;  add back (rare)
+        mov savdi,di
+    mov di,gs
+        add di,4
+    clc
+    mov cx,vdz
+bb:     lodsd        ; eax = ds[si]   si + 2
+    adc es:[di],eax
+        inc di
+        inc di
+        inc di
+        inc di
+        loop bb
+        xor eax,eax
+        mov es:[di],eax
+        mov di,savdi
+        ; test with:
+        ; 1,00000000,00000000,00000001/ 80000000,00000000,00000001
+d7:
+    mov bx,fs     ; fs ^u[1]
+        mov ax,gs     ; gs = current u start position
+    cmp ax,bx     ; current - bottom
+    jb d8
+        sub di,4
+    jmp d3
+d8:
+; here we would scale u down if it had been scaled up
+quex:                 ; quick exit if v < u
+        cld              ; just in case
+        pop ds
+        pop si
+        pop di
+        pop bp
+    ret 8       ; 2 pointers = 4 words = 8 bytes
+mod32   EndP        ; 
+Code    Ends
+    End
+
+
+[LISTING FIVE]
+
+Algorithm D in 16-bit Intel assembler
+Author: Christopher T. Skinner
+   mod16.txt 21 Au8 92     16 bit modulus
+; divm  Modulus                                           
+Data    Segment Word Public
+    vwz     dw ?        ; size  v    words
+    va  dw ?            ;     hi word v
+    vb  dw ?            ; 2nd    "    v
+    vi  dw ?        ; ^v[1]
+    uf  dw ?        ; ^u[3]
+    uz  dw ?            ; size u byte
+    vz  dw ?             ;   "   v  "
+    ua      dw ?        ; ^( u[0] + uz - vz -1 ) , mul sub start
+    ut  dw ?            ; ^ u[topword]
+    qh      dw ?
+    uzofs   dw ?        ; ttt
+    vzofs   dw ?        ; ttt
+Data    EndS
+Code    Segment Word Public
+    Assume  cs:Code, ds:Data
+        Public  diva
+
+u   Equ DWord Ptr [bp+10]       ; ES:DI
+v       Equ DWord Ptr [bp+6]        ; DS:SI
+    ; NB v Must be Global, DS based...
+diva    Proc    far
+    push bp
+    mov  bp,sp
+        push ds
+    cld     ; increment lodsw in mulsub
+    lds si,v
+        les di,u
+    xor ah,ah
+    mov al,es:[di]  ; ax = uz size of u in bytes N.B. uz is not actually used
+    mov cx,ax       ; cx = uz
+    mov bx,ax       ; bx = uz
+    mov al,ds:[si]
+    mov dx,ax   ; dx  = size v bytes
+    shr ax,1
+    mov vwz,ax  ; vwz    "     words
+    sub bx,dx       ; bx = uz - vz  difference in bytes
+    mov ax,bx       ; ax = uz - vz
+    dec ax      ; ax = uz - vz - 1     ->  ua
+    dec cx      ; cx =  uz - 1
+    add cx,di       ; cx = ^top word u
+    mov ut,cx   ; ut = ^top word u
+    add ax,di
+    mov ua,ax   ; ua = ^(uz-vz-1)  u start   (by -2  down to 1)
+        inc di
+    mov uf,di   ; uf = ^u[1] , end point
+    inc si
+    mov vi,si   ; vi = ^v[1]
+    add si,dx
+    mov ax,ds:[si-2]
+    mov va,ax   ;  va = high word of v
+    mov ax,ds:[si-4]
+    mov vb,ax       ;  vb = 2nd highest word v
+    mov di,cx   ; set di to ut , as at bottom of loop
+d3:
+    mov dx,es:[di]          ; dx is current high word of u
+    dec di
+    dec di
+    mov ut,di
+        mov ax,es:[di]        ; ax is current 2nd highest word of u
+    mov cx,va
+    cmp dx,cx
+    jae  aa   ;if high word u is 0 , never greater than
+    div cx          ;  
+        mov qh,ax
+        mov si,dx       ; si = rh
+    jmp ad          ; Normal route -- -- -- -- -->
+aa:     mov ax,0FFFFh
+    mov dx,es:[di]      ; 2nd highest wrd u
+    jmp ac
+ab: mov ax,qh
+    dec ax
+    mov dx,si       ;  rh
+ac: mov qh,ax
+    add dx,cx
+    jc d4           ; Knuth tests overflow,
+    mov si,dx
+ad:     mul vb          ; Quotient by 2nd digit of divisor
+    cmp dx,si       ; high word of product : remainder
+    jb  d4          ; no correction to quot, drop thru to mulsub
+        ja  ab          ; nb unsigned use ja/b not jg/l
+    cmp ax,es:[di-2]    ; low word of product : 3rd high of u
+    ja  ab
+d4:         ; Multiply & subtract * * * * * * *
+    mov bx,ua
+    mov di,bx   ; low start pos in u for subtraction of q * v
+    dec bx
+    dec bx      ;
+    mov ua,bx
+    Mov  cx,vwz ; word count for q * v
+        mov  si,vi  ; si points to v[1]
+    mov bx,qh
+        xor bp,bp
+;    ** ** ** ** **  **  **  **
+ba:     lodsw       ; ax <- ds[si]   si + 2  preserve carry over mul ?
+    mul bx      ; dx:ax contains product   carry set if dx > 0
+    add dx,bp
+        xor bp,bp
+    sub es:[di],ax
+    inc di
+    inc di
+    sbb es:[di],dx
+    rcl bp,1
+    loop ba     ; dec cx , jmp if not 0
+; .. .. .. . .. .. . .. .. . .. . . ..
+        rcr bp,1
+        jnc d7
+
+    mov si,vi   ;  add back (rare)
+    mov di,ua
+       inc di
+    inc di
+    clc
+    mov cx,vwz
+bb:    lodsw        ; ax = ds[si]   si + 2
+    adc es:[di],ax
+    inc di
+    inc di
+    loop bb
+    mov cx,ut
+    add cx,4
+    sub cx,di
+    shr cx,1        ; word length of u
+bc:    mov Word Ptr es:[di],0
+       inc di
+    inc di
+       loop bc  ;
+    dec di      ;
+    dec di      ;
+    clc
+d7:
+    mov ax,uf
+    cmp ua,ax
+    jb d8
+    dec di      ; New these are suspicious, with an add back and a
+    dec di      ; New
+    jmp d3
+d8:
+             cld   ; just in case
+       pop ds
+    pop bp
+    ret 8       ; 2 pointers = 4 words = 8 bytes ???
+diva    EndP        ; 
+Code    Ends
+    End
+

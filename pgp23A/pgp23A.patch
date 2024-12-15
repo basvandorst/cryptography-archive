@@ -1,0 +1,726 @@
+What to do to apply these patches.
+
+1) Take pgp-2.3a sources from your nearest anon-ftp site.
+
+2) Open the tar-file into the directory pgp23a.
+
+3) Save following shell archive to the file.  Run it and
+   you'll get file "pgp23c.patch"
+
+4) Go to directory in which pgp23a directory is.
+
+5) Run the command "patch -p < pgp23c.patch"
+
+6) Add flag -DPGP26_COMPAT to your compiler flags into makefile.
+   Without -DPGP26_COMPAT flag you'll end up with original 2.3a.
+
+7) Compile.
+
+8) Enjoy.
+
+And here they are.
+
+>>>>>>>>>>>>>>>>>>   C U T   H E R E   >>>>>>>>>>>>>>>>>>
+# This is a shell archive.  Save it in a file, remove anything before
+# this line, and then unpack it by entering "sh file".  Note, it may
+# create directories; files and directories will be owned by you and
+# have default permissions.
+#
+# This archive contains:
+#
+#	pgp23c.patch
+#
+echo x - pgp23c.patch
+sed 's/^X//' >pgp23c.patch << 'END-of-pgp23c.patch'
+X*** pgp23a/src/armor.c	Sat Jul  3 01:32:24 1993
+X--- pgp23c/src/armor.c	Wed May 25 17:03:57 1994
+X***************
+X*** 508,514 ****
+X  	else
+X  		fprintf (outFile, "-----BEGIN PGP MESSAGE, PART %02d/%02d-----\n",
+X  					1, noSections);
+X! 	fprintf (outFile, "Version: %s\n",rel_version);
+X  	fprintf (outFile, "\n");
+X
+X  	init_crc();
+X--- 508,514 ----
+X  	else
+X  		fprintf (outFile, "-----BEGIN PGP MESSAGE, PART %02d/%02d-----\n",
+X  					1, noSections);
+X! 	fprintf (outFile, "Version: %s\n",REL_VERSION);
+X  	fprintf (outFile, "\n");
+X
+X  	init_crc();
+X
+X*** pgp23a/src/config.c	Mon Jun 14 03:44:43 1993
+X--- pgp23c/src/config.c	Wed May 25 17:41:53 1994
+X***************
+X*** 85,90 ****
+X--- 85,93 ----
+X  	ARMORLINES, COMPLETES_NEEDED, MARGINALS_NEEDED, PAGER,
+X  	CERT_DEPTH, CHARSET, CLEAR, SELF_ENCRYPT,
+X  	INTERACTIVE, PKCS_COMPAT,
+X+ #ifdef PGP26_COMPAT
+X+ 	PGP26_IMPERSONATE,
+X+ #endif
+X  	/* options below this line can only be used as command line
+X  	 * "long" options */
+X  #define CONFIG_INTRINSICS	BATCHMODE
+X***************
+X*** 97,102 ****
+X--- 100,108 ----
+X  	"ARMORLINES", "COMPLETES_NEEDED", "MARGINALS_NEEDED", "PAGER",
+X  	"CERT_DEPTH", "CHARSET", "CLEARSIG", "ENCRYPTTOSELF",
+X  	"INTERACTIVE", "PKCS_COMPAT",
+X+ #ifdef PGP26_COMPAT
+X+ 	"PGP26_IMPERSONATE",
+X+ #endif
+X  	/* command line only */
+X  	"BATCHMODE", "FORCE",
+X  };
+X***************
+X*** 107,112 ****
+X--- 113,121 ----
+X  	NUMERIC, NUMERIC, NUMERIC, STRING,
+X  	NUMERIC, STRING, BOOL, BOOL,
+X  	BOOL, NUMERIC,
+X+ #ifdef PGP26_COMPAT
+X+ 	BOOL,
+X+ #endif
+X  	/* command line only */
+X  	BOOL, BOOL,
+X  };
+X***************
+X*** 393,399 ****
+X  			case INTERACTIVE:
+X  				interactive_add = flag;
+X  				break;
+X! 				
+X  			case BATCHMODE: batchmode = flag; break;
+X  			case FORCE: force_flag = flag; break;
+X  			case PKCS_COMPAT: pkcs_compat = value; break;
+X--- 402,413 ----
+X  			case INTERACTIVE:
+X  				interactive_add = flag;
+X  				break;
+X!
+X! #ifdef PGP26_COMPAT
+X! 			case PGP26_IMPERSONATE:
+X! 				pgp26_impersonate = flag;
+X! 				break;
+X! #endif				
+X  			case BATCHMODE: batchmode = flag; break;
+X  			case FORCE: force_flag = flag; break;
+X  			case PKCS_COMPAT: pkcs_compat = value; break;
+X
+X*** pgp23a/src/crypto.c	Sat Jul  3 00:54:53 1993
+X--- pgp23c/src/crypto.c	Wed May 25 17:48:23 1994
+X***************
+X*** 786,792 ****
+X  	put_word16((word16) ske_length, certificate+certificate_length);
+X  	certificate_length+=2;	/* advance past word */
+X
+X! 	certificate[certificate_length++] = VERSION_BYTE;
+X
+X  	/* Begin fields that are included in MD calculation... */
+X
+X--- 786,792 ----
+X  	put_word16((word16) ske_length, certificate+certificate_length);
+X  	certificate_length+=2;	/* advance past word */
+X
+X! 	certificate[certificate_length++] = VERSION_BYTE_OUT;
+X
+X  	/* Begin fields that are included in MD calculation... */
+X
+X***************
+X*** 1367,1373 ****
+X--- 1367,1378 ----
+X  		goto badcert;	/* complain and return bad status */
+X
+X  	version = *certificate++;
+X+ #ifdef PGP26_COMPAT
+X+ 	if (version_error(version, VERSION_BYTE) &&
+X+ 	    version_error(version, 3))
+X+ #else
+X  	if (version_error(version, VERSION_BYTE))
+X+ #endif
+X  		goto err1;
+X
+X  	mdlensave = mdlen = *certificate++;	/* length of material to be added to MD */
+X***************
+X*** 1807,1813 ****
+X--- 1812,1823 ----
+X  		goto badcert2;	/* complain and return bad status */
+X
+X  	version = *certificate++;
+X+ #ifdef PGP26_COMPAT
+X+ 	if (version_error(version, VERSION_BYTE) &&
+X+ 	    version_error(version, 3))
+X+ #else
+X  	if (version_error(version, VERSION_BYTE))
+X+ #endif
+X  		goto err2;
+X
+X  	mdlensave = mdlen = *certificate++;	/* length of material to be added to MD */
+X***************
+X*** 2745,2751 ****
+X--- 2755,2766 ----
+X
+X  		/* Read and check version */
+X  		fread (&ver, 1, 1, f);
+X+ #ifdef PGP26_COMPAT
+X+ 		if (version_error(ver, VERSION_BYTE) &&
+X+ 		    version_error(ver, 3))
+X+ #else
+X  		if (version_error(ver, VERSION_BYTE))
+X+ #endif
+X  			{	fclose (f);
+X  				return (-1);
+X  			}
+X
+X*** pgp23a/src/keymaint.c	Tue May 18 08:14:59 1993
+X--- pgp23c/src/keymaint.c	Thu May 26 01:30:12 1994
+X***************
+X*** 752,758 ****
+X--- 752,762 ----
+X  	setkrent(ringfile);
+X  	init_userhash();
+X
+X+ #ifdef PGP26_COMPAT
+X+ 	fprintf(pgpout, PSTR("  KeyID     Trust      Validity  User ID\n"));
+X+ #else
+X  	fprintf(pgpout, PSTR("  KeyID   Trust      Validity  User ID\n"));
+X+ #endif
+X  	while ((status = readkpacket(f, &ctb, userid, keyID, sigkeyID)) != -1) {
+X  		if (status == -3 || status == -2)
+X  			break;
+X***************
+X*** 781,787 ****
+X--- 785,795 ----
+X  				fprintf(pgpout, "%c %s ", tchar, keyIDstring(keyID));
+X  				fprintf(pgpout, " %-*s", trustlst_len, trust_lst[owntrust]);
+X  			} else
+X+ #ifdef PGP26_COMPAT
+X+ 				fprintf(pgpout, "           %*s ", trustlst_len, "");
+X+ #else
+X  				fprintf(pgpout, "         %*s ", trustlst_len, "");
+X+ #endif
+X  			fprintf(pgpout, " %-*s", legitlst_len, legit_lst[kc&KC_LEGIT_MASK]);
+X  			if (usercount)
+X  				putc(' ', pgpout);
+X***************
+X*** 793,801 ****
+X--- 801,817 ----
+X  				tchar = '#';
+X  				break;
+X  			}
+X+ #ifdef PGP26_COMPAT
+X+ 			fprintf(pgpout, "%c          ", (kc & KC_CONTIG) ? 'c' : ' ');
+X+ #else
+X  			fprintf(pgpout, "%c        ", (kc & KC_CONTIG) ? 'c' : ' ');
+X+ #endif
+X  			fprintf(pgpout, " %-*s", trustlst_len, trust_lst[TRUST_LEV(kc)]);
+X+ #ifdef PGP26_COMPAT
+X+ 			fprintf(pgpout, "%*s  ", legitlst_len, "");
+X+ #else
+X  			fprintf(pgpout, "%*s   ", legitlst_len, "");
+X+ #endif
+X  			if ((signator = user_from_keyID(sigkeyID)) == NULL)
+X  				fprintf(pgpout, "(KeyID: %s)\n",keyIDstring(sigkeyID));
+X  			else
+X***************
+X*** 1182,1188 ****
+X--- 1198,1208 ----
+X  						fprintf(pgpout,"- ");
+X  					else
+X  						fprintf(pgpout,"  ");
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"%4d/%s %s ",
+X+ #else
+X  					fprintf(pgpout,"%4d/%s %s  ",
+X+ #endif
+X  						countbits(n),key2IDstring(n),cdate(&timestamp));
+X  					fprintf(pgpout,"%s\n",LOCAL_CHARSET(userid));
+X  					break;	/* only print default userid */
+X
+X*** pgp23a/src/keymgmt.c	Wed Jun 23 23:53:39 1993
+X--- pgp23c/src/keymgmt.c	Thu May 26 01:18:34 1994
+X***************
+X*** 129,134 ****
+X--- 129,135 ----
+X  **	Return printable key fragment, which is an abbreviation of the public
+X  **	key.  Show LEAST significant 64 bits (KEYFRAGSIZE bytes) of modulus,
+X  **	LSB last.  Yes, that's LSB LAST.
+X+ **      If PGP26_COMPAT is defined we show 8 bytes.
+X  */
+X
+X  char *keyIDstring( byte *keyID )
+X***************
+X*** 137,143 ****
+X  	char		*bufptr;	/* ptr to Key ID string */
+X  	static char	keyIDbuf[2*KEYFRAGSIZE+1];
+X
+X! 	/*	only show bottom 3 bytes of keyID	*/
+X
+X  	bufptr = keyIDbuf;
+X  	
+X--- 138,144 ----
+X  	char		*bufptr;	/* ptr to Key ID string */
+X  	static char	keyIDbuf[2*KEYFRAGSIZE+1];
+X
+X! 	/*      only show bottom 3 or 4 bytes of keyID	*/
+X
+X  	bufptr = keyIDbuf;
+X  	
+X***************
+X*** 146,152 ****
+X  	**	LSB-first keyID format
+X  	*/
+X
+X! 	for (i = 2; i >= 0; i--)
+X  		{
+X  		sprintf( bufptr, "%02X", keyID[i] );
+X  		bufptr += 2;
+X--- 147,159 ----
+X  	**	LSB-first keyID format
+X  	*/
+X
+X! 	for (i =
+X! #ifdef PGP26_COMPAT
+X! 	     3;
+X! #else
+X! 	     2;
+X! #endif
+X! 	     i >= 0; i--)
+X  		{
+X  		sprintf( bufptr, "%02X", keyID[i] );
+X  		bufptr += 2;
+X***************
+X*** 156,162 ****
+X  	**	MSB-first keyID format
+X  	*/
+X
+X! 	for (i = KEYFRAGSIZE-3; i < KEYFRAGSIZE; i++)
+X  		{
+X  		sprintf( bufptr, "%02X", keyID[i] );
+X  		bufptr += 2;
+X--- 163,175 ----
+X  	**	MSB-first keyID format
+X  	*/
+X
+X! 	for (i = KEYFRAGSIZE-
+X! #ifdef PGP26_COMPAT
+X! 	         4;
+X! #else
+X! 	         3;
+X! #endif
+X! 	     i < KEYFRAGSIZE; i++)
+X  		{
+X  		sprintf( bufptr, "%02X", keyID[i] );
+X  		bufptr += 2;
+X***************
+X*** 302,308 ****
+X  	fwrite(&ctb,1,1,f);		/* write key certificate header byte */
+X  	convert(cert_length);	/* convert to external byteorder */
+X  	fwrite(&cert_length,1,sizeof(cert_length),f);
+X! 	version = VERSION_BYTE;
+X  	fwrite(&version,1,1,f);		/* set version number */
+X  	convert_byteorder(timestamp,4);	/* convert to external form */
+X  	fwrite(timestamp,1,4,f); /* write certificate timestamp */
+X--- 315,321 ----
+X  	fwrite(&ctb,1,1,f);		/* write key certificate header byte */
+X  	convert(cert_length);	/* convert to external byteorder */
+X  	fwrite(&cert_length,1,sizeof(cert_length),f);
+X! 	version = VERSION_BYTE_OUT;
+X  	fwrite(&version,1,1,f);		/* set version number */
+X  	convert_byteorder(timestamp,4);	/* convert to external form */
+X  	fwrite(timestamp,1,4,f); /* write certificate timestamp */
+X***************
+X*** 467,473 ****
+X--- 480,491 ----
+X  	else if (is_ctb_type (ctb, CTB_SKE_TYPE))
+X  	{	if (sigkeyID)
+X  		{	fread(&version,1,1,f);		/* Read version of sig packet */
+X+ #ifdef PGP26_COMPAT
+X+ 			if (version_error(version, VERSION_BYTE) &&
+X+ 			    version_error(version, 3))
+X+ #else
+X  			if (version_error(version, VERSION_BYTE))
+X+ #endif
+X  				SKIP_RETURN(-6);			/* Need a later version */
+X  			/* Skip timestamp, validity period, and type byte */
+X  			fread(&mdlen, 1, 1, f);
+X***************
+X*** 493,499 ****
+X--- 511,522 ----
+X  	if (n != NULL)
+X  		set_precision(MAX_UNIT_PRECISION);	/* safest opening assumption */
+X  	fread(&version,1,1,f);	/* read and check version */
+X+ #ifdef PGP26_COMPAT
+X+ 	if (version_error(version, VERSION_BYTE) &&
+X+ 	    version_error(version, 3))
+X+ #else
+X  	if (version_error(version, VERSION_BYTE))
+X+ #endif
+X  		SKIP_RETURN(-6);			/* Need a later version */
+X  	if (timestamp)
+X  	{	fread(timestamp,1,SIZEOF_TIMESTAMP,f);	/* read certificate timestamp */
+X***************
+X*** 1214,1223 ****
+X--- 1237,1254 ----
+X  	}
+X
+X  /*	Here's a good format for display of key or signature certificates:
+X+
+X+ #ifdef PGP26_COMPAT
+X+ Type bits/keyID     Date       User ID
+X+ pub  1024/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ sec   512/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ sig   384/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ #else
+X  Type bits/keyID   Date       User ID
+X  pub  1024/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X  sec   512/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X  sig   384/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ #endif
+X  */
+X
+X  	if (moreflag)
+X***************
+X*** 1228,1234 ****
+X--- 1259,1269 ----
+X  		if (mcguffin && strlen(mcguffin) > 0)
+X  			fprintf(pgpout,PSTR(", looking for user ID \"%s\"."),LOCAL_CHARSET(mcguffin));
+X  	}
+X+ #ifdef PGP26_COMPAT
+X+ 	fprintf(pgpout,PSTR("\nType bits/keyID    Date       User ID\n"));
+X+ #else
+X  	fprintf(pgpout,PSTR("\nType bits/keyID   Date       User ID\n"));
+X+ #endif
+X  	for ( ; ; )
+X  	{
+X  		status = readkeypacket(f,FALSE,&ctb,timestamp,(char *)userid,n,e,
+X***************
+X*** 1294,1307 ****
+X  						fprintf(pgpout,"@ ");
+X  					else
+X  						fprintf(pgpout,"  ");
+X! 					fprintf(pgpout,"%4d/%s %s  ",
+X  						countbits(n),keyIDstring(keyID),cdate(&tstamp));
+X  				}
+X  				else
+X  					fprintf(pgpout,"                             ");
+X  				if (compromised && firstuser)
+X  				{	fprintf(pgpout, PSTR("*** KEY REVOKED ***\n"));
+X  					fprintf(pgpout,"                             ");
+X  				}
+X  				firstuser = 0;
+X  				fprintf(pgpout,"%s\n",LOCAL_CHARSET((char *)userid));
+X--- 1329,1355 ----
+X  						fprintf(pgpout,"@ ");
+X  					else
+X  						fprintf(pgpout,"  ");
+X! 					fprintf(pgpout,
+X! #ifdef PGP26_COMPAT
+X! 						"%4d/%s %s ",
+X! #else
+X! 						"%4d/%s %s  ",
+X! #endif
+X  						countbits(n),keyIDstring(keyID),cdate(&tstamp));
+X  				}
+X  				else
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"                              ");
+X+ #else
+X  					fprintf(pgpout,"                             ");
+X+ #endif
+X  				if (compromised && firstuser)
+X  				{	fprintf(pgpout, PSTR("*** KEY REVOKED ***\n"));
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"                              ");
+X+ #else
+X  					fprintf(pgpout,"                             ");
+X+ #endif
+X  				}
+X  				firstuser = 0;
+X  				fprintf(pgpout,"%s\n",LOCAL_CHARSET((char *)userid));
+X***************
+X*** 1315,1321 ****
+X--- 1363,1373 ----
+X  			else if (show_signatures && !(firstuser && compromised))	/* Must be sig cert */
+X  			{	fprintf(pgpout,"sig%c      ", status < 0 ? '?' : ' ');
+X  				showkeyID(sigkeyID);
+X+ #ifdef PGP26_COMPAT
+X+ 				fprintf(pgpout,"             "); /* Indent signator userid */
+X+ #else
+X  				fprintf(pgpout,"               "); /* Indent signator userid */
+X+ #endif
+X  				if ((siguserid = user_from_keyID(sigkeyID)) == NULL)
+X  					fprintf(pgpout,PSTR("(Unknown signator, can't be checked)\n"));
+X  				else
+X***************
+X*** 1388,1397 ****
+X--- 1440,1456 ----
+X  	}
+X
+X  /*	Here's a good format for display of key or signature certificates:
+X+ #ifdef PGP26_COMPAT
+X+ Type bits/keyID     Date       User ID
+X+ pub  1024/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ sec   512/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ sig   384/xxxxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ #else
+X  Type bits/keyID   Date       User ID
+X  pub  1024/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X  sec   512/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X  sig   384/xxxxxx yyyy-mm-dd  aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+X+ #endif
+X  */
+X
+X  	if (options & CHECK_NEW)
+X***************
+X*** 1406,1412 ****
+X--- 1465,1475 ----
+X  			if (mcguffin && strlen(mcguffin) > 0)
+X  				fprintf(pgpout,PSTR(", looking for user ID \"%s\"."),LOCAL_CHARSET(mcguffin));
+X  		}
+X+ #ifdef PGP26_COMPAT
+X+ 		fprintf(pgpout,PSTR("\nType bits/keyID    Date       User ID\n"));
+X+ #else
+X  		fprintf(pgpout,PSTR("\nType bits/keyID   Date       User ID\n"));
+X+ #endif
+X  	}
+X  	for ( ; ; )
+X  	{	long fpos = ftell(f);
+X***************
+X*** 1491,1504 ****
+X--- 1554,1579 ----
+X  						fprintf(pgpout,"? ");
+X  					else
+X  						fprintf(pgpout,"  ");
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"%4d/%s %s ",
+X+ #else
+X  					fprintf(pgpout,"%4d/%s %s  ",
+X+ #endif
+X  						countbits(n),keyIDstring(keyID),cdate(&tstamp));
+X  				}
+X  				else
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"                              ");
+X+ #else
+X  					fprintf(pgpout,"                             ");
+X+ #endif
+X  				if (compromised && firstuser)
+X  				{	fprintf(pgpout, PSTR("*** KEY REVOKED ***\n"));
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout,"                              ");
+X+ #else
+X  					fprintf(pgpout,"                             ");
+X+ #endif
+X  				}
+X  				firstuser = 0;
+X  				fprintf(pgpout,"%s\n",LOCAL_CHARSET((char *)keyuserid));
+X***************
+X*** 1530,1538 ****
+X--- 1605,1621 ----
+X  				}
+X  				else
+X  				{	PascalToC((char *) siguserid);
+X+ #ifdef PGP26_COMPAT
+X+ 					fprintf(pgpout," %s ",cdate(&sigtstamp));
+X+ #else
+X  					fprintf(pgpout," %s  ",cdate(&sigtstamp));
+X+ #endif
+X  					if (sigclass != KC_SIGNATURE_BYTE)
+X+ #ifdef PGP26_COMPAT
+X+ 						fprintf(pgpout, " ");
+X+ #else
+X  						fprintf(pgpout, "  ");
+X+ #endif
+X  					fprintf(pgpout,"%s\n", LOCAL_CHARSET((char *)siguserid));
+X  					if (sigstatus >= 0)
+X  					{	if (options & CHECK_NEW && trustpos > 0)
+X
+X*** pgp23a/src/pgp.c	Sat Jul  3 02:22:22 1993
+X--- pgp23c/src/pgp.c	Wed May 25 21:55:04 1994
+X***************
+X*** 47,52 ****
+X--- 47,53 ----
+X  		Version 2.2 - 6 Mar 93
+X  		Version 2.3 - 13 Jun 93
+X  		Version 2.3a - 1 Jul 93
+X+ 		Version 2.3c - 26 May 94
+X
+X  	(c) Copyright 1990-1993 by Philip Zimmermann.  All rights reserved.
+X  	The author assumes no liability for damages resulting from the use
+X***************
+X*** 142,154 ****
+X  #define	STACK_WIPE	4096
+X
+X  /* Global filenames and system-wide file extensions... */
+X! char rel_version[] = "2.3a";	/* release version */
+X  #ifdef RSAREF
+X  #define RSASTRING " (with RSAREF)"
+X  #else
+X  #define RSASTRING ""
+X  #endif
+X! static char rel_date[] = "1 Jul 93";	/* release date */
+X  char PGP_EXTENSION[] = ".pgp";
+X  char ASC_EXTENSION[] = ".asc";
+X  char SIG_EXTENSION[] = ".sig";
+X--- 143,162 ----
+X  #define	STACK_WIPE	4096
+X
+X  /* Global filenames and system-wide file extensions... */
+X! #ifdef PGP26_COMPAT
+X! boolean pgp26_impersonate = FALSE;
+X! char rel_version[] 	 = "2.3c"; /* release version */
+X! char pgp26_rel_version[] = "2.6";
+X! #else
+X! char rel_version[] 	 = "2.3a"; /* 2.3c == 2.3a if PGP26_COMPAT is not defined */
+X! #endif
+X!
+X  #ifdef RSAREF
+X  #define RSASTRING " (with RSAREF)"
+X  #else
+X  #define RSASTRING ""
+X  #endif
+X! static char rel_date[] = "26 May 94";	/* release date */
+X  char PGP_EXTENSION[] = ".pgp";
+X  char ASC_EXTENSION[] = ".asc";
+X  char SIG_EXTENSION[] = ".sig";
+X***************
+X*** 295,301 ****
+X  		return;
+X  	printed = TRUE;
+X  	fprintf(stderr,PSTR("Pretty Good Privacy %s%s - Public-key encryption for the masses.\n"),
+X! 		rel_version, RSASTRING);
+X  #ifdef TEMP_VERSION
+X  	fprintf(stderr, "Internal development version only - not for general release.\n");
+X  #endif
+X--- 303,309 ----
+X  		return;
+X  	printed = TRUE;
+X  	fprintf(stderr,PSTR("Pretty Good Privacy %s%s - Public-key encryption for the masses.\n"),
+X! 		REL_VERSION, RSASTRING);
+X  #ifdef TEMP_VERSION
+X  	fprintf(stderr, "Internal development version only - not for general release.\n");
+X  #endif
+X***************
+X*** 337,343 ****
+X--- 345,355 ----
+X  /* -t means treat as pure text and convert to canonical text format */
+X
+X  /* Used by getopt function... */
+X+ #ifdef PGP26_COMPAT
+X+ #define OPTIONS "abcdefghiklmno:prstu:vwxz:ABCDEFGHIKLMNO:PRSTU:VWX?"
+X+ #else
+X  #define OPTIONS "abcdefghiklmo:prstu:vwxz:ABCDEFGHIKLMO:PRSTU:VWX?"
+X+ #endif
+X  extern int optind;
+X  extern char *optarg;
+X
+X***************
+X*** 444,449 ****
+X--- 456,465 ----
+X  		p += 2;
+X  		if (!*p)
+X  			p = argv[++opt];
+X+ 		if (!p) {
+X+ 		        fprintf(pgpout,PSTR("\007WARNING: -z option without the argument ignored.\n"));
+X+ 			break;
+X+ 		}
+X  		/* p now points to password */
+X  		hpw = xmalloc(sizeof(struct hashedpw));
+X  		hashpass(p, strlen(p), hpw->hash);
+X***************
+X*** 548,553 ****
+X--- 564,572 ----
+X  			case 'k': keyflag = TRUE; break;
+X  			case 'l': verbose = TRUE; break;
+X  			case 'm': moreflag = TRUE; break;
+X+ #ifdef PGP26_COMPAT
+X+ 			case 'n': pgp26_impersonate = TRUE; break; /* N as in NSA */
+X+ #endif
+X  			case 'p': preserve_filename = TRUE; break;
+X  			case 'o': outputfile = optarg; break;
+X  			case 's': sign_flag = TRUE; break;
+X***************
+X*** 1974,1980 ****
+X  	}
+X
+X  	  /* built-in help if pgp.hlp is not available */
+X! 	if (more_file(tmphelp) < 0)
+X  		fprintf(pgpout,PSTR("\nUsage summary:\
+X  \nTo encrypt a plaintext file with recipent's public key, type:\
+X  \n   pgp -e textfile her_userid [other userids] (produces textfile.pgp)\
+X--- 1993,1999 ----
+X  	}
+X
+X  	  /* built-in help if pgp.hlp is not available */
+X! 	if (more_file(tmphelp) < 0) {
+X  		fprintf(pgpout,PSTR("\nUsage summary:\
+X  \nTo encrypt a plaintext file with recipent's public key, type:\
+X  \n   pgp -e textfile her_userid [other userids] (produces textfile.pgp)\
+X***************
+X*** 1990,1995 ****
+X--- 2009,2020 ----
+X  \nTo produce output in ASCII for email, add the -a option to other options.\
+X  \nTo generate your own unique public/secret key pair:  pgp -kg\
+X  \nFor help on other key management functions, type:   pgp -k\n"));
+X+ #ifdef PGP26_COMPAT
+X+ 		fprintf(pgpout,PSTR("\
+X+ To make your messages appear like pgp-2.6 output add the -n (like NSA)\
+X+ \n   option to other options.\n"));
+X+ #endif
+X+ 	}
+X  	if (ext_c_ptr)
+X  		rmtemp(tmphelp);
+X  	exit(BAD_ARG_ERROR);		/* error exit */
+X
+X*** pgp23a/src/pgp.h	Fri Jun 11 10:43:57 1993
+X--- pgp23c/src/pgp.h	Wed May 25 18:10:56 1994
+X***************
+X*** 192,197 ****
+X--- 192,208 ----
+X  extern char CONSOLE_FILENAME[];
+X  extern char rel_version[];
+X
+X+ #ifdef PGP26_COMPAT
+X+ extern boolean pgp26_impersonate;
+X+ extern char pgp26_rel_version[];
+X+ #define REL_VERSION		(pgp26_impersonate ? pgp26_rel_version : rel_version)
+X+ /* If we impersonate 2.6, 2.3 can't read our output. */
+X+ #define VERSION_BYTE_OUT	(pgp26_impersonate ? 3 : VERSION_BYTE)
+X+ #else
+X+ #define REL_VERSION		rel_version
+X+ #define VERSION_BYTE_OUT	VERSION_BYTE
+X+ #endif
+X+
+X  /* These files use the environmental variable PGPPATH as a default path: */
+X  extern char PUBLIC_KEYRING_FILENAME[32];
+X  extern char SECRET_KEYRING_FILENAME[32];
+X
+X*** pgp23a/src/system.c	Wed Jun 23 23:39:33 1993
+X--- pgp23c/src/system.c	Thu May 26 01:35:31 1994
+X***************
+X*** 310,316 ****
+X  }
+X  #endif /* _BSD */
+X
+X! #if (defined(MACH) || defined(SVR2) || defined(_BSD)) && !defined(NEXT)
+X  int remove(name)
+X  char *name;
+X  {
+X--- 310,316 ----
+X  }
+X  #endif /* _BSD */
+X
+X! #if (defined(MACH) || defined(SVR2) || defined(_BSD)) && !defined(NEXT) && !defined(NETBSD)
+X  int remove(name)
+X  char *name;
+X  {
+END-of-pgp23c.patch
+exit
+

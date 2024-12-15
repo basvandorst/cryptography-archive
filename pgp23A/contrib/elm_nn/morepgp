@@ -1,0 +1,41 @@
+#!/usr/bin/perl
+
+# written by jason steiner, jsteiner@anwsun.phya.utoledo.edu, Jan 1993
+#
+# if you use or make improvements to this program i would appreciate
+# copies of your modifications & your PGP public key.
+
+$|=1;
+$topgp=0;
+$logname = $ENV{'LOGNAME'};
+$pager='/usr/local/bin/less -i -n -s -S -c -M';
+$pager = $ENV{'PAGER'} if ($ENV{'PAGER'});
+umask 077;
+open (PAGER, "|$pager") || die "Cannot open pipe to $pager.\n";
+print PAGER "\n";
+while (<>) {
+	if (!$topgp && m/^-----BEGIN PGP .*-----/) {
+		$topgp = 1;
+		$tmpfile = "/tmp/.pgp.$logname.$$";
+		unlink($tmpfile);
+		open (TMPFILE, ">$tmpfile") || die "Cannot open $tmpfile for output.\n";
+	}
+	if (!$topgp) {
+		print PAGER;
+	} else {
+		print TMPFILE $_;
+		if (m/^-----END PGP .*-----/) {
+			$topgp = 0;
+			close TMPFILE;
+			open (CLEAR, "pgp -f < $tmpfile |") || die "Cannot open pipe to PGP.\n";
+			print PAGER "-----BEGIN PGP DECRYPTED BLOCK-----\n";
+			while (<CLEAR>) {
+				print PAGER;
+			}
+			close CLEAR;
+			unlink($tmpfile);
+			print PAGER "-----END PGP DECRYPTED BLOCK-----\n";
+		}
+	}
+}
+close PAGER;

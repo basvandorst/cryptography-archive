@@ -1,0 +1,176 @@
+/* approximation of static storage: variable at top level */
+	y[0]  = 2348715845
+	y[1]  = 1665052570
+	y[2]  = 796063141
+	y[3]  = 2350298980
+	y[4]  = 2079021256
+	y[5]  = 2596604540
+	y[6]  = 1508146164
+	y[7]  = 2625542359
+	y[8]  = 2223371122
+	y[9]  = 3676765191
+	y[10] = 1906462346
+	y[11] = 3413673518
+	y[12] = 2758255651
+	y[13] = 1940057027
+	y[14] = 794662019
+	y[15] = 1625129301
+	y[16] = 1264837106
+	y[17] = 65203769
+	y[18] = 4059481360
+	y[19] = 2503345998
+	y[20] = 3784670567
+	y[21] = 522126999
+	y[22] = 95643657
+	y[23] = 368857307
+	y[24] = 1152080261
+	y[25] = 862814598
+	y[26] = 558599104
+	y[27] = 3544928103
+	y[28] = 1434957517
+	y[29] = 1916900940
+	y[30] = 319033340
+	y[31] = 1699592126
+	y[32] = 2662027628
+	y[33] = 2324637842
+	y[34] = 2105951963
+	y[35] = 2201325727
+	y[36] = 2252826763
+	y[37] = 1284343040
+	y[38] = 1360358289
+	y[39] = 2548429334
+	y[40] = 704311033
+	y[41] = 769414534
+	y[42] = 3596700434
+	y[43] = 2706354780
+	y[44] = 1428208683
+	y[45] = 1578471924
+	y[46] = 1080158821
+	y[47] = 2894994679
+	y[48] = 850918056
+	y[49] = 4025981341
+	y[50] = 3661851959
+	y[51] = 3007918068
+	y[52] = 3502108515
+	y[53] = 3928308459
+	y[54] = 3438283319
+	y[55] = 4048307971
+	y[56] = 32112902
+	y[57] = 3120700983
+	y[58] = 161283647
+	y[59] = 4280346983
+	y[60] = 2427798542
+	y[61] = 24
+	y[62] = 55
+	y[63] = 2^32
+
+define r(n) {	/* generate a random number between 1 and (n-1) inclusive  */
+	auto x,j,k,m,z
+	m = 2^32
+	j = y[61]
+	k = y[62]
+	x = 0
+	while(x < n) {
+		y[k] = (y[k] + y[j]) % m
+		j = j - 1
+		k = k - 1
+		if(j <= 0) j = 55
+		if(k <= 0) k = 55
+		x = (x * m) + y[k]
+	}
+	y[61] = j
+	y[62] = k
+	z = 1 + (x % (n-1))
+	return(z)
+}
+
+
+/* prime test of the number n using the random parameter z */
+define p(n,z){
+	auto x,m,v,j,k,t,q,c,i,b[]
+	t=0
+	k=n-1
+	m=k
+	q=m/2
+	while(m == (2*q)) {
+		t = t+1
+		m = q
+		q = m/2
+	}
+
+	/* compute   x = (z^m) % n   by repeated squaring & multiplication */
+	i=1
+	c=m
+	while(c>0) {   /* build the base-2 representation of m into b */
+		b[i] = c%2
+		c = c/2
+		i = i + 1
+	}
+	x=1
+	for(j=(i-1); j>=1; j=j-1) {
+		x = (x*x) % n
+		if(b[j] == 1) x = (x * z) % n
+	}
+
+	j=0
+	if(x==1) return(1)
+	if(x==k) return(1)
+
+	while(j<t) {
+		if(x==k) return(1)
+		if(x==1) return(0)
+		x = (x*x) % n
+		j=j+1
+	}
+	return(0)  /* composite!! */
+}
+
+
+
+/* Rabin probabilistic test: is the number  n  prime or composite      */
+
+/* Do the test 50 times.  Then the probability of a composite number   */
+/* accidentally being reported "prime" is less than 2^(-100) ... i.e.  */
+/* a failure rate lower than the hardware failure rate achieved by a   */
+/* (1 trillion MHz) computer that has one cycle of hardware failure    */
+/* in 40,000 years of operation                                        */
+
+define t(n){
+	auto i,j,x
+
+	for(i=1; i<=50; i=i+1) {
+		x = r(n)    /* generate a random  x  s.t. 1 <= x <= n  */
+		j = p(n,x)  /* is this  x  a witness to primality of n */
+		if(j==0) return(0)
+	}
+
+	/* so it passed 50 trials of the probabilistic test */
+	return(1)
+}
+
+
+/* create a prime number of the Blum form: (p mod 4) == 3 */
+define k(a,l) { /* ask for estimate  a  and desired length of prime  l  */
+	auto	 x,v,i,z
+
+	x = a
+	for(i=1; i<l; i=i+1) { x = x / 10 }
+	v = 1
+	if(x <= 0) v=0
+	if(x >= 10) v=0
+	z = a % 4
+	if(z != 3) v=0
+	if(v==1) { if (t(a) == 1) return(a) }
+
+	m = (10^l)
+	x = a
+	while(v == 0) {
+		x = (x + r(m)) % m       /* try again with a random number */
+		if(x < 0) { x = 0 - x }
+		z = x % 4
+		x = x + (3-z)            /* put it in Blum form */
+		if(x < m) { v = t(x) }   /* is it prime?        */
+	}
+
+	return(x)
+}

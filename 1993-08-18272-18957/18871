@@ -1,0 +1,91 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!spool.mu.edu!sdd.hp.com!decwrl!decwrl!waikato!aukuni.ac.nz!cs18.cs.aukuni.ac.nz!pgut1
+From: pgut1@cs.aukuni.ac.nz (Peter Gutmann)
+Subject: Generating lots of IV's very quickly
+Organization: Computer Science Dept. University of Auckland
+Date: Thu, 26 Aug 1993 03:23:00 GMT
+Message-ID: <1993Aug26.032300.5623@cs.aukuni.ac.nz>
+Lines: 82
+
+I've got a question about the use of IV's for sector-level encryption.  Let's
+assume you're using an algorithm in which the IV is injected fairly early in
+the key setup process (in this case my MDC algorithm), making any precomputed
+data attack very difficult.  This means that key setup takes a long time
+(defined by a user parameter - the higher the value, the longer the key setup,
+and thus the longer it takes to perform a brute-force type attack).  In the
+case of DES this would be equivalent to:
+ 
+    subkeys = keyschedule( user_key, IV );
+ 
+However, lets assume you want sector-level encryption, which will require a new
+IV for each sector.  Not only is this a problem to store (where do you put the
+IV?), it also provides an enormous slowdown since the key setup must be redone
+for each sector.
+ 
+One suggestion to the storage problem was to make the IV depend on the sector
+the data was on, with a master IV for the entire device, so that for an
+n-sector device:
+ 
+    Device: Master IV
+            Sector 1: Sub-IV = master IV ^ SHS( 1 )
+            Sector 2: Sub-IV = master IV ^ SHS( 2 )
+                        .............
+            Sector n: Sub-IV = master IV ^ SHS( n )
+            
+This means you'd have at most n unique IV's.  This will perform the task of
+hiding patterns, but once the master IV was known the small range of sub-IV's
+would allow the use of precomputed plaintext-ciphertext pairs (mind you with a
+128-bit block size you'd need a fair bit of storage).
+ 
+An improvement on this scheme is to keep the master IV secret.  This involves
+the same scheme as above but now we have:
+ 
+    subkeys = keyschedule( user_key, keyIV );  
+    masterIV = decrypt( encrypted_IV );
+    subkeys = keyschedule( user_key, masterIV );
+ 
+This means an opponent can no longer make any assumptions about the range of
+values the IV might cover.
+ 
+With MDC, which normally performs 100 iterations during the key setup (this
+gives a 0.5s delay on a 10K dhrystone machine), the above becomes:
+ 
+    for i = 1 to 50 do    
+        subkeys = keyschedule( user_key, keyIV );
+    masterIV = decrypt( encrypted_IV ); 
+    for i = 1 to 50 do
+        subkeys = keyschedule( user_key, masterIV );
+ 
+The reason that both the keyIV and the masterIV are subjected to 50 iterations
+of the setup process is to ensure the masterIV has a role in the key setup
+(that is, that it has an influence on the entire encryption key used rather
+than just being used as a pure IV).  The keyIV is public knowledge, so an
+attacker simply has to take this IV and encrypt with a dictionary of keys to
+get a collection of pre-encrypted data.  If the masterIV is injected right at
+the very end, all it then takes is a dictionary lookup and few operations to
+start decrypting data. If, however, the masterIV is injected halfway through,
+then it still takes a great many computations before you're ready for any sort
+of attack on the system.  It's the same reason why the IV in straight MDC is
+injected right at the start of the key setup instead of right at the end the
+way most systems would do it.
+ 
+Finally, now that the masterIV is secret the step:
+ 
+        Sector n: Sub-IV = master IV ^ SHS( n )
+        
+can be replaced with::
+    
+        Sector n: Sub-IV = master IV + n
+        
+This use of IV's is a bit like OFB mode, and since the master IV is unknown
+using n instead of SHS( n ) should be secure while at the same time providing a
+worthwhile speedup.
+ 
+Can anyone see any flaws with this?
+ 
+Peter.
+--
+ pgut1@cs.aukuni.ac.nz||p_gutmann@cs.aukuni.ac.nz||gutmann_p@kosmos.wcc.govt.nz
+peterg@kcbbs.gen.nz||peter@nacjack.gen.nz||peter@phlarnschlorpht.nacjack.gen.nz
+             (In order of preference - one of 'em's bound to work)
+       -- Pentium: A dead horse, but they're very good at flogging it --

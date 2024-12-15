@@ -1,0 +1,868 @@
+File MSR310.DOC    A list of items new to MS-DOS Kermit v3.10     2 March 1991
+
+FILE TRANSFER CHANGES
+
+1.  New command REMOTE PRINT <filespec> <optional-printer-parameters>.  This
+    is taken from the Kermit book and means send the local file to the remote
+    Kermit's printer with optional printer parameters (spaces permitted).
+    The remote Kermit can be in server mode or receive mode.  The command is
+    now supported on MS-DOS Kermit servers by receiving the file(s) to DOS
+    filename PRN; optional parameters are ignored.  The ENABLE and DISABLE
+    commands now have PRINT as a new option.
+
+2.  Follow the lead of C-Kermit 5A and attempt simple correction of Parity on
+    the communications line during packet transfers.  Parity will be shifted
+    to EVEN, ODD, or MARK by the detector, in addition to the older warning
+    about removing the high bit on characters. The first four packet
+    characters determine the parity.  Any change becomes permanent.  SPACE
+    parity cannot be distinguished from NONE, and so 8-bit data when
+    transferred over a 7-bit SPACE parity connection will result in fatal
+    checksum errors.
+
+3.  Add two new commands:
+
+        SET SEND DOUBLE-CHAR <number between 0 and 255>
+
+    which sends this character twice in a row in outgoing packets.  The
+    doubling occurs as packet bytes are being sent to the communications
+    channel and hence does not occur during packet construction.  This
+    accommodates communications devices which need doubling to let through a
+    single copy.  The doubling does not appear in the packet log.  Padding
+    characters are not affected by this command since padding is to be
+    discarded at the other end anyway.
+
+        SET RECEIVE IGNORE-CHAR <number between 0 and 255>
+
+    which ignores this character in received packets.  This accommodates
+    communications devices which may insert a character into a stream, such
+    as a Line Feed inserted before a Carriage Return, or after every "n"
+    characters.  The ignored character will not appear in the packet log.
+    Note that NUL (0) and DEL (127) are normally ignored even without this
+    command.
+
+4.  Add alternative command syntax: SET FILE COLLISION means the same as
+    older SET FILE WARNING and SET FILE COLLISION DISCARD is the same as SET
+    FILE COLLISION NO-SUPERSEDE.
+
+5.  Add command REMOTE SET FILE COLLISION UPDATE, meaning the file receiver
+    on the other side should process incoming files with conflicting names as
+    "updates" (whose meaning is system dependent) to existing files with the
+    same names.  The MS-DOS Kermit server does not recognize the command.
+
+6.  Accommodate the Cyrillic character set of Code Page 866 ("Alternative
+    Cyrillic") as much as possible.  The command SET TRANSFER CHARACTER-SET
+    has the new option CYRILLIC (ISO 8859-5, the Latin/Cyrillic Alphabet), and
+    if selected will force the FILE CHARACTER-SET to be CP866.  Similarly, if
+    the FILE CHARACTER-SET is selected to be the new option CP866 then it will
+    force the TRANSFER CHARACTER-SET to be CYRILLIC.  Warnings are issued for
+    both cases.
+
+    When sending a text file with TRANSFER CHARACTER-SET CYRILLIC the file
+    attributes packet will send "I6/144" for the file character-set
+    identification (the "C" attribute) and translation will be done between
+    ISO 8859-5 on the wire and CP866 (Alternative Cyrillic) in the machine.
+
+    The reason for the coupling of commands is that CP866 has many Cryillic
+    characters in the right (high bit set) section which have no equivalents
+    in other Kermit character sets and regular Code Pages.  Hence, when CP866
+    or CYRILLIC is selected there can be no translation of characters between
+    CP866 and either the other (Western European) Code Pages or the LATIN1
+    character set.
+
+    If a file arrives with an attributes packet indicating a Cyrillic transfer
+    character set but the local machine is not adjusted for CP866 then CP866
+    is forced for this file. The active Code Page indictor reverts to the
+    real Code Page value after the file transfer has completed successfully
+    or not.
+
+    For terminal emulation SET TERMINAL CHARACTER-SET TRANSPARENT will prevent
+    unwanted translations and also convert the C1 controls area into printable
+    characters found in CP866.  If the host uses Alternative Cyrillic as a
+    terminal character set and the PC has CP866 as its active code page, all
+    will work correctly.  If the host uses some other Cyrillic character set,
+    MS-DOS Kermit can translate it into CP866 if it is given the appropriate
+    set of SET TRANSLATE INPUT commands.
+
+7.  Modify the action of the BYE and LOGOUT commands from an MS-DOS Kermit
+    client.  Previously these would complete successfully whether or not the
+    server host sent an Error packet.  A Kermit server can send an Error
+    packet response if BYE has been Disabled or if it doesn't understand the
+    BYE command.  To keep things rational MS-DOS Kermit now stays active if
+    an Error packet is received for these commands.  Script writers may want
+    to issue an extra command to EXIT Kermit regardless.  An MS-DOS Kermit
+    server returns an ACK with a message that the command is disabled, it
+    logs out the user, it hangs up the connection. If BYE is disabled the
+    server waits for another customer, if it is enabled the serving Kermit
+    exits to DOS.
+
+8.  On the formatted file transfer screen add " of n" to the Window slots
+    line, where n is the maximum number negotiated between Kermits.
+
+9.  Add more flexibility to the REMOTE LOGIN <username password account>
+    command so it can be stated on one line, particularly for Take files, and
+    yet retain the ability to use embedded spaces in all three fields.  To
+    use embedded spaces, surround the quantity with curly braces, {..}. An
+    example is a username of "my name" and a password of "no show":
+
+        REM LOGIN {my name} {my spaced password}
+
+    The account name is omitted in this example.  Kermit will prompt for the
+    items only if nothing is specified after the word LOGIN.
+
+10. During file transfers pressing either Control-Q or just Q sends an XON
+    code to the other side, regardless of our flow control setting. This
+    is to manually free a host blocked by a stray XOFF. File msscom.asm
+
+SCRIPT, MACRO, TAKE FILE CHANGES
+
+1.  In the command WAIT <timeout> \CD \CTS \DSR, let the backslash character
+    be optional, to merge syntax with C-Kermit 5A.
+
+2.  Slightly revise script INPUT and REINPUT command sensing of timeouts by
+    examining elapsed time after, rather than before, reading each serial port
+    character. This might cure complaints of REINPUT 0 reporting premature
+    FAIL status.
+
+3.  Significant change to \%n variables defined as macro arguments.  For each
+    macro invocation first save variables \%0 through \%9, clear \%0..\%9,
+    then define \%0 to be the name of the macro being invoked and \%1..\%9 as
+    the arguments to the macro.  When the macro exits restore the previous
+    \%0..\%9 variables.
+
+    This process nests naturally, and ARGC still represents one plus the
+    number of macro arguments.  C-Kermit 5A and MS-DOS Kermit 3.10 are now in
+    agreement on these items.  Previously \%0 was not affected by macro
+    invocation and \%1..\%9 were not saved and restored around the macro.
+    The new behavior may affect scripts written in the past.
+
+    TAKE commands do not create a new set of \%<digit> variables.
+
+    For example,
+
+        MS-Kermit> DEFINE xxx Set term VT302,take x.tak,connect
+        MS-Kermit> xxx A B C
+        where file x.tak holds
+                echo \%0 \%1 \%2 \%3
+
+        This displays "XXX A B C" and then enters Connect mode as a VT320
+        terminal.
+
+    Some basic concepts:
+
+    - Intrinsic (built-in) commands do not affect the \%0..\%9 variables,
+      but user-created commands (macros) do create a private version of
+      \%0..\%9.  TAKE is an intrinsic command.
+
+    - To be a command, the keyword -- intrinsic or macro -- must be the first
+      word at the Kermit prompt.  Commas in macros start a fresh command line
+      even though the Kermit prompt is usually not displayed on the screen
+      while within a macro.
+
+      Thus in the definition below of macro "test":
+
+        DEFINE test echo \%0 \%1,mywords,echo test mywords \%1
+
+      there are three commands (they start at the effective Kermit prompt):
+
+        echo TEST <first argument><carriage return>
+
+        mywords<carriage return>  (whatever the macro "mywords" is defined as)
+
+        echo test mywords <first argument to test><carriage return>
+
+      The argument to this last ECHO command is the simple text "test mywords"
+      plus the first argument to "test".  In the text neither test nor mywords 
+      is replaced by its definition, and ECHO is an intrinsic command.
+
+    - String substitution variables, \%<character> and \v(variable), are
+      always immediately replaced by their definition string no matter where
+      they are used outside of a DEFINE command.
+
+    - ASSIGN is similar to DEFINE except that whereas DEFINE uses the
+      definition text as a literal string ASSIGN first evaluates the text,
+      i.e. it replaces \%<character> and \v(variable) items with their string,
+      at the time the ASSIGN statement is executed.
+
+    - Curly braces, {..}, may be used to group items into a single quantity.
+      When they appear as part of a macro then as the macro is executed (DO)
+      the top level braces are first removed and any commas outside of braces
+      are changed to carriage return command terminators.  Many commands, such
+      as ECHO, remove the top level braces before displaying a string.
+      Commands requiring a word answer can employ braces to retain spaces as
+      part of the word.
+
+4.  Add a new element to command line variables, taken from C-Kermit 5A.
+    Variables ARGC, COUNT, DATE, NDATE, DIRECTORY, ERRORLEVEL, KEYBOARD,
+    PLATFORM, PROGRAM, SPEED, SYSTEM, STATUS, TIME, and VERSION can now be
+    used in any context by employing a new notation for built-in variables:
+
+        \v(variable)
+
+    where "variable" is one of the words listed above.  A built-in variable,
+    no matter where it occurs, is replaced by a text string representing its
+    value.
+
+    PLATFORM returns the machine name, such as IBM-PC, and SYSTEM returns
+    the operating system name, MS-DOS, for MS-DOS Kermit.  PROGRAM returns
+    MS-DOS_KERMIT.
+
+    Examples:
+        WRITE session \v(platform) has a \v(keyboard) key keyboard.
+
+    writes to the session log the phrase "IBM-PC has a 101 key keyboard."
+
+        ECHO The version number of this program is \v(version) today.
+    displays:
+        The version number of this program is 302 today.
+
+    And DEFINE See ECHO \%0 - the arg is \v(\%1) here.
+        See argc
+    which displays
+        SEE - the arg is 2 here.
+        See version
+    which displays
+        SEE - the arg is 302 here.
+ 
+    The expression \v(variable) is replaced by its ascii value.  This may be
+    used in any command.  The current syntax of  IF = ARGC 2 ... is retained
+    for compatibility purposes but in new scripts it should be replaced by
+    IF = \v(argc) 2, etc.
+
+    If the item within the parentheses is not one of the above variables, or
+    a variable whose value evaluates to the name of a built-in variable, or
+    a right parenthesis does not end the variable name, then the entire
+    expression from \v( to the current point is discarded. Abbreviation of
+    a \v(..) variable name is permitted. Examples of bad syntax: 
+        ECHO testing \v(versions) stuff
+    or
+        ECHO testing \v(version stuff
+    both of which display
+        testing stuff
+
+    Variable NDATE reports the date with all digits as YYYYMMDD for easier
+    testing in scripts than DATE which reports in country dependent forms of
+    MM-DD-YYYY, DD-MM-YYYY, or YYYY:MM:DD.  Variable STATUS reports the value
+    of the Kermit internal status word; 0 is success, any other numeric is a
+    failure. Most Kermit commands clear this word result before execution.
+    The current values are listed below; "user intervention" may be added to
+    other values.
+
+     	Condition	     Status	Comment
+	success			0	initial value for most commands
+	send failure		1	includes OUTPUT and TRANSMIT commands
+	receive failure		2	includes INPUT command timeout
+	remote cmd failure	4	REMOTE command failed for any reason
+	Take file failure	8	Take file not found
+	general failure	       16	many causes
+	user intervention     128	usually by typing Control-C
+
+    Variable KEYBOARD is 88, 101, or 250, describing the number of keys on
+    the keyboard so that Take files can be tailored to fit either 88
+    (so-called Old AT) or 101 (so-called Enhanced) keyboards.  The
+    determination of 88 or 101 is made at Kermit startup.  The IBM PC version
+    also permits the value 250 if the LK250 keyboard is selected (SET KEY
+    LK250) and external driver is present for the Digital keyboard.
+
+    "?" help and <ESC> word completion is permitted with these items.
+
+5.  Add command SHOW VARIABLES [\v(]name[)] which displays the strings
+    associated with variables of the form \v(variable-name). Leading "\v("
+    and trailing ")" may be omitted. SHOW VARIABLE with no argument shows
+    all variables; abbreviations are allowed and show all matches.
+
+6.  Add a feature suggested by John Klensin and Frank da Cruz, from C Kermit.
+    New substitution variable notation \$(item)  means replace  \$(item)  by
+    the string on the right hand side of the line starting as ITEM= in the
+    DOS Environment. Any word may be used for ITEM. The replacement will be
+    empty if either the string or the item is absent in the Environment.
+    Leading and trailing spaces and tabs are removed from the string.
+    Examples:
+    	Echo \$(path)
+    shows the string which occurs after "PATH=" in the Environment, such
+    as C:\;C:\WP;C:\DOS.
+
+    IF eq \$(video) CGA echo Upgrade to VGA 
+    will show the string "Upgrade to VGA" if someone has provided the line
+    VIDEO=CGA  in the Environment, perhaps by typing SET VIDEO=CGA or
+    written there by a program.
+
+    ASSIGN \%p \$(path)
+    gives variable \%p the definition of the right hand side of PATH=.
+    
+    Semicolons occurring in \$(..) replacement strings will be treated as
+    ordinary characters and will not start a comment. Comments starting
+    with a semicolon are now restricted to ordinary Macros and Take files.
+
+7.  Add two tests to the script IF statement. These are lexical comparisons
+    between two words. The curly brace {..} operators are not usable here.
+
+    IF LLT word1 word2 <command>
+    	executes <command> if word1 has	fewer characters (after
+    	removing leading spaces) than word2, or if at the first
+    	character where the words differ word1 has a character
+    	occurring earlier (less than) in the ascii collating sequence
+    	than that in word 2.
+
+    IF LGT word1 word2 <command>
+    	opposite of above, for word1 longer than word2 or the first
+    	differing character in word1 occurs later (greater than) that
+    	in word2 in the ascii collating sequence.
+
+    Combining these with IF EQUAL and the NOT modifier yields all logical
+    comparison conditions, as shown in the table below. Case sensitivity
+    of the tests is controlled by SET INPUT CASE {IGNORE, OBSERVE}, with
+    IGNORE being the default; when case is observed uppercase letters are
+    "less than" lower case letters.
+
+    	Lexical Test		Kermit IF statement
+       word1 =  word2		IF EQUAL word1 word2 ...
+       word1 != word2		IF NOT EQUAL word1 word2 ...
+       word1 <  word2		IF LLT word1 word2 ...
+       word1 >  word2		IF LGT word1 word2 ...
+       word1 => word2		IF NOT LLT word1 word2 ...
+       word1 <= word2		IF NOT LGT word1 word2 ...
+
+8.  Modify the action of pressing the Enter key while a script INPUT command
+    is in progress.  Previously it meant "assume a match has occurred" so the
+    script could progress.  Now it means "assume a timeout has occurred" and
+    report a failure status.  People seem to prefer the latter approach.
+
+9.  Add screen-clear command CLS to clear the screen at Kermit command
+    level, especially for Take files and macros (Control-L does it by hand).
+
+10. Add synomym
+     	SET FILE DISPLAY {QUIET, REGULAR, SERIAL}
+     meaning the same as SET DISPLAY {QUIET, REGULAR, SERIAL}.
+
+TEXT TERMINAL EMULATION CHANGES
+
+1.  Add command SET TERMINAL WIDTH {80, 132} to attempt to manually set the
+    screen width in text terminal emulation mode.  Previously this could be
+    done only by host commands CSI ? 3 h/l, etc, or outside of Kermit before
+    startup.  The main STATUS display was revised slightly to accomodate
+    showing the current screen width setting.  Screen width changes occur
+    when the text terminal emulator resumes operation and utilize the same
+    methods as if the host had issued the command: direct control of the
+    display boards known to Kermit (listed below) or invoking files
+    COLS80.BAT or COLS132.BAT if Kermit does not support the the display
+    board directly.  The COLSxxx.BAT files should contain whatever DOS
+    commands you normally use (e.g. MODE) to put your screen in 80 and 132
+    column mode, respectively.
+
+2.  Add recognition of IBM PC video boards STB VGA/EM Plus (Tseng 4000) and
+    Everex Viewpoint EV-678 from Terry Kennedy, IBM XGA from Bert Tyler,
+    Paradise Autoswitch from David Zielke of Duke University, and ATI VGA
+    Wonder from Steve Wood.  The list of boards known to Kermit for switching
+    between 80 and 132 columns is now:
+
+        ATI EGA Wonder and VGA Wonder
+        AT&T
+        Everex Viewpoint EV-659, FVGA-673, EV-678, Micro Enhancer Deluxe
+        IBM XGA
+        Paradise AutoSwitch EGA Mono
+        STB VGA/EM (Tseng TVGA)
+        STB VGA/EM Plus (Tseng 4000), VGA/EM-16, VGA/EM-16 Plus
+        Tseng Labs EVA board w/132-col kit installed
+        Tseng Labs UltraPAK mono/Hercules with 132 column modes
+        Video 7 VGA and Vega Deluxe with the 132X25.COM driver installed
+
+3.  Add the following VT340 control sequence, DECSCPP, to change screen width:
+
+        CSI Pn $ |              set columns per page (screen width)
+                Pn              width
+                0 or 80         80 columns
+                132             132 columns
+
+    In Kermit Pn values greater than 80 yield 132 columns, else 80 columns.
+    This is equivalent to CSI ? 3 h/l (h for 132 columns, l for 80 columns).
+
+4.  New option to the SET TERMINAL command:
+
+        SET TERMINAL ARROW-KEYS {CURSOR, APPLICATION}
+
+    It is worth remembering that Applications mode is supposed to be invoked
+    by the host and not by the terminal user.  So, please do not make a host
+    program dependent on Applications mode responses from the terminal unless
+    it also invokes that mode; otherwise real terminals will not function.
+
+5.  SET TERMINAL BELL {AUDIBLE, VISUAL, NONE} has the new option of NONE
+    to simply ignore arriving Control-G characters. Peace & Quiet.
+
+6.  Revise REPLAY filespec a little.  Previously at the end of the file any
+    key would exit Connect mode.  Now all keys remain active so that screen
+    dumping, screen rollback can function.  Alt-X and Control-C (emergency
+    bailout) exit Connect mode.
+
+7.  Extend the SET TERMINAL CHARACTER-SET command. After the character set
+    one may optionally add phrases G0 G1 G2 G3. The meaning of these trailing
+    character set storage areas is to attempt forcing the named set into the
+    areas without reinitializing the overall character setup in place.
+    Omitting these trailers invokes the normal character setup method.  G0
+    may hold only 94 byte character sets.
+
+    Examples:
+        set term char latin1      puts Latin1 into G2 and G3
+                                    and ASCII into G0 and G1
+        set term char latin1 G1   puts Latin1 into G1, rest unchanged
+        set term char Italian G3  puts Italian NRC into G3, rest unchanged
+
+8.  Embellish the VT300 character set abilities by permitting National
+    Replacement Character (NRC) sets to be "designated" by the host to a
+    particular Gn set table, viz:
+
+    Designator       Mnemonic       Description of Action
+    ESC ( <ident>       SCS     Designates 94 byte character set <ident> to G0
+    ESC ) <ident>       SCS     Designates 94 byte character set <ident> to G1
+    ESC * <ident>       SCS     Designates 94 byte character set <ident> to G2
+    ESC + <ident>       SCS     Designates 94 byte character set <ident> to G3
+
+    where <ident> is:
+        NRC country  <ident>            NRC country  <ident>
+        British         A               Italian         Y
+        Dutch           4               Norwegian/Danish ` (hex 60) or E or 6
+        Finnish         5 or C          Portuguese      %6
+        French          R               Spanish         Z
+        French Canadian 9 or Q          Swedish         7 or H
+        German          K               Swiss           =
+
+    Example: ESC ) A  loads the British NRC set (A) into G1 (the ")" part).
+    To load Latin1 into G1 use  ESC - A  because Latin1 is a 96-character set.
+    NRCs are all 94 character sets (see ISO Standard 2022 for further
+    elucidation).
+
+    This embellishment does NOT turn on NRC operation in the Digital
+    Equipment Corporation sense.  To follow DEC usage employ SET TERM
+    CHARACTER-SET to choose the country and have the host enable or disable
+    NRCs by sending CSI ? 42 h or CSI ? 42 l, respectively.
+
+9.  Enhanced the command SET KEY {key-ident, OFF, ON, LK} to include the new
+    option LK.  If stated LK means seek the matching DEC LK250 keyboard
+    driver (external to Kermit) and use Bios key inputs; otherwise do not
+    seek that driver.  It seems that a few PCs object to the legal driver
+    sensing operation, so now the driver is ignored unless explicitly
+    requested.
+
+10. Add terminal type of VT100.  This performs identically to a VT102 except
+    the response to the type inquiry from a host is ESC [ ? 1 c (a VT100).
+
+11. Add terminal type of HONEYWELL to the emulator.  This is a VT100 with
+    two special responses.  A received ENQ character, decimal 5, causes the
+    emulator to send the 14 characters
+
+        '7813  P GC  A' 03h
+
+    and receipt of  ESC [ y  causes the emulator to send the 27 characters
+
+        ESC '[8p  OT' 03h ESC '[y7813  P GC  A ' 03h
+
+    where the quote marks (') above are not sent but are present so we can
+    see the spaces which are sent; other spaces are for reading convenience.
+    03h is Control-C, a binary value 3.  The terminal ident response is VT100.
+
+        ESC `  (accent grave) clears screen and homes the cursor.
+
+    These Honeywell VIP7809 emulation features are from Frank Dreano,
+    dreano@trout.nosc.mil.
+
+12. Add another host invocation control sequence to the text terminal
+    emulator.  Reception of CSI Pn;...Pn ~ invokes a macro named PRODUCT, if
+    it exists, and sets variables \%1, \%2, and so forth up to \%9 to be the
+    ascii version of the numeric parameters Pn above.  Omitted parameters are
+    taken to be zeros.  Only as many variables are set as numeric parameters,
+    and script items ARGC and \v(argc) are one larger than this quantity.  If
+    a macro called PRODUCT is not defined only the \%x items are changed.
+    Connect mode is not reentered automatically if the macro exists.  This is
+    very similar to TERMINALR and TERMINALS, except for the variable setting
+    part.
+
+    The PRODUCT macro is not invocable via key definition because of the
+    needed parameters.  The idea behind PRODUCT is to permit a general macro
+    which can test the parameters sent by the host and take local actions as
+    necessary.
+
+    The PRODUCT macro is intended as a systematic and standardized method for
+    software developers to signal vendor-specific requests to a terminal
+    emulator.  For example, the first two arguments could be a vendor code,
+    the next two product-specific identification, and others could be
+    information particular to that product. The leading identification part
+    is to let the terminal emulator select one of several different routines
+    (Kermit Take files or Macros).  Assignment of fields has not been fixed.
+
+13. Modify the strategy for DEC Autoprint, CSI ? 5 (and 4) i  from printing
+    each character as it arrives to printing display lines only as the cursor
+    is moved off it by an autowrap or LF, FF, or VT (otherwise do not print
+    the line).  Thanks to Michael Wolter for pointing out the problem.
+
+14. Preserve the state of VTxxx terminal emulator printing around processing
+    of DEC Set Conformance Level commands, e.g. CSI 63; 1 " p.  Tnx to Michael
+    Wolter and John E. Davis.
+
+15. Make a small change to the Self Test code, DECTST, CSI 2 ; Ps y (VT100)
+    and CSI 4 ; Ps...; Ps y (VT320).  Do a terminal reset only if a Ps is 0 or
+    1.  This is in the VT terminal emulator.  Ps values greater than 1 are for
+    testing the terminal serial port, printer, and repeating the tests; they
+    are ignored here. All cases move the cursor back to the main display.
+
+15. Add synomyms
+	SET TERMINAL DISPLAY {7-bit | 8-bit}
+	SET TERMINAL BYTESIZE {7-bit | 8-bit}
+     meaning the same as SET DISPLAY {7-bit | 8-bit}.
+
+16. Add command  SET PRINTER filespec  to allow changing the destination of
+    printer output while in Connect mode. Filespec defaults to PRN, DOS's
+    name for the first printer. This facility can help capture text from
+    the screen after character set translation and free of cursor steering
+    commands and the like if SET PRINTER filename is stated and then in 
+    Connect mode one toggles on local printing (keyboard verb \Kprtscn, tied
+    to Control-PrtScn keys). XON/XOFF flow control, if available, is used
+    around this "printer" output.
+
+GRAPHICS TERMINAL EMULATION CHANGES
+
+1.  Make the GIN mode crosshairs be full screen, by popular demand.  Revise
+    BYPASS mode details to discard all terminal input from the host while
+    Bypass mode is active, and to turn off Bypass when Kermit sends a control
+    code.  Bypass mode is turned on when the host sends ESC ^X (enter Bypass
+    mode) or ESC ^E (send status) or ESC ^Z (enter GIN crosshair mode).
+
+2.  Modify the way characters are placed on Tektronix graphics screens from
+    starting them at intervals of 8 PC screen dots across the screen to
+    placing the lower left at the current drawing position (1 dot
+    resolution).  Characters are 8x8 dots. The effect is better positioning
+    accuracy along the x-axis; the y-axis already behaved the better way.
+
+3.  Adjust Tektronix emulator slightly so that SET TERM CLEAR-SCREEN does a
+    screen clear, using the existing character coloring to write all spaces,
+    rather than doing a full reinitialization of the emulator. The text
+    emulator is not affected.  Since ESC [ 30's; 40's m screen coloring
+    command sets the fore and background color palette registers (7 and 0,
+    resp) a screen clear manually or by receipt of ESC [ 2 J will use this
+    palette.  A terminal reset restores the built-in default palette.
+
+4.  Add internal support of Microsoft compatible mouse for Tektronix GIN mode
+    crosshairs.  Both the regular cursor keys and the mouse can function
+    together.  Pressing either mouse button is the same as pressing the Enter
+    key.  The mouse driver must be active for Kermit to use it (include the
+    line DEVICE=path\MOUSE.SYS in your CONFIG.SYS file for permanent
+    residency, or give the DOS command MOUSE ON for temporary residency of
+    the Microsoft mouse driver).  This addition suspends any active mouse
+    menu programs such as DEFAULT.COM during Tektronix emulation, but they
+    continue to run otherwise.  MS-DOS Kermit uses standard Interrupt 33h
+    Microsoft mouse calls.
+
+5.  Add command SET TERMINAL GRAPHICS CURSOR {ON, OFF}, default is ON.  This
+    permits one to turn off the text cursor while in graphics (Tek) mode.
+    The cursor is suppressed around almost all drawing and Sixel commands.
+
+    The new text cursor symbol in Tektronix graphics mode is an 8x8 dot hollow
+    box so we can see where we are.  The box is removed temporarily while
+    generating a TIFF format screen dump (default keys Control-End).
+
+6.  Add command SET TERMINAL GRAPHICS COLOR <color values> which is analogous
+    to the text mode command SET TERM COLOR and uses the same color values.
+    Two technical notes: the background color cannot be given bold
+    attributes, and the colors are stored in DEC VT340 color palette slots 0
+    (background) and 7 (foreground).
+
+    Be wary of two side effects of colored graphics screens: most Print Screen
+    programs will put a black dot on the printer paper if a dot is illuminated
+    at all, and Sixel graphics normally add (OR) to the exiting dot coloring
+    and hence the coloring may not be what was intended.  Resetting the 
+    emulator restores the colors specified by these SET TERMINAL commands.
+
+7.  Include additional Tek submode entry and exit commands of:
+        ESC 1   enter Tek submode from text emulator and clear Tek screen;
+                ignored if Tek mode is disabled.
+        ESC 2   exit Tek submode from text emulator;
+                ignored if acting as a full Tek terminal (SET TERM TEK).
+
+
+KEYBOARD TRANSLATOR CHANGES (TERMINAL EMULATION)
+
+1.  Add a facility to the keyboard translator.  Let key definition strings of
+    the form {\Kverb other material} activate an existing macro or keyboard
+    verb, or a succession of them.  If "verb" matches the name of a regular
+    Kermit macro, execute the macro and stay on the Kermit command line; thus
+    a CONNECT command is needed to return to Connect mode.  If the verb does
+    not match either a macro name or an existing keyboard verb then do nothing
+    and stay in Connect mode.  Be aware that searching tables for the name of
+    the verb uses many cpu cycles and will reduce performance.
+    Examples:
+
+		SET KEY \316 {\{kmodeline}\{kdnarr}\{kdnarr}}
+
+       Pressing the IBM PC "F2" key (code \316) toggles the modeline and then
+       sends two down arrow sequences to the host. Notice the need to place
+       curly braces around each "kverb" phrase to separate them properly.
+
+                DEFINE Accumlate Receive, Connect
+                SET KEY \315 {\Kaccmulate}
+
+        Pressing the IBM PC "F1" key (code \315 above) makes the keyboard
+        translator see string {\Kaccumlate}, verb "accumlate" is not in the
+        predefined tables, and hence Kermit invokes the Macro named ACCMULATE.
+        That Macro puts Kermit into file receive mode and when the file, or
+        file group, transfer has been completed it returns to Connect mode.
+
+                DEFINE WP Take wp30.ini, Connect
+                SET KEY \316 {\Kwp}
+
+        This makes IBM PC key "F2" invoke macro WP which in turn reads in
+        and executes the contents of file WP30.INI. Kermit then returns to
+        Connect mode. Nothing happens if the user has not defined Macro WP.
+
+    Braces around the whole key definition are required so that the search
+    for the verb name is done while executing in Connect mode rather than
+    when defining the key. If the braces are omitted then only the predefined
+    keyboard verbs are available; an error is reported if the verb is not one
+    of these.
+
+    Text sent to the host may precede and follow the \Kverb part. To avoid
+    confusion "Kverb" itself, but not the "\", may be placed in braces too,
+    such as:
+
+        DEFINE Accumulate cd c:\junkmail,Receive,Connect
+        SET KEY \315 {kermit\13\send foo.bar\13\{KAccumulate}exit\13}
+        the pieces:   |_______________________||............||_____|
+                          string to host          do Macro    string to host
+
+    This sends the string "Kermit<carriage return>Send foo.bar<carriage ret>"
+    to the host to invoke its Kermit and asks it to send file foo.bar.  It
+    then invokes local Macro Accumulate to receive the file, and finally it
+    sends the string "exit<carriage return>" to the host.  Braces around
+    KAccumlate delimit it from the final string text.
+
+    There is no host command which can invoke these macros; this protects the
+    PC against stray garbage text and unauthorized commands from the host.
+
+2.  Ensure that during terminal emulation, outgoing bytes of values greater
+    than 9fh are not converted into 7-bit control form (ESC letter) under any
+    circumstance.  Only bytes in the C1 control code area may be converted.
+
+3.  Add DESQview support call to release the cpu timeslice when in Connect
+    mode and no character is available from the serial port.
+
+
+COMMUNICATIONS / SERIAL PORT CHANGES
+
+1.  SET FLOW has a new option, RTS/CTS, for controlling sending and receiving
+    of characters at the hardware level.  It is effective only for COM1..COM4
+    (real UARTs); selecting SET FLOW RTS/CTS for other communications ports
+    is the same as SET FLOW NONE.  It is effective only when SET DUPLEX is
+    FULL, which is the default.  It works by lowering the modem status signal
+    RTS when we wish to stop the host from sending characters to us, and the
+    host can ask us to stop sending by lowering modem status signal CTS.
+
+    As in the case of XON/XOFF, Kermit prevents a deadlock of being
+    permanently held in the stopped state.  The algorithm is to wait for as
+    long 10 seconds when a character needs to be sent and if Kermit is still
+    being held it will ignore the hold, sound a beep in the PC's speaker,
+    then send the character anyway.
+
+2.  SET DUPLEX HALF has been modified very slightly to send the output
+    character as above when blocked for too long.  Previously it would beep
+    and discard the character.  Please notice that Half Duplex operation uses
+    RTS and CTS differently than it is used in Full Duplex flow control.  The
+    classical Half Duplex situation is the sender asserts RTS when it wishes
+    to transmit and awaits permission via CTS being asserted by the modem.
+    The sender unasserts RTS when it is finished sending and resumes
+    listening.  Flow Control and Half Duplex should not be used together,
+    but Kermit does not prevent one from trying it.
+
+3.  The port address of serial ports COM1 through COM4 may now be given to
+    Kermit as overrides (or, for COM3 and COM4, to activate them).  There are
+    two ways:
+
+    First, there are the new Kermit commands SET COMn value, such as:
+        SET COM3 value
+    "Value" is the port address, such as \x02f8 for COM3; notice the optional
+    use of a hexadecimal number here.
+
+    The second way is to use the DOS Environment line starting with KERMIT= to
+    hold the phrase "COM3 value;" or "COM4 value;" (without the "" marks).
+    Please double check the value to avoid systems conflicts (especially with
+    disk drives).
+    
+    The IRQ value for COMx ports must still be 4 or 3, IRQ 4 for COM1 and COM3.
+    It is permissable to have two serial ports sharing the same IRQ line,
+    provided only one is active at a time. Kermit does testing to discover
+    which IRQ, 4 or 3, is used by the selected serial port.
+
+    The current list of commands recognized from the DOS Environment lines
+    starting with KERMIT=  or  KERMIT0=  or  KERMIT1= etc are:
+        COM1 value                      value is port address (no default)
+        COM2 value                      value is port address (no default)
+        COM3 value                      value is port address (no default)
+        COM4 value                      value is port address (no default)
+        ROLLBACK value                  value is number of screens (def 10)
+        INPUT-BUFFER-LENGTH value       value is number of bytes (def 128)
+                                        of the script INPUT command buffer
+   These Environment lines are constructed with the DOS command SET, such as:
+
+        C> SET KERMIT=ROLLBACK 35;COM3 \x02f8;INPUT 256;
+
+   Upper and lower case are equivalent here.
+
+4.  Modify the retry procedure to send a packet character to wait 60ms rather
+    than 10ms between each of five attempts. This may help situations where
+    a network device may be unresponsive for about 200ms between characters.
+
+5.  Internal revisions to details of handling 75/1200 bps split speeds.
+    Previously, filling the receiver buffer would cause an XOFF to be sent at
+    1200 baud rather than at the correct 75 baud.  Now the XOFF character is
+    sent at 75.  Thanks to Dan Norstedt for providing the split-speed code.
+
+
+COMMUNICATIONS / NETWORKING CHANGES
+
+1.  Incorporate support for Novell's TELAPI TCP/IP Telnet program. This
+    is selected by command:
+
+                SET PORT TELAPI nnn.nnn.nnn.nnn
+
+    where nnn.nnn.nnn.nnn is the Internet address of the remote host, in
+    decimal.
+
+        Example: SET PORT TELAPI 129.123.1.11   (machine netlab.usu.edu)
+
+    TELAPI is a component of the Novell package LAN WorkPlace for DOS.  At
+    Utah State University it was run with the Novell (ex-Excelan) EXOS 205T
+    Ethernet board (a smart multiprotocol board supporting TCP and NetWare
+    IPX packets).  Novell Utility TSU.EXE is not required but may be used
+    together with command SET PORT BIOS1.
+
+    SET PORT TELAPI must not be confused with SET PORT NOVELL(NASI); they
+    use very different communications methods.
+
+    Notes on this new faciity:
+
+     a) Hosts not on the local network will likely require their
+        Internet address and the local gateway to be specified with utility
+        ROUTE, such as:
+
+                ROUTE ADD 128.59.39.2 129.123.1.254
+
+        The first address is watsun.cc.columbia.edu, in New York City,
+        and the second is that of a local gateway box (a cisco Inc router
+        at Utah State University in Logan, Utah).
+
+     b) The communications channel is opened in 8-bit-wide BINARY
+        character-at-a-time mode, thus Unix hosts may require Line Feed
+        (Control-J) as a line terminator.
+
+     c) Included in this work is sending a BREAK signal as a Telnet
+        "Interrupt Process" command.
+
+     d) A status message is shown for 3 seconds if the connection cannot
+        be established.
+
+     e) Once an Internet number has been specified with SET PORT TELAPI it
+        will be retained for subsequent SET PORT TELAPI commands.  Thus it
+        need be stated only once.  SHOW COMMUNICATIONS will display the 
+        number.
+
+     f) The presence of the host can be checked by sending the two bytes
+        \255\246, which is Telnet signal "Are You There?" (AYT), and to which
+        the host is supposed to send back a bell or visible message.  This
+        can be arranged easily by command SET KEY <key's ident here> \255\246
+        if SET TRANSLATION KEYBOARD OFF is selected.  MS-DOS Kermit packets
+        encode \255 value in other terms and thus AYT will not be invoked by
+        packet data.  Character \255 is special in Telnet; it introduces
+        Options negotiation.  To send \255 as data during terminal emulation
+        and scripts (i.e., outside MS-DOS Kermit packets) it must be sent
+        twice, as \255\255.  See TCP/IP documents RFC-854 and RFC-855 for
+        Telnet specifications.
+ 
+     g) TELAPI version 3.5 sometimes has trouble hanging up a connection.  It
+        will attempt creating a new one for each new session and can exhaust
+        its space (defaults to two of them) when an old one persists.  The
+        only cure I know is to unload the TELAPI TSR (DOS command TELAPI -u)
+        or reboot the machine.
+
+     h) TELAPI uses Interrupt 14h with high numbered function calls.  Beware
+        of using other Int 14h trapping programs simultaneously.
+
+     i) Kermit uses only the Internet number form of addressing for TELAPI
+        because the TCP "name resolver" (conversion of a name to a number)
+        is not available directly with TELAPI.  Thus, full compliance with
+        TCP/IP specs is not available to Kermit or other external terminal
+        emulators using the TELAPI interface.  The full specs recommend using
+        names and letting a separate group of machines, called Name Servers,
+        provide the Internet number via TCP/IP methods.
+
+2.  Add communications enhancement to using the Int 14h serial port
+    interceptor TES from Interconnections Inc (distributed with Novell
+    NetWare for VMS). The new command:
+
+        SET PORT TES <optional host name>
+
+    invokes TES and make a connection to the indicated host.  This competes
+    with SET PORT BIOSn because they use some common operations. That is,
+    either SET PORT TES or SET PORT BIOSn should not be used while the other
+    is still active.
+
+    <optional host name>        Action
+        host-name       Connect to that host, and disconnect from a previous
+                        TES host if such a connection were active.
+           *            Show all available TES hosts but do not connect.
+        nothing         Use the current TES host name to reestablish an
+                        existing connection. Most useful when switching
+                        between TES and a real serial port. If no host name
+                        exists then a list of available hosts is shown.
+
+    Keyboard verb \Knethold is used to invoke the TES command interpreter
+    while in Connect mode (to revise connections usually), and HANGUP breaks
+    an existing connection.  Sending a BREAK (ALT-B or \Kbreak) performs the
+    same function for TES as \Knethold.  Use this function when manual control
+    of sessions is desired, such as creating multiple sessions managed by
+    TES rather than by Kermit.
+
+    These new TES operations couple closely with version 2.x of TES and will
+    not work with earlier ones.  Instead use SET PORT BIOS1 and the TES hot
+    key with older TES's.  If the TES hot key is used then \Knethold may not
+    be recognized; use the hot key again to control TES.  If the hot key has
+    not been used then TES material is shown on the Connect mode screen.
+    SHOW COMMUNICATIONS will show the current host name, as read back from
+    TES itself.  The apparent serial port identifier on the Connect status
+    line is the letter "I".
+
+    Note that placing a connection on hold and later returning to it may
+    require pressing the \knethold or \kbreak keys and typing RESUME to make
+    the TES command interpreter return control to the data stream.  It's
+    apparently a problem in the interpreter.
+
+    If Kermit is exited completly then the active session is terminated, but
+    held sessions are retained.  Thus, to preserve sessions after Kermit has
+    exited use \knethold or \kbreak to get the TES command interpreter and
+    place the connection on hold manually.  The session may be resumed as 
+    above.
+
+3.  Enhancements to SET PORT EBIOS for IBM LANACS.
+
+    Let the baud rate and parity be set for either BIOSn or EBIOS ports so
+    they will be transferred across the network to the LANACS server port.
+
+    Initially they will show as "unknown" until set by the user.  In addition
+    to the speed 8 data bits and no parity are presumed.  For EBIOS, the port
+    being adjusted is really that on the asynchronous server; the local PC
+    uses NetBios and EBIOS to simulate that remote port across the network.
+
+    Add new optional final command argument of the EBIOS server port name:
+
+        SET PORT EBIOS <local communication port, 1..4> <server port name>
+
+    such as  SET PORT EBIOS 1 modem-2400
+
+    If the server port name is omitted then the port name is taken from the
+    EBIOS table on the client machine, such as resuming an old connection.
+
+    This option removes the necessity of using the REDIRECT.EXE program, part
+    of the LANACS package, because Kermit does a simple redirection of the
+    selected local port to the named host port (and the name is presumed to
+    be a unique one rather than a group name).  If another type of connection
+    is desired then a) omit the sever port name in the SET PORT EBIOS command
+    and b) perform the redirection with REDIRECT.EXE.  Each instance of SET
+    PORT EBIOS <local coms port> uses its own port information of speed,
+    parity, flow control, handshake, and local-echo.
+
+End of MSR310.DOC.

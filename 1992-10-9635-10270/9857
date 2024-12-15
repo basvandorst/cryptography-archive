@@ -1,0 +1,222 @@
+Newsgroups: sci.crypt
+Path: msuinfo!caen!sdd.hp.com!hp-cv!hp-pcd!hp-vcd!egurney
+From: egurney@vcd.hp.com (Ed J. Gurney)
+Subject: Followup: How secure is this encrpytion scheme?
+Sender: news@vcd.hp.com (News user)
+Message-ID: <Bw4Fs6.5uu@vcd.hp.com>
+Date: Wed, 14 Oct 1992 17:12:06 GMT
+Organization: Hewlett-Packard VCD
+X-Newsreader: TIN [version 1.1.4 PL6]
+Lines: 211
+
+I received several e-mail replies on the encryption scheme I mentioned
+in a previous post (Message ID <Bw1614.2tM@vcd.hp.com>).  Most people 
+said it was difficult to write a good encryption algorithm without 
+actually having cracked several first.  Well, maybe a bit more explanation
+is needed!
+
+First, I did not write the encryption algorithm which I posted about.  I
+am in the process of trying to break this particular algorithm so that I
+CAN be more knowledgable in the area of cryptography!  Everything about 
+the algorithm I have figured out on my own; when I started on this quest
+all I had was pure machine code.  Since then I have made much progress,
+and now have a C version of the algorithm (which is attached! :-)  So,
+although I'd love to be able to encrypt a nice 10K message and mail it to
+the couple people who said they'd be willing to try and break it, I can't
+do so since I don't have the encryptor side of this particular algorithm.
+
+For all I know, this might be DES (I doubt it, since there isn't anything
+like constant s-boxes, etc.)  But I'm posting my C version of the 
+decryption routine, so people can at least point me in the right
+direction!  The encrypted data I do have I found by brute force trial-
+and-error methods.  I probably have 20-30 test cases exactly like the
+two included in the sample code if that helps at all.  I picked data that
+was all 0's in hopes that it would simplify things for another approach
+I tried (see intersting aside, below.)
+
+Here's my code.  I'm not saying it's the best C code in the world by any
+means, but it works, and it's easier to work with than a disassembly!  If
+there are any optimizations or improvements that could be made here, I'd
+appreciate hearing about them, but what I'm really after is knowledge on
+how to reverse this method so that given the encrypted data and the
+plaintext, I can find the key.  (Obviously a brute-force attack works in
+this case, but it's too slow with all the computations that must be done.)
+
+When you run the code without any arguments, it simple exercises the
+decryption algorithm with the hard-coded test cases and prints the 
+results.  I figure at least it does SOMETHING if you bother to compile 
+it.  I hope this sparks an interest in some people, especially if they're 
+bored and want something to play with.  I'd love some help in this quest 
+(or is it an obsession?)
+
+Regards,
+Ed
+
+Interesting aside: 8-)
+I even have Mathematica code for this which I played with several months 
+ago... I thought maybe it could come up with some nice logical expressions 
+for the decrypted bytes... but alas, even on the NextStation there wasn't 
+enough memory to hold the equations (the first couple were HUGE, and kept
+growing exponentially as it worked through the 8-cycle iteration!)... let 
+alone solve the equations afterwards for Key[x]!
+
+-----8<-------8<-------8<------Cut-Here-----8<-------8<-------8<-----------
+/* decrypt.c
+ *
+ * Decrypts eight bytes of data given proper key (or even if it's not
+ * the right key, it still returns junk!)  The unknown encryption algorithm 
+ * encrypts data in eight byte chunks, but eight known plaintext bytes are 
+ * enough for a brute-force attack.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Macro to simulate rotating a byte left two bits in C */
+#define ROTATE(X)  (((X) << 2 | ((X) & 0xc0) >> 6) & 0xff)
+
+main(argc, argv)
+int argc;
+char *argv[];
+{
+
+/* First4 and Second4 contain the eight encrypted bytes, keyHigh
+   contains the upper 32 bits of the key (see NOTE below).  Both
+   test cases decrypt to all zeros with the correct key (which is
+   given for completeness and testing of this routine). */
+
+#ifdef ANOTHER_CASE
+    unsigned long   First4 = 0x7dc2cf88, Second4 = 0xf6b1dee2, 
+		    keyHigh = 0x717854d0;
+#else
+    unsigned long   First4 = 0xefa455df, Second4 = 0x834dfdbf,
+		    keyHigh = 0x59d8d3a6;
+#endif
+
+/* These are all the temporary variables used during decryption */
+    unsigned char   d00, d10, d12, d20, d22, d30, d32, d40, d42, 
+		    d50 = 0, d52 = 0, d60, d62, d70, d72, d80, d82, 
+		    d90, d92, da0, da2, db0 = 0, db2 = 0;
+    unsigned long   ld0, ld2, keyLow;
+
+/* This array holds 8 32-bit "subkeys" */
+    unsigned char   key[32];
+
+/* This is the loop variable */
+    int i;
+
+    if (argc != 4) {
+	printf("Usage: %s key encrypted_upper encrypted_lower\n", argv[0]);
+	printf("       All values are in hex.  Assuming default values:\n\n");
+    } else {
+        keyHigh = strtoul(argv[1], NULL, 16);
+        First4 = strtoul(argv[2], NULL, 16);
+        Second4 = strtoul(argv[3], NULL, 16);
+    }
+
+    printf("Encrypted data: %08lx %08lx\n", First4, Second4);
+    printf("           Key: %08lx\n", keyHigh);
+
+/* This part generates eight "subkeys" from the original 64-bit key.
+   NOTE: right now a 64-bit key is generated by duplicating the 32-bit key 
+         (due to memory constraints for a large number of keys?) */
+    keyLow = keyHigh;
+
+/* Split key (longs) into byte-sized chunks */
+    db0 = db2 = d50 = d52 = 0;
+    d30 = keyHigh & 0xff;
+    d20 = keyHigh >> 8 & 0xff;
+    d10 = keyHigh >> 16 & 0xff;
+    d00 = keyHigh >> 24;
+    d62 = keyLow & 0xff;
+    d72 = keyLow >> 8 & 0xff;
+    d70 = keyLow >> 16 & 0xff;
+    d60 = keyLow >> 24;
+
+/* Generate eight 32-bit "subkeys" based on original key */
+    for (i = 0; i < 32; ) {
+        d42 = d20, d40 = d10;
+        d92 = d42, d90 = d40;
+        da2 = d42 ^ d52, da0 = d40 ^ d50;
+        d42 = d30, d40 = d00;
+        d82 = d42, d80 = d40;
+        d42 ^= db2, d40 ^= db0;
+        db2 = d62, db0 = d60;
+        d52 = d72, d50 = d70;
+        d12 = d62 ^ d72, d10 = d60 ^ d70;
+        d22 = d10, d20 = d12;
+        d40 ^= d20;
+        d10 = ROTATE((unsigned char)(d10 + d40 + 1));
+        da0 ^= d10;
+        d20 = ROTATE((unsigned char)(d20 + da0));
+        da2 ^= d10;
+        d00 = ROTATE((unsigned char)(d60 + da2));
+        d42 ^= d20;
+        d30 = d42;
+        d30 = ROTATE((unsigned char)(d30 + d62 + 1));
+        d60 = d80, d62 = d82;
+        d70 = d90, d72 = d92;
+        key[i++] = d00;
+        key[i++] = d10;
+        key[i++] = d20;
+        key[i++] = d30;
+    }
+
+/* This part actually decrypts the encrypted data */
+
+/* First, use 8 of the "subkeys" in some simple XORs */
+    ld0 = First4 ^ (*(long *)(key+24));
+    ld2 = Second4 ^ (*(long *)(key+28));
+
+/* Do another XOR and split the longs into bytes */
+    ld2 ^= ld0;
+    d70 = ld2 & 0xff;
+    d50 = ld2 >> 16 & 0xff;
+    d40 = ld2 >> 24;
+    d60 = ld2 >> 8 & 0xff;
+    d30 = ld0 & 0xff;
+    d32 = ld0 >> 16 & 0xff;
+    d20 = ld0 >> 8 & 0xff;
+    d22 = ld0 >> 24;
+
+/* Perform the heart of the decryption using 16 of the "subkeys" */
+    for(i = 14; i >= 0; i -= 2) {
+        d90 = d60;
+        d92 = d40;
+        d10 = d70;
+        d12 = d50;
+        d60 = d60 ^ d70 ^ key[i+1];
+        d50 = ROTATE((unsigned char)((d50 ^ d40 ^ key[i]) + d60 + 1));
+        d60 = ROTATE((unsigned char)(d60 + d50));
+        d40 = ROTATE((unsigned char)(d40 + d50)) ^ d22;
+        d70 = ROTATE((unsigned char)(d70 + d60 + 1)) ^ d30;
+        d50 = d50 ^ d32;
+        d60 = d60 ^ d20;
+        d20 = d90;
+        d22 = d92;
+        d30 = d10;
+        d32 = d12;
+    }
+
+/* Now combine the individual bytes from above into two longs */
+    ld0 = (long) d40 << 24 | (long) d50 << 16 | (long) d60 << 8 | (long) d70;
+    ld2 = (long) (d40 ^ d22) << 24 | (long) (d50 ^ d32) << 16 |
+        (long) (d60 ^ d20) << 8 | (long) (d70 ^ d30);
+
+/* And finally, use the remaining 8 "subkeys" as the last step */
+    ld0 ^= *(long *)(key+16);
+    ld2 ^= *(long *)(key+20);
+
+    printf("Decrypted data: %08lx %08lx\n", ld0, ld2);
+
+    if (ld0 || ld2) /* Decrypted data should be zero */
+	return 1;
+    else
+	return 0;
+}
+
+--
+Ed J. Gurney  N8FPW       Hewlett-Packard Company      Vancouver Division
+egurney@vcd.hp.com                       #include <standard-disclaimer.h>
+"Failures are divided into two classes-- those who thought and never did,
+      and those who did and never thought."     John Charles Salak

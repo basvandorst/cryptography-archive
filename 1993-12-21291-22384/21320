@@ -1,0 +1,94 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Block encryption modes
+Message-ID: <1993Nov21.080956.19028@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx's hardware; my words.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <061313Z21111993@anon.penet.fi>
+Date: Sun, 21 Nov 93 08:09:56 GMT
+Lines: 82
+
+In article <061313Z21111993@anon.penet.fi>,
+Joshua Chamberlain <an25515@anon.penet.fi> wrote:
+>
+>Is there any theoretical data available on the relative strengths of the
+>ECB, CBC, and CFB modes for block ciphers?  Intuitively, it would seem as if
+>ECB was the least secure mode.  Switching to CBC with a SECRET,
+>pseudo-random 64 bit IV would seem to make a brute force attack 2^64 times
+>more difficult (effectively adding 64 bits to the "key" length).  Is that
+>true, or am I overlooking something?
+
+You are.  Look at the decryption process.  if CRYPT() and DECRYPT()
+are the block encryption and decryption functions, and x[] and y[]
+are the plaintext and ciphertext blocks, respectively, then CBC is:
+
+y[i] = CRYPT(y[i-1] ^ x[i])
+x[i] = DECRYPT(y[i]) ^ y[i-1]
+
+As you can see, a block of plaintext depends only on the current
+and previous blocks pf ciphertext.  One bit in that block depends
+on all of the current block and the corresponding bit of the
+previous block.  Thus, it is possible to introduce a controlled
+one-bit *change* into some plaintext if trashing the previous
+block of plaintext is acceptable.
+
+CFB is very similar, especially in decoding:
+
+y[i] = CRYPT(y[i-1]) ^ x[i]
+x[i] = CRYPT(y[i-1]) ^ y[i]
+
+(Note that this is full-block CFB.  There are other CFB variants with
+more significant differences.)
+
+The change between CRYPT() and DECRYPT() makes no difference to security,
+and other than that, CFB is CBC run backwards!  You can make a controlled
+one-bit change by trashing the following block of plaintext.
+
+But suppose you have a message and some known plaintext x[i].
+Since each of the four equations has only one x[i] in it,
+you can substitute it and the corresponding y's in and get
+a problem in the underlying block cipher.  It is precisely as
+hard to break, except that the plaintext/ciphertext pairs you have to
+work with are essentially random.  Optimisations based on the high bit
+being clear (ASCII) or the like do not apply.
+
+>Also, CBC and CFB would seem to make a
+>plain text attack more difficult if the known text were at the END of the
+>file, since the file would (seemingly) need to be decrypted block by block,
+>in sequence, until the last block was reached vs. a "random access" attack
+>on the last block, as would be possible with an ECB implementation.
+
+No.  You can decrypt either knowing only the preceeding 8 bytes.
+
+>What are the relative strengths and weaknesses of CFB with respect to CBC?
+
+As you can see, the decryption is very similar.  The strengths are
+essentially identical.  Smaller shifts in CFB make differential cryptanalysis
+more difficult.  I can't comment on other cryptanalysis techniques.
+
+>Can someone briefly explain the significance of "error propagation" in these
+>modes?  Does it merely affect ciphertext that becomes garbled in
+>transmission, or could it also affect a "garbled" (or wrongly-guessed) IV as
+>well?
+
+It means that if some ciphertext (and the IV is just y[-1] in the above
+equations, so it is covered as well) gets garbled, some nearby plaintext
+will be garbled, but the decryption will recover and continue producing
+ungarbled plaintext.
+
+There is a plaintext feedback mode, which I believe goes
+
+y[i] = x[i] ^ CRYPT(y[i-1] ^ x[i-1])
+x[i] = y[i] ^ CRYPT(y[i-1] ^ x[i-1])
+
+that does cause infinite error propagation, and requires two
+consecutive blocks of plaintext to reduce to an ECB problem.
+
+I am not very certain about that past part; possibly someone
+can correct me if there is some trick that is not immediately
+obvious.  (Remember, in cryptanalysis, very little is immediately
+obvious!)
+-- 
+	-Colin

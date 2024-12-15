@@ -1,0 +1,348 @@
+From tukki.jyu.fi!paasivir Tue Sep 28 10:27:31 1993
+Return-Path: <paasivir@tukki.jyu.fi>
+Received: from tukki.jyu.fi by vanbc.wimsey.com with smtp
+	(Smail3.1.28.1 #12) id m0ohint-0000wyC; Tue, 28 Sep 93 10:25 PDT
+Received: by tukki.jyu.fi id AA20872
+  (5.67a/IDA-1.4.4 for markh@wimsey.bc.ca); Tue, 28 Sep 1993 17:49:46 +0200
+From: Risto Paasivirta <paasivir@tukki.jyu.fi>
+Message-Id: <199309281549.AA20872@tukki.jyu.fi>
+Subject: Re: wimsey.bc.ca /pub/crypto/README
+To: markh@wimsey.bc.ca (Mark C. Henderson)
+Date: Tue, 28 Sep 1993 17:49:45 +0200 (EET)
+In-Reply-To: <m0ohVWF-0000nlC@vanbc.wimsey.com> from "Mark C. Henderson" at Sep 27, 93 08:14:27 pm
+X-Mailer: ELM [version 2.4 PL21]
+Mime-Version: 1.0
+Content-Type: text/plain; charset=ISO-8859-1
+Content-Transfer-Encoding: 8bit
+Content-Length: 8378      
+Status: OR
+
+
+%I grabbed your code, but didn't get around to unpacking it. I've done 
+%this sort of thing a few times myself (distribute something which I 
+%found afterwards had an embarassing bug.) Some of your other ciphers 
+%have been interesting, but I haven't really done enough analysis to 
+%comment (and I'm hardly qualified to pronounce any cipher secure, 
+%anyway). Nice ideas though. 
+%
+%But yes, please send the revised code. I'll add it to my archive.
+%
+%Best Regards, 
+%Mark
+
+ok. When compiled with 'gcc -DTEST' output should be
+key:
+8839D7775A23
+key schedule:
+E8FDFCB5CED7
+69E0152398F7
+108B07C94471
+26891552871E
+plain:
+0102030405060708
+encip:
+C619EE582963D669
+decip:
+0102030405060708
+(and timing info. About 6-7K/s with my Amiga/2620, 70+K/s with
+whatever Sun i'm using now.)
+
+Key length and number of rounds is set to minimum. It's less expensive
+to increase key size than rounds, but I don't know about security.
+Here's raw C-code, if it doesn't get thru, I can shar/compress/uuencode
+or something.
+
+	Risto
+
+--- cut ---
+/*
+ * mcrypt.c -- V1.1. Simple encryption algorithm/implementation.
+ * Public domain, 1993 Risto Paasivirta, paasivir@jyu.fi
+ * Block length, key length and number of rounds variable.
+ * This code is not optimized. No warranty, try with your own risk.
+ * Compile with ANSI C. Tested with Amiga SAS/C 6.3 and GCC 2.4.5
+ *
+ * 27-Sep-93 RP set_key() and cbc_crypt() corrected, added str_to_key()
+ *   and variable block length.
+ */
+
+typedef unsigned char uchar;
+
+/* block length, must be even.
+ */
+
+#define BLKLEN 8
+#define HALFBK (BLKLEN / 2)
+
+/* key length in bytes
+ */
+#define KEYLEN 6
+
+/* rounds in block encryption = number of subkeys,
+ * 4 minimum, should be even.
+ */
+#define ROUNDS 4
+
+/* transform function rounds.
+ */
+#define TROUNDS (HALFBK + 2)
+
+/* key transform rounds. 
+ */
+#define KROUNDS (KEYLEN + 2)
+
+/* These values were selected for speed, not for security.
+ * Try KEYLEN = 8, ROUNDS = 8 or more...
+ */
+
+/*
+ * random substitution table (from RSA security Inc. MD2 message-digest
+ * algorithm)
+ */
+
+static const uchar S[256] = {
+	 41, 46, 67,201,162,216,124,  1, 61, 54, 84,161,236,240,  6, 19,
+	 98,167,  5,243,192,199,115,140,152,147, 43,217,188, 76,130,202,
+	 30,155, 87, 60,253,212,224, 22,103, 66,111, 24,138, 23,229, 18,
+	190, 78,196,214,218,158,222, 73,160,251,245,142,187, 47,238,122,
+	169,104,121,145, 21,178,  7, 63,148,194, 16,137, 11, 34, 95, 33,
+	128,127, 93,154, 90,144, 50, 39, 53, 62,204,231,191,247,151,  3,
+	255, 25, 48,179, 72,165,181,209,215, 94,146, 42,172, 86,170,198,
+	 79,184, 56,210,150,164,125,182,118,252,107,226,156,116,  4,241,
+	 69,157,112, 89,100,113,135, 32,134, 91,207,101,230, 45,168,  2,
+	 27, 96, 37,173,174,176,185,246, 28, 70, 97,105, 52, 64,126, 15,
+	 85, 71,163, 35,221, 81,175, 58,195, 92,249,206,186,197,234, 38,
+	 44, 83, 13,110,133, 40,132,  9,211,223,205,244, 65,129, 77, 82,
+	106,220, 55,200,108,193,171,250, 36,225,123,  8, 12,189,177, 74,
+	120,136,149,139,227, 99,232,109,233,203,213,254, 59,  0, 29, 57,
+	242,239,183, 14,102, 88,208,228,166,119,114,248,235,117, 75, 10,
+	 49, 68, 80,180,143,237, 31, 26,219,153,141, 51,159, 17,131, 20,
+};
+
+/*
+ * Append half block s and subkey k, do nonlinear thingamajim and
+ * xor result to other half block b. Transform function I use here is
+ * crippled version of md2 transform.
+ */
+
+static void
+transform(uchar b[HALFBK], const uchar s[HALFBK], const uchar k[KEYLEN])
+{
+	uchar d[HALFBK+ KEYLEN], i, j, t = 0;
+	for (i = 0; i < HALFBK; i++) { /* append half block and subkey */ 
+		d[i] = s[i];
+	}
+	for (i = 0; i < KEYLEN; i++) {
+		d[HALFBK + i] = k[i];
+	}
+        for (j = 0; j < (TROUNDS-1); j++) { /* this does it */
+		for (i = 0;i < (HALFBK + KEYLEN);i++)
+			t = (d[i] ^= S[t]);
+		t += j;
+	}
+	for (i = 0; i < HALFBK; i++) { /* final transform round */
+		b[i] ^= (t = d[i] ^ S[t]); 
+	}
+}
+
+/*
+ * ecb_crypt(blk, ks, encrypt) -- en/decrypt one block in electronic
+ * code book mode.
+ */
+
+void
+ecb_crypt(uchar b[BLKLEN], const uchar ks[ROUNDS][KEYLEN], uchar enc)
+{
+	uchar i = 0, j, t;
+
+	while (1) {
+		/* encrypt left half block with right half block */
+		transform(b, HALFBK + b, ks[enc ? i : (ROUNDS-1) - i]);
+		if (++i == ROUNDS)
+			break;
+		/* swap halves */
+		for (j = 0; j < HALFBK; j++) {
+			t = b[j]; 
+			b[j] = b[HALFBK + j];
+			b[HALFBK + j] = t;
+		}
+	}
+}
+
+/*
+ * cbc_block(buf, iv, len, ks, encrypt) -- en/decrypt len-byte buffer in
+ * cipher block chaining mode. Len must be multiple of BLKLEN (if it is not
+ * then len % BLKLEN last bytes are ignered.) Returns final vector in iv.
+ * For each block in buf, when encrypting xor block with iv, encrypt block
+ * with ecb_encrypt() and copy encrypted block to iv; when decrypting, save 
+ * encrypted block as iv for next block, decrypt block and xor decrypted
+ * block with old iv.
+ */
+
+void
+cbc_crypt(uchar *b, uchar iv[BLKLEN], int len,
+	const uchar ks[ROUNDS][KEYLEN], uchar enc)
+{
+	uchar i;
+	if (enc) {
+		while ((len -= BLKLEN) >= 0) {
+			for (i = 0; i < BLKLEN; i++)
+				b[i] ^= iv[i];
+			ecb_crypt(b, ks, enc);
+			for (i = 0; i < BLKLEN; i++)
+				iv[i] = b[i];
+			b += BLKLEN;
+		}
+	} else {
+		while ((len -= BLKLEN) >= 0) {
+			uchar t[BLKLEN];
+			for (i = 0;i < BLKLEN; i++)
+				t[i] = b[i];
+			ecb_crypt(b, ks, enc);
+			for (i = 0; i < BLKLEN; i++) {
+				b[i] ^= iv[i];
+				iv[i] = t[i];
+			}
+			b += BLKLEN;
+		}
+	}
+}
+
+/*
+ * set_key(ks, key) -- expand key to subkeys for each round
+ * There are many ways to do this. This is one.
+ */
+
+void
+set_key(uchar ks[ROUNDS][KEYLEN], uchar key[KEYLEN])
+{
+	uchar i, j, k, t = 0;
+	for (j = 0;j < ROUNDS; j++) {
+		for (i = 0; i < KEYLEN; i++)
+			ks[j][i] = key[i];
+	} 
+	for (k = 0; k < KROUNDS; k++) {
+		for (j = 0; j < ROUNDS; j++)
+			for (i = 0; i < KEYLEN; i++)
+				t = (ks[j][i] ^= S[t]);
+		t += k;
+	}
+}
+
+/*
+ * str_to_key(uchar key[KEYLEN], uchar *s) -- generate key from string
+ * There are many ways to do this. This is one.
+ */
+
+void
+str_to_key(uchar key[KEYLEN], const uchar *s)
+{
+	uchar i, t = 0, c = 0;
+	for (i = 0; i < KEYLEN; i++) /* clear key */
+		key[i] = 0;
+	do { /* mix in key string (including terminating null) */
+		t ^= *s;
+		for (i = 0; i < KEYLEN; i++)
+			t = (key[i] ^= S[t]);
+		t += c++;
+	} while (*s++);
+}
+
+#ifdef TEST
+
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+
+void
+hd(uchar *p, int i)
+{
+	while (i--) {
+		putc("0123456789ABCDEF"[*p >> 4], stdout);
+		putc("0123456789ABCDEF"[*p & 15], stdout);
+		p++;
+	}
+	putc('\n',stdout);
+}
+
+uchar buf[BLKLEN * 1000];
+
+main()
+{
+	int i;
+	uchar b[BLKLEN];
+	uchar *keystr = "0123456789abcdefghijklmnopqrstuvwxyz";
+	uchar key[KEYLEN]; 
+	uchar ks[ROUNDS][KEYLEN];
+	time_t s;
+
+	str_to_key(key, keystr);
+	printf("key:\n");
+	hd(key, KEYLEN);
+	printf("key schedule:\n");
+	set_key(ks, key);
+	for (i = 0; i < ROUNDS; i++)
+		hd(ks[i], KEYLEN);
+	printf("plain:\n");
+	for (i = 0; i < BLKLEN; i++)
+ 		b[i] = i + 1;
+	hd(b,BLKLEN);
+	printf("encip:\n");
+	ecb_crypt(b,ks,1);
+	hd(b,BLKLEN);
+	printf("decip:\n");
+	ecb_crypt(b,ks,0);
+	hd(b,BLKLEN);
+
+	printf("1000 key schedules...\n");
+	s = clock();
+	for (i = 0; i < 1000; i++)
+		set_key(ks, key);
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+
+	printf("10000 block encrypt...\n");
+	s = clock();
+	for (i = 0; i < 10000; i++)
+		ecb_crypt(b, ks, 1);
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 1000000 * BLKLEN / s);
+
+	printf("10000 block decrypt...\n");
+	s = clock();
+	for (i = 0; i < 10000; i++)
+		ecb_crypt(b, ks, 0);
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 1000000 * BLKLEN / s);
+	
+	printf("10000 block cbc encrypt...\n");
+	s = clock();
+	for (i = 0; i < 10; i++) {
+		memset(b, 0, BLKLEN);
+		cbc_crypt(buf, b, BLKLEN * 1000, ks, 1);
+	}
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 1000000 * BLKLEN / s);
+
+	printf("10000 block cbc decrypt...\n");
+	s = clock();
+	for (i = 0; i < 10; i++) {
+		memset(b, 0, BLKLEN);
+		cbc_crypt(buf, b, BLKLEN * 1000, ks, 0);
+	}
+	s = (clock() - s) * 100 / CLOCKS_PER_SEC;
+	printf("took %d.%02ds\n", s / 100, s % 100);
+	printf("%d bytes/s\n", 1000000 * BLKLEN / s);
+	printf("done\n");
+}
+
+#endif
+
+--- cut ---
+-- 
+/*paasivir@jyu.fi*/int a[3302],b=3301,*c=a,d,e,f;main(){for(e=b;--e;*c++=1);*c
+=2;for(d=2001;d--;printf("%05d",f))for(c=a,e=b;e;f/=e--){f+=*c*1e5;*c++=f%e;}}
+

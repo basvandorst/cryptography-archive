@@ -1,0 +1,43 @@
+Path: msuinfo!agate!howland.reston.ans.net!darwin.sura.net!wvnvms!wvnvm!c445585
+Newsgroups: sci.crypt
+Subject: Key checksumming
+Message-ID: <1701D947S86.C445585@mizzou1.missouri.edu>
+From: C445585@mizzou1.missouri.edu
+Date: Thu, 25 Aug 1994 01:55:10 -0400
+Organization: University of Missouri, Columbia
+Nntp-Posting-Host: 128.206.2.2
+Lines: 31
+
+Without worrying about what key checksumming algorithm is used, I wanted
+to point out one important implementation issue.  Key checksums (including
+encrypted constants) shouldn't be used with short encryption keys (less than
+64 bits, at least), unless a random "salt" is checksummed with the key.
+In other words, if you're using DES, don't leave SHA(DES(Const,Key)) as your
+key checksum, include some additional random information that changes for
+each message or file, such as the IV used.
+ 
+   The reason for this is to avoid time-memory tradeoff attacks, where an
+opponent builds up a library of tapes containing nothing but key checksums
+for every possible key, along with corresponding keys.  This allows your
+opponent to do one keysearch, and then use it to read everyone's messages.
+For the 40-bit keys of export-controlled ciphers, this kind of attack is
+eminently practical, and is in reach of someone with modest amounts of
+money (probably less than $50,000).  Just as using block ciphers in a
+chaining mode, with a random IV for each message, guards against this
+kind of attack on the ciphertext, a key-checksum also needs an IV that
+is different for every message sent.  (Also, as with any application,
+make sure your password-hashing uses a random salt, so you don't have
+dozens of documents with the same key floating around, and so precmputed
+dictionary attacks on your password are infeasible.)
+ 
+   My current ideas on key checksuming are less cumbersome than my
+original post, and revolve around the idea of something like
+   h = SHA(key+iv)
+   for i = 1 to number_of_iterations
+      h = SHA(Enc(h,key)).
+   checksum = low 32 bits (h)
+ 
+   Of course, it's really important that the checksum be no faster than
+the encryption routine if exhaustive search is possible.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

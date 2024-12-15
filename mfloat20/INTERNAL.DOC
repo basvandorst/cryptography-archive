@@ -1,0 +1,338 @@
+		 Internal Formats and Methods of MFLOAT
+		 ======================================
+
+Here is some information for interested users:
+You can find source code in the files "MFLOATB.C", "MFLOATC.ASM" and in the
+dummy file "MFLOATA.ASM".
+
+A multiple-precision number consists of an array of words (1 word = 2 byte
+= 16 bit). The first word represents the exponent to the base of two. It is
+represented with an offset of 8000 Hex (= 32768) and ranges from 1 to
+FFFF Hex (= 65535). The special value 0 is used to represent the floating
+point number zero. In this case the rest of the array is arbitrary. The
+second word of the array represents the first word of mantissa. The mantissa
+is normalised for every floating point number. Therefore the most significant
+bit of the first word of mantissa is always set. As there is no information
+in this bit, it is removed and at its place the sign bit is stored. The sign
+bit is one, if the floating point number is negative, and zero if the
+floating point number is positive. The further words of the multiple-
+precision number are words of the mantissa. The length of mantissa ranging
+from one to a constant (16 in this release) can be chosen by the user.
+
+Example : 8002 490F Hex  represents 3.141540528..
+
+Every word of the mantissa represents in average 4.8165 (= 16 * log10(2))
+digits of a decimal number. Therefore you need 16 words of mantissa for an
+accuracy of 77 decimal digits and the whole number needs 17 words or 34 bytes.
+
+And now to the method available to this data-format:
+
+The theoretical background of MFLOAT is simple algebra combined with the
+assembler of the 8086. The main goal is to reduce the computing time, because
+this is a big problem for high precision arithmetic, if no special hardware
+like a coprocessor is used. Some mathematical problems can be solved only,
+if very fast subroutines for the basic operations are available.
+
+The higher programming languages like PASCAL, C, C++ are relatively slow
+compared to assembler, because a high programming language has no access to
+the carry bit of the processor. Therefore the carry bit must be calculated
+using some other normally time wasting method. Typical is a time gain factor
+of 6 to 20, if you use assembler instead of a higher programming language.
+Much skill and much time in programming 8086 assembler is necessary, if
+the speed should be maximal. The used code size is no problem because there
+is enough memory today. Therefore it is no problem to write a whole
+sine-series in assembler in one subroutine. Older subroutines are sometimes
+optimised for minimum code size, because the used memory was missed by the
+rest of the program.
+
+A further idea is to waste no time by rounding the result. Therefore only
+truncation is used.
+
+First the addition of two numbers is considered. The first step is to shift
+the mantissa of the number, which has the less absolute value, so the
+exponents of the floating point numbers are the same. Most of the time is
+wasted in this operation, if it isn't made very well. The basic idea of the
+used algorithm is to avoid much memory access, because this operations are
+time intensive.
+
+
+The multiplication of two numbers is divided in sub problems of multiplying
+one mantissa-word of the number "a" with one mantissa-word of the number "b"
+and add this products to the result. The exact result has a mantissa of double
+length, which is truncated to halve the length to get the same data format.
+Therefore some of the products have only very little or no effect to the
+result. By adding this products, only one mantissa-word more than needed for
+the final data format (extra-word) is calculated and all other products,
+which have minor effect to the result, are neglected. For high precision
+numbers a speed factor of two is gained, and only little accuracy is lost.
+
+example (for decimal number system):
+
+7.34 * 2.14
+-----------
+1468
+ 073?
+  29??              ? ... digits, which are not calculated and neglected
+------                    for the result
+1570??
+======
+   ^
+   extra digit
+
+result: 15.7 using 3 decimal digits.
+
+Fore an even number of mantissa-words and using 80386 instructions, it is
+possible to divide the whole problem in multiplications of double-words
+(32bits). Using this method, a speed factor of 1.5-3 is gained.
+
+The division of two "mfloat" numbers is made like the hand-calculation.
+First digit is estimated and the rest is calculated. If the rest is larger
+than the divisor or if it is negative, the estimate is corrected. For a
+digit a number from 0 to 65535 (1 word = 16 bit) is used. For the estimate the
+first two mantissa-words of number "a" are divided by the first mantissa-word
+of number "b". Since the numbers are in a normalised floating point format,
+the first mantissa-word for "b" is in the range [32768, 65535]. This division
+can be performed by the DIV instruction of the 8086 in a few cycles. It can
+be shown, that this estimate, is greater or equal the correct result and can
+be maximally 2 greater than the exact result. (see pp.257 [1])
+By calculating the rest the advantage is used again, that halve of the
+products are of minor interest for the result and therefore can be neglected.
+Again one extra-word prevents a large accumulation of truncation errors.
+For an even number of mantissa-words and using 80386 instructions, a speed
+factor of 1.5-3 is gained.
+
+The most complicated subroutine is the square root. The algorithm is the same
+as used by hand-calculation. The first mantissa-word is calculated bit by bit
+by the estimate and correction method. The further mantissa-words are
+estimated as whole words and corrected like the algorithm of the division.
+
+First the mantissa-word of result is estimated by the division of the first
+two words of the rest by the first word of the result with the help of
+the DIV instruction of the 8086, and the rest is calculated by repeated
+multiplications of the mantissa-words. If the rest is negative, the estimate
+is corrected, until it is OK. One extra-word is used to prevent a large
+accumulation of truncation errors.
+The interesting result is, that for high precision numbers, the calculation of
+a square root is faster than the calculation of a division.
+For an even number of mantissa-words and using 80386 instructions, a speed
+factor of 1.5-3 is gained.
+
+And now to the transcendental functions:
+As you can read in the description "MFLOAT.DOC", the main series are the
+series for sin(x), sinh(x), arctan(x) and Artanh(x), which are well known.
+For example, if you want to calculate exp(x), you can use
+
+exp(x) = 1 + x + x^2/2! + x^3/3! + ...
+
+But you can use too:
+
+exp(x) = sinh(x) + cosh(x) = y + sqrt(1 + sqr(y))
+y = sinh(x) = x + x^3/3! + x^5/5! + ...
+
+A much simpler series has to be calculated, because it consists of halve the
+terms only for the same accuracy. The main time is used for the calculation
+of the series. Therefore it is implemented in one assembler subroutine.
+First x*x is calculated and then a recurrence formula for the terms of the
+series is used. Only essential products are calculated.
+
+The sinh(x) series has to be calculated for arguments in the range
+[-0.346, 0.346] (= 0.5 * ln(2)), because following formula is used:
+
+exp(x + k*ln(2)) = 2^k * exp(x).
+
+The calculation of 2^k is a simple manipulation of the exponent of two of
+the floating point number. The functions sinh(x), cosh(x), tanh(x), coth(x)
+and exp(x) can all be derived from this basic series and the equation:
+exp(x + k*ln(2)) = 2^k * exp(x).
+It is important to note, that the speed of the square root is a big advantage
+for this subroutines.
+
+Similar algorithms are used for the sin(x) function: It is only necessary to
+calculate sin(x) in the range [-0.3926, 0.3926] (pi / 8). Used formulas:
+
+sin(x) = y * sqrt(1 - sqr(y))  using  y = sin(x/2) for x in [pi/2, pi/4]
+sin(x) = cos(pi/2 - x)
+cos(x) = 1 - 2 * sqr(y)  using  y = sin(x/2)
+sin(x + pi) = -sin(x)
+sin(x + k * pi) = sin(x)
+
+The basic sin(x) subroutine is made similarly to the sinh(x) series. It is a
+very fast assembler subroutine. The functions cos(x), tan(x), cot(x) can be
+derived form the basic sin(x) series in a similar manner.
+
+For the calculation of logarithms the series of Artanh(x) is used:
+
+Artanh(x) = 0.5 * ln((1 + x) / (1 - x)) = x + x^3/3 + x^5/5 + x^7/7 + ...
+
+or in another formulation:
+
+ln(x) = 2 * (y + y^3/3 + y^5/5 + y^7/7 + ... )
+y = (x - 1) / (x + 1)
+
+It is only necessary to calculate the series in the range [-0.1715, 0.1716]
+(= 3 - 2*sqrt(2)), because following equation is used:
+
+ln(x*2^k) = k * ln(2) + ln(x)
+
+and "x" can be chosen in the range [0.7071, 1.4142].
+The series of Artanh(x) has a much worse convergence behaviour than the series
+of sinh(x). Therefore it is important to use a very little argument. A method
+to reduce the argument of the series is to use the formula:
+
+Artanh(x) = 2 * Artanh(y)
+y = x / (1 + sqrt(1 - sqr(x)))
+
+If this formula is used repeated times, the argument of the series is reduced
+considerably. This formula is used 5 times, if the absolute value of the
+argument is larger than 8.881784e-16. It is possible to find an optimum of
+the number of reductions, if the computation time is investigated, but it
+depends on the number of mantissa-words and on the argument itself.
+From this basic series and the equation: ln(x*2^k) = k * ln(2) + ln(x)
+the functions: ln(x), log10(x), Arsinh(x), Arcosh(x), Arcoth(x)
+can be derived.
+
+The basic series for the inverse trigonometric functions is the arctan series:
+arctan(x) = x - x^3/3 + x^5/5 - x^7/7 + ....  Again it is important to reduce
+the argument of the series, because the convergence behaviour is not better
+than that of the Artanh(x) series. The formula used is:
+
+arctan(x) = 2 * arctan(y)
+y = x / (1 + sqrt(1 + sqr(x)))
+
+If this formula is used repeated times the argument of the series is reduced
+considerably. This formula is used until the absolute value of the argument
+is less than 0.0625. It is possible to find an optimum of the number of
+reductions, if the computation time is investigated, but it depends on the
+number of mantissa-words and on the argument itself.
+From this basic series following functions are derived:
+
+arcsin(x), arccos(x), arccot(x), atan2(x,y)
+
+For all transcendental function and an even number of mantissa-words and
+using 80386 instructions, a speed factor of 1.5-3 is gained.
+
+The secret of all is to use the best formula for minimising the computing time,
+and forget operations, which have minor effect to the result but need much
+time. A further important factor is to find an optimal sequence of assembler
+instructions, which use the instruction-set of the processor optimal in the
+sense of minimising computing time. The number of memory accesses is an
+important factor for the computing time, because the microprocessors are
+getting faster and faster but the memory access time is restricted because of
+the physical dimensions. A cache memory structure can increase the speed, but
+for very high accuracy the on chip cache of a 80486 is to small.
+
+
+Accuracy of MFLOAT:
+-------------------
+
+MFLOAT is a floating point arithmetic and therefore the results aren't
+exact normally. You will get the best results, if you use correct IEEE-
+rounding and round to the nearest representable number of MFLOAT. If you want
+to gain speed, you don't like to waste time by rounding the results, because
+you will gain only about 1 further bit or 0.301 decimal digits. It's more
+efficient to use one mantissa-word more and you will gain 16 bits or 4.816
+decimal digits.
+MFLOAT uses the method of rounding to zero (except for some special cases
+of the addition and subtraction), but the results aren't rounded correctly
+every time. The error for algebraic operations is less than +/-1.032 LSB
+(least significant bit) for accuracy up to 10000 decimal digits. The maximum
+error is calculated by:
+
+rounding-error = (1 + mantissa-words/65536) LSB
+
+For transcendental functions (sqrt(x),sin(x),exp(x),...) the errors are
+something larger and depend on the argument of the function. The estimation
+of that error is a little bit complicated.
+If you use MFLOAT instead of an IEEE-arithmetic, the results will differ
+a little bit, because the rounding-methods are different. But if you bear
+in mind, that floating point numbers aren't exact, it's clear for you.
+
+
+
+Stack Check:
+------------
+
+The Stack check is very simply and consists of following instructions:
+
+       push bp
+       mov bp,sp
+       sub sp, local_area
+       jb error                                 ;carry from "sub sp,arglen"
+       cmp sp, 250H                             ;minimum stack remains
+       ja ok
+error: mov sp, bp                               ;release local variables
+       call MFLOATSTACKOVERFLOW
+ok:
+
+The first three commands are generated for an assembler procedure, which has
+local variables, automatically, but only if the 8086 mode is used. First the
+base pointer "bp" is pushed to the stack, and is initialised using the
+actual stack pointer. Afterwards the stack pointer is shifted to a lower
+value and the memory between base pointer "bp" and stack pointer "sp" is
+available for local variables. If there is no memory available, there is an
+overflow at the subtraction of the local area from the stack pointer. The
+carry-bit indicates, that there was an overflow. The command "jb error"
+tests the carry-bit. Further the stack pointer is tested, if it is above
+250H = 592. For the memory models "compact", "large" and "huge" of
+BORLAND C++ and for TURBO PASCAL the minimum value for the stack pointer is
+zero, but there should be some small rest for DOS-functions and interrupt-
+functions, which use the same stack. This rest is 80 byte greater than the
+minimum of the stack needed in TURBO PASCAL.
+
+If the source code is compiled or assembled using 80286 or 80386
+instructions, there is following code:
+
+       enter local_area
+       jb error                                 ;which carry?
+       cmp sp, 250H                             ;minimum stack remains
+       ja ok
+error: mov sp, bp                               ;release local variables
+       call MFLOATSTACKOVERFLOW
+ok:
+
+This code has a fatal error, because the "enter" command produces no carry
+bit, if the subtraction of the local area from the stack pointer has an
+overflow!
+
+The same situation occurs in the file "MFLOATB.C". Here the "C"-code is:
+
+mfloat_ pascal floorm(mfloat_ a) {
+  mfloat b;
+  asm {
+   jb sterror      /* check of the stack */
+   cmp sp, 0x250   /* minimum rest stack */
+   ja stok
+  }
+  sterror:
+  asm mov sp, bp  /* remove local variables */
+  mfloatStackOverflow();
+  stok:
+
+The assembler code using 8086 instructions is (look at it in the debugger):
+
+        push bp
+        mov bp,sp
+        sub sp, 34                               ;a mfloat has 34 bytes
+        jb sterror                               ;carry from "sub sp, 34"
+        cmp sp, 250H                             ;minimum stack remains
+        ja stok
+sterror:mov sp, bp                               ;release local variables
+        call MFLOATSTACKOVERFLOW
+stok:
+
+Don't use 80286 or 80386 code for "MFLOATB.C", because there would be the
+same problem as before. If you use the C++ version ("MF_CPP.CPP"), this is
+tested at the initialisation procedure and an error is reported, if there
+are wrong instructions.
+
+
+references:
+
+[1] Knuth, D. E.
+    The Art of Computer Programming
+    Seminumerical Algorithms
+    2nd ed., vol. 2. Addison-Wesley 1981
+
+[2] Russel Rector and Gorge Alexy
+    The 8086 book
+    McGraw-Hill Inc. 1980

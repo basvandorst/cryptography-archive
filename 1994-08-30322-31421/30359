@@ -1,0 +1,584 @@
+Path: msuinfo!uwm.edu!spool.mu.edu!howland.reston.ans.net!cs.utexas.edu!not-for-mail
+From: ritter@io.com (Terry Ritter)
+Newsgroups: sci.crypt
+Subject: Penknife Design (long)
+Date: 31 Jul 1994 23:57:21 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 573
+Sender: nobody@cs.utexas.edu
+Message-ID: <199408010457.XAA18811@pentagon.io.com>
+NNTP-Posting-Host: news.cs.utexas.edu
+
+ The Penknife Cipher Design -- An Error-Resilient Stream Cipher
+
+      Terry Ritter
+
+
+ Penknife started life with twin goals:  first, to provide real
+ email privacy, and second, to serve as an example of error-resilient
+ stream cipher technology.  Error-resilience is produced by ciphering
+ parts of a message independently.  Thus, an error in one part will
+ affect only that part, and not the entire message.
+
+
+ STREAM CIPHER AND RE-ORIGINATION
+
+ The Penknife design is based on stream cipher technology, which
+ seems less controversial than that for block ciphers.  This also
+ allows Penknife to avoid the problems involved when variable-length
+ data are collected in fixed-length blocks.
+
+ When units of data are ciphered independently, a stream cipher
+ must be initialized in the same original state or "re-originate"
+ for every ciphertext line (or other unit).  Re-origination allows
+ a cipher to re-synchronize after transmission error and recover
+ the undamaged parts of a message.  This is especially necessary
+ when ciphering low-level Internet Protocol (IP) frames (or other
+ network frames), which often arrive out of sequence.  This same
+ technology is used by Penknife to minimize the consequences of
+ transmission or storage error.
+
+ Practical re-origination requires the ability to provide serious
+ security despite repeated re-initialization.  Because a
+ re-originating stream cipher starts out in the same initial state
+ for every ciphertext line, it normally meets The Opponent's desire
+ for a multitude of messages enciphered under one key.  Many
+ cryptography texts contain severe cautions about the potential
+ weaknesses of re-originating stream ciphers.  The Penknife design
+ places a separate line key on each ciphertext line and also uses
+ other new technology to help avoid these weaknesses.
+
+
+ EMAIL ORIENTATION
+
+ The Penknife design is an email-oriented cipher, in the sense that
+ any plaintext file is always translated into network-transportable
+ text "lines": there is no binary ciphertext mode.  The Penknife
+ re-origination unit is the ciphertext line, which consists of 76
+ text characters plus two end-of-line characters.  Each line carries
+ a 32-bit key; if a line key is recovered in error, the associated
+ line will be "garbled," but other lines will be unaffected.
+
+ Each Penknife ciphertext character is one of 64 character-symbols
+ (plus the two EOL symbols).  Because the 256-element character-space
+ is not fully used, plaintext expands when converted into ciphertext
+ (as it must in any cipher which is used for email).  The resulting
+ ciphertext can be compressed by about 25 percent, for exactly the
+ same reason.  (Of course, the compressed ciphertext would not be
+ error-resilient unless the data compression also treated lines
+ independently, which is unlikely).
+
+
+ THE DESIGN
+
+ Like most stream ciphers, Penknife consists of a random number
+ generator (RNG) subsystem, and a reversible data-plus-confusion
+ combining subsystem.  One intent of the design was to minimize the
+ RNG state to minimize re-origination overhead.  But a conflicting
+ need for strength during re-origination implied more state in the
+ combining subsystem.
+
+
+ THE MAIN RNG
+
+ The Penknife RNG subsystem produces 16-bit values from a 63-bit
+ state.  The RNG uses both a standard 32-bit Linear Multiplicative
+ Generator (LMG), and a degree-31 Linear Feedback Shift Register
+ (LFSR).  (The deg-31 primitive is a 17-nomial for better
+ randomization effects.)  The two RNG elements step separately,
+ with their most-significant 16-bits combined by exclusive-OR for
+ output.  This output then goes into a standard Jitterizer [3:111]
+ which deletes about 10% of the sequence, and provides a changing
+ exclusive-OR offset value for each "take-group" in the sequence.
+
+ The Jitterizer is basically a simple mechanism which is intended
+ to delete values from a linear sequence, and to confuse the values
+ which are accepted.  First, an RNG value is collected, in which
+ two bits represent the number of RNG values to "skip" (1..4), and
+ six bits represent the number of RNG values to "take" in the next
+ take group (1..64).  Then the indicated number of RNG values are
+ skipped, with the last value retained as an "offset," to be
+ exclusive-ORed with all members of the upcoming take group.  Then
+ another RNG value is produced, exclusive-ORed with the offset, and
+ returned.  Subsequent Jitterizer calls collect and offset each RNG
+ value until the number of take counts expire and it is time to skip
+ more RNG values and produce a new offset.
+
+
+ DATA-PLUS-CONFUSION COMBINING
+
+ The Penknife combiner subsystem takes a single-byte plaintext
+ input, plus two RNG confusion bytes, and produces a one-byte
+ ciphertext result.  This occurs in two sequential combinings:
+ The first combiner is a nonlinear byte-wide Dynamic Substitution
+ combiner [1,2], which adaptively randomizes the input codes.  This
+ means that repeated uses of the same character are generally
+ assigned different codes.  The output of the Dynamic Substitution
+ combiner is then fed into a linear exclusive-OR combiner, which
+ produces the ciphertext output.  (Note that a two-level combiner
+ only makes cryptographic sense when at least one of the combining
+ levels is nonlinear.)
+
+ Dynamic Substitution is a reversible nonlinear data combiner based
+ on a substitution table (or polyalphabetic tables).  In Dynamic
+ Substitution, the arrangement in the table changes, potentially
+ after every substitution operation.  One way to do this is to
+ notice that each substitution operation "selects" one of the
+ elements in the table.  If we now use a confusion sequence to also
+ select an element, and then exchange the selected elements, we
+ get a combiner.  In the table, each substitution element changes
+ "at random" whenever it is used, and the more often it is used,
+ the more often it changes.  The effect of this is to adaptively
+ randomize input symbol-frequency statistics.  Also, the elements
+ are changed "behind the scenes" (the exchange is not visible until
+ future data selects one of the exchanged elements), and this tends
+ to hide the confusion sequence.
+
+ Dynamic Substitution is deciphered by maintaining an inverse table,
+ and by updating the inverse table dynamically whenever elements in
+ the forward table are exchanged.
+
+ Dynamic Substitution is indisputably stronger than the exclusive-OR
+ combiner which is used in most stream ciphers:  If the combiner is
+ exclusive-OR, each byte of known-plaintext and associated ciphertext
+ will reveal a byte of confusion sequence.  In a similar situation,
+ Dynamic Substitution does not expose confusion sequence bytes.
+
+ However, Dynamic Substitution is a tool, not a panacea.  Confusion
+ values can be deduced by fully exploring the table before and after
+ any particular substitution, knowing that any difference is entirely
+ due to element selection by data and confusion.  (Note that two full
+ table explorations are required before a single confusion byte is
+ exposed by Dynamic Substitution, as compared to the single known-
+ plaintext pair needed under exclusive-OR.)  To the extent that the
+ cryptographer allows such exploration, the confusion sequence can
+ be revealed and the confusion generator attacked.  In the Penknife
+ design, the second combiner and line keys make table exploration
+ difficult and expensive.
+
+
+ CIPHERTEXT FEEDBACK
+
+ In addition to the two combinings, the byte data value between the
+ two combiners is fed back into the RNG subsystem by addition mod
+ 2^16 with the least-significant word of the LMG.  This means that
+ any character differences between lines will produce different RNG
+ sequences for the rest of each line.  This helps make it difficult
+ to explore the Dynamic Substitution tables.  It also means that a
+ single ciphertext error is likely to garble the rest of that
+ ciphertext line.
+
+
+ INITIALIZATION FROM USER KEY
+
+ A User Key phrase of arbitrary length and content is converted into
+ RNG state using Cyclic Redundancy Check (CRC) operations.  CRC-32
+ is used to build the state for the LMG, while a degree-31 primitive
+ builds the state for the LFSR.  This base RNG state is placed in
+ the line-key RNG, where it is first used to set up various
+ substitution tables.  The tables are each initialized with entries
+ in counting sequence, and then shuffled under control of the
+ Jitterized RNG output, to produce particular arbitrary permutations
+ for a given User Key.
+
+ The network-ASCII table is also permuted under the control of the
+ base-state sequence, thus producing a character mapping unique to
+ each User Key.  This is an additional layer of protection which is
+ essentially free, since the mapping is required in any case.
+
+ The separate line-key RNG is randomized with the current date and
+ time (and--in the PC environment--samples from the high-speed
+ timer) before being used to produce line-key values.  Each line
+ key is created from two line-key RNG operations, and is enciphered
+ by byte-wide Simple Substitution.  Note that this substitution
+ occurs on highly-randomized values; the character-frequency
+ statistics which normally make substitution weak do not exist at
+ this point.
+
+ A 32-bit line key is associated with each ciphertext line, so there
+ are more than 4 billion possible line key values.  The 32-bit line
+ key values are treated as extensions to the User Key, being combined
+ into the base RNG state with CRC-32 and a deg-31 CRC.  This produces
+ the initial RNG state for the confusion sequence or "running key"
+ for each line.  While 32-bits is a searchable quantity, searching
+ these does not seem very useful, because the resulting RNG state is
+ isolated and hidden.  To detect "success," any such search is going
+ to depend upon cracking the combining system, and if that can be
+ done, there seems little point in conducting the search.
+
+ There are 16 Dynamic Substitution combiners, each a random
+ permutation.  Depending on the initial RNG state for each line
+ (after the line-key is applied), one of 16 combiner base-states
+ is selected and used on the data for that line.  The Dynamic
+ Substitution state and RNG state then progress--change--through
+ the end of that ciphertext line.
+
+ There is an overall CRC-32 of the plaintext data; the CRC result
+ is enciphered and sent along with the ciphertext.  When the file
+ is deciphered, overall deciphering correctness is indicated to
+ the user.  The resulting file length is correct to the byte.
+
+
+ COMMENTS
+
+ A random overall message key is sorely missed.  However, such an
+ entity would mean that a transmission error in the message key
+ would destroy the entire message, contradicting the design goal
+ of error-resilience.
+
+ It is interesting to consider the cryptographic use of the much-
+ maligned CRC function.  Penknife uses CRC to produce a cryptographic
+ transform from an initial RNG state to some arbitrary RNG state
+ depending on the User Key phrase.  (We could consider the result
+ to be an arbitrary binary vector which is then combined by
+ exclusive-OR with the initial state.)  In its favor, CRC is very
+ fast and has a strong mathematical basis for producing a random-
+ like result from ordinary text.  The fact that CRC is linear is
+ irrelevant in this situation: Certainly the transform could be
+ reversed if we knew the key, but if we knew the key we would not
+ have to attack the cipher.
+
+ In practice, the 32-bit line keys mean that, for a given User Key,
+ there are 2^32 (4 * 10^9 or 4E9) different initial line states.
+ The Birthday Paradox tells us that we can expect (probability 0.5)
+ two identical line keys (thus initial line states) after only
+ 1.18 * 2^16 or 77E3 lines.  (With 53 data bytes per line, 77E3
+ lines would imply 4 MB of data.)  However, at this level we still
+ have (prob. 0.5) only two lines with the same initial RNG state,
+ and those states remain similar only until the first character
+ difference between the two lines has been encountered.  As more
+ lines become are available, we may find other sets of lines in which
+ two lines have same line key, but it will (probably) take MANY more
+ lines before we can expect to find even three lines enciphered under
+ one key.  Clearly, collecting lines enciphered under one User Key
+ and one line key is going to be very expensive.
+
+ (Obviously, given enough ciphertext, it will eventually be possible
+ to find many lines with the same line key.  This would allow an
+ Opponent to start the sort of technical attack which is discussed
+ later.  This is only one of several reasons to change User Keys
+ periodically; another is the possibility that someone has stolen
+ the key without leaving any signs or other indication.)
+
+ Even though the RNG has 4E9 different initial line states, there
+ are still only 16 Dynamic Substitution tables.  It is not clear
+ how one would go about exposing this limited amount of state.
+
+ The ASCII-only output is extremely flexible.  Because the jumbled
+ ciphertext lines really are text lines, they can be included in
+ text documents as a way to transport or save binary files.  Once
+ Penknife is in place, it can be used to decipher its own upgrades
+ sent by email.
+
+ The 64-symbol ciphertext means that for every three 8-bit data
+ bytes we get four 6-bit ciphertext bytes; for every 53 data bytes
+ we have 4 line key bytes; and every ciphertext line must have CRLF.
+ Ultimately, 53 data bytes produce 78 ciphertext characters, a data
+ expansion of 47 percent.  This is a little more expansion than in
+ other email ciphers (which may not be error-resilient) due to the
+ use of line keys in the Penknife design.  But any email-oriented
+ cipher will expand data when they are enciphered, and so will be
+ somewhat inefficient for extensive local file ciphering.  On the
+ other hand, the lack of a binary output mode means that the
+ enciphering operator does not need to select "binary" versus "text"
+ output, and the deciphering operator need not be confused by the
+ possibility of two incompatible modes.
+
+ Penknife assumes that the plaintext is binary data, which is then
+ enciphered with an overall CRC.  The mapping to 64-symbol network-
+ ASCII is random, under a particular User Key.  The ciphertext
+ contains no control fields:  There is no cipher identification,
+ nor indication of ciphering mode.  The only Penknife data structure
+ is the ciphertext line, which should be virtually indistinguishable
+ from any other random 76-character line.  Deciphering recovers the
+ original data, strips off the CRC, and announces the CRC result.
+
+
+ STRENGTH ARGUMENTS
+
+ Brute Force on the RNG:  Try each possible RNG state until the
+ cipher is broken.
+
+      There are 63 bits of RNG state:  Clearly, it is "only"
+      necessary to step through all possible states, setting up all
+      the dynamic tables each time, to "break" the cipher.  This is
+      the design strength of the cipher.
+
+
+ Brute Force on the User Key:  Try each possible User Key until the
+ cipher is broken.  Try most-likely keys first.
+
+      No cipher can do very much about this if a user really wants
+      to use a weak key.  The advanced Penknife program supports
+      the automatic generation of random keys into an alias file,
+      where they can be selected and used with a non-secret alias
+      tag.  This does not completely solve the problem, however,
+      because the alias file itself requires a User Key.  Penknife
+      supports User Keys of virtually arbitrary length, but these
+      must be selected to be unique and unsearchable, and they must
+      not be stored as plaintext in other files.  Since the alias
+      file User Key must be entered, it can be stolen, and so should
+      be changed periodically.  In most cases, it is not the cipher
+      design but instead the alias-file key which is the weakest
+      part of the system.
+
+
+ Chosen Key:  Try various keys, adaptively, and compare the resulting
+ ciphertext to the real ciphertext, to try and gain insight into the
+ correct key value.
+
+      Given that CRC is used to generate the internal RNG base state,
+      it is hard to see how any particular bit arrangement could
+      possibly be preferred, or occur unusually often.  This is a
+      main reason for using CRC as opposed to, for example, a
+      "cryptographic" hash with no strong mathematical basis.
+
+
+ Differential Cryptanalysis: Exploit known properties of particular
+ substitution tables to produce probable bit changes after one or
+ more levels of substitution (this can effectively reduce the number
+ of "levels" in an iterated cipher).
+
+      Differential Cryptanalysis does not appear to apply to this
+      cipher, as all Penknife tables are dynamic, in the sense of
+      being created as arbitrary permutations under a particular
+      User Key.  Since every table permutation is equally probable,
+      and the table arrangements unknown to The Opponent, the
+      advantage of a particular arrangement seems lost.
+
+
+ Ciphertext Only:  Accumulate a mass of ciphertext material and try
+ to find relationships within the data which expose successive
+ levels of the mechanism, until the cipher is broken.
+
+      The data flowing through the Penknife cipher are extensively
+      randomized, first by adaptive Dynamic Substitution, and then
+      by exclusive-OR with a pseudo-random sequence; the data then
+      pass through 3-to-4 byte conversion and the network-ASCII
+      mapping table (which is also a function of the User Key).  By
+      itself Dynamic Substitution removes the usual symbol-frequency
+      statistics to produce a random-like result, and the exclusive-
+      OR also produces a random-like sequence.  Consequently, it is
+      hard to see how one could get a statistical hook into even
+      the network-ASCII table, let alone the rest of the cipher.
+
+
+ Known Plaintext:  "Obtain" some amount of plaintext and the
+ corresponding ciphertext.  Use this material to develop the
+ original cipher state, thus supporting the deciphering of material
+ which has not been obtained.
+
+      Penknife has a two-level combiner which combines a single byte
+      of data with two bytes of confusion to produce a single byte of
+      ciphertext.  Accordingly, a single known-plaintext byte cannot,
+      by itself, describe the two bytes of confusion which produce
+      the ciphertext.  Nor do single bytes reveal the Dynamic
+      Substitution table state, because the selected table element
+      changes at random after use.  In contrast to other stream-
+      cipher designs, known-plaintext will not immediately resolve
+      the confusion value so that the RNG can be attacked.
+
+      On the other hand, if we could find enough lines which have
+      the same line key (under one User Key), but different initial
+      character values, we could try to describe the initial state
+      of the selected Dynamic Substitution table.  Then, given lines
+      with the same initial byte, but every possible second byte,
+      we could try to describe the complete state of the Dynamic
+      Substitution table after a single character.  This would allow
+      us to identify which elements of the table have changed, and
+      thus, implicitly identify the hidden first RNG value, on the
+      way to attacking the Jitterizer (and RNG).  Of course, such
+      an attack seems to require that every possible plaintext byte
+      occur both as the first and the second (and then the nth)
+      element, all in the same line key.  Because line keys are
+      random-like, this would imply a huge amount of known-plaintext.
+
+      Also note that trying every byte, then every combination of two
+      bytes (then, presumably, N), can slip into a full exploration
+      of the cipher transform.  Any stream cipher must be susceptible
+      to such an approach, which, fortunately, is impractical beyond
+      a few characters.
+
+      And all this assumes that some method has been found to
+      surmount the network-ASCII table, or to postpone this mapping
+      for resolution in later analysis.  It is not clear how one
+      could do this.
+
+
+ Chosen Plaintext:  Somehow arrange to use the cipher to encipher
+ potentially huge amounts of data specifically chosen to reveal
+ the cipher.  (It is not clear that this would be a realistic attack
+ in the context of normal secret-key end-user-cipher operation.)
+
+      Certainly this can be no harder than the same attack under
+      known-plaintext; the question is whether it would be any
+      easier.  Since the line-key values are not under the control
+      of the user, even controlled ciphering is going to require a
+      huge amount of ciphering simply to explore the first and
+      second table states.  If the table states can be exposed, we
+      could acquire the 16-bit result from the Jitterizer.  But the
+      RNG contains 63 bits of state, so there are about 2^47 ways
+      in which the RNG could have produced that value.  This is
+      searchable to the extent that the 63-bit RNG is searchable.
+      But when we include the effect of the 32-bit state inside the
+      Jitterizer, clearly, any RNG output value can produce any
+      Jitterizer result, depending on the internal Jitterizer offset
+      set earlier in the sequence.  So the RNG may be attackable,
+      but seems quite unlikely to be broken with a single Jitterizer
+      value, and collecting Jitterizer values indirectly by
+      exploring table state is very, very expensive.
+
+      Exploring table state involves the coincidental appearance of
+      every possible character in the last position of an expanding
+      sequence.  Consequently, this approach would seem to be
+      exponentially difficult, and to require exponentially more
+      ciphertext for however many elements are required to break
+      through the Jitterizer into the RNG's themselves.
+
+      Worse, the RNG sequences on two lines with the same line key
+      differ after the first different data byte, and the value
+      which makes this difference is hidden between the combiners.
+      Thus, we seem to need the Jitterizer value to expose the hidden
+      value to be able to expose the next Jitterizer value.
+
+      The Opponent would no doubt like to be able to simply encipher
+      every possible one-character message under a given key.  But,
+      again, the line keys are not under user control, and they are
+      32 bits wide.  Still, if there were a complete single-character
+      enciphering under one line-key (and, thus, selecting a
+      particular initial Dynamic Substitution table), it should be
+      possible to completely explore the table (with some constant
+      offset from the exclusive-OR combiner).  Then, given any single
+      initial character, if all possible two-character messages could
+      be obtained (under a single line key!), then the second table
+      state could be explored, and the hidden Dynamic Substitution
+      confusion value identified (and this would be absolute, not
+      relative to the exclusive-OR).  But all this depends on getting
+      a complete set of ciphertext values under a single line key,
+      and it is not clear how one can do that other than chance.
+      Again, this would be very, very expensive.
+
+      And, once again, all this assumes that some method has been
+      found to surmount the network-ASCII table, or to postpone this
+      mapping for resolution in later analysis.
+
+
+ Line-Key Security:  Clearly, the line keys provide significant
+ protection, so it is interesting to speculate about the need for
+ line-key randomness or ciphering.
+
+      Without line keys, the cipher is immediately subject to (a
+      still expensive) chosen-plaintext attack.  This may or may
+      not be a big deal in an end-user cipher, assuming that only
+      the key-holders encipher data.
+
+      Without line keys, acquiring known-plaintext with "every"
+      first byte code could explore the Dynamic Substitution table.
+      Acquiring known-plaintext with "every" second byte code (for
+      some particular first byte code) could explore the Dynamic
+      Substitution table again, identifying differences, and
+      indicating the hidden Dynamic Substitution confusion value,
+      leading to the start of an attack on the Jitterizer/RNG.  If
+      "every" second byte code is not available after one particular
+      first byte code, the various Dynamic Substitution tables could
+      be explored, but after the first character, the internal RNG
+      sequences begin to diverge anyway, so to some extent each must
+      be explored separately until the RNG can be cracked, and it is
+      not clear what it would take to do that.  Still, this attack
+      would be much easier without line keys.
+
+      If the line keys were not enciphered, their effect on the RNG
+      state would be easily computable.  Although the original RNG
+      state would not be known, the line-key effect on that state
+      would be known.  This would mean that the ultimate change in
+      the first RNG value would also be known.  However, the first
+      RNG value on each line is not available for analysis, since it
+      is used by the Jitterizer for "skip" and "take" values.  The
+      first RNG value which is produced from the Jitterizer occurs
+      later, and is confused by Jitterizer offset, so the relationship
+      to the line-key is not direct or immediate.  And The Opponent
+      would still have the problem of exploring the Dynamic
+      Substitution tables (as well as the Network ASCII table).
+
+      If line key values were produced, say, by a counter, they
+      would be difficult to protect by fast, simple cipher.  (By
+      itself, a single arbitrary value is easy to protect.  However,
+      a sequence of values, produced in a known way, is harder to
+      hide.)
+
+      Line key values could be produced by some sort of really-
+      random system.  But if really-random stuff is necessary, the
+      design is not likely to be very portable.
+
+      Consequently, line keys are now produced by second Jitterized
+      RNG.  One does have to wonder whether some characteristic of
+      the RNG could survive both the Jitterizer and Simple
+      Substitution to help The Opponent resolve the line-key RNG
+      state.  Resolving that RNG could give insight into line-key
+      effects on the ciphering RNG, and so help crack the overall
+      system.  But the use of an RNG which is a combination of two
+      well-known types of basic RNG mechanism, and the nonlinear
+      action of the Jitterizer, make it difficult to imagine how
+      any single RNG characteristic could survive unscathed.
+
+      Note that any enhancement to produce line-key values in some
+      stronger random way would be completely compatible with the
+      existing design.
+
+
+ The Extent of a Break:  Absent an overall Message Key, and with
+ small (32-bit) line keys, breaking Penknife probably means
+ resolving the initial RNG state, which is the arbitrary value set
+ by the User Key.  The cipher thus remains broken until the next key
+ change (which obviously must not be done under the "cover" of the
+ broken cipher).  The original, hand-exchanged keys be used simply
+ to transfer random keys (which are easy to use in enciphered alias
+ files).  In this case, the usual periodic key change--which is
+ necessary anyway, since a key may have been exposed without our
+ knowledge--should reset security to original levels.  In the
+ advanced implementation, actual transmission keys can be changed
+ periodically, through the prior establishment of dated aliases
+ for future keys.  The alias file User Key should be changed
+ periodically as well.
+
+
+ CURRENT IMPLEMENTATION
+
+ The current Penknife implementation is a relatively small (45K),
+ relatively fast (20 KBytes/sec on a 386/25), command-line program
+ for DOS on IBM PC-type machines.  Inner ciphering loops are
+ written in hand-optimized assembly-language for best speed.
+
+ The overall cipher design includes extensive key-management
+ features to help create, transport, and use large random keys.
+ Dated aliases support automatic painless key-update and access
+ to archived messages enciphered under old keys.  Other features
+ include the ability to handle messages containing both plaintext
+ and ciphertext, to automatically find and decipher the ciphertext,
+ and optionally pass the plaintext through to the output file.
+ Normally, email files do not have to be cleaned up for deciphering,
+ and headers and signatures can be kept with the deciphered text.
+ All of this is done WITHOUT announcing that the text is ciphered,
+ or the name of the cipher, or using "--BEGIN CIPHERTEXT--" and
+ "--END CIPHERTEXT--" bracketing.
+
+ The Penknife cipher is a serious commercial design, and is part
+ of a growing family of serious cipher engines intended for use by
+ software developers.  These designs use a wide range of technology
+ to achieve a wide range of speed versus performance tradeoffs in
+ software implementation.
+
+
+ References
+
+ [1]  Ritter, T.  1990.  Substitution Cipher with Pseudo-Random
+      Shuffling:  The Dynamic Substitution Combiner.  Cryptologia.
+      14(4): 289-303.
+
+ [2]  Ritter, T.  1990.  Dynamic Substitution Combiner and Extractor.
+      U.S. Patent 4,979,832.
+
+ [3]  Ritter, T.  1991.  The Efficient Generation of Cryptographic
+      Confusion Sequences.  Cryptologia.  15(2): 81-139.
+
+

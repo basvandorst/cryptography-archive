@@ -1,0 +1,219 @@
+.\" Copyright (C) 1990 Kevin R. Coombes and David R. Grant
+.\" Distributed under the terms of the GNU General Public License as
+.\" published by the Free Software Foundation, without any warranty.
+.TH Arithmetic 3 "11 March 1990"
+.SH NAME
+arithmetic, Zadd, Zsub, Zminus, Zmult, Zdivalg, Zgcd, Zeq, Zlessoreq, Collect, Showme, Shcopy, Size, Constant, Initial \- arithmetic with arbitrary length integers or polynomials
+.SH SYNOPSIS
+.nf
+.B #include "integer.h"
+.B #include "polynomial.h"
+.B #include "Ztools.h"
+.LP
+.B unsigned short *Zadd(a, b)
+.B unsigned short *a, *b;
+.LP
+.B unsigned short *Zsub(a, b)
+.B unsigned short *a, *b;
+.LP
+.B unsigned short *Zminus(a)
+.B unsigned short *a;
+.LP
+.B unsigned short *Zmult(a, b)
+.B unsigned short *a, *b;
+.LP
+.B unsigned short *Zdivalg(a, b, r)
+.B unsigned short *a, *b, *r;
+.LP
+.B void Zgcd(a, b, g, aa, bb)
+.B unsigned short *a, *b, *g;
+.B unsigned short *aa, *bb;
+.LP
+.B char Zeq(a, b)
+.B unsigned short *a, *b;
+.LP
+.B char Zlessoreq(a, b)
+.B unsigned short *a, *b;
+.LP
+.B void Initial(m)
+.B unsigned short m;
+.LP
+.B char Collect(msg, a)
+.B char *msg;
+.B unsigned short *a;
+.LP
+.B void Showme(msg, a)
+.B char *msg;
+.B unsigned short *a;
+.LP
+.B void Fshowme(fp, msg, a)
+.B FILE *fp;
+.B char *msg;
+.B unsigned short *a;
+.LP
+.B unsigned short *Constant(a)
+.B long a;
+.LP
+.B void Shcopy(a, b)
+.B unsigned short *a, *b;
+.LP
+.B unsigned short Size(a)
+.B unsigned short *a;
+.LP
+.B void bailout(msg)
+.B char *msg;
+.fi
+.SH DESCRIPTION
+.LP
+These routines provide a uniform interface for computations involving
+either arbitrary precision integers or polynomials over finite fields.
+Both integers and polynomials are stored in little-endian order as an
+array of unsigned shorts. The value of the first short in the array is
+the offset of the most significant digit; in the case of polynomials, 
+this is the highest degree coefficient, in the case of integers, it is
+a signbit.
+.LP
+These routines use the storage management package called "warehouse", 
+consisting of the routines 
+.BR release(\|),
+.B capture(\|),
+and
+.B makeWH(\|)
+to have enough storage available for their computations. Thus, any program
+which uses these routines must begin with a call to
+.B Initial(\|)
+which makes available some prlminary scratch computation areas. In the case
+of polynomials, the parameter to 
+.B Initial(\|)
+is the modulus of the finite field over which the polynomials are to be 
+computed.
+.LP
+.BR Zadd(\|),
+.B Zsub(\|),
+and
+.B Zmult(\|)
+return a pointer to a very long integer or polynomial which is the sum,
+difference, or product, respectively, of their arguments. 
+.B Zminus(\|)
+returns the negative of its argument.
+.B Zdivalg(\|)
+computes the quotient of the dividend
+.I a
+by the divisor
+.I b
+and returns it. If the value of 
+.I ptr
+is not NULL, then the remainder is stored at that location. The conventions
+used by
+.B Zdivalg(\|)
+are: in the case of integers, the remainder always has the same sign as
+the dividend, and in the case of polynomials, the quotient is always monic.
+In both cases, the relation a = b q + r holds.
+.LP
+.BR Zgcd(\|)
+computes the greatest common divisor of
+.I a
+and
+.I b
+and stores it in the location pointed to by
+.I g.
+The values of 
+.I a/g
+and
+.I b/g,
+are stored in 
+.I aa
+and
+.I bb,
+respectively.
+.LP
+.BR Zeq(\|)
+returns a non-zero value if its arguments are equal, and zero otherwise.
+.BR Zlessoreq(\|)
+returns a non-zero value if its first argument is less than or equal to
+its second argument, and zero otherwise.
+.LP
+Some additional utilities are supplied to make common treatment of integers
+and polynomials easier.
+.BR Collect(\|)
+is an input routine which prints its message
+.I msg
+on standard output and then reads an integer or polynomial and stores it
+at the location pointed to by
+.I a.
+Both integers and polynomials are entered in big-endian order. Different
+coefficients of polynomials are separated by whitespace (which means, in
+this case, any non-digit characters) and are reduced modulo
+.I m
+before being stored. Integers are entered in digits written to the base
+2^16 = 65536 which are also separated by whitespace; they may be preceeded
+an optional sign. Note that, at this time, decimal input is not supported 
+except for numbers whose size is less than 65536. Lines may be continued
+by using the ampersand character (&) at the end of a line.
+.LP
+.BR Showme(\|)
+is an output routine which writes its message to standard
+output and follows it by an integer or polynomial written with the same
+conventions as used by
+.B Collect(\|).
+.BR Fshowme(\|)
+is to
+.B Showme(\|)
+as
+.B fprintf(\|)
+is to
+.B printf(\|).
+.LP
+.BR Constant(\|)
+returns a properly formatted very long integer or polynomial with the value 
+represented by its argument. The argument must have absolute value bounded
+by 2^16 = 65536. In general, the value of
+.B Constant(\|) 
+should be copied to a safe location, since it re-uses the same storage space.
+.B Shcopy(\|)
+copies the array of its first argument int the location pointed to by its
+second argument. It assumes that there is enough room at the second location;
+it is the programmer's responsibility to ensure that this is, in fact, the 
+case. Note, for example, that the integer constant 1 takes up three
+memory locations: one for a description of how many digits it needs, one
+for the value, and one for the signbit.
+.SH LIBRARIES
+These routines are implemented in one of two ways. Those which are 
+fundamentally different for integers and polynomials are written as separate
+functions, and compiled as separate libraries. Those which could 
+conveniently be written as one function are compiled in yet a third library;
+the interface is handled via macro definitions in the header files. The
+standard way to write a routine which will work with either integers or 
+polynomials is to put
+.nf
+.LP
+.B #ifdef INTEGERS
+.B #include "integer.h"
+.B #elif defined POLYNOMIALS
+.B #include "polynomial.h"
+.B #else
+some line to make the compiler complain
+.B #endif
+.fi
+.LP
+at the top of the relevant files, and then to have two separate compiliations
+.LP
+cc -DINTEGERS ... -lZ -lU
+.LP
+cc -DPOLYNOMIALS ... -lP -lU
+.SH DIAGNOSTICS
+Illegal operations detected by these routines result in a call to a
+routine called
+.B bailout(\|)
+which prints a message and then exits.
+.SH FILES
+.nf
+.B integer.h
+.B polynomial.h
+.B utility.h
+.B Ztools.h
+.B libP.a
+.B libZ.a
+.B libU.a
+.SH "SEE ALSO"
+warehouse(3), rational(3), quadratic(3)

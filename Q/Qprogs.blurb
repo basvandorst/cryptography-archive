@@ -1,0 +1,159 @@
+	Q: A Uniform Language for Writing and Running Programs
+	-----------------------------------------------------
+
+		Per Bothner
+
+	(Cygnus Support)    (bothner@cygnus.com)
+
+What is Q?
+----------
+
+* A very high-level programming language
+
+* Multiple data types (like Lisp):
+  Numbers, vectors, strings, 1st-class functions, ...
+
+* Abstract sequences used for all repetition.
+  (Like APL's use of arrays, or Smalltalk collections.)
+  Sequences can be stored, or calculated on demand.
+
+* Powerful operations used uniformly in multiple domains.
+
+* Syntax is "medium terse" and designed for interaction.
+
+* "Mostly-functional" (encourages side-effect-free
+   computation, like Lisp).
+
+* Builtin shell-style features
+  (e.g. running programs, globbing).
+
+
+Lazy vectors
+------------
+
+{f(A?)}  - a sequence whose i'th element is f(A i)
+
+Elements are calculated on demand.
+Each element is only calculated once, hence
+must be saved (memoized) (unless optimized).
+
+Replaces many kinds of loops.
+
+Example: Fibonacci function.
+Standard recursive definition:
+
+  :(Fib :i)=if i<2 => 1 || Fib(i-1) + Fib(i-2)
+
+Very slow (exponential run time).
+
+Use a lazy vector as a cache:
+
+  :(Fib :i)=if i<2 => 1 || FibCache(i-1) + FibCache(i-2)
+  :FibCache = {Fib ?}
+
+Fast (linear because the FibCache lazy vector
+remembers calculated Fib values, so they don't
+need to be re-calculated).
+  (Fib 200) ==>
+  453973694165307953197296969697410619233826
+
+
+Uniformity
+----------
+
+Indexing:
+  [3 4 5] i  ==>  i'th element of vector
+  "abcd" i  ==>  i'the character of string
+  (0 to 100) i  ==> i
+  ./Makefile i  ==>  i'th character in file
+  {A? + 100} i  ==> (A i)+100
+
+Length of sequence:
+  size [3 4 5]  ==> 3
+  size "abcd"  ==> 4
+  size (0 to 100) ==> 100
+  size ./Makefile  ==> # of bytes in file Makefile
+  size {A? + 100}  ==>  size A
+
+An (open) file == iterator over a sequence of characters.
+
+A Unix executable program is a function
+(with a different calling convention).
+
+Standard input and output are abstractly strings.
+Files in a Unix file system are also abstractly strings.
+A pipeline is a special case of function composition.
+
+
+Running programs
+----------------
+
+  # Search source files for PATTERN
+  grep $(PATTERN) *.([Cch] cc)
+
+is macro-expanded (at compile time) into:
+
+  run_program "grep" (
+    glob_expand_list [PATTERN "*.[Cch]" "*.cc")
+
+A prefixed argument is evaluated and passed as
+stdin to the program.
+
+Converting strings to upper-case (inefficiently):
+
+  :(upper_case :arg) = arg run /bin/tr a-z A-Z
+
+  printf "<%#s>\n" (upper_case "Hello World!\n")
+  ==> <"HELLO WORLD!\n">
+
+
+Application:  Renaming files using patterns
+---------------------------------------
+
+:(__ren :src :dst)=(
+  :X=(glob src)
+  {run mv $(X?) $(X? match $src $dst)} do)
+:(macro ren :args@) = parse "__ren (quote " args@ ")@"
+
+Example:  ren *.c.BAK BAK/*.c
+
+Macro-expands to:  __ren "*.c.BAK" "BAK/*.c"
+
+':X=(glob src)' might set X to ["main.c.BAK" "misc.c.BAK"]
+
+'{ ... } do' loop, doing echo '...' until X is exhausted.
+
+For each element of X (say "main.c.BAK") translate it
+(using 'match') into (say "BAK/main.c"),
+and use the "mv" command to rename it.
+
+
+Implementation
+--------------
+
+* Written in C++.
+  Most types inherit from "Root" class.
+
+* Interpreter for interactive use,
+  or compile into C++ (both share front end).
+
+* Multi-language run-time system.  (Incomplete Scheme
+  and Common Lisp implementations included.)
+
+* Q objects are C++ objects.
+  Trivial to add new Q or Lisp builtins written in C++.
+
+* The Q version of a shell command line will generally
+use Unix primitives (forks, pipes, ...) as efficiently
+as a shell (avoids needless copying).
+
+Availabilty
+-----------
+
+* Freely re-distributed (some GNU code used).
+
+* Pre-alpha; hackers only please!
+
+* See cygnus.com:~ftp/pub/Q.README for directions.
+
+* Not supported by Cygnus Support.

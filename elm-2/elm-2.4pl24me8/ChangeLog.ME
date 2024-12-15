@@ -1,0 +1,739 @@
+-----------------------
+Changes from ME8alpha19
+-----------------------
+Fixed bug where external pager did not work with non-MIME messages when
+USE_PGP is defined.
+
+Cleaned up mime_pgp_decode so that it does not need to look at the
+header_rec for the current message any longer.
+
+Do text/plain => application/pgp conversion in newmbox.c if PGP type data
+is discovered in the message.  This supports those who are sending PGP
+messages but are not compliant with what Elm expects.
+
+Added the control-E (extract public key) command to showmsg_c.c.
+
+Security fix from Olaf Kirch <okir@monad.swb.de> which forces Elm to write
+the temp spool mailbox in the user's home directory instead of /tmp.  This
+prevents exploitation of symlinks to create a .rhosts in the user's 
+directory.
+
+Fixed bug in show_status where flags from the previous message were not
+being properly cleared with USE_PGP was defined and MIME was not.
+
+-----------------------
+Changes from ME8alpha18
+-----------------------
+added application_decode for support of APPLICATION/* types.  Calls
+null_decode if the subtype is unknown.
+
+rfc822_decode now matches the headers against the weedlist when printing
+out.  You can view all the headers for a message by pressing 'h' while
+viewing a message just as you normally would.
+
+added mime_pgp_decode for inline decoding of application/pgp parts.
+application/pgp at the top level is still handled by metapager since some
+people will be configured without MIME.  I might eventually require that
+to use PGP, you must also define MIME, but not yet!
+
+Status header was printed in the wrong place with BINARY encoding.
+From: Kari.Hurtta@fmi.fi
+
+Added the DONT_ADD_FROM and NEEDS_LONE_PERIOD_ESCAPE checks to write_encoded,
+and other MIME text parts.
+From: Kari.Hurtta@fmi.fi
+
+Added a "type_opts" field in mime_send_t.
+
+mime_write_header now just writes the MIME headers.  The code to add the
+boundary for multipart messages and the charset for text/plain was moved into
+mailmsg2.c.
+
+Changed pgp code to set MIME fields to use add_parameter and type_opts instead
+of directly writing to subtype.
+
+Made some changes in the Content-Type for PGP messages to be more compliant
+with the unofficial standard.
+
+-----------------------
+Changes from ME8alpha17
+-----------------------
+MIME header code in write_header_info() was moved to 
+mime_write_header in mime_encode.c.  This was done to greatly simplify the
+code, and to make it possible for me to send MIME messages with the
+remailer code.  This will also make it possible for me to have PGP
+encrypted MIME messages in the future.
+
+Content-Length headers are generated regardless of whether or not MIME
+is defined.
+
+Lots of changes to the remailer code to make it work with MIME.
+
+-----------------------
+Changes from ME8alpha16
+-----------------------
+Removed Content-Length header from attachments included by the "[include ...]"
+statement.
+
+Made the existing global variables that set the toplevel Content-Length header
+a part of mime_send_t.  This has the side effect that if MIME is not
+defined, no Content-Length header will be added on outgoing messages.
+
+Commented out the code which reads the content-length header from attachments
+in mime_parse.c.  It should now ignore that header and figure out the length
+in multipart_parse().
+
+-----------------------
+Changes from ME8alpha15
+-----------------------
+New option "mimeforward" controls whether or not forwarded messages are
+sent as MESSAGE/RFC822 MIME messages, or are sent in the old non-MIME
+way.
+
+- Fixes for my mistakes in alpha15.
+- text_unsupported_decode() added for printing warning message about
+unsupported text subtypes.
+From: Kari.Hurtta@fmi.fi
+
+Changed disposition handing such that a message saying that the user should
+type 'v' to view an attachment which is declared something other than
+"inline".
+
+-----------------------
+Changes from ME8alpha14
+-----------------------
+Make sure that arguments to fseek(), etc., are type long.
+From: Kari.Hurtta@fmi.fi
+
+Added some general access commands for attachments in the attach_menu.c
+routines.
+From: Kari.Hurtta@fmi.fi
+
+The disposition is now displayed in the little mini-header.  This looks nicer
+than the previous message about "[Content-Disposition: attachment, skipping]".
+
+select_CT_decoder now returns text_decode for all TEXT types.  My reasoning
+here is that since the MIME spec says that all unknown subtypes of TEXT
+should be treated as TEXT/PLAIN so long as the charset is understood, then
+all TEXT can be treated in this manner.
+
+Made sure that the pgp field of header_rec gets set to zero when initializing
+in attach_viewer and also in newmbox.c.
+
+Removed lots of unused variables.
+
+Added some parentheses in places to make "gcc -Wparentheses" happy.
+
+-----------------------
+Changes from ME8alpha13
+-----------------------
+Forgot to initialize usepass=FALSE in pgp_decrypt_init.  This caused elm
+to hang when trying to decode a signed message while pgp was waiting for
+the passphrase...
+
+The attachment menu should now work properly for viewing message/rfc822
+messages with the builtin pager.
+
+When attaching a message/rfc822 with the "forward" command, you should
+now be able to perform all the actions in attach_menu() as for a "normal"
+attachment.
+
+-----------------------
+Changes from ME8alpha12
+-----------------------
+Tried to fix MIME_NOTPLAIN code again.  This time MESSAGE/RFC822 will not
+have it set, which MULTIPART will if pagemultipart=OFF.
+
+Fixed attach_menu so that Elm does not segfault when you try to do an
+operation on an attachment when there are no attachments defined.
+
+Removed the MIME_NOTPLAIN flag and made it a one-bit flag in mime_t instead.
+Removed PGP flags from defs.h and use a 3-bit field in header_rec instead.
+These two now ensure that the "status" field of header_rec is always less
+than 65536 so that 16bit integer machines will not have troubles.
+
+Elm now pays attention to what the MIME-Version header says and passes any
+messages with an unknown MIME-Version header value to metamail, or displays
+an error if $NOMETAMAIL is set.
+From: Kari.Hurtta@fmi.fi
+
+-----------------------
+Changes from ME8alpha11
+-----------------------
+pgp_call() now uses the expanded_* address lists so that aliases are 
+expanded before trying to look up the ids with PGP.
+
+Fixed calls in mailmsg2.c with wrong number of arguments (botched job
+including Kari Hurtta's patch).
+From: Kari.Hurtta@fmi.fi
+
+Reordered the preMIME code in newmbox.c to make it a little more efficient.
+
+Fixed bug in write_header_info() where a spurious newline was being printed
+after the Content-Type header for TEXT.  This was causing the remaining 
+fields not to be a part of the message header.
+
+Removed check for old-style RFCXXX Mime-Version header.  I don't believe
+anybody uses that anymore since RFC1341 has been out so long.
+
+pgp_status needed to be reset when the user aborts sending a message,
+otherwise you can't encrypt another message until you successfully send
+another message.
+
+MIME_NOTPLAIN is not set for multipart messages if "pagemultipart" is TRUE.
+
+Cleaned up code for deciding if metamail mail should be called to display
+a message in showmsg.c.  Created a need routine, need_meta(), for this
+purpose.
+
+-----------------------
+Changes from ME8alpha10
+-----------------------
+Fixes to remove some global MIME variables used for composing.
+From: Kari.Hurtta@fmi.fi
+
+Added a redraw command to the attachment menu.
+
+Fixed the code in newmbox.c where MIME_NOTPLAIN was not set for non-TEXT
+content-types.  Also, check for "plain" should be "text" for old-style
+pre-MIME content-type headers.
+
+Added a print command to the attachment menu.
+
+Made the remailer support a Configure option.
+
+----------------------
+Changes from ME8alpha9
+----------------------
+Use Elm's error routines in the attachment menu. 
+Protected iscntrl() more calling isascii() before it in builtin++.
+From: Kari Hurtta <Kari.Hurtta@fmi.fi>
+
+Added bit of code lost from old showmsg.c which centers the subject line 
+after the title line in the case where "subject" is in the weedlist.
+
+Viewing attachments with metamail while in send mode now works.  It required
+different arguments to be passed to metamail.
+
+-----------------------
+Changes from ME8alpha8a
+-----------------------
+mime_t_clear() now sets the defaults of TEXT/PLAIN, ENCODING_7BIT, DISP_INLINE,
+when called.
+
+More fixes from Kari Hurtta <kari.hurtta@fmi.fi>
+
+Removed padding bitfield from struct mimeinfo since it isn't needed.
+
+Added +clearsig=ON when adding a PGP signature to a message.
+
+Added prototypes for the functions defined in pgp.c.
+
+Elm will now allow you to edit the list of usernames to encrypt to when
+using PGP.  This fixes the problem where sometimes the return address
+doesn't match the address on the key.  However, it still requires that
+the user know this.
+
+Implemented Kari Hurtta's suggestion of using a "state" variable for the
+MIME output when decoding messages.  This will make it easier to add new
+extensions for output.  The state information is defined in hdrs/state.h
+
+The user interface for the attachment menu now is more consistent with
+the mailbox menu.  (Kari.Hurtta@fmi.fi)
+
+User is now asked for confirmation upon deleting an attachment from the
+attachment menu if "ask=ON" in the elmrc.
+
+Fixed replying to messages with PGP signatures.  They were getting sucked
+into the new MIME code and getting skipped as an unknown type.
+
+Added new procedure to allow for extraction of PGP public keys directly
+instead of relying on metamail.
+
+If Elm can't find a PGP key that it is looking for, it now tells the user
+which key instead of just that there was an error.
+
+The user is now allowed to re-edit the filename in attach_modify() if the
+file was not found.  This also allows a user to change the file associated
+with an attachment.
+
+Fixed very old bug of MMDF separators being printed when displaying a
+message.
+
+----------------------
+Changes from ME8alpha8
+----------------------
+Fixed problem where you couldn't edit the default filename in attach_save().
+
+----------------------
+Changes from ME8alpha7
+----------------------
+Use safe_malloc() and safe_realloc() instead. (Kari Hurtta)
+
+Fixed bug where no EOLN token was printed after the Content-Type header
+when type_opts was NULL in attach_generate_message().
+
+Reorganized struct mimeinfo so that bitfields are next to each other and
+added padding to make them 1 byte long total.
+
+-----------------------
+Changes from ME8alpha6+
+-----------------------
+Reduced memory usage in "struct mimeinfo" by using bitfields or pointers
+instead of predefined strings when possible.  Also removed the "comments"
+fields.
+
+New routine lib/strmcpy.c for doing malloc/realloc and strcpy in one shot.
+Helps out with the above objective.
+
+The attachment menu now defaults to disposition "inline" when sending
+mail.
+
+Reorganized the screen in the attachment "configuration" menu.
+
+Removed code for adding "name=" field to APPLICATION/OCTET-STREAM types.
+Uses Kari's code for Content-Disposition "filename" instead.  attach_menu()
+still supports both for getting default filename when saving an
+attachment.
+
+Removed MIME_MULTIPART flag.  Use MIME_TYPE_MULTIPART with "type" instead.
+
+Removed "encoding" field from "header_rec".  Use "encoding" in "mimeinfo"
+instead (this was already mostly true, but there were a few cases left
+over from the early support for encoding...)
+
+----------------------
+Changes from ME8alpha6
+----------------------
+Incorporated changes from Kari Hurtta <Kari.Hurtta@FMI.FI>.
+Big changes are the use of Content-Disposition and routines to better parse
+rfc822 headers.  Also fixed multi-line MIME header problem in newmbox.c
+
+----------------------
+Changes from ME8alpha5
+----------------------
+Fixed places where "/tmp" was hardcoded for temporary files instead of using
+"temp_dir" in the ME extensions.
+
+Fixed more isspace() problems with "signed char".
+
+Made some formatting improvements in multipart_decode().
+
+Fixed bug where multi-line Content-Type headers were not properly parsed in
+newmbox.c.
+
+Added builtin++2.c which contains a tempfile based pager which may become
+part of the "official" distribution.  For right now it is "experimental".
+
+----------------------
+Changes from ME8alpha4
+----------------------
+Fixed attach_modify() to use ->type and ->subtype like the rest of the
+attachment routines.
+
+Viewing an attachment while sending didn't work because it read from
+mailfile...  Now it can view external files as well.
+
+Fixed problem with signed char and iscntrl() in AddLineToCache().
+This fixes the problem with umlaut characters in some sets.
+From: guy@netapp.com.
+
+Modified mime_generate_boundary() to use mime_count as a counter so that
+subsequent calls will generate different values.
+
+Elm will now read ~/.elm/mime.types and $libdir/elm.mimetypes (system
+mime.types file), if they exist, to map filename extensions to
+Content-Type values when sending attachments.  The format of this file
+is:
+	<suffix> <content-type>
+There must be no line breaks in the Content-Type field.
+Example:
+	tar	application/octet-stream; type=tar
+for .tar files.
+NOTE: data which is declared "application/octet-stream" will automatically
+      get the option "name=<default_filename>" added to it, so there is no
+      need to put it in the definition.
+
+Modified attach_info() so that it uses BASE64 encoding for "application"
+types that have 8bit or control chars in them.
+Also, "image" automatically defaults to BASE64 without reading the file.
+
+attach_save() now uses the "name=<default_filename>" field of "application"
+types as the default filename.
+
+Added '+' as a synonym for NEXT_PAGE in builtin++ per popular request.
+
+attach_generate_msg() no longer puts Content-Length headers on parts that
+it generates.
+
+----------------------
+Changes from ME8alpha3
+----------------------
+Added support for multi-line Content-Type: headers in read_headers() and
+mime_read_headers().
+
+me.h now contains prototypes for functions defined by this set of patches.
+
+Fixed some problems with using PGP and remailers.
+
+Fixed parsing of options in the Content-Type header so that semicolons
+inside quotes are protected.
+
+If MIME is defined, forwarded messages will be an attachment of type
+MESSAGE/RFC822.
+
+Fixed problem with viewing MULTIPART or MESSAGE/RFC822 attachments from
+the attachment menu.
+
+Replaced MIME_BOUNDARY with a function (mime_generate_boundary()) that
+sets the global variable "mime_boundary" to generate unique multipart
+boundaries.  This is important now that Elm will be sending out
+MESSAGE/RFC822 data which Elm might have originally generated...
+
+----------------------
+Changes from ME8alpha2
+----------------------
+Added a second line for menu items in verify_transmission() since adding
+the "r)emailer" option didn't fit on the first line.
+
+Modified the PGP code a little for more flexibility.  You can now specify
+a string of "ids" to encrypt with in pgp_call().
+
+---------------------
+Changes from ME8alpha
+---------------------
+The menus from attach.c and attach_send.c were combined into a single
+menu in attach_menu.c which servers both purposes.  The difference is
+whether or not the user is allowed to modify the given attachments.
+
+The rest of attach_send.c was renamed as mime_encode.c.
+
+-----------------
+Changes from ME7a
+-----------------
+
+Added a check in quoted_printable_decode() to make sure that the index
+into outbuf[] does not run off the end and cause problems.
+
+attach_edit() didn't return TRUE after editing in one spot, which causes
+problems on some platforms, namely Solaris.
+From: Martin Walter <mawa@ruf.uni-freiburg.de>
+
+base64_decode() was broken because it would fread() a data chunk, and 
+wasn't always a multiple of 4 bytes, causing the decoding to break.
+
+Changed char => unsigned char in most places in *_encode() to fix problems
+with ISO characters >127.
+
+Added message about PGP support for the 'elm -v' command in args.c.
+
+Support for anonymous remailers. [ALPHA]
+
+Major rewrite of the MIME handling code.  MULTIPART and MESSAGE/RFC822
+messages are parsed the first time they are accessed (eg. viewed/replied)
+and then are ready to use without parsing after that.  See mime_parse.c
+and mime_decode.c for details.
+
+From: Kari Hurtta <Kari.Hurtta@fmi.fi>
+  Put a loop around verify_transmission() so that Elm will no longer just
+  be lame when an error occurs in [include ...] statements.  (Way cool! -Ed)
+
+  Don't allow user read or writes files as attachmentds which he don't heve 
+  access. Notice that elm is (usually) setgid mail.
+
+  Consider if MTA supports 8BITMIME also when encoding attachments.
+
+  Now mail is encoded with quoted-printable if it includes control characters.
+  8BITMIME doesn't help in this case.
+
+  Attachments are checked for 8bit characters, then content-transfer-encoding
+  7bit is not allowed.
+
+  If any of subpart (also attachments) have content-tarnsfer-encoding 8bit
+  or binary it propagates to content-transfer-encoding of top multipart -type.
+
+  Now taken note of MIME's canonical encoding model:
+  - End of line in text -subtypes when they have encoded with BASE64
+    must be encoded as CR LF.
+  - Also CR and LF must be encoded in quoted-printable-encoding if
+    type have binary data (ie. not line oriented).
+  - Done mapping CR LF -> LF when decoding text -subtypes.
+
+  These content-transfer-encoding checks for attachments are also done
+  for [include ...] keywords when sending.
+
+  Now [include ...] also don't need metamail's help (they use same routines
+  than attachments menu).
+
+  Added configuration file option 'noencoding' (see elmrc-info for details
+  on what this does).
+
+----------------
+Changes from ME7
+----------------
+
+Forgot to kill the newline from the PGP output before putting it in to the
+builtin++ pager.  This resulted in messages being displayed double-spaced.
+Ick!
+
+----------------
+Changes from ME6
+----------------
+
+attach_send.c needs <sys/stat.h> on some machines.
+
+Fixed initialization of arrays in attach_send.c because CC isn't quite
+ANSI compliant.  You can only initialize static arrays.
+From: Guy Harris <guy@netapp.com>
+
+Added support for sendmail 8.7 which has support for 8BIT content 
+encoding.  Uses the -B8BITMIME option.
+From: Kari Hurtta <hurtta@dionysos.fmi.fi>
+
+Fixed problem where QUOTED-PRINTABLE messages were not decoded when
+replying if USE_PGP was not defined.
+From: Kari Hurtta <hurtta@dionysos.fmi.fi>
+
+[keyword ...] constructs are no longer broken when using MIME and the
+message is to be encoded QUOTED-PRINTABLE.
+From: Kari Hurtta <hurtta@dionysos.fmi.fi>
+
+Made the QUOTED-PRINTABLE encoding routine more compliant with the
+standard.
+From: Kari Hurtta <hurtta@dionysos.fmi.fi>
+
+Added patch to mark messages NEW in all folders (not just the SPOOL)
+if there is no status: line.
+NOTE: This will probably go away when 2.5 is released.  Instead, they
+will use some sort of "magic" flag to accomplish the same thing.
+
+Added check to make sure that we don't run off the end of outbuf[] in
+base64_decode() in mime.c.
+From: Kurt.Jaeger@rus.uni-stuttgart.de
+
+Fixed type casting problem with BSD 4.4 derivatives in mime.c.
+From: Andrey A. Chernov <ache@astral.msk.su>
+
+KOI8-R added as a valid compat charset.
+From: Andrey A. Chernov <ache@astral.msk.su>
+
+builtin++ now wraps the line at the number of columns on the screen, not
+one character before.  NewLine() apparently "does the right thing" and
+doesn't print an extra line if the last character is in the last column.
+From: Kari Hurtta <Kari.Hurtta@fmi.fi>
+
+The arrow keys now do what they did before instead of controlling the
+bultin++ pager.
+
+builtin++ always clears the screen before displaying the next (or
+previous) page.
+
+The length of a line in the cache for builtin++ is increased to 150
+chars because the old value of 128 didn't work with hpterms with a 
+width of 134 chars.
+
+Fixed problem where Elm would SIGBUS if you tried to use the
+attachments menu in an empty folder.
+From: Kari Hurtta <Kari.Hurtta@fmi.fi>
+
+buf[STRING] was too short in AttachmentMenu() and caused certain Elm to
+bomb out on certain messages which had header lines which were too
+long.
+
+AddLineToCache() can now handle multiline input.  This meant that
+calls to it from metapager had to remove the trailing newlines.
+
+Changed the MIME mini-header format in metapager().
+
+attach_edit() looks more like header_edit() now.  Makes the interface
+more consistent.
+
+lib/getrealname.c needed <ctype.h> on older BSD systems.
+
+Fixed nasty bug where the blank line in between the headers and the body
+of a NEW message would get deleted when resync'ing in the spool folder.
+
+Fixed infinite loop in Configure when run with the -d option.
+
+----------------
+Changes from ME5
+----------------
+
+Added the DoAll() call so that the keyword "all" can be used when tagging
+or deleting.
+
+Decoupled PGP and MIME support such that you don't need MIME to use PGP.
+
+Added lots of error checking code in metapager.c.
+From: guy@netapp.com (Guy Harris).
+
+Fixed bug in quoted_printable_decode() where I did not convert read
+characters to base16.
+
+Added hex() function to protect index_hex from bad values.
+
+metapager() prompts for a command if necessary after running the external
+pager, just as Elm used to do.
+
+Fixed the From: line in write_header_info() where I broke it before.
+
+Fixed bug where the MIME multipart boundary would be written after the
+MMDF separator when copy=ON and the message was being copied to the user's
+desired folder.
+
+Added an "Attachments" menu in verify_transmission() for including 
+attachments.  This works in addition to the current method of using
+"[include ..."
+
+Elm now directly supports writing of BASE64 and QUOTED-PRINTABLE
+encodings.
+
+Changed the return value of match_address() to be zero, since it
+returns an int, and NULL is not always an int.
+From: Michael Shields <shields@tembel.org>
+
+AttachViewer() now uses notplain() to determine whether or not
+metamail is needed to view the message.
+From: Guy Harris <guy@netapp.com>
+
+needs_mmdecode() now takes the integer version of the encoding rather
+than a string.  This avoids parsing the string twice.
+From: Guy Harris <guy@netapp.com>
+
+Elm now checks outgoing messages to see if there are any non-printable
+characters, and if so encodes the message QUOTED-PRINTABLE.
+
+Cleaned up PGP code by moving more code to pgp.c so that other files
+require less modification (ie. the diffs will be simpler).
+
+Fixed showmsg.c so that it passes anything that doesn't require metamail
+to the metapager.  This fixed the problem where messages with no
+Mime-Version header but had a Content-Type header wouldn't get displayed.
+From: Guy Harris <guy@netapp.com>
+
+Fixed bug in dispaddr.c so that if a message is from the user, it will
+always use the TO address to display.
+
+Moved get_real_name() to its own file in lib so it can be used by
+dispaddr.c.
+
+Modified get_real_name() so that if it sees an address like
+"<elkins@aero.org>" it will return "elkins@aero.org" instead of a zero
+length string.
+
+----------------
+Changes from ME4
+----------------
+
+Introduced the "metapager".  It replaces most of the code in showmsg.c.
+It also takes care of all the MIME and PGP functions the bultin++ pager
+used to perform, so that the user doesn't have to use builtin++ in those
+cases.
+
+PGP decrypting function was rewritten using pipes so no temp files are
+required!
+
+The attachment handling code was modified to handle multiline content-type
+headers generate by such mailers as zmailer.  It also looks through each
+modifier in the line intead of just assuming that the boundary field will
+be the first.
+From: guy@netapp.com (Guy Harris)
+
+The "command" status line in the builtin++ pager now floats around instead
+of always being on the bottom.  This was done to facilitate the ^L in
+the pager so it didn't look stupid.
+
+Moved the MIME QUOTED-PRINTABLE and BASE64 decoding code to mime.c so it
+can be shared.
+
+Fixed copy_message() so that it will automatically decode MIME B64 and QP
+encodings.  This means that replies to these types of messages do what the
+user will expect.
+
+----------------
+Changes from ME3
+----------------
+
+Fixed problems in builtin++.c and pgp.c where I used the return value
+from sprintf() as a char* when in SYSV systems it returns an int. 
+This caused Elm to seg fault while decrypting messages.
+
+Configure now asks about PGP support and automatically sets up
+config.h.  Thanks to Ken Cox (kenc@viewlogic.com) for additional help.
+
+PGP messages are now automatically decrypted when replying if
+usepgppass = ON.
+
+Back to using the application/pgp format content-type.  Use
+format=keys-only for send a public key block.
+
+PGPCall() now uses the pgp option +encrypttoself=on instead of tacking
+the username on the end of the TO list.
+
+Fixed problem where any messages after sending a PGP public key had
+the key text included before the included message text.
+
+Use rename() if availible instead of copying the file in PGPCall(). 
+Otherwise use link(), unlink().  This should be a little more
+efficient.
+
+pgp is now called with the -w (wipe) option when encrypting.
+
+builtin++ can now handle text which is QUOTED-PRINTABLE or BASE64
+encoded.
+
+Fixed bug where the last line of messages was not being printed.
+
+Elm will no longer seg fault if you hit return without entering your
+PGP passphrase.
+
+Discovered the +batchmode option for pgp.  This makes dealing with
+incorrect passphrases much easier!
+
+Fixed bug in builtin++ where the last line of pgp messages would be
+printed more than once while at the end of the message under certain
+circumstances.
+
+Changed notplain() in mime.c to support message/* content-type.
+
+Cleaned up the multipart handling by removing the boundary string from
+header_rec to conserve memory.  This is now handled by builtin++ and
+AttachMenu().
+
+builtin++ can now handle multipart/digest correctly.
+
+SaveAttach() no longer needs to call metamail to decode QUOTED-PRINTABLE
+or BASE64 encodings.
+
+-----------------
+Changes from ME2a
+-----------------
+
+Elm will now keep track of your PGP passphrase for your RSA secret key.
+To use this feature, add the line "usepgppass = ON" to your .elmrc.
+There is also a timeout feature which will cause Elm to "forget" your
+passphrase after so many seconds if you don't use it.  The default is
+300 seconds, but this can be changes by setting the variable
+"keeppassfor" in your .elmrc.
+
+The builtin++ pager was completely rewritten (again) so that it can now
+handle normal messages, MIME multipart messages, automatic decryption
+and automatic signature checking for PGP messages.  It also seems to be
+lacking some of the memory allocation bugs that the previous pager had.
+
+Fixed a bug in DynamicArray() which causes DestroyDynamicArray() to
+seg fault if exactly max+n elements were allocated. (weo@recco.de)
+
+----------------
+Changes from ME2
+----------------
+
+It is now possible to delete all "tagged" messages by entering "tagged"
+as the pattern to match after typing <control>-d (^D).
+
+fixed a bug in the limit command where you could not "un"limit the
+display of headers.  Thanks to guy@netapp.com (Guy Harris) for
+pointing it out!
+
+fixed a bug in is_multipart() where the "boundary" token match was
+case-sensitive.

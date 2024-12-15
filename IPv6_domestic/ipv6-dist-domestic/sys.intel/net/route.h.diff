@@ -1,0 +1,135 @@
+*** /usr/src/sys/net/route.h	Fri Feb  3 03:13:15 1995
+--- route.h	Thu Sep 28 14:59:44 1995
+***************
+*** 1,3 ****
+--- 1,10 ----
++ /*
++  * This file has been slightly modified by NRL for use with IPv6.  Search
++  * for 'INET6' to see the ifdef blocks where this happens.
++  *
++  * See the NRL Copyright notice for conditions on the modifications.
++  */
++ 
+  /*	BSDI route.h,v 2.1 1995/02/03 08:13:15 polk Exp	*/
+  
+  /*
+***************
+*** 43,48 ****
+--- 50,61 ----
+   */
+  
+  /*
++  * For purposes of IPv6, many of the changes incorporated into FreeBSD will
++  * be made in here as well.  Unlike FreeBSD, IPv4 will not be modified.
++  * That'll be someone else's job.
++  */
++ 
++ /*
+   * A route consists of a destination address and a reference
+   * to a routing entry.  These are often held by protocols
+   * in their control blocks, e.g. inpcb.
+***************
+*** 93,107 ****
+  #define	rt_key(r)	((struct sockaddr *)((r)->rt_nodes->rn_key))
+  #define	rt_mask(r)	((struct sockaddr *)((r)->rt_nodes->rn_mask))
+  	struct	sockaddr *rt_gateway;	/* value */
+! 	short	rt_flags;		/* up/down?, host/net */
+  	short	rt_refcnt;		/* # held references */
+! 	u_long	rt_use;			/* raw # packets forwarded */
+  	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+  	struct	ifaddr *rt_ifa;		/* the answer: interface to use */
+  	struct	sockaddr *rt_genmask;	/* for generation of cloned routes */
+  	caddr_t	rt_llinfo;		/* pointer to link level info cache */
+  	struct	rt_metrics rt_rmx;	/* metrics used by rx'ing protocols */
+  	struct	rtentry *rt_gwroute;	/* implied entry for gatewayed routes */
+  };
+  
+  /*
+--- 106,130 ----
+  #define	rt_key(r)	((struct sockaddr *)((r)->rt_nodes->rn_key))
+  #define	rt_mask(r)	((struct sockaddr *)((r)->rt_nodes->rn_mask))
+  	struct	sockaddr *rt_gateway;	/* value */
+! #ifdef INET6
+! 	short	rt_filler;              /* For IPv6, flags gets larger. */
+! #else /* INET6 */
+! 	short	rt_flags;               /* Old flags field.  Not big enough. */
+! #endif /* INET6 */
+  	short	rt_refcnt;		/* # held references */
+! #ifdef INET6
+! 	u_long	rt_flags;		/* up/down?, host/net */
+! #else /* INET6 */
+! 	u_long rt_use;                  /* For IPv6, rt_use is in rt_rmx. */
+! #endif /* INET6 */
+  	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+  	struct	ifaddr *rt_ifa;		/* the answer: interface to use */
+  	struct	sockaddr *rt_genmask;	/* for generation of cloned routes */
+  	caddr_t	rt_llinfo;		/* pointer to link level info cache */
+  	struct	rt_metrics rt_rmx;	/* metrics used by rx'ing protocols */
+  	struct	rtentry *rt_gwroute;	/* implied entry for gatewayed routes */
++ 
++ 	struct rtentry *rt_parent;     /* If cloned, parent of this route. */
+  };
+  
+  /*
+***************
+*** 115,120 ****
+--- 138,146 ----
+  	short	rt_flags;		/* up/down?, host/net */
+  	short	rt_refcnt;		/* # held references */
+  	u_long	rt_use;			/* raw # packets forwarded */
++ #ifdef INET6
++ #define rt_use rt_rmx.rmx_pksent
++ #endif /* INET6 */
+  	struct	ifnet *rt_ifp;		/* the answer: interface to use */
+  };
+  
+***************
+*** 134,139 ****
+--- 160,184 ----
+  #define RTF_PROTO2	0x4000		/* protocol specific routing flag */
+  #define RTF_PROTO1	0x8000		/* protocol specific routing flag */
+  
++ /*
++  * FreeBSD flags.  Declared so any new IPv6 flags don't collide.
++  */
++ #define RTF_PRCLONING   0x10000         /* protocol requires cloning */
++ #define RTF_WASCLONED   0x20000         /* route generated through cloning */
++ #define RTF_PROTO3      0x40000         /* protocol specific routing flag */
++ #define RTF_CHAINDELETE 0x80000         /* chain is being deleted (internal) */
++ 
++ /*
++  * New IPv6 routing flags.
++  *
++  * PROTO1 and PROTO2 are used, and defined in netinet6/ipv6_var.h.
++  */
++ #define RTF_TUNNEL      0x100000        /* Tunnelling bit. */
++ /*
++  * The following two bits are only useful when the TUNNEL bit is set.
++  */
++ #define RTF_CRYPT       0x200000        /* Encrypting tunnel bit. */
++ #define RTF_AUTH        0x400000        /* Authenticating tunnel bit. */
+  
+  /*
+   * Routing statistics.
+***************
+*** 153,158 ****
+--- 198,204 ----
+  	u_char	rtm_version;	/* future binary compatibility */
+  	u_char	rtm_type;	/* message type */
+  	u_short	rtm_index;	/* index for associated ifp */
++ 	/* Kebe says as long as sizeof(int) >= 4 bytes, this is cool! */
+  	int	rtm_flags;	/* flags, incl. kern & message, e.g. DONE */
+  	int	rtm_addrs;	/* bitmask identifying sockaddrs in msg */
+  	pid_t	rtm_pid;	/* identify sender */
+***************
+*** 163,168 ****
+--- 209,217 ----
+  	struct	rt_metrics rtm_rmx; /* metrics themselves */
+  };
+  
++ /*
++  * Kebe says the version number may need to change.
++  */
+  #define RTM_VERSION	3	/* Up the ante and ignore older versions */
+  
+  #define RTM_ADD		0x1	/* Add Route */

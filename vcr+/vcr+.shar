@@ -1,0 +1,1658 @@
+#!/bin/sh
+# This is a shell archive (produced by shar 3.49)
+# To extract the files from this archive, save it to a file, remove
+# everything above the "!/bin/sh" line above, and type "sh file_name".
+#
+# made 12/31/1992 18:00 UTC by dws@ssec
+# Source directory /home/dws/vcrplus
+#
+# existing files will NOT be overwritten unless -c is specified
+#
+# This shar contains:
+# length  mode       name
+# ------ ---------- ------------------------------------------
+#   2641 -r-------- readme.txt
+#  13721 -r-------- decode.c
+#  14248 -r-------- encode.c
+#
+# ============= readme.txt ==============
+if test -f 'readme.txt' -a X"$1" != X"-c"; then
+	echo 'x - skipping readme.txt (File already exists)'
+else
+echo 'x - extracting readme.txt (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'readme.txt' &&
+This ZIP archive holds three files
+X      readme.txt
+X      encode.c
+X      decode.c
+X
+X
+decode.c is source program that reads a VCRPLUS code
+number value you find in the newspaper and calculates
+X    date_of_the_tv_program
+X    starting_time_of_the_tv_program
+X    run_length_of_the_tv_program
+X
+X
+encode.c is source program that reads a date, start time,
+and run length then turns them into a VCRPLUS code number
+like the ones in the newspaper.
+X
+X
+X
+There are a few weak spots in these programs.
+X
+X    1.  They only work for the usual kinds of tv shows,
+X           a.  Must start on an even half-hour or hour
+X           b.  Must end on an even half-hour or hour
+X
+X    2.  They only handle VCRPLUS code values that are 1-6 digits
+X           long (these are the ones that start and end on
+X           half-hour or hour boundaries)
+X
+X    3.  Both programs ask for today's date.  They should
+X           instead get this from the computer itself but that is
+X           too much involved with O/S details.
+X
+X    4.  Integers are used everywhere, even for time_of_day.
+X           a.  You need to use a 32-bit computer
+X           b.  So, nine o clock at night, comes out 2100
+X
+X    5.  The VCRPLUS hardware uses "channel mapping" for
+X           channel numbers above 19, and for cable tv stations.
+X           Just decode some VCRPLUS code numbers from each unusual
+X           channel and get the "mapped channel" numbers.  For
+X           example in this area the VCRPLUS people have
+X           mapped cable station ESPN to "channel 22".
+X
+X
+X
+X
+X
+Example 1:  encode    nebraska  deleware  newyork
+X                 This is a (deliberate) error.  You should
+X                 get back a message telling how to do it right:
+X            Usage: encode  month  day  year  channel  starting_time  length_in_minutes
+X
+X
+X
+Example 2:  decode    newyork  nebraska  deleware
+X            Usage: decode  todays_month  todays_day  todays_year   Code_value_in_newspaper
+X
+X
+X
+Example 3:  encode 1 4 93 5 900 30
+X                 You have asked for the VCRPLUS code of a tv show
+X                 on January 4th of 1993, channel number 5, at 9 o clock
+X                 (in the morning), that lasts for 30 minutes.
+X                 The program answers back:
+X                  1   4  93   5  900    30    VCRPLUS_CODE=    19297
+X
+X
+Example 4:  decode 1 2 93 19297
+X                 On January 2nd of 1993 you have asked a question.  You
+X                 want to know "what show does the VCRPLUS code 19297
+X                 represent?"  The program answers back
+X                 Code=  19297     1   4  93   Mapped_channel=  5  Start_time= 0900  Length=  30
+X
+X
+X
+X
+X
+Have some fun with this stuff.
+X
+Otis.
+SHAR_EOF
+chmod 0400 readme.txt ||
+echo 'restore of readme.txt failed'
+Wc_c="`wc -c < 'readme.txt'`"
+test 2641 -eq "$Wc_c" ||
+	echo 'readme.txt: original size 2641, current size' "$Wc_c"
+fi
+# ============= decode.c ==============
+if test -f 'decode.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping decode.c (File already exists)'
+else
+echo 'x - extracting decode.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'decode.c' &&
+#include <stdio.h>
+X
+#define		KEY001	(68150631)
+#define		INVALID	(-987)
+X
+X
+/* function that performs initial scrambling */
+int	mixup(x, y)
+X	int	x, y;
+{
+X	int	i, j, k, sum;
+X
+X	int	a[12], b[12], out[12] ;
+X
+X	/* get the digits of x into a[] */
+X	j = x ;
+X	for(i=0; i<9; i++)
+X	{
+X		k = j % 10;
+X		a[i] = k;
+X		j = (j - k) / 10 ;
+X	}
+X
+X	/* get the digits of y into b[] */
+X	j = y ;
+X	for(i=0; i<9; i++)
+X	{
+X		k = j % 10;
+X		b[i] = k;
+X		j = (j - k) / 10 ;
+X		out[i] = 0;
+X	}
+X
+X
+X	for(i=0; i<=8; i++)
+X	{
+X		for(j=0; j<=8; j++)
+X		{
+X			out[i+j] += (b[j] * a[i]) ;
+X		}
+X	}
+X
+X	j = 1;
+X	sum = 0;
+X	for(i=0; i<=8; i++)
+X	{
+X		sum += j * (out[i] % 10);
+X		j = j * 10 ;
+X	}
+X	return( sum ) ;
+}
+X
+X
+X
+/* first function */
+int	f1(inval)
+X	int	inval ;
+{
+X	int	ndigits, hashval ;
+X	int	pwr ;
+X
+X
+X	ndigits = 0;
+X	pwr = 1;
+X	while(inval >= pwr) { ndigits++; pwr *= 10; }
+X	if(ndigits > 8) printf("\nPANIC: %d has %d digits\n", inval, ndigits);
+X	pwr = pwr / 10 ;
+X
+X	hashval = inval;
+again:	hashval = mixup(hashval, KEY001) % (pwr * 10) ;
+X	if(hashval < pwr) goto again ;
+X
+X	return(hashval);
+}
+X
+X
+X
+X
+/* the 512-entry tables of starting time and pgm duration */
+void	lookup(i, outtime, outdur)
+X	int	i, *outtime, *outdur ;
+{
+X	static	int	start[480], leng[480] ;
+X	static	int	initializer = 0;
+X
+X	int	j, s;
+X
+X	if(initializer == 0) {
+X	initializer = 1;
+X
+X	for(j=0; j<512; j++) { start[j] = leng[j] = INVALID; }
+X
+X	leng[0]   =  30 ;
+X	leng[100] = 120 ;
+X	leng[101] =  90 ;
+X	leng[102] = 120 ;
+X	leng[103] = 120 ;
+X	leng[104] =  90 ;
+X	leng[105] =  90 ;
+X	leng[106] =  30 ;
+X	leng[107] =  30 ;
+X	leng[108] = 120 ;
+X	leng[109] =  90 ;
+X	leng[10]  =  30 ;
+X	leng[110] =  90 ;
+X	leng[111] =  30 ;
+X	leng[112] =  90 ;
+X	leng[113] =  30 ;
+X	leng[114] =  30 ;
+X	leng[115] = 120 ;
+X	leng[116] =  30 ;
+X	leng[117] = 120 ;
+X	leng[118] = 120 ;
+X	leng[119] =  30 ;
+X	leng[11]  =  30 ;
+X	leng[120] =  90 ;
+X	leng[121] =  60 ;
+X	leng[122] =  60 ;
+X	leng[123] =  60 ;
+X	leng[124] = 120 ;
+X	leng[125] =  90 ;
+X	leng[126] =  60 ;
+X	leng[127] =  60 ;
+X	leng[128] =  90 ;
+X	leng[129] = 120 ;
+X	leng[12]  =  30 ;
+X	leng[130] = 120 ;
+X	leng[131] =  90 ;
+X	leng[132] =  60 ;
+X	leng[133] =  60 ;
+X	leng[134] = 120 ;
+X	leng[135] =  90 ;
+X	leng[136] =  90 ;
+X	leng[137] = 120 ;
+X	leng[138] = 120 ;
+X	leng[139] =  60 ;
+X	leng[13]  = 120 ;
+X	leng[140] =  60 ;
+X	leng[141] =  90 ;
+X	leng[142] =  90 ;
+X	leng[143] = 120 ;
+X	leng[144] =  90 ;
+X	leng[145] = 120 ;
+X	leng[146] =  90 ;
+X	leng[147] = 120 ;
+X	leng[148] = 120 ;
+X	leng[149] =  90 ;
+X	leng[14]  =  30 ;
+X	leng[150] = 120 ;
+X	leng[151] =  90 ;
+X	leng[152] =  90 ;
+X	leng[153] =  90 ;
+X	leng[154] =  60 ;
+X	leng[155] =  60 ;
+X	leng[156] = 120 ;
+X	leng[157] =  60 ;
+X	leng[158] =  60 ;
+X	leng[159] =  60 ;
+X	leng[15]  =  30 ;
+X	leng[160] = 120 ;
+X	leng[161] =  60 ;
+X	leng[162] =  90 ;
+X	leng[163] =  90 ;
+X	leng[164] =  60 ;
+X	leng[165] =  90 ;
+X	leng[166] =  90 ;
+X	leng[167] =  60 ;
+X	leng[168] =  90 ;
+X	leng[169] = 120 ;
+X	leng[16]  = 120 ;
+X	leng[170] =  60 ;
+X	leng[171] = 120 ;
+X	leng[172] =  60 ;
+X	leng[173] =  60 ;
+X	leng[174] = 120 ;
+X	leng[175] =  90 ;
+X	leng[176] =  60 ;
+X	leng[177] = 120 ;
+X	leng[178] =  60 ;
+X	leng[179] =  60 ;
+X	leng[17]  = 120 ;
+X	leng[180] =  60 ;
+X	leng[181] =  90 ;
+X	leng[182] =  60 ;
+X	leng[183] = 120 ;
+X	leng[184] =  60 ;
+X	leng[185] =  60 ;
+X	leng[186] =  90 ;
+X	leng[187] =  60 ;
+X	leng[188] =  90 ;
+X	leng[189] = 120 ;
+X	leng[18]  =  60 ;
+X	leng[190] =  90 ;
+X	leng[191] =  90 ;
+X	leng[19]  = 120 ;
+X	leng[1]   =  30 ;
+X	leng[20]  =  60 ;
+X	leng[21]  =  60 ;
+X	leng[22]  =  60 ;
+X	leng[23]  = 120 ;
+X	leng[24]  =  60 ;
+X	leng[25]  = 120 ;
+X	leng[26]  =  30 ;
+X	leng[27]  =  30 ;
+X	leng[28]  =  30 ;
+X	leng[29]  =  60 ;
+X	leng[2]   =  30 ;
+X	leng[30]  =  90 ;
+X	leng[31]  =  30 ;
+X	leng[32]  =  30 ;
+X	leng[33]  =  30 ;
+X	leng[34]  =  30 ;
+X	leng[35]  =  60 ;
+X	leng[36]  =  30 ;
+X	leng[37]  =  60 ;
+X	leng[38]  = 120 ;
+X	leng[39]  =  60 ;
+X	leng[3]   =  30 ;
+X	leng[40]  =  30 ;
+X	leng[41]  =  30 ;
+X	leng[42]  =  30 ;
+X	leng[43]  =  30 ;
+X	leng[44]  = 120 ;
+X	leng[45]  =  30 ;
+X	leng[46]  =  30 ;
+X	leng[47]  =  30 ;
+X	leng[48]  = 120 ;
+X	leng[49]  =  30 ;
+X	leng[4]   =  30 ;
+X	leng[50]  =  60 ;
+X	leng[51]  =  60 ;
+X	leng[52]  =  30 ;
+X	leng[53]  =  30 ;
+X	leng[54]  = 120 ;
+X	leng[55]  =  60 ;
+X	leng[56]  =  60 ;
+X	leng[57]  =  30 ;
+X	leng[58]  = 120 ;
+X	leng[59]  =  30 ;
+X	leng[5]   =  30 ;
+X	leng[60]  = 120 ;
+X	leng[61]  = 120 ;
+X	leng[62]  = 120 ;
+X	leng[63]  =  30 ;
+X	leng[64]  =  90 ;
+X	leng[65]  =  30 ;
+X	leng[66]  =  30 ;
+X	leng[67]  =  30 ;
+X	leng[68]  = 120 ;
+X	leng[69]  =  90 ;
+X	leng[6]   =  30 ;
+X	leng[70]  =  90 ;
+X	leng[71]  =  60 ;
+X	leng[72]  =  90 ;
+X	leng[73]  =  90 ;
+X	leng[74]  =  90 ;
+X	leng[75]  =  90 ;
+X	leng[76]  =  90 ;
+X	leng[77]  =  60 ;
+X	leng[78]  =  90 ;
+X	leng[79]  =  30 ;
+X	leng[7]   =  30 ;
+X	leng[80]  = 120 ;
+X	leng[81]  =  60 ;
+X	leng[82]  =  90 ;
+X	leng[83]  = 120 ;
+X	leng[84]  =  60 ;
+X	leng[85]  =  60 ;
+X	leng[86]  = 120 ;
+X	leng[87]  =  30 ;
+X	leng[88]  =  90 ;
+X	leng[89]  = 120 ;
+X	leng[8]   =  30 ;
+X	leng[90]  = 120 ;
+X	leng[91]  =  90 ;
+X	leng[92]  =  90 ;
+X	leng[93]  =  90 ;
+X	leng[94]  =  90 ;
+X	leng[95]  = 120 ;
+X	leng[96]  =  60 ;
+X	leng[97]  = 120 ;
+X	leng[98]  =  90 ;
+X	leng[99]  =  30 ;
+X	leng[9]   =  60 ;
+X	start[0]   = 1830 ;
+X	start[100] =  330 ;
+X	start[101] = 1500 ;
+X	start[102] = 1500 ;
+X	start[103] = 2300 ;
+X	start[104] = 1900 ;
+X	start[105] =  800 ;
+X	start[106] =  430 ;
+X	start[107] =  300 ;
+X	start[108] = 1330 ;
+X	start[109] = 1000 ;
+X	start[10]  = 1400 ;
+X	start[110] =  700 ;
+X	start[111] =  100 ;
+X	start[112] = 2330 ;
+X	start[113] =  330 ;
+X	start[114] =  200 ;
+X	start[115] = 2230 ;
+X	start[116] =  400 ;
+X	start[117] =  600 ;
+X	start[118] =  400 ;
+X	start[119] =  230 ;
+X	start[11]  = 2030 ;
+X	start[120] =  630 ;
+X	start[121] =   30 ;
+X	start[122] = 2230 ;
+X	start[123] =  100 ;
+X	start[124] =   30 ;
+X	start[125] = 2300 ;
+X	start[126] = 1630 ;
+X	start[127] =  830 ;
+X	start[128] =    0 ;
+X	start[129] = 1930 ;
+X	start[12]  = 1700 ;
+X	start[130] =  930 ;
+X	start[131] = 2030 ;
+X	start[132] =  500 ;
+X	start[133] = 1730 ;
+X	start[134] =  200 ;
+X	start[135] = 1930 ;
+X	start[136] =  930 ;
+X	start[137] = 1730 ;
+X	start[138] =  630 ;
+X	start[139] = 1830 ;
+X	start[13]  = 1600 ;
+X	start[140] = 1430 ;
+X	start[141] = 1130 ;
+X	start[142] =   30 ;
+X	start[143] =  830 ;
+X	start[144] = 1030 ;
+X	start[145] = 1430 ;
+X	start[146] =  100 ;
+X	start[147] =  730 ;
+X	start[148] = 2030 ;
+X	start[149] =  300 ;
+X	start[14]  = 2000 ;
+X	start[150] =  300 ;
+X	start[151] = 1330 ;
+X	start[152] = 1230 ;
+X	start[153] =  230 ;
+X	start[154] = 2130 ;
+X	start[155] = 1130 ;
+X	start[156] = 1830 ;
+X	start[157] =  630 ;
+X	start[158] =  530 ;
+X	start[159] =  200 ;
+X	start[15]  = 1500 ;
+X	start[160] = 1530 ;
+X	start[161] =  730 ;
+X	start[162] =  600 ;
+X	start[163] = 1730 ;
+X	start[164] =  400 ;
+X	start[165] =  730 ;
+X	start[166] =  430 ;
+X	start[167] =  430 ;
+X	start[168] =  130 ;
+X	start[169] = 1230 ;
+X	start[16]  = 2000 ;
+X	start[170] =  130 ;
+X	start[171] =  230 ;
+X	start[172] = 1930 ;
+X	start[173] =  300 ;
+X	start[174] = 1030 ;
+X	start[175] =  200 ;
+X	start[176] =  330 ;
+X	start[177] =  500 ;
+X	start[178] =  930 ;
+X	start[179] =  230 ;
+X	start[17]  = 2100 ;
+X	start[180] = 2030 ;
+X	start[181] =  400 ;
+X	start[182] = 1530 ;
+X	start[183] =  430 ;
+X	start[184] = 1330 ;
+X	start[185] = 1230 ;
+X	start[186] =  330 ;
+X	start[187] = 1030 ;
+X	start[188] =  500 ;
+X	start[189] =  530 ;
+X	start[18]  = 2000 ;
+X	start[190] =  530 ;
+X	start[191] = 1100 ;
+X	start[19]  = 1800 ;
+X	start[1]   = 1600 ;
+X	start[20]  = 1900 ;
+X	start[21]  = 2200 ;
+X	start[22]  = 2100 ;
+X	start[23]  = 1400 ;
+X	start[24]  = 1500 ;
+X	start[25]  = 2200 ;
+X	start[26]  = 1130 ;
+X	start[27]  = 1100 ;
+X	start[28]  = 2300 ;
+X	start[29]  = 1600 ;
+X	start[2]   = 1930 ;
+X	start[30]  = 2100 ;
+X	start[31]  = 2100 ;
+X	start[32]  = 1230 ;
+X	start[33]  = 1330 ;
+X	start[34]  =  930 ;
+X	start[35]  = 1300 ;
+X	start[36]  = 2130 ;
+X	start[37]  = 1200 ;
+X	start[38]  = 1000 ;
+X	start[39]  = 1800 ;
+X	start[3]   = 1630 ;
+X	start[40]  = 2200 ;
+X	start[41]  = 1200 ;
+X	start[42]  =  800 ;
+X	start[43]  =  830 ;
+X	start[44]  = 1700 ;
+X	start[45]  =  900 ;
+X	start[46]  = 2230 ;
+X	start[47]  = 1030 ;
+X	start[48]  = 1900 ;
+X	start[49]  =  730 ;
+X	start[4]   = 1530 ;
+X	start[50]  = 2300 ;
+X	start[51]  = 1000 ;
+X	start[52]  =  700 ;
+X	start[53]  = 1300 ;
+X	start[54]  =  700 ;
+X	start[55]  = 1100 ;
+X	start[56]  = 1400 ;
+X	start[57]  = 1000 ;
+X	start[58]  =  800 ;
+X	start[59]  = 2330 ;
+X	start[5]   = 1730 ;
+X	start[60]  = 1300 ;
+X	start[61]  = 1200 ;
+X	start[62]  =  900 ;
+X	start[63]  =  630 ;
+X	start[64]  = 1800 ;
+X	start[65]  =  600 ;
+X	start[66]  =  530 ;
+X	start[67]  =    0 ;
+X	start[68]  = 2330 ;
+X	start[69]  = 2200 ;
+X	start[6]   = 1800 ;
+X	start[70]  = 1300 ;
+X	start[71]  =  900 ;
+X	start[72]  = 1630 ;
+X	start[73]  = 1600 ;
+X	start[74]  = 1430 ;
+X	start[75]  = 2000 ;
+X	start[76]  = 1830 ;
+X	start[77]  =  600 ;
+X	start[78]  = 1200 ;
+X	start[79]  =   30 ;
+X	start[7]   = 1430 ;
+X	start[80]  =  130 ;
+X	start[81]  =    0 ;
+X	start[82]  = 1700 ;
+X	start[83]  =    0 ;
+X	start[84]  =  800 ;
+X	start[85]  =  700 ;
+X	start[86]  = 2130 ;
+X	start[87]  =  500 ;
+X	start[88]  = 1530 ;
+X	start[89]  = 1130 ;
+X	start[8]   = 1900 ;
+X	start[90]  = 1100 ;
+X	start[91]  =  830 ;
+X	start[92]  = 2230 ;
+X	start[93]  =  900 ;
+X	start[94]  = 2130 ;
+X	start[95]  = 1630 ;
+X	start[96]  = 2330 ;
+X	start[97]  =  100 ;
+X	start[98]  = 1400 ;
+X	start[99]  =  130 ;
+X	start[9]   = 1700 ;
+X
+X
+X	s = 2330;
+X	for(j=192; j<240; j++)
+X	{ start[j] = s; leng[j] = 150; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=240; j<288; j++)
+X	{ start[j] = s; leng[j] = 180; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=288; j<336; j++)
+X	{ start[j] = s; leng[j] = 210; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=336; j<384; j++)
+X	{ start[j] = s; leng[j] = 240; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=384; j<432; j++)
+X	{ start[j] = s; leng[j] = 270; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=432; j<480; j++)
+X	{ start[j] = s; leng[j] = 300; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	} /* end of initializer block */
+X
+X
+X
+X	if((i >= 480) || (i < 0))
+X		printf("\nPANIC, Illegal table index %d\n", i);
+X
+X	fflush(stdout);
+X	*outtime = (start[i]) ;
+X	*outdur = (leng[i]) ;
+X
+X	if( (*outtime == INVALID) || (*outdur == INVALID) )
+X	{
+X		printf("oops, I dont have an entry for index %d\n", i);
+X		fflush(stdout);
+X		*outtime = 0;
+X		*outdur = 0;
+X	}
+}
+X
+X
+X
+X
+X
+X
+void	bit_shuffle(t8c5, t2c1, tval, cval)
+X	int	t8c5, t2c1;
+X	int	*tval, *cval ;
+{
+X	int	tt, cc, b;
+X
+X	tt = 0 ;
+X	cc = 0 ;
+X
+X	/* get t8 thru t3 */
+X	b = 0x00000001 & (t8c5 >> 9) ;
+X	tt += (b << 8);
+X
+X	b = 0x00000001 & (t8c5 >> 7) ;
+X	tt += (b << 7);
+X
+X	b = 0x00000001 & (t8c5 >> 5) ;
+X	tt += (b << 6);
+X
+X	b = 0x00000001 & (t8c5 >> 4) ;
+X	tt += (b << 5);
+X
+X	b = 0x00000001 & (t8c5 >> 3) ;
+X	tt += (b << 4);
+X
+X	b = 0x00000001 & t8c5 ;
+X	tt += (b << 3);
+X
+X
+X	/* get c5 thru c2 */
+X	b = 0x00000001 & (t8c5 >> 8) ;
+X	cc += (b << 5);
+X
+X	b = 0x00000001 & (t8c5 >> 6) ;
+X	cc += (b << 4);
+X
+X	b = 0x00000001 & (t8c5 >> 2) ;
+X	cc += (b << 3);
+X
+X	b = 0x00000001 & (t8c5 >> 1) ;
+X	cc += (b << 2) ;
+X
+X
+X	/* get t2 thru t0 */
+X	b = 0x00000001 & (t2c1 >> 4) ;
+X	tt += (b << 2);
+X
+X	b = 0x00000001 & (t2c1 >> 2) ;
+X	tt += (b << 1);
+X
+X	b = 0x00000001 & t2c1 ;
+X	tt += b;
+X
+X
+X	/* get c1 thru c0 */
+X	b = 0x00000001 & (t2c1 >> 3) ;
+X	cc += (b << 1);
+X
+X	b = 0x00000001 & (t2c1 >> 1) ;
+X	cc += b ;
+X
+X	*tval = tt;
+X	*cval = cc;
+}
+X
+X
+X
+X
+X
+int	map_top(day, year, top, digits)
+X	int	day, year, top, digits ;
+{
+X	int	d2, d1, d0, y, poot ;
+X	int	n2, n1, n0, f3, f2, f1, f0;
+X
+X	y = year % 16 ;
+X	d2 = top / 100 ;
+X	d1 = (top % 100) / 10 ;
+X	d0 = top % 10 ;
+X
+X	f0 = 1;
+X	f1 = (y + 1) % 10;
+X	f2 = ( ((y+1)*(y+2)) / 2 ) % 10 ;
+X	f3 = ( ((y+1)*(y+2)*(y+3)) / 6 ) % 10 ;
+X
+X
+X	if(digits == 1)
+X	{
+X		n0 = ( (d0*f0) + (day*f1) ) % 10 ;
+X		n1 = 0;
+X		n2 = 0;
+X	}
+X
+X	if(digits == 2)
+X	{
+X		n0 = ( (d0*f0) + (d1*f1) + (day*f2) ) % 10 ;
+X		n1 = ( (d1*f0) + (day*f1) ) % 10 ;
+X		n2 = 0;
+X	}
+X
+X	if(digits == 3)
+X	{
+X		n0 = ( (d0*f0) + (d1*f1) + (d2*f2) + (day*f3) ) % 10 ;
+X		n1 = ( (d1*f0) + (d2*f1) + (day*f2) ) % 10 ;
+X		n2 = ( (d2*f0) + (day*f1) ) % 10 ;
+X	}
+X
+X
+X	poot =  (100*n2) + (10*n1) + n0 ;
+X
+X	return( poot );
+}
+X
+X
+X
+X
+X
+void	offset(day, year, top, ofout, topout)
+X	int	day, year, top ;
+X	int	*ofout, *topout ;
+{
+X	int	i, t, tx, off, digits, burp;
+X	int	pwr ;
+X
+X	pwr = 1 ; digits = 0;
+X	while(top >= pwr) { digits++; pwr *= 10; }
+X	pwr = pwr / 10 ;
+X
+X	t = tx = top ;
+X	off = 0;
+X	while(tx > 0) { off += (tx % 10);   tx /= 10; }
+X
+again:
+X	for(i=0; i<=(year%16); i++)
+X		{
+X		burp = ( (map_top(day, i, t, digits)) % 10 ) ;
+X		off += burp ;
+X		}
+X
+X	t = map_top(day, year, t, digits) ;
+X	if(t < pwr) goto again ;
+X
+X
+X	*ofout = (off % 32) ;
+X	*topout = (t) ;
+}
+X
+X
+X
+X
+X
+X
+X
+X
+X
+X
+main(argc, argv)
+X	int	argc;
+X	char	*argv[];
+{
+X	int	newspaper ;
+X	int	s1_out, bot3, top5, quo, rem ;
+X	int	s5_out, mtout, ofout, tval, cval ;
+X	int	date_today, month_today, year_today ;
+X	int	day_out, channel_out;
+X	int	starttime_out, duration_out ;
+X
+X
+X
+X	if(argc == 5) goto clean;
+X
+upchuck:
+X	printf("Usage: %s  todays_month  todays_day  todays_year   Code_value_in_newspaper\n",
+X		argv[0]);
+X	exit(-1) ;
+X
+X
+X
+clean:
+X
+X	month_today = atoi(argv[1]);
+X	date_today = atoi(argv[2]);
+X	year_today = atoi(argv[3]);
+X	newspaper = atoi(argv[4]);
+X
+X	year_today = year_today % 100 ;
+X
+X
+X	if( (month_today>12) || (month_today<1) || (date_today<1) || (date_today>31) )
+X	{ printf("Invalid date\n"); goto upchuck; }
+X
+X	if((newspaper < 1) || (newspaper > 999999))
+X	{ printf("Sorry, I cant process that code value\n  I can only do codes with 6 digits or fewer\n"); goto upchuck; }
+X
+X
+X
+X
+X	ofout = INVALID ;
+X	mtout = INVALID ;
+X
+X	s1_out = f1(newspaper); 
+X	bot3 = s1_out % 1000;
+X	top5 = s1_out / 1000;
+X	quo = (bot3 - 1) / 32 ;
+X	rem = (bot3 - 1) % 32 ;
+X	day_out = quo + 1;
+X
+X	if(newspaper >= 1000)
+X		offset(day_out, year_today, top5, (&ofout), (&mtout)) ;
+X	else { mtout = 0; ofout = 0; }
+X
+X	s5_out = (rem + (day_out*(month_today+1)) + ofout) % 32 ;
+X
+X
+X	bit_shuffle(mtout, s5_out, &tval, &cval);
+X	channel_out = cval + 1;
+X	lookup(tval, (&starttime_out), (&duration_out));
+X
+X	printf("Code= %6d    %2d  %2d  %2d   Mapped_channel= %2d  Start_time= %4d  Length= %3d\n",
+X		newspaper, month_today, day_out, year_today, channel_out, starttime_out, duration_out);
+X
+}
+SHAR_EOF
+chmod 0400 decode.c ||
+echo 'restore of decode.c failed'
+Wc_c="`wc -c < 'decode.c'`"
+test 13721 -eq "$Wc_c" ||
+	echo 'decode.c: original size 13721, current size' "$Wc_c"
+fi
+# ============= encode.c ==============
+if test -f 'encode.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping encode.c (File already exists)'
+else
+echo 'x - extracting encode.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'encode.c' &&
+#include <stdio.h>
+X
+#define		KEY001	(9371)
+#define		INVALID	(-987)
+X
+X
+/* function that performs initial scrambling */
+int	mixup(x, y)
+X	int	x, y;
+{
+X	int	i, j, k, sum;
+X
+X	int	a[12], b[12], out[12] ;
+X
+X	/* get the digits of x into a[] */
+X	j = x ;
+X	for(i=0; i<9; i++)
+X	{
+X		k = j % 10;
+X		a[i] = k;
+X		j = (j - k) / 10 ;
+X	}
+X
+X	/* get the digits of y into b[] */
+X	j = y ;
+X	for(i=0; i<9; i++)
+X	{
+X		k = j % 10;
+X		b[i] = k;
+X		j = (j - k) / 10 ;
+X		out[i] = 0;
+X	}
+X
+X
+X	for(i=0; i<=8; i++)
+X	{
+X		for(j=0; j<=8; j++)
+X		{
+X			out[i+j] += (b[j] * a[i]) ;
+X		}
+X	}
+X
+X	j = 1;
+X	sum = 0;
+X	for(i=0; i<=8; i++)
+X	{
+X		sum += j * (out[i] % 10);
+X		j = j * 10 ;
+X	}
+X	return( sum ) ;
+}
+X
+X
+X
+/* first function */
+int	f1(inval)
+X	int	inval ;
+{
+X	int	ndigits, hashval ;
+X	int	pwr ;
+X
+X
+X	ndigits = 0;
+X	pwr = 1;
+X	while(inval >= pwr) { ndigits++; pwr *= 10; }
+X	if(ndigits > 8) printf("\nPANIC: %d has %d digits\n", inval, ndigits);
+X	pwr = pwr / 10 ;
+X
+X	hashval = inval;
+again:	hashval = mixup(hashval, KEY001) % (pwr * 10) ;
+X	if(hashval < pwr) goto again ;
+X
+X	return(hashval);
+}
+X
+X
+X
+X
+/* the 512-entry tables of starting time and pgm duration */
+int	lookup(stime, durat)
+X	int	stime, durat ;
+{
+X	static	int	start[480], leng[480] ;
+X	static	int	initializer = 0;
+X
+X	int	s, j;
+X
+X	if(initializer == 0) {
+X	initializer = 1;
+X
+X	for(j=0; j<512; j++) { start[j] = leng[j] = INVALID; }
+X
+X	leng[0]   =  30 ;
+X	leng[100] = 120 ;
+X	leng[101] =  90 ;
+X	leng[102] = 120 ;
+X	leng[103] = 120 ;
+X	leng[104] =  90 ;
+X	leng[105] =  90 ;
+X	leng[106] =  30 ;
+X	leng[107] =  30 ;
+X	leng[108] = 120 ;
+X	leng[109] =  90 ;
+X	leng[10]  =  30 ;
+X	leng[110] =  90 ;
+X	leng[111] =  30 ;
+X	leng[112] =  90 ;
+X	leng[113] =  30 ;
+X	leng[114] =  30 ;
+X	leng[115] = 120 ;
+X	leng[116] =  30 ;
+X	leng[117] = 120 ;
+X	leng[118] = 120 ;
+X	leng[119] =  30 ;
+X	leng[11]  =  30 ;
+X	leng[120] =  90 ;
+X	leng[121] =  60 ;
+X	leng[122] =  60 ;
+X	leng[123] =  60 ;
+X	leng[124] = 120 ;
+X	leng[125] =  90 ;
+X	leng[126] =  60 ;
+X	leng[127] =  60 ;
+X	leng[128] =  90 ;
+X	leng[129] = 120 ;
+X	leng[12]  =  30 ;
+X	leng[130] = 120 ;
+X	leng[131] =  90 ;
+X	leng[132] =  60 ;
+X	leng[133] =  60 ;
+X	leng[134] = 120 ;
+X	leng[135] =  90 ;
+X	leng[136] =  90 ;
+X	leng[137] = 120 ;
+X	leng[138] = 120 ;
+X	leng[139] =  60 ;
+X	leng[13]  = 120 ;
+X	leng[140] =  60 ;
+X	leng[141] =  90 ;
+X	leng[142] =  90 ;
+X	leng[143] = 120 ;
+X	leng[144] =  90 ;
+X	leng[145] = 120 ;
+X	leng[146] =  90 ;
+X	leng[147] = 120 ;
+X	leng[148] = 120 ;
+X	leng[149] =  90 ;
+X	leng[14]  =  30 ;
+X	leng[150] = 120 ;
+X	leng[151] =  90 ;
+X	leng[152] =  90 ;
+X	leng[153] =  90 ;
+X	leng[154] =  60 ;
+X	leng[155] =  60 ;
+X	leng[156] = 120 ;
+X	leng[157] =  60 ;
+X	leng[158] =  60 ;
+X	leng[159] =  60 ;
+X	leng[15]  =  30 ;
+X	leng[160] = 120 ;
+X	leng[161] =  60 ;
+X	leng[162] =  90 ;
+X	leng[163] =  90 ;
+X	leng[164] =  60 ;
+X	leng[165] =  90 ;
+X	leng[166] =  90 ;
+X	leng[167] =  60 ;
+X	leng[168] =  90 ;
+X	leng[169] = 120 ;
+X	leng[16]  = 120 ;
+X	leng[170] =  60 ;
+X	leng[171] = 120 ;
+X	leng[172] =  60 ;
+X	leng[173] =  60 ;
+X	leng[174] = 120 ;
+X	leng[175] =  90 ;
+X	leng[176] =  60 ;
+X	leng[177] = 120 ;
+X	leng[178] =  60 ;
+X	leng[179] =  60 ;
+X	leng[17]  = 120 ;
+X	leng[180] =  60 ;
+X	leng[181] =  90 ;
+X	leng[182] =  60 ;
+X	leng[183] = 120 ;
+X	leng[184] =  60 ;
+X	leng[185] =  60 ;
+X	leng[186] =  90 ;
+X	leng[187] =  60 ;
+X	leng[188] =  90 ;
+X	leng[189] = 120 ;
+X	leng[18]  =  60 ;
+X	leng[190] =  90 ;
+X	leng[191] =  90 ;
+X	leng[19]  = 120 ;
+X	leng[1]   =  30 ;
+X	leng[20]  =  60 ;
+X	leng[21]  =  60 ;
+X	leng[22]  =  60 ;
+X	leng[23]  = 120 ;
+X	leng[24]  =  60 ;
+X	leng[25]  = 120 ;
+X	leng[26]  =  30 ;
+X	leng[27]  =  30 ;
+X	leng[28]  =  30 ;
+X	leng[29]  =  60 ;
+X	leng[2]   =  30 ;
+X	leng[30]  =  90 ;
+X	leng[31]  =  30 ;
+X	leng[32]  =  30 ;
+X	leng[33]  =  30 ;
+X	leng[34]  =  30 ;
+X	leng[35]  =  60 ;
+X	leng[36]  =  30 ;
+X	leng[37]  =  60 ;
+X	leng[38]  = 120 ;
+X	leng[39]  =  60 ;
+X	leng[3]   =  30 ;
+X	leng[40]  =  30 ;
+X	leng[41]  =  30 ;
+X	leng[42]  =  30 ;
+X	leng[43]  =  30 ;
+X	leng[44]  = 120 ;
+X	leng[45]  =  30 ;
+X	leng[46]  =  30 ;
+X	leng[47]  =  30 ;
+X	leng[48]  = 120 ;
+X	leng[49]  =  30 ;
+X	leng[4]   =  30 ;
+X	leng[50]  =  60 ;
+X	leng[51]  =  60 ;
+X	leng[52]  =  30 ;
+X	leng[53]  =  30 ;
+X	leng[54]  = 120 ;
+X	leng[55]  =  60 ;
+X	leng[56]  =  60 ;
+X	leng[57]  =  30 ;
+X	leng[58]  = 120 ;
+X	leng[59]  =  30 ;
+X	leng[5]   =  30 ;
+X	leng[60]  = 120 ;
+X	leng[61]  = 120 ;
+X	leng[62]  = 120 ;
+X	leng[63]  =  30 ;
+X	leng[64]  =  90 ;
+X	leng[65]  =  30 ;
+X	leng[66]  =  30 ;
+X	leng[67]  =  30 ;
+X	leng[68]  = 120 ;
+X	leng[69]  =  90 ;
+X	leng[6]   =  30 ;
+X	leng[70]  =  90 ;
+X	leng[71]  =  60 ;
+X	leng[72]  =  90 ;
+X	leng[73]  =  90 ;
+X	leng[74]  =  90 ;
+X	leng[75]  =  90 ;
+X	leng[76]  =  90 ;
+X	leng[77]  =  60 ;
+X	leng[78]  =  90 ;
+X	leng[79]  =  30 ;
+X	leng[7]   =  30 ;
+X	leng[80]  = 120 ;
+X	leng[81]  =  60 ;
+X	leng[82]  =  90 ;
+X	leng[83]  = 120 ;
+X	leng[84]  =  60 ;
+X	leng[85]  =  60 ;
+X	leng[86]  = 120 ;
+X	leng[87]  =  30 ;
+X	leng[88]  =  90 ;
+X	leng[89]  = 120 ;
+X	leng[8]   =  30 ;
+X	leng[90]  = 120 ;
+X	leng[91]  =  90 ;
+X	leng[92]  =  90 ;
+X	leng[93]  =  90 ;
+X	leng[94]  =  90 ;
+X	leng[95]  = 120 ;
+X	leng[96]  =  60 ;
+X	leng[97]  = 120 ;
+X	leng[98]  =  90 ;
+X	leng[99]  =  30 ;
+X	leng[9]   =  60 ;
+X	start[0]   = 1830 ;
+X	start[100] =  330 ;
+X	start[101] = 1500 ;
+X	start[102] = 1500 ;
+X	start[103] = 2300 ;
+X	start[104] = 1900 ;
+X	start[105] =  800 ;
+X	start[106] =  430 ;
+X	start[107] =  300 ;
+X	start[108] = 1330 ;
+X	start[109] = 1000 ;
+X	start[10]  = 1400 ;
+X	start[110] =  700 ;
+X	start[111] =  100 ;
+X	start[112] = 2330 ;
+X	start[113] =  330 ;
+X	start[114] =  200 ;
+X	start[115] = 2230 ;
+X	start[116] =  400 ;
+X	start[117] =  600 ;
+X	start[118] =  400 ;
+X	start[119] =  230 ;
+X	start[11]  = 2030 ;
+X	start[120] =  630 ;
+X	start[121] =   30 ;
+X	start[122] = 2230 ;
+X	start[123] =  100 ;
+X	start[124] =   30 ;
+X	start[125] = 2300 ;
+X	start[126] = 1630 ;
+X	start[127] =  830 ;
+X	start[128] =    0 ;
+X	start[129] = 1930 ;
+X	start[12]  = 1700 ;
+X	start[130] =  930 ;
+X	start[131] = 2030 ;
+X	start[132] =  500 ;
+X	start[133] = 1730 ;
+X	start[134] =  200 ;
+X	start[135] = 1930 ;
+X	start[136] =  930 ;
+X	start[137] = 1730 ;
+X	start[138] =  630 ;
+X	start[139] = 1830 ;
+X	start[13]  = 1600 ;
+X	start[140] = 1430 ;
+X	start[141] = 1130 ;
+X	start[142] =   30 ;
+X	start[143] =  830 ;
+X	start[144] = 1030 ;
+X	start[145] = 1430 ;
+X	start[146] =  100 ;
+X	start[147] =  730 ;
+X	start[148] = 2030 ;
+X	start[149] =  300 ;
+X	start[14]  = 2000 ;
+X	start[150] =  300 ;
+X	start[151] = 1330 ;
+X	start[152] = 1230 ;
+X	start[153] =  230 ;
+X	start[154] = 2130 ;
+X	start[155] = 1130 ;
+X	start[156] = 1830 ;
+X	start[157] =  630 ;
+X	start[158] =  530 ;
+X	start[159] =  200 ;
+X	start[15]  = 1500 ;
+X	start[160] = 1530 ;
+X	start[161] =  730 ;
+X	start[162] =  600 ;
+X	start[163] = 1730 ;
+X	start[164] =  400 ;
+X	start[165] =  730 ;
+X	start[166] =  430 ;
+X	start[167] =  430 ;
+X	start[168] =  130 ;
+X	start[169] = 1230 ;
+X	start[16]  = 2000 ;
+X	start[170] =  130 ;
+X	start[171] =  230 ;
+X	start[172] = 1930 ;
+X	start[173] =  300 ;
+X	start[174] = 1030 ;
+X	start[175] =  200 ;
+X	start[176] =  330 ;
+X	start[177] =  500 ;
+X	start[178] =  930 ;
+X	start[179] =  230 ;
+X	start[17]  = 2100 ;
+X	start[180] = 2030 ;
+X	start[181] =  400 ;
+X	start[182] = 1530 ;
+X	start[183] =  430 ;
+X	start[184] = 1330 ;
+X	start[185] = 1230 ;
+X	start[186] =  330 ;
+X	start[187] = 1030 ;
+X	start[188] =  500 ;
+X	start[189] =  530 ;
+X	start[18]  = 2000 ;
+X	start[190] =  530 ;
+X	start[191] = 1100 ;
+X	start[19]  = 1800 ;
+X	start[1]   = 1600 ;
+X	start[20]  = 1900 ;
+X	start[21]  = 2200 ;
+X	start[22]  = 2100 ;
+X	start[23]  = 1400 ;
+X	start[24]  = 1500 ;
+X	start[25]  = 2200 ;
+X	start[26]  = 1130 ;
+X	start[27]  = 1100 ;
+X	start[28]  = 2300 ;
+X	start[29]  = 1600 ;
+X	start[2]   = 1930 ;
+X	start[30]  = 2100 ;
+X	start[31]  = 2100 ;
+X	start[32]  = 1230 ;
+X	start[33]  = 1330 ;
+X	start[34]  =  930 ;
+X	start[35]  = 1300 ;
+X	start[36]  = 2130 ;
+X	start[37]  = 1200 ;
+X	start[38]  = 1000 ;
+X	start[39]  = 1800 ;
+X	start[3]   = 1630 ;
+X	start[40]  = 2200 ;
+X	start[41]  = 1200 ;
+X	start[42]  =  800 ;
+X	start[43]  =  830 ;
+X	start[44]  = 1700 ;
+X	start[45]  =  900 ;
+X	start[46]  = 2230 ;
+X	start[47]  = 1030 ;
+X	start[48]  = 1900 ;
+X	start[49]  =  730 ;
+X	start[4]   = 1530 ;
+X	start[50]  = 2300 ;
+X	start[51]  = 1000 ;
+X	start[52]  =  700 ;
+X	start[53]  = 1300 ;
+X	start[54]  =  700 ;
+X	start[55]  = 1100 ;
+X	start[56]  = 1400 ;
+X	start[57]  = 1000 ;
+X	start[58]  =  800 ;
+X	start[59]  = 2330 ;
+X	start[5]   = 1730 ;
+X	start[60]  = 1300 ;
+X	start[61]  = 1200 ;
+X	start[62]  =  900 ;
+X	start[63]  =  630 ;
+X	start[64]  = 1800 ;
+X	start[65]  =  600 ;
+X	start[66]  =  530 ;
+X	start[67]  =    0 ;
+X	start[68]  = 2330 ;
+X	start[69]  = 2200 ;
+X	start[6]   = 1800 ;
+X	start[70]  = 1300 ;
+X	start[71]  =  900 ;
+X	start[72]  = 1630 ;
+X	start[73]  = 1600 ;
+X	start[74]  = 1430 ;
+X	start[75]  = 2000 ;
+X	start[76]  = 1830 ;
+X	start[77]  =  600 ;
+X	start[78]  = 1200 ;
+X	start[79]  =   30 ;
+X	start[7]   = 1430 ;
+X	start[80]  =  130 ;
+X	start[81]  =    0 ;
+X	start[82]  = 1700 ;
+X	start[83]  =    0 ;
+X	start[84]  =  800 ;
+X	start[85]  =  700 ;
+X	start[86]  = 2130 ;
+X	start[87]  =  500 ;
+X	start[88]  = 1530 ;
+X	start[89]  = 1130 ;
+X	start[8]   = 1900 ;
+X	start[90]  = 1100 ;
+X	start[91]  =  830 ;
+X	start[92]  = 2230 ;
+X	start[93]  =  900 ;
+X	start[94]  = 2130 ;
+X	start[95]  = 1630 ;
+X	start[96]  = 2330 ;
+X	start[97]  =  100 ;
+X	start[98]  = 1400 ;
+X	start[99]  =  130 ;
+X	start[9]   = 1700 ;
+X
+X
+X	s = 2330;
+X	for(j=192; j<240; j++)
+X	{ start[j] = s; leng[j] = 150; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=240; j<288; j++)
+X	{ start[j] = s; leng[j] = 180; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=288; j<336; j++)
+X	{ start[j] = s; leng[j] = 210; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=336; j<384; j++)
+X	{ start[j] = s; leng[j] = 240; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=384; j<432; j++)
+X	{ start[j] = s; leng[j] = 270; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	s = 2330;
+X	for(j=432; j<480; j++)
+X	{ start[j] = s; leng[j] = 300; if(0==(j%2)) s-=30; else s-=70; }
+X
+X	} /* end of initializer block */
+X
+X
+X	for(j=0; j<481; j++)
+X	{
+X		if(stime == start[j]) {
+X			if(durat == leng[j]) break ;
+X			}
+X	}
+X
+X	if( j >= 480 )
+X	{
+X		printf("oops, I dont have an entry for index %d\n", j);
+X		fflush(stdout);
+X		j = 0;
+X	}
+X
+X	return(j);
+}
+X
+X
+X
+X
+X
+X
+void	interleave(tblidx, cval, t8c5, t2c1)
+X	int	tblidx, cval ;
+X	int	*t8c5, *t2c1;
+{
+X	int	small, big, b;
+X
+X	small = 0;
+X	big = 0;
+X
+X	/* build t2c1 */
+X	b = 0x00000001 & (tblidx >> 2) ;
+X	small += (b << 4);
+X
+X	b = 0x00000001 & (tblidx >> 1) ;
+X	small += (b << 2);
+X
+X	b = 0x00000001 & tblidx ;
+X	small += b;
+X
+X	b = 0x00000001 & (cval >> 1) ;
+X	small += (b << 3);
+X
+X	b = 0x00000001 & cval ;
+X	small += (b << 1);
+X
+X
+X	/* build t8c5 */
+X	b = 0x00000001 & (tblidx >> 8) ;
+X	big += (b << 9);
+X
+X	b = 0x00000001 & (tblidx >> 7) ;
+X	big += (b << 7);
+X
+X	b = 0x00000001 & (tblidx >> 6) ;
+X	big += (b << 5);
+X
+X	b = 0x00000001 & (tblidx >> 5) ;
+X	big += (b << 4);
+X
+X	b = 0x00000001 & (tblidx >> 4) ;
+X	big += (b << 3);
+X
+X	b = 0x00000001 & (tblidx >> 3) ;
+X	big += b;
+X
+X	b = 0x00000001 & (cval >> 5) ;
+X	big += (b << 8);
+X
+X	b = 0x00000001 & (cval >> 4) ;
+X	big += (b << 6);
+X
+X	b = 0x00000001 & (cval >> 3) ;
+X	big += (b << 2);
+X
+X	b = 0x00000001 & (cval >> 2) ;
+X	big += (b << 1);
+X
+X
+X	*t8c5 = big;
+X	*t2c1 = small;
+}
+X
+X
+X
+X
+X
+int	map_top(day, year, top, digits)
+X	int	day, year, top, digits ;
+{
+X	int	d2, d1, d0, y, poot ;
+X	int	n2, n1, n0, f3, f2, f1, f0;
+X
+X	y = year % 16 ;
+X	d2 = top / 100 ;
+X	d1 = (top % 100) / 10 ;
+X	d0 = top % 10 ;
+X
+X	f0 = 1;
+X	f1 = (y + 1) % 10;
+X	f2 = ( ((y+1)*(y+2)) / 2 ) % 10 ;
+X	f3 = ( ((y+1)*(y+2)*(y+3)) / 6 ) % 10 ;
+X
+X
+X	if(digits == 1)
+X	{
+X		n0 = ( (d0*f0) + (day*f1) ) % 10 ;
+X		n1 = 0;
+X		n2 = 0;
+X	}
+X
+X	if(digits == 2)
+X	{
+X		n0 = ( (d0*f0) + (d1*f1) + (day*f2) ) % 10 ;
+X		n1 = ( (d1*f0) + (day*f1) ) % 10 ;
+X		n2 = 0;
+X	}
+X
+X	if(digits == 3)
+X	{
+X		n0 = ( (d0*f0) + (d1*f1) + (d2*f2) + (day*f3) ) % 10 ;
+X		n1 = ( (d1*f0) + (d2*f1) + (day*f2) ) % 10 ;
+X		n2 = ( (d2*f0) + (day*f1) ) % 10 ;
+X	}
+X
+X
+X	poot =  (100*n2) + (10*n1) + n0 ;
+X
+X	return( poot );
+}
+X
+X
+X
+X
+X
+void	offset(day, year, top, ofout, topout)
+X	int	day, year, top ;
+X	int	*ofout, *topout ;
+{
+X	int	i, t, tx, off, digits, burp;
+X	int	pwr ;
+X
+X
+X	pwr = 1 ; digits = 0;
+X	while(top >= pwr) { digits++; pwr *= 10; }
+X	pwr = pwr / 10 ;
+X
+X	t = tx = top ;
+X	off = 0;
+X	while(tx > 0) { off += (tx % 10);   tx /= 10; }
+X
+again:
+X	for(i=0; i<=(year%16); i++)
+X		{
+X		burp = ( (map_top(day, i, t, digits)) % 10 ) ;
+X		off += burp ;
+X		}
+X
+X	t = map_top(day, year, t, digits) ;
+X	if(t < pwr) goto again ;
+X
+X
+X	*ofout = (off % 32) ;
+X	*topout = (t) ;
+}
+X
+X
+X
+X
+X
+X
+X
+X
+X
+X
+main(argc, argv)
+X	int	argc;
+X	char	*argv[];
+{
+X	int	j, doneflag, trailers, tblidx ;
+X	int	s1_out, bot3, top5, quo, rem, newspaper ;
+X	int	s4_out, s5_out, ofout, cval ;
+X	int	month, day, year, channel, starttime, duration ;
+X
+X
+X
+X	if(argc == 7) goto clean;
+X
+upchuck:
+X	printf("Usage: %s  month  day  year  channel  starting_time  length_in_minutes\n",
+X		argv[0]);
+X	exit(-1) ;
+X
+X
+X
+clean:
+X
+X	month = atoi(argv[1]);
+X	day = atoi(argv[2]);
+X	year = atoi(argv[3]);
+X	channel = atoi(argv[4]);
+X	starttime = atoi(argv[5]);
+X	duration = atoi(argv[6]);
+X
+X	year = year % 100 ;
+X
+X	if( (month>12) || (month<1) || (day<1) || (day>31) )
+X	{ printf("Invalid date\n"); goto upchuck; }
+X
+X	if( (channel<1) || (channel>48) )
+X	{ printf("Invalid channel number\n"); goto upchuck; }
+X
+X	trailers = starttime % 100;
+X	if((trailers != 0) && (trailers != 30))
+X	{ printf("Invalid start time\n"); goto upchuck; }
+X
+X	if((starttime < 0) || (starttime > 2330))
+X	{ printf("Sorry, I cant process that starting time\n"); goto upchuck; }
+X
+X	trailers = duration % 30;
+X	if((trailers!=0) || (duration<30) || (duration>300))
+X	{ printf("Sorry, I cant process that program length\n"); goto upchuck; }
+X
+X
+X	/* get the  t  bits and the  c  bits */
+X	cval = channel - 1 ;
+X	tblidx = lookup(starttime, duration);
+X
+X	/* from them infer what must have been step 4 & step 5 results */
+X	interleave(tblidx, cval, (&s4_out), (&s5_out)) ;
+X
+X	/* find the smallest unmapped_top giving correct mapped_top */
+X	top5 = 0;
+X	doneflag = 0;
+X
+X	/* if the mapped_top is zero then top and offset are zero */
+X	if(s4_out == 0) { top5 = 0; ofout = 0; doneflag = 1; }
+X
+X	while(doneflag == 0)
+X	{
+X		top5++;
+X		offset(day, year, top5, (&ofout), (&j)) ;
+X		if(j == s4_out) doneflag = 1;
+X	}
+X
+X	/* have two of the three inputs to step 5; determine the rem */
+X	for(rem=0; rem<32; rem++)
+X	{
+X		j = (rem + (day*(month+1)) + ofout) % 32 ;
+X		if(j == s5_out) break ;
+X	}
+X	quo = (day - 1);
+X
+X
+X	/* assemble the output of step 1 */
+X	bot3 = 1 + rem + (32 * quo) ;
+X	s1_out = bot3 + (1000 * top5) ;
+X
+X	/* invert the mixing */
+X	newspaper = f1(s1_out);
+X
+X	printf(" %2d  %2d  %2d %3d  %4d  %3d    VCRPLUS_CODE= %8d\n",
+X		month, day, year, channel, starttime, duration, newspaper);
+X
+}
+SHAR_EOF
+chmod 0400 encode.c ||
+echo 'restore of encode.c failed'
+Wc_c="`wc -c < 'encode.c'`"
+test 14248 -eq "$Wc_c" ||
+	echo 'encode.c: original size 14248, current size' "$Wc_c"
+fi
+exit 0

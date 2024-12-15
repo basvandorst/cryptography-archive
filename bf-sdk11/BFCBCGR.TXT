@@ -1,0 +1,296 @@
+
+
+
+
+
+
+			Hinweise und Erlaeuterungen
+
+                            zu Blowfish und CBC
+
+
+
+
+
+
+1. Einleitung
+~~~~~~~~~~~~~
+
+Die Cryptengine stellt den wichtigsten Teil in einem Verschluesselungsprogramm
+dar. Durch sie werden Daten im RAM ver- oder entschluesselt.
+Sie wurde komplett in 386-Assembler entwickelt um eine maximale Bearbeitungs-
+geschwindigkeit zu erzielen. Durch ein klares Funktionsinterface lassen sich
+leicht Schnittstellen zu Hochsprachen festlegen. Mitgeliefert wird bereits
+eine komplett einsatzbereite Turbo-Pascal-Unit, eine INCLUDE-Datei fuer
+Assemblerprogramme sowie eine Headerdatei fuer C(++) Implementationen.
+
+
+
+2. Etwas Theorie...
+~~~~~~~~~~~~~~~~~~~
+
+Sinnvolle Datenverschluesslung funktioniert natuerlich nur dann,
+wenn der verwendete Algorithmus sicher und schnell genug ist.
+Diese beiden Voraussetzungen erfuellt der Blowfish-Algorithmus von Bruce
+Schneier. Er wurde von ihm im Fruehjahr 1994 zum ersten Mal in der
+Programmiererzeitschrift DDJ vorgestellt, wobei gleichzeitig zu einem
+Wettbewerb aufgerufen wurde, diesen neuen Algorithmus auf Schwachstellen
+hin zu untersuchen bzw. zu knacken. In der Septemberausgabe 1995 kam man
+dann zum Ergebnis, dass Blowfish in seiner jetztigen Form ungebrochen ist
+und es voraussichtlich auch bleiben wird.
+
+Was macht Blowfish so attraktiv ?
+Neben der Sicherheit, die sowieso jedes Verschluesslungsverfahren
+gewaehrleisten muss, ist der grosse Vorteil die hohe Geschwindigkeit.
+Dies resultiert aus zwei Gruenden. Zum ersten muss im Algorithmus kein
+einziger Sprung durchgefuehrt werden, und zum zweiten arbeitet er intern
+mit 32bit-Werten. Beide Faktoren passen genau zu den Leistungsstaerken
+moderner Mikroprozessoren, wie z.B. i80486 oder Pentium.
+Blowfish ist in seinem Aufbau relativ unkompliziert. Wer die genaue
+Wirkungsweise nachvollziehen will lesen bitte die oben genannte Ausgaben
+der DDJ, oder das Buch "Applied Cryptogrphy, 2nd Edition" von Bruce Scheier.
+
+Kurz beschrieben funktioniert der Algorithmus folgendermassen :
+Blowfish definiert 2 Datenstrukturen, die sogenannten Boxen. Die P-Boxen
+sind ein eindimensionales Feld mit 18 32bit-Werten, die S-Boxen ein
+zweidimensionales Feld mit 4 x 256 32bit-Werten. In Pascal formuliert
+sehen diese etwa so aus :
+
+	pbox : array[1..18] of Longint;
+	sbox : array[1..4, 1..256] of Longint;
+
+Ueber deren Inhalte spaeter naeheres.
+Verschluesselt mit Blowfish auf folgende Art und Weise : uebergeben
+wird ein 64bit-Datenelement (= 8 Bytes). Dieser wird zelegt in zwei Teile,
+nennen wir sie einmal DataLeft und DataRight, wobei DataLeft das hoeher-
+und DataRight das niederwertige 32bit-Wort des 64bit-Datenelements ist.
+Beim Verschluesseln geht mal nun folgendermassen vor :
+
+	1:	for i:= 1 to 16 do begin
+	2:	  DataLeft := DataLeft	  XOR pbox[i];
+	3:	  DataRight:= F(DataLeft) XOR DataRight;
+	4:	  Swap(DataLeft, DataRight);
+	5:	end;
+
+In jedem Schleifendurchgang wird zuerst DataLeft mit einem Eintrag aus
+den P-Boxen XORrt (2). Danach wird DataRight mit dem Ergebnis der Blowfish-
+funktion von DataLeft XORrt (3). Zuletzt vertauscht man die Inhalte von
+DataLeft und DataRigtht miteinander (4).
+Nach der Schleife sind noch zwei weitere Schritte noetig :
+
+	6:	Swap(DataLeft, DataRight);
+	7:	DataRight:= pbox[17] XOR DataRight;
+	8:	DataLeft := pbox[18] XOR DataLeft;
+
+Nun koennen DataLeft und DataRight wieder zu einem 64bit-Datenelement zusammen-
+gefasst werden. Da die wenigsten Prozessoren aber heute schon 64bit-Integer
+verarbeitet koennen uebergibt man der Ver- bzw. Entschluesselungsprozedur
+die beiden 32bit-Haelften direkt.
+Die Entschluesselungsroutine funktioniert aehnlich, nur werden hier die
+P-Boxen von "hinten nach vorn" benutzt :
+
+	1:	for i:= 18 downto 3 do begin
+	2:	  DataLeft := DataLeft	  XOR pbox[i];
+	3:	  DataRight:= F(DataLeft) XOR DataRight;
+	4:	  Swap(DataLeft, DataRight);
+	5:	end;
+	6:	Swap(DataLeft, DataRight);
+	7:	DataRight:= pbox[2] XOR DataRight;
+	8:	DataLeft := pbox[1] XOR DataLeft;
+
+Zu erlaeutern bleibt jetzt noch die Blowfish-Funktion F.
+Wie man sieht erwartet sie als Parameter einen 32bit-Wert und gibt einen
+solchen auch zurueck. Bei ihr kommen nun die S-Boxen ins Spiel. Der
+uebergebene 32bit-Wert wird in 4 Bytes aufgespalten, die ihrerseits
+nun Indexe auf die die 4 S-Boxen-Felder darstellen. Die jeweiligen S-Boxen
+werden dann in einer Funktion zu dem neuen 32bit-Wert zusammengefuegt
+Nennen wir die 4 Bytes a, b, c und d, den Eingabewert Input und den
+Rueckgabewert einfach F, dann sieht das in Pascal so aus :
+
+	1:	d    := (Input AND $000000ff) + 1;
+	2:	Input:= Input SHR 8;
+	3:	c    := (Input AND $000000ff) + 1;
+	4:	Input:= Input SHR 8;
+	5:	b    := (Input AND $000000ff) + 1;
+	6:	Input:= Input SHR 8;
+	7:	a    := (Input AND $000000ff)+1;
+	8:	F    := ((sbox[1,a] + (sbox[2,b] AND $0000001f)) XOR sbox[3,c])
+			+ ( sbox[4,d] AND $0000001f);
+
+Man erkennt durch die vielen Binaeroperatoren SHR, AND und XOR, dass Blowfish
+gerade dazu praedestiniert ist in Assembler geschrieben zu werden.
+Bevor jedoch die Ver- und Entschluesselungsroutinen verwendet werden
+koennen muessen die Boxen initialisiert werden.
+Zuerst werden die P- und S-Boxen mit Zufallswerten gefuellt. Diese
+Zufallswerte werden einmal erzeugt und dann immer wieder benutzt.
+Der Autor von Blowfish, Bruce Schneier, verwendet dazu die hexadezimalen
+Werte der Kreiszahl PI. Der Vorteil ist, dass bei Verlust der Binaerdatei
+mit den Zufallswerten eben jene neu berechnet bzw. erzeugt werden kann.
+Es bleibt dem Programmierer ueberlassen, ob er die Zufallsdaten fest
+im Code verankert oder sie dynamisch zur Laufzeit nachlaedt.
+Blowfish akzeptiert Schluessel bis zu einer Laenge von 56 Bytes. Wie man
+den Schluessel erzeugt ist egal. Im allgemeinen wird man dazu das Passwort
+des Users direkt uebernehmen, jedoch sind auch andere Varianten, z.B.
+Hashing denkbar.
+Man hat also ein Feld mit einer bestimmten Anzahl von Bytes, in welchem der
+Key bzw. das Passwort gespeichert ist. Nun XORt man jedes Byte der P-Boxen
+mit einem Key-Byte. Hat man das Ende des Keys erreicht, so beginnt man wieder
+von vorn. In Pseudocode sieht das so aus :
+
+		ByteZeiger = Adresse von P-Box[1]
+		Index = 1
+		for n=1 to (18*4)
+		begin
+		  Inhalt von ByteZeiger = Key[Index]
+		  ByteZeiger = ByteZeiger + 1
+		  Index = Index + 1
+		  if Index > (Laenge von Key) then Index = 1
+		end
+
+Damit hat das Passwort seine Pflicht getan. Zuguterletzt verschluesselt man
+P- und S-Boxen. Dazu definiert man ein 64bit-Datenelement. Praktischerweise
+zerlegen wir es gleich in zwei 32bit-Haelften, wir nennen sie InitL und InitR.
+Man setzt beide zu Beginn auf 0 und verschluesselt dann alle Boxeneintraege
+mit den sich staendig aendernden zwei Haelften.
+Wieder in Pascal :
+
+	1:	InitL:=0;
+	2:	InitR:=0;
+	3:	i:=1;
+	4:	while (i<18) do begin
+	5:	  Encrypt(InitL, InitR);
+	6:	  pbox[i]  :=InitL;
+	7:	  pbox[i+1]:=InitR;
+	8:	  i:=i+2;
+	9:	end;
+       10:	for i:=1 to 4 do begin
+       11:	  j:=1;
+       12:	  while (j<256) do begin
+       13:	    Encrypt(InitL, InitR);
+       14:	    sbox[i][j]	:=InitL;
+       15:	    sbox[i][j+1]:=InitR;
+       16:	    j:=j+2;
+       17:	  end;
+       18:	end;
+
+Nachteilig am Pascal ist, dass man in FOR-Schleifen den Zaehler jeweils
+nur um 1 erhoehen kann, deshalb muss hier auf eine WHILE-Schleife ausgewichen
+werden.
+Nach dieser Verschluesselung der Boxen ist eine Cryptengine nun einsatzbereit.
+Bruce Schneier erwaehnte in seinem Artikel, dass man auch die so
+verschluesselten Boxen abspeichern und zur spaeteren Verwendung wiederver-
+wenden kann (z.B. zur Schluesselweitergabe, leider nicht fuer Kommunikations-
+verschluesselung geeignet). Ob der Programmierer dieses Feature dem User
+zur Verfuegung stellt bleibt Geschmackssache.
+
+Soviel zur Theorie des Blowfish-Algorithmus.
+
+Das wichtigste nochmals in Kuerze :
+
+a) dass Blowfish Daten in 64bit-Bloecken verarbeitet, d.h. es werden jedesmal
+   8 Bytes gleichzeitig ver- oder entschluesselt. Die Verschluesselung eines
+   einziges Bytes ist nicht moeglich.
+
+b) dass Blowfish mit einem sogenannten Key initialisiert werden muss. Der Key
+   ist nicht anderes als das Passwort, welches der User vor der Ver- oder
+   Entschluesslung eingibt. Dieser Key darf maximal eine Laenge von 56 Bytes
+   bzw. Zeichen besitzen.
+
+c) dass Zufallswerte benoetigt werden (genauer gesagt die mathematische 
+   Konstante PI in hexadezimaler Form) welche zur Initialisierung des
+   Algorithmus benoetigt werden. Prinzipiell koennen hier auch Zufallszahlen
+   aus "eigener Produktion" verwendet werden. Es hat sich jedoch als bewaehrt
+   erwiesen, die vorgegebenen Werte zu nehmen, da eigene Zufallszahlen z.B.
+   fehlerhaft sein oder bei Verlust der Quelldatei verloren gehen koennen.
+
+An Speicherplatz ist der Algorithmus aeusserst genuegsam. Der Programmcode
+und die benoetigten Daten (im Fachjargon "Boxen" genannt) belegen nicht mehr
+als 8 Kb. Dynamische Datenstrukturen werden sowieso nicht verwendet, die
+Stackbelastung ist minimal.
+Blowfish ist symmetrisch, d.h. es wird genau so schnell ent- wie
+verschluesselt. Da beim Blowfish-Verfahren Zufallszahlen im Spiel sind sehen
+die verschluesselten Bytes ebenfalls "von aussen" zufaellig aus, d.h. jeder
+ASCII-Wert von 0..255 ist in einer bestimmten Datenmenge im Schnitt gleich oft
+enthalten, unabhaengig von der Verteilung in der originalen Datenmenge.
+Diese Eigenschaft zu kennen ist wichtig, da sich dadurch verschluesselte Daten
+nicht mehr komprimieren lassen. Wird trotzdem ein Datenkompression gewuenscht
+so ist sie vor der Ver- bzw. nach der Entschluesselung vorzunehmen.
+
+
+
+
+3. Blowfish und noch etwas mehr - die Cryptengine
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+ECB-Methode:
+Blowfish ist ein Blockverschluesseler, d.h es werden immer 64 Bit unabhaengig
+voneinander bearbeitet. Diese Eigenschaft hat den Nachteil, dass man "nur"
+2^64 verschiedene 64bit-Paare von unverschluesseltem und die gleiche Menge
+an verschluesselten Daten braucht, um dann ein Codebuch zu erstellen, d.h.
+jedem verschluesselten Wert eindeutig einen unverschluesselten zuweisen zu
+koennen. Dies ist in der Praxis natuerlich ziemlich unsinnig, denn wer hat
+schon 2^64*8 Bytes an Daten, in beiderlei Formen ? Doch andere
+cryptoanalytische Verfahren koennen darauf aufbauen und diese Schwaeche nutzen.
+Da die maximale Key-Lenge von Blowfish 56 Bytes (= 448 Bit) ist muessten
+bei einer (vollstaendigen) Brute-Force-Attack (also dem blossen Ausprobieren
+aller moeglichen Passwoerter) 2^448 (!) Versuche notwendig sein.
+
+CBC-Methode:
+Hier greift man nun zum CBC-Verfahren um diese Sicherheitsluecke zu umgehen.
+Wir speichern die 64bit-Datenelemente nicht so wie sie aus der
+Verschluesselungsroutine herauskommen, sondern verknuepfen sie untereinander
+(CBC = Cipher Block Chaining -> verketten von verschluesselten Bloecken).
+Das CBC-Verfahren arbeitet bei Blowfish folgendermassen :
+Wir lassen uns zu Beginn ein 64bit-Datenelement von einem Zufallsgenerator
+erzeugen. Dieses nennen wir jetzt CBCStr. Wichtig ist, dass dieses Element
+gespeichert werden muss, z.B. im Header einer Datei. Es stellt den Beginn
+der Kette dar und wird zur Entschluesselung wieder benoetigt.
+Nach der Initialisierung des Blowfish-Algorithmus holen wird jetzt das
+erste 64bit-Datenelement, das wir verschluesseln wollen. Zuvor XORen wir
+es jedoch mit CBCStr! Jetzt erst wird das Datenelement verschluesselt und
+kann abgespeichert werden. Und nun der Clou : das verschluesselte Daten-
+element ist unser neuer CBCStr! Holen wir also das naechste
+64bit-Datenelement, XORen es mit CBCStr, verschluesseln es, speichern es
+ab und kopieren seinen Inhalt in CBCStr, ... bis alles verschluesselt ist.
+Beim Entschluesseln erfolgt der Vorgang genau umgekehrt. Zuerst entschluesseln
+wir das erste verschluesselte 64bit-Datenelement, dann XORen wir es mit dem
+"Ur"-CBCStr, denn wir uns gemerkt haben. Jetzt erst koennen wir ueber die
+entschuesselten Daten verfuegen. Wir holen nun das zweite verschluesselte
+64bit-Datenelement und entschluesseln es. Nun XORen wir es mit dem (!)
+verschluesselten ersten Datenelement, weil dieses ja bei der Verschluesselung
+der CBCStr fuer das zweite Datenelement war. Wir wiederholen diesen Vorgang
+bis alles entschluesselt ist. Dabei haelt man sich immer vor Augen, dass der
+verschluesselte Vorgaenger eines Datenelements der zugehoerige CBCStr ist.
+Zur Verdeutlichung noch etwas Pseudocode :
+
+    CBC-Verschluesselung:	CBCStr = Random
+				Store(CBCStr)
+				while (not EndOfData)
+				  Read(datenelement)
+				  datenelement = datenelement XOR CBCStr
+				  Encrypt(datenelement)
+				  Save(datenelement)
+				  CBCStr = datenelement
+				end
+
+    CBC-Entschluesselung:	Restore(CBCStr)
+				while (not EndOfData)
+				  Read(datenelement)
+				  Store(datenelement)
+				  Decrypt(datenelement)
+				  datenelement = datenelement XOR CBCStr
+				  Save(datenelement)
+				  Restore(datenelement)
+				  CBCStr = datenelement
+				end
+
+Da der allererste CBCStr bei der Verschluesselung jedesmal neu mit einem
+Zufallsgenerator erzeugt wird bestehen zwischen zwei urspruenglich gleichen
+Datenmengen in verschluesseltem Zustand dann keine Gemeinsamkeiten mehr (ein
+einfacher Blick in den Hex-Editor genuegt), sodass man keine einzelnen 64bit-
+Bloecke isolieren kann.
+
+
+
+- Dokumentende -
+

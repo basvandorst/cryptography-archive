@@ -1,0 +1,379 @@
+              ZIPCRACK version 2.00 (revised documentation)
+       Copyright 1992 by Paul Kocher (kocherp@leland.stanford.edu)
+       -----------------------------------------------------------
+
+First the boring stuff...
++----------------------------------------------------------------------+
+|                YOU MAY NOT USE OR DISTRIBUTE ZIPCRACK                |
+|            WITHOUT FIRST AGREEING TO ALL OF THE FOLLOWING:           |
++----------------------------------------------------------------------+
+|    Zipcrack may not be exported outside the United States or         |
+|    used illegally.  All statements in this file are the author's     |
+|    opinions and may be incorrect; they should not be construed as    |
+|    fact.  The author disclaims all responsibility for errors in      |
+|    this documentation.  Use zipcrack at at your own risk.  Zipcrack  |
+|    is not in the public domain, but you may distribute UNMODIFIED    |
+|    copies of the restricted version of the software (which only      |
+|    searches for passwords beginning with the letter 'z') provided    |
+|    that this documentation file is included in unmodified form.      |
+|    Please put ZIPCRACK.DOC and ZIPCRACK.COM in an archive called     |
+|    ZIPCRK20.xxx.                                                     |
++----------------------------------------------------------------------+
+
+
+Zipcrack is a program that demonstrates weaknesses in the encryption 
+algorithm used by PKZIP version 1.10.  Zipcrack does a high-speed brute-
+force, testing over 100,000 passwords per second on an 80386-33.  While 
+there is currently no known way to decrypt zip archives without guessing 
+the original password or encryption keys, the probability that a particular 
+password can be found in a carefully-chosen ten-billion-word search (which 
+takes about a day on an 80386-33) is high enough that anyone using PKZIP's 
+encryption option should be very cautious.  There are also other serious 
+weaknesses in the system, which are discussed later in this file.  As of 
+this writing, PKZIP version 2 has not been released, but unfortunately 
+PKWARE has announced plans to use the same encryption algorithm in the new 
+version.
+
+Since version 1.0, zipcrack has been improved in a number of ways: 
+
+   - SPEED:  The search algorithm is now about 25 times faster.  The 
+            conversion to 32-bit assembly approximately doubled the 
+            speed, and other optimizations greatly increased the 
+            throughout and made the speed almost independent of password 
+            length.  Also, I/O redirection is now built-in, making (slow) 
+            DOS command-line redirection unnecessary.
+
+   - RELIABILITY:  To test passwords version 1.0 followed PKWARE's 
+            specifications in APPNOTE.TXT, which only provide a 16-bit 
+            test to determine whether passwords are correct.  The 
+            optimized search feature now uses undocumented properties of 
+            the encryption header (explained later) that make it possible 
+            to automatically reject incorrect passwords.  For this 
+            reason, it is no longer necessary to have more than one file 
+            in the archive being cracked.  (Note: the optimized search 
+            algorithm may need to be rewritten when the new version of 
+            PKZIP is released.) 
+
+   - EASE OF USE:  While I don't want this to become a crackers' tool, 
+            the previous version had an embarrassingly awkward user 
+            interface.  Version 2.00 combines ziphead and zipcrack into 
+            a single (hopefully) intuitive package. 
+
+   - PORTABILITY:  This version developed using Borland C++ 2.0.  The 
+            searching algorithms are now written in separate 80386 
+            assembly and C versions.  The C version works under Borland 
+            C++ 2.0 and on a SparcStation using gcc, but its nonstandard 
+            bit manipulation may cause problems on some platforms.  Only 
+            the assembly versions are active in the MSDOS version.  
+            (Because Borland C++ 2.0 produces only 16-bit code, the C 
+            versions run much slower and offer no improvement over the 
+            assembly language version.)  [Sources are not publicly
+            available, as I can't figure out any to release them without 
+            turning this into a crackers' tool.] 
+
+
+------------------------------------------------------------------------
+
+                      A CLOSER LOOK AT PKCONTST.ZIP
+
+As you may be aware, PKWARE has released a "contest" to demonstrate the 
+strength of their encryption.  However this "contest" does not address 
+PKZIP's real security problems for several reasons. 
+
+PKWARE writes in the "contest" description:
+
+    >             ============================================
+    >             PKWARE Inc. announces the Encryption Contest 
+    >             ============================================
+    >
+    > The strength of the encryption scheme in PKZIP has come under some 
+    > scrutiny lately.  There have been allegations that the encryption
+    > method used is open to defeat by a "brute force" attack: that is
+    > simply trying every possible combination of characters until you
+    > find the one that was used.
+    >
+    > In response, we offer this challenge.  Decrypt the file BREAKME.DAT
+    > in the enclosed encrypted ZIP file: PKCONTST.ZIP
+
+     ...
+
+    > Hints:
+    > 
+    > 1) The file contained within the ZIP file is encrypted only once.
+    > 
+    > 2) The password is NO MORE than 7 characters long.
+    > 
+    > 3) The mechanical details of the encryption method used by PKZIP is
+    >    detailed in the file APPNOTE.TXT which is distributed with every copy
+    >    of PKZIP (any version).
+    > 
+    > 4) Password characters may fall anywhere within the 256 possible ASCII 
+    >    characters.
+
+However, this contest does not address the brute-force problem at all.  
+All it shows is that passwords can be chosen in such a way that brute-
+force is impractical.  In fact, the contest is essentially an 
+acknowledgement by PKWARE that there was a significant brute-force 
+problem before zipcrack 2.00 was released.  (Why else did they have to 
+choose their password from all 256 ASCII characters when almost no users 
+actually do this?  The PKZIP documentation doesn't even say how to enter 
+characters above 128 using the ALT key on a PC or mention the need for 
+long passwords.)  If contest's password contained only lowercase 
+letters, an 80386-33 could find it in under a day.  Using a larger 
+computer, it would be possible to brute-force any 7-digit password 
+containing only printable characters. 
+
+There are other, even more serious problems with the "contest."  For 
+example, if the command "pkunzip -v pkcontst.zip" produces the following 
+display: 
+
+    Length  Method   Size  Ratio   Date    Time   CRC-32  Attr  Name
+    ------  ------   ----- -----   ----    ----   ------  ----  ----
+     12392  Stored   12404   0%  04-03-92  14:36  e52e4453 --w* BREAKME.DAT
+
+BREAKME.DAT is stored, not compressed.  With almost any encryption 
+scheme, including the one used here, if you put random bytes in, you'll 
+get equally random bytes out.  This is even true of an insecure 
+substitution cipher.  Because PKZIP was unable to find compressable 
+patterns in the file, the file must be extremely random, and is possibly 
+just 12392 random bytes.  Unless more information about BREAKME.DAT is 
+provided, it isn't even possible to write a program that could 
+*identify* the correct file.  PKWARE has refused my e-mail requests for 
+additional information about the file's contents.
+
+Incidentally, the first bytes of imploded zip entries are predictable, 
+which is another reason why BREAKME.DAT might have been stored instead 
+of compressed (which also makes the file quite random and therefore 
+harder to attack).  For example, here are the first bytes of each file 
+in PKZ110.EXE (files have been arranged by type): 
+
+type
+ |  __filename__  __initial bytes of imploded file___________________________
+ a  WHATSNEW 110  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ a  README   DOC  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ a  DEDICATE DOC  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ a  ORDER    DOC  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ a  AUTHVERI FRM  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ a  OMBUDSMN ASP  0d 02 01 12 23 14 15 36 37 68 89 9a db 3c 05 06 12 13 44 c5
+ b  MANUAL   DOC  61 0a 7b 07 06 1b 06 bb 0c 4b 03 09 07 0b 09 0b 09 07 16 07
+ b  ADDENDUM DOC  61 0a 7b 07 06 1b 06 bb 0c 4b 03 09 07 0b 09 0b 09 07 16 07
+ b  LICENSE  DOC  61 0a 7b 07 06 1b 06 bb 0c 4b 03 09 07 0b 09 0b 09 07 16 07
+ b  APPNOTE  TXT  61 0a 7b 07 06 1b 06 bb 0c 4b 03 09 07 0b 09 0b 09 07 16 07
+ c  PKZIP    EXE  0f 00 12 03 24 15 36 27 38 39 6a 7b 4c 9d 6e 1f 09 06 01 13
+ c  PKUNZIP  EXE  0f 00 12 03 24 15 36 27 38 39 6a 7b 4c 9d 6e 1f 09 06 01 13
+ c  PKZIPFIX EXE  0f 00 12 03 24 15 36 27 38 39 6a 7b 4c 9d 6e 1f 09 06 01 13
+ d  ZIP2EXE  EXE  4d 5a ac 00 2c 00 09 00 20 00 d1 00 ff ff 9b 05 00 08 ab eb
+ d  PUTAV    EXE  4d 5a 7e 01 09 00 00 00 05 00 be 04 ff ff 18 01 00 04 00 00
+
+file types: a = small text file, imploded
+            b = large text file, imploded
+            c = executable file, imploded
+            d = executable file, stored (similarities due to the 
+                 structure of the EXE header)
+
+The large text files all begin with the 123-byte sequence: 
+
+     61 0a 7b 07 06 1b 06 bb 0c 4b 03 09 07 0b 09 0b 09 07 16 07 08 06
+     05 06 07 06 05 36 07 16 17 0b 0a 06 08 0a 0b 05 06 15 04 06 17 05
+     0a 08 05 06 15 06 0a 25 06 08 07 18 0a 07 0a 08 0b 07 0b 04 25 04
+     25 04 0a 06 04 05 14 05 09 34 07 06 17 09 1a 2b fc fc fc fb fb fb
+     0c 0b 2c 0b 2c 0b 3c 0b 2c 2b ac 0c 01 22 23 14 15 36 37 68 89 9a
+     db 3c 05 06 12 23 14 e5 f6 96 f7 45 c5
+
+I have not attempted known- or chosen-plaintext attacks against PKZIP 
+encryption, but the design of PKCONTST.ZIP indicates that PKWARE is 
+afraid of such attacks.
+
+If PKWARE wants to demonstrate zip security, they must offer to encrypt 
+files supplied by the public with the mystery password.  There are 
+plenty of secure encryption algorithms can survive chosen plaintext 
+attacks, so this requirement is not at all unreasonable.  If PKWARE is 
+unwilling to issue a real challenge, they should acknowledge the 
+weaknesses of their current encryption and stop pretending that this 
+"contest" proves the strength of PKZIP's security. 
+
+
+One last note:  The US government currently prohibits the export of 
+secure encryption-related software, and reportedly does not even grant 
+exceptions for products using DES, which is commercially available 
+overseas.  PKWARE claims to have obtained permission to export their 
+encryption. 
+
+-------------------------------------------------------------------------
+
+                      A CLOSER LOOK AT APPNOTE.TXT
+
+
+The file APPNOTE.TXT is misleading.  In it, PKWARE states that: 
+
+> Each encrypted file has an extra 12 bytes stored at the start of
+> the data area defining the encryption header for that file.  The
+> encryption header is originally set to random values, and then
+> itself encrypted, using 3, 32-bit keys.
+
+However, the 12-byte encryption header isn't random:
+
+  -  The words at 0040:006C and 0040:006E are sent into the function 
+     below, and the two words returned are stored at the beginning of 
+     the encryption header.  The value at [0040:006E] counts hours and 
+     ranges from 0 to 23 and the word at [006C] is incremented 18.2 
+     times per second and resets at 65535 every hour.  Note that DOS 
+     provides 2 second resolution in the file creation time stamp, and 
+     pkzip normally closes the file from 0 to 6 seconds after the timer 
+     value is used (possibly more for very large zips), so the value of 
+     these four bytes of the header can be guessed to within a set of 
+     approximately 100 values if the file creation stamp is accurate.  
+     [Note: Zipcrack does not use the file creation time as this method 
+     is not always reliable.] 
+
+  -  The next 4 bytes are computed using the same function, only the 
+     values sent are the segment where PKZIP loads and the total size of 
+     the environment variables.  Note that the first value will be under 
+     1000 hex unless many TSRs are loaded.  The offset is even more 
+     predictable because it depends only on the total size of defined 
+     environment variables.  This value is usually constant for all zips 
+     produced on the same computer and is almost always under 256.  Thus 
+     approximately 0.01% of possible values for these four bytes are 
+     ever used.  [Note: Zipcrack does not try to predict the environment 
+     size or segment value.] 
+
+  -  The next word equals ((compressed_filesize+2) XOR loword_crc32).  
+     Contrary to what APPNOTE.TXT states, there is *nothing* random 
+     about these 2 bytes.  Zipcrack uses this weakness to reject 
+     incorrect passwords. 
+
+  -  The final word is, as APPNOTE.TXT states, the upper half of the 
+     file's crc32.  Zipcrack uses this feature to reject incorrect 
+     passwords. 
+
+     --------------
+
+     The function referred to above takes two 16-bit words (A and B) and 
+     returns two 16-bit values (P and Q) as follows: 
+
+           P = (   A*B*2 + (B*B / 65536)  ) AND ffff (hex)
+           Q = (   B * B                  ) AND ffff (hex)
+
+     Note that some values of Q are never generated and that the most 
+     significant bit of A has no effect on the results. 
+
+What does this mean?
+
+The random encryption header is included for an important reason.  
+Suppose person X manages to obtain an encrypted zip containing secret 
+information.  Now suppose X manages to find the encryption keys at some 
+point during the encryption/decryption of one file in the zip, possibly 
+via a known plaintext attack on the initial bytes of a compressed text 
+file (see discussion earlier in this file).  If the encryption header is 
+random, X cannot find the original encryption keys by working backward 
+to the beginning of the file.  However, since the 12-byte header is 
+nonrandom, X can easily find the encryption keys immediately after they 
+were formed from the password, and can then use these keys to decrypt 
+other files encrypted with the same password. 
+
+In my opinion, if this weakness is accidental, it shows incompetence on 
+the part of PKWARE, and if it is intentional, PKWARE's credibility is 
+in question.  Either way, I believe the current implementation of zip 
+encryption is useless for sensitive applications, even if passwords are 
+chosen with the brute-force problem in mind.
+
+-------------------------------------------------------------------------
+
+                 PKZIP AUTHENTICITY VERIFICATION SECURITY
+
+There have been various claims floating around about the strength of 
+the authenticity verification system used by PKZIP, but in fact the 
+algorithm used is fairly weak.  There are several programs making 
+their way around BBSes that can can brute-force codes for PUTAV, 
+although to my knowledge none of these can find codes to match a 
+particular checksum (like PKWARE's PKW655). 
+
+I became curious about how the AV worked, and after dinner started 
+experimenting with it a few months ago.  Within a few hours I had 
+found the exact serial number used by PKWARE in PKZ110.EXE and other 
+files released by them, allowing me to make ZIPs that are 
+indistinguishable from the ones produced by PKWARE.  Although 
+breaking the system required some knowledge of PC assembly language, 
+math, cryptography, etc. there are probably virus writers and others 
+who could reproduce my work and use it maliciously -- so AV CODES 
+CANNOT BE TRUSTED, EVEN IF THE CHECKSUM IS CORRECT.
+
+As of this writing, the new version of PKZIP has not been released, 
+but if I have time I'll try to test its security when it arrives.  It 
+is rumored to have a new AV system, although the 1.93A beta appears 
+to have the same -- or a very similar -- system as 1.1.) 
+
+If PKWARE makes major changes to PUTAV (or whatever it is replaced 
+with), there is a chance that I might need one or more copies of 
+PKZIP with authenticity verification enabled in order to test the new 
+version.  If this happens, and you have a copy of PKZIP 2.xx with AV 
+enabled that you would be willing to let me look at, please send me a 
+note! 
+
+[The following lines are a UUENCODED zip with a forged AV packet.  To
+make the file FORGE_AV.ZIP you will need a copy of UUDECODE.]
+
+begin 666 FORGE_AV.ZIP
+M4$L#! H  " & .LR?AA"#0A[+@(  +\"   ,    3D]47T923TTN4$M7#0(!
+M$B,4%38W:(F:VSP%!A(31,7VEO>IHDT[%Z39M&S+@KP;!GFK=/J4JDJ0<.6^
+M)5MW;%FR(,7F!0EUZ=6@4HNZ! D"O0G_6[=LJG=8D&3+MDG><^G*#4LWS?$&
+MV5!A73?+N\[SOOM6+ETTW_NM61#&2UK;K<O6;1GQ+<9;IZ5#G0Y;I_C:=]HQ
+MT]..]T[3K\<4TVF0!;S6FA0JR)@N@M?R"MY)0:(-:V?^V<Y] W:I;[IT\K>.
+MZS'^0Z4&';I4Q]YE=]-!N_95]FYIAE^/63_R'7;LFK,/ EF\[[%R\\+QEBQ!
+M5IT*4F[9N6G)]-M1-:_ E_QN&V;K:E9=-8C]J^I5JQ9U.O0IT:)$O/=;.'%[
+M&+%S3M=1=V4K((>PJ55R-YTOGP[5/1=-7 M?<RZC>PY?)SO'[L&YAW#-I*KH
+M#>+YOA-Y[C3!JG\1J5F<*<]TN=NLZ[IRY4R]*]WM&W&=M\SPAEM7C)Q[#/32
+MVH!<9(]()<:*WV+,JO^U=)\H7FVR;!86$6=OV6*.):9F"W+IV[%HKCY(E&N0
+M.UP@_XM8-=TNZE?Q8FO(Z^^NFT),1E;G?5O'FFB365G=ZS%-*KJ+7B=9LXLM
+MD]?#*#N9,.WJ*(<;WT+?XIECSZQ9DX;RG@).).^A04'FI#D39HZA*ZARJMQ\
+M-'0W2"6IKV0=,V?.&OQ<:MFX=9[T.7_RH%;LM"[6Z&YY6:GOMO#2TXQN+$YU
+M%=;[#M7-YFBMMLR?(O0'4$L! @L "@  ( 8 ZS)^&$(-"'LN @  OP(   P 
+M'        0 @         $Y/5%]&4D]-+E!+5P< & #; IR3_ W=:PJE8F2"
+A*,TM5O]5?TALQ]M02P4&      $  0!6    6 (     
+ 
+end
+
+-------------------------------------------------------------------------
+
+                             FROM THE AUTHOR
+
+I am a sophomore at Stanford University, and am looking for paid contract 
+or summer work working with computer security, programming or reverse-
+assembling, writing (technical or otherwise), or doing almost anything 
+else that will help cover my tuition.  If you know of a position that I 
+might be qualified for, please pass my name, address, and phone number 
+along!
+
+Paul Kocher
+Box 13554
+Stanford, CA 94309
+415-497-6589 (until June 1, 1993)
+503-753-2978
+
+Internet E-mail: kocherp@leland.stanford.edu (preferred)
+                 root@kocher.stanford.edu
+
+-------------------------------------------------------------------------
+
+                        SOURCE CODE AVAILABILITY
+
+It has been hard for me to decide what to do with the sources for 
+zipcrack.  As mentioned earlier, I don't want this to become a crackers' 
+tool, but at the same time there are people with legitimate uses for the 
+program.  In a discussion on the newsgroup sci.crypt a while ago, several 
+people suggested that I charge for the uncrippled program in order to 
+keep it away from most crackers while making it making it available to 
+anyone who really needs it.  So...
+
+If you want to get a copy of the source code and uncrippled executables, 
+send $50 (personal check only) or $500 for businesses or government 
+agencies (includes an unrestricted site license) to the address above.  
+Be sure to mention what disk size you want (3.5" or 5.25", high density 
+or low density.)  High density disks include a dictionary file.  There is 
+a $5 discount if you include a disk and self-addressed/stamped mailer. 
+
+Sources are provided as-is, and are not guaranteed to work with anything 
+other than Borland C++ 2.0.  I reserve the right to reject requests for 
+source and executables. 
+
+

@@ -1,0 +1,278 @@
+#THIS SOFTWARE IS BETA. USE IT ON YOUR OWN RISK. NO WARRANTIES.
+#Source:         Z-Code Software, A Division of Network Computing Devices, Inc.
+#Enhanced by:    Reimond Rombey <rr@eureka.space.infra.de>
+#Enhanced by:    Aldo Valente <aldo@dagobar.rhein.de>
+#This is free software. Please email to rr@eureka.space.infra.de if you find
+#bugs or have any modifications.
+#	$Id: PGP.zmail,v 1.3 1996/05/23 12:52:13 aldo Exp $	
+
+# this is my first work with pgp and zmail - so don't expect too much
+# currently this is used for 
+# pgp-support
+# uuen/decoding  (programm for uudecoding is called 'uuc', Yours too ?) 
+# starting Netscape from selectet urls
+#
+# the code is rather ugly. if there is a chance to get all returncodes
+# from pgp to zmail, i'll modify it perhaps.
+# but -- i don't use zmail myself
+#   aldo 
+
+function zmenu_comp_print() {
+    zmenu_set_tmpdir
+    ## To print both message and headers:
+    if $compose_state:(edit_headers)
+        textedit set-item compose-header
+        textedit save-to-file $__tmpdir/zmsg$$	# Write headers
+        compcmd save-to-file $__tmpdir/zmsg$$	# Append body
+     else
+        compcmd write-to-file $__tmpdir/zmsg$$	# Write body
+     endif
+    ##
+    if $status != 0
+        return
+    endif
+    lpr $__tmpdir/zmsg$$
+    remove -f $__tmpdir/zmsg$$
+}
+
+
+function decrypt() {
+    #
+    #  decrypt also checks for signatures 
+    #
+sh "pgp -w $tmpdir/ztmp$$.asc"
+sh "pgp -w $tmpdir/ztmp$$"
+sh "pgp -w $tmpdir/ztmp$$.err"
+
+ask "Decrypt message?"
+if $status == 0
+	write "$tmpdir/ztmp$$"
+	ask_pgppass
+	if $?__pgppass
+		sh -t 3 "pgp +batchmode -z '$__pgppass' $tmpdir/ztmp$$ -o $tmpdir/ztmp$$.out >$tmpdir/ztmp$$.err 2>&1"
+		page $tmpdir/ztmp$$.err
+		page $tmpdir/ztmp$$.out
+	else 
+		sh "xterm -e pgp -m  $tmpdir/ztmp$$ "
+	endif
+		
+	sh "pgp -w $tmpdir/ztmp$$"
+	sh "pgp -w $tmpdir/ztmp$$.out"
+	sh "pgp -w $tmpdir/ztmp$$.err"
+endif
+}
+
+
+function getsign() {
+    #
+    # This function adds the signature of the sender of the mail to the keyring
+    #
+       ask "Get signature from the message?"
+       if $status == 0
+          #pipe "cat > $tmpdir/ztmp$$"
+          write "$tmpdir/ztmp$$"
+          sh "xterm -e pgp -ka $tmpdir/ztmp$$"
+          remove -f $tmpdir/ztmp$$
+       endif
+}
+
+
+function uudecode() {
+        #
+        # This function uudecodes mails
+        #
+           write $tmpdir/ztmp$$
+           ask "Using uuc on this Mail (in $HOME/tmp/ if tmp exists ( \n ATTENTION:  \
+existing Files will be graceless overwritten by uuc "
+          if $status == 0
+              sh "if [ -d tmp ] ; then cd tmp; fi;uuc $tmpdir/ztmp$$"
+          else 
+		if $status == 1
+			page   $tmpdir/ztmp$$
+		endif
+	 endif
+
+           remove -f $tmpdir/ztmp$$ 
+}
+
+function zmenu_sort_by() {
+    sort $* -r -d -s -a
+    if $?main_state:(folder_has_messages)
+        redraw .
+    endif
+}
+
+function ask_pgppass() {
+
+# this checks if it is invoked for the first time. 
+# if not, it returns 1 (meaning that no passphrase is available) in 
+# case  $__pgppass is undefined, otherwise returns normally
+# 
+# if it is invoked for the first time, you will be asked if you 
+# want to give your pass phrase to zmail
+# 
+# WARNING
+# giving your pass phrase is considered insecure !
+# everyone can go to your terminal and just click in your running zmail
+# obtaining your pass phrase.
+# also other possibilities exists in a network environment.
+# So, better DON'T DO THIS !  ;-)
+
+if $?__already_asked_for_passphrase
+	return 
+else
+	ask -default "n" "Do You want to give Your pass phrase to an internal \n \
+zmail-variable. You won't get asked this question again \n \
+in this zmail-session. If You agree, You won't get asked by pgp  \n \
+for Your pass phrase during this session.\n \
+			WARNING: \n \
+This may be convenient, but it is considered insecure."
+
+	if $status == 0
+		ask -noecho -i __pgppass "please enter your pass phrase"
+		if $status == 0 
+		 sh -t 2 "(echo a| pgp -satf +batchmode -z '$__pgppass'>/dev/null 2>&1)"
+			if $status == 0
+				set __already_asked_for_passphrase = 'yes'
+			else
+			echo -d "Pass Phrase failed. Try again next time ;-)"
+			unset __pgppass
+			endif
+			
+		endif
+	endif	
+endif
+
+
+}
+
+function sign() {
+	# 
+	# sign just signs, leaving the message readable
+	#
+	
+sh "pgp -w $tmpdir/ztmp$$.asc"
+sh "pgp -w $tmpdir/ztmp$$" 
+ask "Do You want to sign message ? (-sat)"
+if $status == 0
+	ask_pgppass
+	compcmd pipe "cat > $tmpdir/ztmp$$"
+	compcmd insert-file $tmpdir/ztmp$$
+	# save messages first...
+	if $?__pgppass
+		sh -t 3 "pgp -sat $tmpdir/ztmp$$ +batchmode -z '$__pgppass'"
+	else
+		sh "xterm -e pgp -sat  $tmpdir/ztmp$$"
+	endif
+			
+	if -e  $tmpdir/ztmp$$.asc
+		compcmd pipe "cat >/dev/null"
+		# flush and replace
+		compcmd insert-file $tmpdir/ztmp$$.asc
+	endif 
+	sh "pgp -w $tmpdir/ztmp$$"
+	sh "pgp -w $tmpdir/ztmp$$.asc"
+endif
+
+
+
+}
+
+function encrypt() {
+	#
+	# encrypt asks if you want also sign the message
+	#
+sh "pgp -w $tmpdir/ztmp$$.asc"
+sh "pgp -w $tmpdir/ztmp$$"
+ask -default "$user " -i __users "Please enter the userids for whom the file \n \
+should be decryptable. Separate Names with spaces"
+if $status == 0
+	compcmd pipe "cat > $tmpdir/ztmp$$"
+	compcmd insert-file $tmpdir/ztmp$$
+	# just to be sure that the message won't lost
+	ask "Do you wish to also sign this message ?"
+	if $status == 0
+		ask_pgppass
+		if $?__pgppass 
+			sh -t 3 "pgp -seat +batchmode $tmpdir/ztmp$$ -z '$__pgppass' $__users"
+		else 
+			sh "xterm -e pgp -seat  $tmpdir/ztmp$$ $__users"
+		endif
+	else 
+		if $status == 1
+			sh -t 3  "pgp -eat +batchmode $tmpdir/ztmp$$  $__users"
+		else
+			sh "pgp -w $tmpdir/ztmp$$.asc"
+			sh "pgp -w $tmpdir/ztmp$$"
+			return
+		endif
+	
+	endif	
+	if -e $tmpdir/ztmp$$.asc
+		compcmd pipe "cat >/dev/null"
+		# flush message into data sink
+		compcmd insert-file $tmpdir/ztmp$$.asc
+		compcmd insert-header X-Encrypt-For: $__users
+	endif		
+	sh "pgp -w $tmpdir/ztmp$$.asc"
+	sh "pgp -w $tmpdir/ztmp$$"
+endif
+
+}
+
+function uuencode() {
+	#
+	# uuencoding...
+	#
+ask -file __file "which file Do you want to uuencode ?"
+if $status == 0
+	ask -default $__file:t -i __name "under which name this should be extracted ?" 
+	if $status == 0
+		sh "uuencode $__name < $__file > $tmpdir/ztmp$$"
+		compcmd insert-file $tmpdir/ztmp$$
+		remove -f  $tmpdir/ztmp$$
+	endif
+endif
+}
+
+# From: bjartk@ulrik.uio.no (Bjart Kvarme)
+# Subject: Re: launching netscape for URL's within a message.
+# Newsgroups: comp.mail.zmail
+# Date: 15 May 1996 11:52:08 GMT
+# Organization: University of Oslo, Norway
+# Reply-To: Bjart.Kvarme@usit.uio.no
+# Message-ID: <4ncgh8$223@ratatosk.uio.no>
+# References: <4mtndg$fca@ausnews.austin.ibm.com> <3193B534.1AF2@mindlink.net>
+ 
+# Thanks to Paul_Kincaid_Smith@Mindlink.Net for a couple of useful
+# hints. I rewrote his stuff and came up with a more simple and hopfully
+# more robust version. It should work with all Motif versions, but I'm
+# not sure about Windows.
+
+function __launch_netscape() {    
+        textedit set-item message-body
+        textedit text-get-selection __URL
+        setenv URL "$__URL"
+        sh "netscape -remote 'openURL($URL)"
+        if $status == 0
+           echo Opening $URL
+        else
+           echo Starting netscape
+           sh "netscape '$URL' &"
+        endif
+        unsetenv URL
+}
+ 
+
+
+#
+# User-Defined Buttons
+#
+button -no-msgs "Sort" "zmenu_sort_by"
+button -no-msgs -window message "PGP Decrypt" "decrypt"
+button -no-msgs -window message "PGP Get Signature" "getsign"
+button -no-msgs -window compose "PGP Sign" "sign"
+button -no-msgs -window compose "PGP Encrypt" "encrypt"
+button -no-msgs -window message "UUDecode" "uudecode"
+button -no-msgs -window compose "UUEncode" uuencode
+button -window message "Netscape" __launch_netscape

@@ -1,0 +1,134 @@
+
+so far:
+
+old/*
+  old stuff,  you really dont need to bother with any of this stuff
+  if you got it.
+
+old/pty.c 
+  is just the pty stuff from link.c before i started adding to
+  it.. i kept it around so I dont have to regenerate pty code
+  next time i need a pty.
+
+old/test.c and other misc
+  nothing..
+
+des.c
+  this file is basically an interface to the routines in
+  DES/*
+
+slip.c
+  has two routines to packetize with SLIP framing, and decode
+  packets.  
+
+link.c
+  the main program to do link encryption. It
+    opens a pty
+    forks off a shell connected to the slave
+    the parent feeds info to and from the master
+    pty and the original tty, encrypting and decrypting
+    the data.
+  for debugging this program will use a socket for i/o
+  if SOCKET is defined.
+
+common.c
+  routines for i/o encrypt and decrypt and packetize
+  the data.
+  code that is common between link.c and the remote end
+  terminal.   I tried to make this code pretty generic so
+  that it could be easily ported (to be included in your
+  favorite term program).  It does require 'gettimeofday'
+  or some such mechanism in order to do timeouts.
+
+connect.c
+  a client that connects out on a socket to link.c
+  for debugging.  (when link is compiled w/ SOCKET) 
+
+sock.c
+  used by link to listen on a socket.  debugging
+  
+DES/*
+  DES routines from 'd3des'.  Replace with your favorite
+  DES routines.  ./des.c has the interface routines to this.
+
+RSA/*
+  rsa package,  slightly modified (was standalone). I changed
+  the key gen program to be more automatic and made a small
+  C interface routine (make do_rsa.o)
+
+----
+the routines in common.c, slip.c, des.c, DES/* and RSA/*
+are the common code you would need to put in a term program
+if you were patching.  The interface is done through 3 routines
+in common.c (the protocol engine is in here). 'de_out' 'en_out'
+and 'startup' -> prepare decrypted output (to be output locally)
+preprae encrypted output (to be sent remotely) and say hello to
+the remote end.  the de_out and en_out routines do all I/O through
+buffers:  'loc_out,rem_out and loc_len,rem_len'  I did this because
+I/O isnt generic enough with write/read or other such routines.
+The routine 'startup' does its I/O with read and write and will
+probably have to be patched for your system if its not unix.
+The program 'link.c' is the unix end of the protocol.  Its
+basically just like a terminal program.  
+
+PROTOCOL:
+the protocol so far is to send encrypted data
+as packets, 9 bytes long which contain a lenght field
+followed by a block of 8 characters that have been encrypted.
+they look like:
+   [ numchar data1 data2 data3 data4 data5 data6 data7 data8]
+where each field is a character (1 byte) long.
+numchar says how many of the data bytes are valid data and
+how much is just garbage (in the case of incomplete packets).
+numchar should be less than 9 since there can only be 8
+data bytes at most.  The 'numchar' is not encrypted, the
+8 data bytes are.
+
+
+extended packets:
+  [ EXTEND|length type cksumhi cksumlo data ]
+length is the length of the data portion of the packet
+type is the type of extended packet
+cksumhi/cksumlo are the high and low bytes of the extended
+packets checksum.  These packets are transmitted in plaintext
+so they shouldnt be considered secure.
+
+Key exchange: 
+  on initialization both sides set their key to the NULLKEY
+  which is assumed to be known (unsecure).  One of the two
+  sides (both if they wish) should send a NEWKEY request. 
+  requests for new keys can also be sent any time in the
+  middle of the session.. these keys are transfered in
+  extended packets.
+
+  side A generates a random key (8 bytes) and then RSA's it
+  with either the public or private key.  It sends it to side
+  B which uses the opposite key (public key should be on insecure
+  site and private key should be on secure side).  It decrypts
+  the key and sets his key to that key.  As soon as he receives
+  the new key ok (no checksum error) he sets his key to that 
+  key and sends out an ACK, he keeps send ACK's until receiving
+  back an ACK2 at which time the key exchange is complete.  The
+  first side (A) should send out an ACK2 as soon as an ACK is
+  received.
+   
+NEWKEY ----->   cksum error, ignored
+NEWKEY ----->   recieved
+received <----  ACK
+ACK2   ----->   cksum error
+       <-----   ACK
+ACK2   ----->   received
+ 
+
+NEWKEY ----->  received but machine is lagged 
+NEWKEY ----->  received
+received <---- ACK first NEWKEY
+ACK2   ----->  received   (first things second key was acked)
+!!! ERROR, using different keys !!!!!
+
+(maybe keys and acks should have sequence numbers )
+
+ 
+[so far no retransmission is done,  so if the newkey or ack
+packets get hit by line noise the key exchange will fail]
+

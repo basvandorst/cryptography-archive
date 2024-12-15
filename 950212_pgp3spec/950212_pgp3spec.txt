@@ -1,0 +1,1606 @@
+To: cypherpunks@toad.com
+cc: ktk@anemone.corp.sgi.com, prz@acm.org, colin@anemone.corp.sgi.com,
+        pgp@lsd.com
+Subject: preliminary pgp 3.0 api document
+Date: Sat, 11 Feb 95 17:30:55 -0800
+From: Katy Kislitzin <ktk@anemone.corp.sgi.com>
+
+[EGH: I think this is good.  I ranted.]
+
+-----BEGIN PGP SIGNED MESSAGE-----
+
+I'm at the sf bay area cpunks mtg where I just bowed to consensus and
+decided to release this incomplete, moving target document which will
+eventually become a description of an api for a library which will
+implement pgp 2.6 compatible encrytion functions.  This document is a
+EARLY ALPHA ROUGH DRAFT and in fact has parts which have changed
+radically since this was written.
+
+please send comments to <pgp@lsd.com>. Anything sent to this address
+ will be digested and sent to the API team.  please do not innundate
+colin or phil with your comments -- they simply don't have the
+bandwidth.
+
+note:  the api doc proper has '>' symbols at the beginning of the
+line.  lines without the leading '>' symbol are my personal comments
+and clarification.
+
+another note:  the comments [CP] are colin's comments; the comments
+[RLL] are raph levien's.
+
+> Date: Fri, 6 Jan 95 17:03:31 MST
+> From: colin@nyx10.cs.du.edu (Colin Plumb)
+> Message-Id: <9501070003.AA20015@nyx10.cs.du.edu>
+> X-Disclaimer: Nyx is a public access Unix system run by the University
+> 	of Denver.  The University has neither control over nor
+> 	responsibility for the opinions or correct identity of users.
+> To: ktk@palladium.corp.sgi.com
+> Subject: Big library doc
+>
+> I'm not happy with the parser. It's too general, and doesn't
+> provide any abstraction. For an implementation of PGP, the abstraction
+> isn't particularly important, but for applications, it is. The
+> generality is making the API too complex, and that isn't good either.
+> All we need to do is handle PGP 2.6 and security multipart formats,
+> not compile C. I'm convinced we can do it much more simply.
+
+NOTE: THE PARSER DESIGN HAS CHANGED SIGNIFICANTLY SINCE THIS DOCUMENT
+WAS WRITTEN
+
+>
+> [All commentary is bracketed in "notes". These should not be considered
+> as part of the spec, and will be removed in the final version.]
+>
+> PGP 3.0 API specification
+> *Unfinished* draft 16 Dec 1994
+>
+>
+> 1. Introduction
+> ===============
+>
+> This document is a specification of the application program
+> interface (API) for the PGP 3.0 library.
+>
+> The PGP library gives applications access to PGP's cryptographic
+> functions. The library is linked in with the application, so that they
+> share address space. Communication between the application and the
+> library is performed using function calls to the library and
+> callbacks. The interface is intended to be very portable, even to
+> MS-DOS.
+>
+> The library provides compatibility with the PGP 2.6 data formats. It
+> also provides a number of lower level functions which can be used to
+> support new, experimental data formats.
+
+The focus is on pgp 2.6 packet format compatibility.  However, if
+we've done our job right, new packet formats will not require
+application level changes (except to use new features).
+
+>
+> Most PGP operations are performed in a pipeline of "filter modules",
+> or just "modules", similar in concept to a Unix pipeline. Each module
+> performs some transformation from an input stream of bytes to an
+> output stream of bytes. Linear chaining of modules is supported
+> directly. In addition, fork and join modules are provided for more
+> complex structures. Formally, the structures supported are acyclic
+> digraphs.
+>
+> There are three stages in using a pipeline. The first stage consists
+> of setting up the pipeline, using an xxxCreate call to create each
+> module, where "xxx" is the name of the module. The second stage
+> consists of actually pumping data through the pipeline. The second
+> stage is terminated with a sizeAdvise(0) call. The third stage is a
+> call to the teardown function, which cleans up the memory and other
+> resources used by the pipeline.
+>
+> Pumping data through the pipeline is accomplished by repeated calls to
+> a write function. On each call, the number of bytes desired to write
+> is given, and the number of bytes actually written is returned, in
+> similar fashion to the Unix write semantics. In general, the pipeline
+> will make as much progress as possible before returning. There is no
+> explicit call to read data out of the pipeline, rather the output of
+> the pipeline is presented to a write callback at the end of the
+> pipeline. For example, this callback could write to an output file or
+> to standard output.
+>
+> While a callback style of programming is directly supported by the
+> library, other styles are also supported, by means of an "error
+> return" mechanism. Every callback function returns a status code,
+> which is checked by the library. If zero, pipeline processing
+> continues as usual. If non-zero, control is returned up the call stack
+> to either the top level, or an application provided module which
+> intercepts the error return and processes it. Error return codes are
+> never generated by the library itself, only by callbacks. Thus, the
+> format of the error return codes is entirely up to the application.
+>
+> Default callback functions are provided by the library to handle many
+> of the common cases.
+>
+> This document is incomplete. Many important functions are missing.
+
+this is an old comment.  main thing missing from this doc is
+description of the key access routines.
+
+>
+> 2. Pipelines
+> ============
+>
+> A pipeline consists of a series of PgpModule data structures, which
+> provide uniform interfaces to the various filter modules that make up
+> the pipeline.  A filter module may be called from outside the library,
+> or from another module.  And while most modules will be implemented
+> within the library, outside code can provide modules to be linked into
+> the pipeline.  Becuse calls can thus be made from outside code to the
+> library, and from the library to outside code, the "interface contract"
+> between the caller and the module is defined very carefully.
+>
+> Most modules also make use of a PgpResources structure, which holds
+> various globally available resources.  For example, it holds two
+> PgpMalloc structures for allocation and secure deallocation of memory.
+>
+> 2.1. The PgpModule structure
+> ----------------------------
+>
+> The PgpModule structure is given below:
+>
+> /*
+>  * The interface to a filter module in the pipeline.  When data is
+>  * written to it, it does something, often involving writing output
+>  * data to another module downstream.
+>  */
+> struct PgpModule {
+> 	unsigned (*write)(struct PgpModule *, char const *, unsigned, int *);
+> 	int (*flush)(struct PgpModule *);
+> 	int (*sizeAdvise)(struct PgpModule *, unsigned long);
+> 	void (*teardown)(struct PgpModule *);
+> 	struct PgpModule **backptr;
+> 	struct PgpModule *next;
+> 	int id;
+> 	void *utility;
+> 	void *private;
+> };
+>
+> The write(), flush(), sizeAdvise() and teardown() functions are used
+> to perform operations on the module. Their semantics are explained
+> below.
+>
+>
+> 2.1.2. Function PgpModule fields
+>
+> The semantics of the PgpModule calls are given as follows.
+> The first three of these generate error codes.  If the code is
+> non-zero, the caller must do something appropriate.
+>
+> unsigned
+> write(struct PgpModule *mod, char const *buf, unsigned len, int *errcode);
+>
+> This is used to write data into the module. It returns the number of
+> characters successfully written. In addition, *errcode is set to an
+> error code or zero if no error.
+>
+> The buffer data is only guaranteed to be valid during the call to
+> write.  Bytes offered but not successfully written are not guaranteed
+> to be the same on successive write calls, nor is the total number of
+> bytes offered plus the number of bytes successfully written guaranteed
+> to monotonically increase.
+>
+> int
+> flush(struct PgpModule *mod);
+>
+> This writes out any buffered data in the pipeline, returning an error
+> code.  Modules are required to propagate the flush to all output
+> modules, unless an error code is recieved before the flush is
+> completed, in which case that error code is returned.
+>
+> The primary use is to restart a "stalled" pipeline.  Normally, the
+> filter modules are "eager" to write out data; they will not return until
+> any internal buffers are empty.  But if an error occurred in
+> mid-operation, data may be left in a buffer until the next write() call
+> propagates down the pipeline.  The flush() call achieves the same
+> effect, but without the necessity of writing any data.
+>
+> (Of course, some filter modules, such as the compressor, can't help
+> but buffer data, so it is best to avoid those if you want data to be
+> sent through promptly.)
+>
+>
+> int
+> sizeAdvise(struct PgpModule *mod, unsigned long size);
+>
+> The caller promises that exactly "size" additional bytes will be written
+> into the module before EOF.  A size value of zero, followed by a zero
+> error return, indicates an EOF condition.  To achieve a clean finish,
+> the top level must call sizeAdvise with a 0 argument until a zero error
+> code is returned.  A module must respond to such a call by writing out
+> any remaining buffered data and invoking sizeAdvise with a 0 argument
+> on each of its following modules (if any) in preparation for tearing
+> down the pipeline.
+>
+> Note that sizeAdvise() is expected to cause some buffers to be written
+> out, so it is just as likely as write() to return a (non-zero) error code.
+>
+> Calling this function early (i.e. with nonzero values) is helpful to
+> support the existing PGP 2.x packet formats which include a size field.
+> If called multiple times, the size value plus the number of bytes
+> already written must be invariant.  Modules are not required to check
+> to see if this invariant is maintained; they may silently malfunction.
+>
+>
+> void
+> teardown(struct PgpModule *mod);
+>
+> This call disassembles a pipeline. If an EOF condition has occurred,
+> then it is an orderly shutdown in which any data remaining in the
+> pipeline is processed, otherwise an "abort". It is required for
+> modules to recursively call teardown on each successor module it
+> feeds, assuming the pointer to the output module is not NULL.
+>
+> Unlike all of the previous calls, it does not return an error code.
+> This call may not fail.  Anything that a module wants to do that
+> might fail, it should do at mod->sizeAdvise(mod, 0) time.
+>
+> The handling of teardown for fork and join modules is a bit tricky.  For
+> fork, teardown should be called for each of the output modules in turn.
+> Join does not call teardown recursively until it receives a teardown
+> call on all inputs.
+>
+> It is not valid to call teardown on a module when a call to that
+> module is active.  Thus, it is not valid to tear down a module from
+> inside a callback. Instead, an error return must be passed up the call
+> stack, and the teardown initiated from top level (or some other
+> suitable point).
+>
+>
+> 2.1.2. Scalar PgpModule fields
+>
+> struct PgpModule **backptr;
+>
+> The backptr contains a pointer to the previous pointer to this module,
+> or NULL. It is part of the module structure so that a module may
+> delete or replace itself, or insert an additional module. These
+> operations are allowed "on the fly" during pipeline operation. If
+> non-NULL, backptr is required to satisfy *(mod->backptr) == mod. The
+> forward pointers, if any, are private, so it is not possible in
+> general to traverse the chain.
+>
+> The existence of the backptr imposes a restriction on the outside code
+> that invokes the head of the pipeline.  It must keep the pointer in
+> an addressible memory location, pointed to by head->backptr, and fetch
+> that location each time it wishes to invoke the head, since the head may
+> alter the pointer each time it is invoked.  The same applies to any
+> module that invokes another module; the pointer to that other module
+> must also be in memory.
+>
+> struct PgpModule *next;
+>
+> The "next" pointer is used in error handling.  When an error is
+> returned, the next pointer points to the next downstream module that
+> generated the error. If a module generates an error itself, the next
+> pointer is set to NULL. Thus, by following the chain of next pointers,
+> it is possible to locate the module which generated the error.
+>
+> No library-provided module generates errors directly; all modules call
+> callback functions which can be replaced by outside code whenever an
+> error occurs, and the callbacks return the errors.  This is still
+> considered to be an error generated by that module, so it must set
+> its next field to NULL.  Only when a call to another module has returned
+> an error is the next field set to non-NULL; it is set to point to
+> that other module.
+>
+> Because a module can alter the pointer to itself at will, in general
+> the value of the private forward pointer must be copied to the next
+> field each time an error is returned.  In two cases this may be
+> simplified:
+>
+> - If the module has no forward pointers, the next field may be set to
+>   NULL and ignored thereafter.
+> - If the module has exactly one forward pointer and does not generate
+>   any errors itself, then the next field may be used as that forward
+>   pointer.
+>
+> int id;
+>
+> The id is an integer field which is available to label the modules in
+> a pipeline. When a module is created, the id field is initialized to
+> 0, unless it is a "branch module" with more than one output, in which
+> case it is initialized to -1.  The pipeline user may set it arbitrarily
+> at any time that a pipeline call is not in progress.
+>
+> When an error is returned to a branch module and the error code equals
+> the branch module's id, the error is handled specially.  This will never
+> happen if the id is 0, because 0 is not an error return code.  The
+> "magic" is described below; it is mentioned here only as a warning that
+> the ids and the error return codes share the same name space, so you
+> must prevent accidental collisions.
+>
+> void *utility;
+>
+> The utility field, initialized to NULL, is provided for use by the
+> user of the pipeline.  The module itself never references or modifies
+> it.
+>
+> void *private;
+>
+> The private field is for the private data of the module.  It may point
+> to an auxiliary data structure, or alternatively stand for a larger
+> data structure.  In the latter case, the module must be allocated with
+> a bigger size to accommodate the extra data.  To access this data, the
+> module could define a new data structure with "struct PgpModule" as
+> its first element, and cast between this new structure and PgpModule
+> as necessary.
+>
+>
+> 2.2. The PgpResources structure
+> -------------------------------
+>
+> The PgpResources structure is holds references to various mostly-global
+> resources for use by all PgpModules.
+>
+> /* Various and sundry "global" variables. */
+> struct PgpResources {
+> 	struct PgpMalloc secret;
+> 	/* What if it failed? */
+> 	int secretfailed(struct PgpResources *, size_t);
+>         void *secretfailedarg;
+>         /* The same, but for key material */
+>         struct PgpMalloc topsecret;
+>         int topsecretfailed(struct PgpResources *, size_t);
+>         void *topsecretfailedarg;
+>
+>         /* Fatal ("can't happen") error handler. */
+>         void (*fatal)(struct PgpResources *, void *arg, char const *fmt, ...);
+>         void *fatalarg;
+>
+>         /* Check for external events.  A non-zero return halts processing */
+>         int (*intpoll)(struct PgpResources *);
+>         void *intpollarg;
+> };
+>
+> struct PgpMalloc secret;
+> struct PgpMalloc topsecret;
+>
+> The PgpMalloc structures provide an abstraction for allocating and
+> freeing memory, and are described in more detail below. The
+> PgpResources provides two of them, one for secret data (i.e. plaintext)
+> and one for top secret data (i.e. key information).  It would be
+> reasonable for an implementation to lock top secret pages into memory,
+> so that they would never be written to disk by the virtual memory
+> system.
+>
+> int secretfailed(struct PgpResources *, size_t);
+> void *secretfailedarg;
+> int topsecretfailed(struct PgpResources *, size_t);
+> void *topsecretfailedarg;
+>
+> Callbacks are provided to handle the cases where secret allocation
+> failed and top secret allocation failed. The size of memory required
+> is given, and an error return is returned. A reasonable use of these
+> callbacks would be to display an error message and exit, or to return
+> an error code.  It is illegal for the failure function to return a
+> zero (no error) code.
+>
+> It is *not* reasonable for the callbacks to attempt some recovery
+> procedure; the allocate() routine in the PgpMalloc structure should
+> try that before returning failure.  The failure callback is split off
+> because it is only called when the pipeline is operational, but
+> allocation is also performed (and may fail) at module creation time,
+> which returns different failure indications.  (A NULL pointer.)
+>
+> void (*fatal)(struct PgpResources *, void *arg, char const *fmt, ...);
+> void *fatalarg;
+>
+> The fatal error handler is invoked with a printf()-style error message
+> for "can't happen" situations, but not for routine errors such as I/O
+> errors and the like.  A reasonable use would be to print an error message
+> and abort program execution, perhaps dumping core.  It is probably
+> *not* a god idea to attempt to translate the error messages into the
+> local language; they are intended to tell the programmer what he did
+> wrong, not the user.
+>
+> int (*intpoll)(struct PgpResources *);
+> void *intpollarg;
+>
+> Finally, the intpoll routine is called "fairly frequently" during
+> pipeline execution.  It would be reasonable for the implementation to
+> call this every time buffered data is written out.  "Fairly frequently"
+> implies that it would be reasonable to check for keypresses to control
+> a scrolling display, but probably unreasonable to run a real-time
+> video decompressor.  For the latter type of application, it would
+> probably be better to use a separate process or thread, assuming that
+> this is provided by the operating system.
+>
+> If the intpoll function returns non-zero, the library halts its current
+> operation and returns with that error code.  The library is guaranteed
+> to make some progress between two successive calls to intpoll.  Thus it
+> is correct (although probably inefficient) to always give an error return.
+> Higher-level code can then determine if anything needs to be done and
+> re-start library operations.
+>
+> In all cases, a pointer to the PgpResources structure is passed into the
+> callback, and the corresponding arg field is reserved for data for the
+> function, allowing the callback to be a general "closure" rather than
+> just a fixed function.
+>
+> The PgpResources data structure is intended for more or less global
+> data.  It is not required to create a separate instance for each use.
+> It is intended that the structure can be extended (by defining an
+> ExtendedPgpResources structure which has a PgpResources structure as
+> its first element) to hold additional data which may be useful to
+> callback routines outside the library.
+>
+>
+> 2.3. The PgpMalloc structure
+> ----------------------------
+>
+> The PgpMalloc structure is defined as follows.
+>
+> /* Special memory-allocation wrapper to support secure wipe on deallocate */
+> struct PgpMalloc {
+> 	void *(*allocate)(size_t size, void *arena);
+> 	void (*deallocate)(void *ptr, size_t size, void *arena);
+> 	void *arena;
+> };
+>
+> The allocate function is given the size and also the arena (to support
+> xmalloc if desired).  If it returns NULL, the allocation is considered
+> to have failed.  The deallocate function is given the allocated memory
+> block, the size, and the arena. The deallocate function should first
+> wipe the memory before actually deallocating it.
+>
+>
+> 3. Creating Pipelines and PGP Modules
+> =====================================
+>
+> All modules have at least one input, and zero or more outputs. The
+> majority have one input and one output.
+>
+> Modules are generally created by calling routines of the form
+> xxxCreate, where "xxx" is the type of module.  These calls also link
+> input and output modules, so they are sufficient for building linear
+> chains of modules.  Also, it is possible for a single xxxCreate call to
+> build a sub-pipeline composed of multiple modules. These sub-pipelines
+> are not treated specially in any way, but simply result in a completed
+> pipeline containing more modules.
+>
+> The generic form of xxxCreate functions is as follows.
+>
+> struct PgpModule **xxxCreate(struct PgpResources *res, struct PgpModule **headp)
+>
+> Before the call, *headp may be NULL, or point to a module "C".  It
+> should never be uninitialized.  Suppose the call creates a sub-pipeline
+> of two modules "A" and "B".  After the call, *headp will point to A, A
+> will be linked to B, B will be linked to C, and the return value will
+> point to a pointer internal to B's structure, which in turn points to C.
+> If *headp was NULL initially, then this last pointer will be NULL,
+> awaiting subsequent linking of its output.
+>
+> After one xxxCreate call, it easy to insert another module immediately
+> before or after it. To insert before, pass the same headp to both
+> create calls.  To insert after, pass the return value of the first call
+> as the headp of the second.
+>
+> It is also possible to link two modules together after they have been
+> created. It is necessary to link the pointers as described above, as
+> well as the backptr fields.  Here is the code to create two separate
+> modules (or sub-pipelines) and then link them together.
+>
+> PgpResources *res;
+> PgpModule *headA, *headB;
+> PgpModule **tailA, **tailB;
+>
+> headA = NULL;
+> /* headA -> NULL */
+> tailA = aCreate (res, &headA);
+> /* headA -> A -> NULL
+>        *tailA -> NULL */
+> headB = ...;
+> /* headB -> X, X is a module or NULL */
+> tailB = bCreate (res, &headB);
+> /* headB -> B -> X
+>        *tailB -> X */
+>
+> /* Now, link the two modules */
+> *tailA = headB;
+> headB->backptr = tailA;
+> /* headA -> A -> B -> X
+>             *tailB -> X */
+>
+>
+> Failure is indicated by returning a NULL tail pointer and leaving the
+> head pointer unchanged.  Currently, the only failure condition which
+> should happen is memory allocation failure, so you can assume that's
+> the cause of any difficulties.  If a module uses, say, hardware
+> assistance which may be missing, something will have to be added.
+>
+> When driving a pipeline, it is important to use a single variable
+> which points to the head of the pipeline. The first module in the
+> pipeline may perform some splicing operation. It would use its backptr
+> to change the variable. If, instead of using a single variable, the
+> pointer to the first module were cached in a register, it would not get
+> updated by the splice.
+>
+>
+> 3.1. Plumbing modules
+> ---------------------
+>
+> The library provides a number of modules. These fall roughly into two
+> categories. First, modules which are used to perform PGP operations
+> such as encryption and decryption. Second, general purpose modules
+> which are used internally by PGP but might also be useful to the
+> application program, and also provide a semi-abstract interface to PGP
+> internals, which might be useful for experimenting with PGP formats.
+> This section deals with the second category. Modules in the first are
+> covered in separate sections, organized around the functions provided.
+>
+>
+> 3.1.1. Fork
+>
+> This module copies one input to several outputs.
+>
+> struct PgpModule **forkCreate (struct PgpResources *res, struct PgpModule
+> **head, int address)
+>
+> This creates a one-output fork (which actually just copies its input
+> to its output).  Additional outputs may be added at any time.
+>
+> Since this is a branch module, the id field of the returned module is
+> initialized to -1.  The creator may then change it at will.
+>
+> struct PgpModule **forkTine (struct PgpModule *forkmod)
+>
+> The forkmod argument must be a pointer to the input of a fork module,
+> *head.  It returns a pointer to a new tail pointer, initialized to NULL.
+> This must be filled in before the module is next used.
+>
+> The output stream for the base fork module and each of the tines is
+> equal to the input stream.
+>
+> If the output module generates an error, and the error code is equal
+> to the id field of the fork module, then the fork module calls teardown()
+> on that output and ceases feeding it.  A fork module with no outputs
+> is a bit bucket.  (See section 3.2 below for more information.)
+>
+>
+> 3.1.2. Join (possibly to be renamed "cat")
+>
+> This module appends several input streams, creating one output. The data
+> on the inputs need not arrive in any particular order, so the
+> implemenation must (unboundedly) buffer bytes that arrive before they
+> can be sent to the output.  The will, however, buffer no more bytes than
+> necessary.
+>
+> A one-input join module is created as follows.
+>
+> struct PgpModule **
+> joinCreate(struct PgpResources *res, struct PgpModule **head)
+>
+> Additional inputs are created using:
+>
+> struct PgpModule *
+> joinAppend(struct PgpModule *prevjoin)
+>
+> This returns a pointer to a new struct PgpModule, whose input will
+> appear in the join's output appended to the given previous input's data.
+> (The first input is the value of *head after joinCreate.)  This may be
+> called at any time, as long as no module calls (write, flush, sizeAdvise
+> or teardown) have been made to the prevjoin input.
+>
+> As a special dispensation, it is allowed to write into a join module
+> before the output has been attached.  Input data is buffered as
+> necessary.  However, caution is advised in the correct handling of
+> errors, since your error handling my not be fully set up.
+>
+> This is useful to prepend constant data to a stream (such as a
+> public-key-encrypted session key before encrypted data in a
+> "public key encrypt" sub-pipeline).
+>
+>
+> 3.1.3. Bit bucket
+>
+> struct PgpModule *
+> bitBucketCreate(struct PgpResources *res)
+>
+> Since this module has no output, the calling convention is a bit
+> different than usual, simply returning a pointer to the head.  This
+> module simply ignores all input (with little extra overhead), and may
+> be useful in simplifying the structure of pipelines.
+>
+>
+> 3.2. Error handling in forked pipelines
+> ---------------------------------------
+>
+> Correct handling of errors is always a fairly tricky operation, but
+> especially so for branching pipelines.
+>
+> A typical use for branching pipeline is to check a signature, and also
+> write the message to disk. The input will be forked to two branches,
+> one to handle each function. Suppose, for example, that writing the
+> message to disk fails because the disk is full.  Do we want to continue
+> checking the signature, or abort the entire operation? This is a
+> policy decision, and as such the responsibility for the decision lies
+> in the application, not the library.
+>
+> Let us assume that we want to continue checking the signature, but shut
+> down the part of the pipeline writing the message to disk.  It is not
+> possible to call teardown() from within the error callback, so instead
+> an error code must be passed up to the branch point.
+>
+> This sort of problem also occurs at various branch points within the
+> parser: if the processing of one portion of the parser's output is
+> unable to continue, one could still want the parser to try to find a
+> next packet in the input stream.
+>
+> The branch point must have code to detect this error code and remove the
+> branch (by calling teardown() on it) while allowing the other branches
+> to function as before.  This is where the "magic" referred to in the
+> description of the PgpModule id field (section 2.1.2, above) comes into
+> play: if the error code matches the module's id field, the branch that
+> the error came from is torn down.
+>
+> There are two alternatives to using this mechanism.  First, the error
+> code could be propagated all the way up to top level, which then shuts
+> the entire pipeline down.  Second, it would suffice to put the offending
+> branch into an "error state" where its data is ignored, for example by
+> replacing the offending module with a bit bucket.  This does not
+> eliminate wasted processing in the intervening modules between the
+> branch point and the offending module, but the added simplicity is
+> possibly more important.  In the example given, checking a signature,
+> only the conversion of the canonical text to the local character set is
+> performed needlessly.  On the other hand, in other applications, one
+> could avoid decrypting a body of data that is to be ignored in any case,
+> at a considerable saving.
+>
+>
+>
+> 4. Modules for crypto operations
+> ================================
+>
+> The modules presented in this section are primitives, mainly used
+> internally by PGP, but may be useful to the application program as well.
+>
+>
+> 4.1. Packet encapsulate
+> -----------------------
+>
+> This module creates a packet, with the packet contents equal to the
+> input data stream.
+>
+> A packet consists of a packet header (which includes a type) and a
+> delimited packet body.  In the PGP 2.6 formats, the end of the body is
+> indicated with a leading length field.  Future PGP data formats will no
+> doubt allow different packet formats (more likely than not using a MIME
+> style boundary delimiter mechanism instead of an explicit length field).
+> This module will provide an abstraction for generating these packet
+> formats as well.  The corresponding abstraction for interpreting the
+> packet format is in the binary parser, described in the section on
+> parsing.
+>
+> struct PgpModule **
+> packetizeCreate(struct PgpResources *res, struct PgpModule **head, int pktType);
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 4.2. Symmetric encryption
+> -------------------------
+>
+> struct PgpModule **
+> encryptCreate(struct PgpResources *res, struct PgpModule **head, int algorithm,
+> 	unsigned char const *key, unsigned char const *IV);
+>
+> This module encrypts the input data stream, using the algorithm, key
+> and initialization vector specified. The length of the key and IV is a
+> function of the algorithm.
+>
+> Valid algorithm types are as yet unspecified. [RLL note: the original
+> spec mentions an ALGORITHM_IDEA in the code example. I suggest this be
+> renamed ALGORITHM_IDEA_CFB instead.]
+>
+> The output is encrypted but not packetized.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 4.3. Symmetric decryption
+> -------------------------
+>
+> struct PgpModule **
+> decryptCreate(struct PgpResources *res, struct PgpModule **head, int algorithm,
+> 	int (*needkey)(struct PgpResources *res, struct PgpModule *mod, void *arg),
+> 	void *arg);
+>
+> int
+> decryptTryKey(struct PgpModule *mod, unsigned char const *key);
+>
+> This module decrypts the input data stream. The algorithm is specified
+> initially, but not the key.  As soon as the module is in a position to
+> check the key for validity, it calls the needkey() callback.  In
+> response, application would then call decryptTryKey with the key.  The
+> return value is 0 if the key appears valid, or -1 if it is invalid.  It
+> is valid to call decryptTryKey either from within the needkey
+> callback, or from the top level after needkey has produced an error
+> return.  It is invalid to call decryptTryKey except in response to a
+> needkey callback.  After decryptTryKey returns a success code, the
+> pipeline can be restarted, either by returning with a zero error code,
+> or by having the top level perform a new write() or flush() call into
+> the pipeline.
+>
+> With PGP 2.6 formats, there is a 2^-16 probability that decryptTryKey
+> will indicate success even when the key is invalid. The decryption
+> module will happily output pseudorandom bytes.  If the decrypted stream
+> has any additional structure (for example, if it is compressed), then
+> this will most likely manifest as an error downstream.
+>
+> This interface supports a user interface which prompts for the key,
+> continues to prompt for the key until a probably-valid one is given,
+> and puts away the prompt as soon as a probably-valid key is given.
+> This can be done either directly in the callbacks, or at the top level
+> by means of the error return mechanism.
+>
+> The chaining conventions are as for standard filter modules. The
+> arguments to the callback match up as expected.
+>
+>
+> 4.4. Compression
+> ----------------
+>
+> struct PgpModule **
+> compressZipCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int quality);
+>
+> This creates a compress module an extra "quality" parameter that can
+> be tuned if desired.  In the case of Zip style compression, the quality
+> factor ranges from 0 to 9.  Other compressors may have different
+> initialization parameters and will be created with different functions.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 4.5. Hashing
+> ------------
+>
+> struct PgpModule **
+> hashCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int algorithm,
+> 	int (*hashfound)(struct PgpResources *res, struct PgpModule *mod,
+> 		int algorithm, void *hashcontext, void *arg),
+> 	void *arg);
+>
+> This module partially computes a hash value. It relies on the
+> hashfound() callback to fully compute the hash value, as well as
+> produce output streams, if any.
+>
+> When input EOF is reached, the hashfound function is called, with hashcontext
+> pointing to the hash context structure.  (This is necessitated by the
+> existing PGP signature formats, which implicitly append some extra data to
+> the input stream when computing the hash value.)
+>
+> [CP note: the reason that we don't use a join beforehand is that you may
+> want to check several signatures, with different appendices, on the same
+> document.  To do that, it is considerably more efficient to compute the
+> bulk of the hash once and copy the context than to compute the hash
+> multiple times.]
+>
+> If the hashfound function returns an error, it is responsible for setting
+> the module's next pointer appropriately, and it will be called again with
+> the same argument the next time the hash module receives control.
+>
+> When the hash module is torn down, hashfound is called with a NULL hashcontext
+> argument.  This call is always made.
+>
+> The hashfound function is repsonsible for calling teardown on any output
+> streams it may maintain.
+>
+> Valid algorithm types are as yet unspecified. Valid hashfound
+> functions are dependent on the algorithm.
+>
+> It would be reasonable for hashfound to append extra bytes (which are
+> necessary in the PGP 2.6 signature format), then finalize the hash,
+> RSA sign the result, form a signature packet, and write out the result
+> to a packet encapsulation module.  Or to check the signature against
+> an RSA signature.
+>
+> [RLL note: it would have been possible to use a join module to add the
+> signature classification and timestamp. Then the hash module could
+> finalize the hash itself, which could then be output in standard
+> byte-stream representation. The interface would be cleaner, but with
+> perhaps more overhead for the join and intermediate byte-stream. Any
+> particular reason this wasn't done?]
+>
+> [CP note: The reason for not using a join is given above.  The reason
+> for the custom interface is that any code receiving a hash knows it's
+> getting a hash (I can't see a use for doing it otherwise), and sending
+> the hash on atomically instead of in bits and pieces is a lot simpler.
+> You could use the old functions but guarantee an atomic write, but
+> that's still defining a new interface - it's just more subtly new.]
+>
+>
+> 5. Modules for PGP encryption operations
+> ========================================
+>
+> This section describes modules provided by the library for PGP
+> encryption operations. "Encryption" is defined loosely as any data
+> operation starting from plaintext. This includes encryption in the
+> usual sense, signing, compression, and similar operations.
+>
+> Most of the operations in this section build sub-pipelines out of the
+> components described earlier.
+>
+> Various PGP data structures are assumed, but not described in this
+> document. These include SecretKey and PublicKey.
+>
+>
+> 5.1. Signature creation
+> -----------------------
+>
+> struct PgpModule **
+> signCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int hashalg, struct SecretKey *signingkey,
+> 	int sigtype, word32 timestamp);
+>
+> This creates a signature. If hashalg and sigtype are set to appropriate
+> PGP 2.6 defaults, and the signingkey is consistent with PGP 2.6 formats,
+> then the output stream is a valid PGP 2.6 binary detached signature
+> file. If the sigtype indicates a signing of text, then the input data
+> stream must be in canonical form.
+>
+> Valid hashalg and sigtype types are as yet unspecified.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 5.2. Public key encryption
+> --------------------------
+>
+> struct PgpModule **
+> PKEncryptCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int convalg, struct PublicKey *recipients);
+>
+> Given a list of recipients, this module produces a public key
+> encrypted data stream. If convalg is set to an appropriate PGP 2.6
+> default, and recipients is consistent with PGP 2.6 formats, then the
+> output stream is a valid PGP 2.6 public key encrypted file. In this
+> case, the input data stream must be a valid PGP 2.6 format file,
+> already packetized.
+>
+> This module arranges to generate a pseudo-random session key and
+> initialization vector.  Prior to its use, arrangements must be made to
+> initialize the random number generator.  The mechanism for this is as
+> yet unspecified.
+>
+> Valid convalg (conventional algorithm) types are as yet unspecified.
+> The public-key algorithms are derived from the keys.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 5.3. Conventional encryption
+> ----------------------------
+>
+> struct PgpModule **
+> conventionalEncryptCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int convalg, unsigned char const *key);
+>
+> This module produces a conventionally encrypted data stream. If
+> convalg is set to the PGP 2.6 default, then the output stream is a
+> valid PGP 2.6 conventionally encrypted file. In this case, the input
+> data stream must be a valid PGP 2.6 format file, already packetized.
+>
+> This module arranges to generate a pseudo-random session
+> initialization vector.  Prior to its use, arrangements must be made to
+> initialize the random number generator.  The mechanism for this is as
+> yet unspecified.
+>
+> Valid convalg types are as yet unspecified.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 5.4. Text canonicalization
+> --------------------------
+>
+> struct PgpModule **
+> canonCreate(struct PgpResources *res, struct PgpModule **head, int conversion);
+>
+> This converts the input to canonical form, applying the specified
+> conversion.
+>
+> Valid conversion types are as yet unspecified.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 5.5. Literal packet creation
+> ----------------------------
+>
+> struct PgpModule **
+> literalCreate(struct PgpResources *res, struct PgpModule **head,
+> 	char littype, char const *name, int namelen, word32 timestamp);
+>
+> This wraps the input data in a literal packet of the given type
+> (LITERAL_TEXT or LITERAL_BINARY), with the given filename and
+> timestamp. If the littype specifies a text literal, then the input
+> stream must be in canonical form.
+>
+> Valid littypes are LITERAL_TEXT and LITERAL_BINARY.  Additional
+> littypes will probably be defined to handle future packet types.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+> 5.6. Signed message creation
+> ----------------------------
+>
+> struct PgpModule **
+> signedLiteralCreate(struct PgpResources *res, struct PgpModule **head,
+>         int hashalg, struct SecretKey *signingkey,
+>         int sigtype, word32 sigtimestamp,
+> 	char littype, char const *name, int namelen, word32 littimestamp);
+> );
+>
+> This module produces a signed message as its output datastream. If
+> littype indicates a text literal, then the input stream must be in
+> canonical form. If the inputs are appropriately specified, then the
+> output stream is a valid PGP 2.6 signed message file.
+>
+> It should be easy to see how this module could be implemented by
+> combining signature creation, literal packet creation, and join
+> modules.
+>
+> Valid hashalg, sigtype and littype types are as yet unspecified.
+>
+> The chaining conventions are as for standard filter modules.
+>
+>
+*****************************************************************************
+WARNING: THE DECRYPT INTERFACE HAS CHANGED SINCE THIS DOCUMENT WAS WRITTEN
+*****************************************************************************
+> 6. Modules for PGP decryption operations
+> ========================================
+>
+> This section describes modules which perform PGP decryption
+> operations. "Decryption" is defined loosely as any data operation
+> starting from a valid PGP format file. This includes decryption in the
+> conventional sense, decompression, signature verification, and other
+> related operations. However, of these, only decompression fits easily
+> within the standard filter framework. For other decompression
+> functions, a general parsing mechanism is provided. This is described
+> in the next section.
+>
+>
+> 6.1. Decompression
+> ------------------
+>
+> struct PgpModule **
+> decompressZipCreate(struct PgpResources *res, struct PgpModule **head,
+> 	int (*decompresserror)(struct PgpResources *res, struct PgpModule *mod,
+> 	                int errtype, void *arg),
+> 	void *arg);
+>
+> /* Errtype is algorithm type byte if it's unknown */
+> /* Otherwise, choose from: */
+> #define DECOMPRESS_ERR_TOOLONG	-1	/* Input has padding */
+> #define DECOMPRESS_ERR_TOOSHORT	-2	/* Input is too short */
+> /* Zip-specific errors */
+> #define DECOMPRESS_ERR_BADCHUNK	-10	/* Unknown chunk type */
+> #define DECOMPRESS_ERR_BADTREE1	-11	/* Bit length tree corrupted */
+> #define DECOMPRESS_ERR_BADTREE2	-12	/* Length/literal tree corrupted */
+> #define DECOMPRESS_ERR_BADTREE3	-13	/* Distance tree corrupted */
+> #define DECOMPRESS_ERR_BADDIST	-14	/* Distance > # of bytes to date */
+> #define DECOMPRESS_ERR_BADCODE	-15	/* Illegal huffmann code found */
+>
+> The "decompresserror" function returns an error code if it has not dealt
+> with the problem itself.  (A simple case would be to print an error message,
+> and replace the module with a bit bucket.)
+>
+> [RLL note: there is no algorithm type field. If this routine expects
+> that the caller has already dispatched on the algorithm type, then
+> that should be reflected in the name of the function. Thus, I would
+> recommend decompressZipCreate.]
+>
+> A decompression error is likely to happen when the input has been
+> somehow corrupted, most commonly when the file is truncated. It is
+> also the most likely outcome of an incorrect symmetric key which
+> manages to slip past the checksum verification.
+>
+> The chaining conventions are as for standard filter modules. The
+> arguments to the callback match up as expected.
+>
+>
+*****************************************************************************
+WARNING: THIS PARSING STUFF HAS BEEN REWORKED
+*****************************************************************************
+this is the part of the whole design which has changed the most since
+this document was written.  we do not have a write-up of the new
+interface.
+
+[RLL note 11 Feb 1995: We have a new design for the decryption
+pipeline, which unfortunately has not yet been written up. Here, I
+will just touch on the structure of the new decrypt pipeline.
+
+The primary interface to the decrypt pipeline is a "recognizer"
+module. To decrypt a file, the application will pass it to the
+recognizer. As soon as enough bytes have been receieved in order to
+figure out what the message is, it will call an application callback
+with a message type, and some more information which is internal to
+PGP. The application uses this information to set up a pipeline to
+handle that message type.
+
+Message types are (more or less):
+
+ENCRYPTED
+LITERAL
+SIGNED
+SIGNATURE
+SESSIONKEY
+KEY
+END
+
+Encrypted and signed message types, once decoded, are also PGP
+messages. The application would set up a second decrypt pipeline to
+handle them. The canonical example is an encrypted message which hides
+a signed message, but in general PGP messages can have arbitrary
+amounts of nesting.
+
+The main thing that needs to be written up for this is the
+plumbing.
+
+In any case, section 7 is to be considered "no longer operative."]
+
+> 7. Parsing
+> ==========
+>
+> [RLL note: I have not edited this section except to write an
+> introduction and rearrange it so the parsing data structures and
+> function calls are together.
+>
+> I haven't done any more editing because the parsing stuff is obviously
+> unfinished. Also, I must say that I don't quite yet grok it.
+>
+> It's clear that Colin is a generality freak. For example, function()
+> can apparently cause arbitrary changes to the parser state. A
+> traditional yacc-style parser only shifts and reduces. The PGP formats
+> might not even need that.
+>
+> Shoud I be thinking about how to construct a minimal "parsing" API for
+> PGP? I think it would be possible to simplify things quite a bit from
+> the way they are here. I'd also like to make sure that it can handle
+> the new formats without any additional pain.]
+>
+> [CP note: something less general that is nontheless enough would be very
+> nice.  Something that exposes a lot less detail.  Unfortunately, I
+> don't, at present, know what that is.  I haven't got a good design for
+> such a thing.  Because of the great generality of what I have got here,
+> however, I'm confident that *whatever* it is, it can be written on top
+> of this.  I also feel pretty good that, despite the complexity of this,
+> it's not appreciably more complex than what I need to write (I'm just
+> *documenting* its innards much more than might seem necessary) anyway,
+> and rather more general.
+>
+> So while I'd like to save myself the trouble of documenting this so
+> carefully, I think I'm going to write something similar and the code
+> won't be wasted effort.]
+>
+>
+> For decryption, in most cases the format of the incoming data stream
+> is not known ahead of time, so that different inputs might cause
+> different actions (and different pipeline configurations) to occur.
+> Thus, the API provides an amazingly general parsing mechanism.
+>
+> One of the important features of the library is the ability to perform
+> subsetting. For example, the application may be interested only in
+> checking the signature on an input data stream.  If the input is in
+> some other data format, then it is important to recognize this and, at
+> the discretion of the application, reject it.  The general parsing
+> mechanism easily supports this.
+>
+> There is an inherent tradeoff between generality and abstraction. The
+> PGP library has resolved this in favor of generality. Thus, it is very
+> easy to experiment with new data formats.  It is, however, difficult to
+> make use of this generality in a way that hides the details of the
+> data format from the application.  There is no module that, say,
+> performs conventional decryption regardless of whether the data format
+> is PGP 2.6 compatible, or one of the newer formats.  Such a module
+> could, of course, be defined and added to the API.
+>
+> [CP note: actually, the idea is to extend the parser to transparently
+> deal with both old and new packet formats, although if the grammar
+> or the *contents* of the packets change, more than just the parser
+> will need to be revised.]
+>
+> The parser API is such that it is fairly straightforward to implement
+> PGP functions on top of it. It might be argued that the interface is
+> too low level, and provides insufficient protection against changes in
+> data format.  On the other hand, by being low level, it avoids the
+> problem of hiding real functionality instead of merely irrelevant
+> detail.  It is also true that, with the new PGP formats, application
+> programs will likely have to change anyway.
+>
+> As long as there is no expectation that this API will protect the
+> application from data format changes, then successful and even happy
+> results can be obtained.
+>
+> This API actually describes two parsers, a binary parser, and an ASCII
+> armor parser.  It is unclear whether whether either of these parsers
+> will suffice for the new formats (mostly based on the proposed
+> security multipart MIME types), or whether a new parser type is
+> needed. In either case, the parsers described here are adequate for
+> the PGP 2.6 formats.
+>
+> The binary parser is modelled after the traditional lex/yacc
+> architecture. In particular, the main parsing engine is based on a
+> pushdown stack.  Because the grammar for PGP formats is much simpler
+> than, say, C, the number of states is small, so there is no need for
+> automated techniques to convert from grammars to parser tables.
+> However, a familiarity with these techniques might be helpful when
+> actually working with these parsers.  For review, the popular "dragon
+> book" by Aho et al is recommended.
+>
+>
+> 7.1. Data structures
+> --------------------
+>
+> PGP's binary parser is a classic push-down automaton, not tuned for
+> speed since the "tokens" (PGP packets) are very large.  The stack is
+> a linked list of PgpParserStack structures, each of which holds a
+> symbol (a type and a void * pointer to data) and a state.  A state is
+> represented by an array of PgpParserCallback structures which is
+> searched for a "pktType" field matching the current packet type.
+> When the entry is found, its function is called to initiate processing.
+>
+>
+> 7.1.1. The PgpParserCallback structure
+>
+> /* A function to call when a packet arrives (parser production) */
+> struct PgpParserCallback {
+> 	int pktType;
+> 	int (*function)(struct PgpResources *, struct PgpParserCallback const *,
+> 		        struct PgpModule **, struct PgpParserStack **);
+> 	/* State to transition to (if a transition is desired) */
+> 	struct PgpParserCallback const *nextstate;
+> 	/* Second-stage function to call */
+> 	int (*function2)();
+> 	/* Data available to the function (may get renamed) */
+> 	void *arg1, *arg2, *arg3, ...;
+> };
+>
+> pktType is the packet type.  In addition to the usual types (defined in
+> the PGP file format document, the informational RFC, and so on), there
+> are several pseudo-types, namely:
+> EOF - end of file
+> TEARDOWN - the parser was torn down; this gets called until the state
+> stack is empty to deallocate it
+> ERROR - something not a packet was received
+> DEFAULT - this is a catch-all, and terminates the array of callbacks
+>
+> function() is passed a pointer to the PgpResources, mostly so it can
+> allocate memory, and a pointer to its own PgpParserCallback structure
+> for access to the various fields.  The third argument is a pointer to
+> the parser's output pointer which it will expect to be filled in with a
+> pointer to a PgpModule to receive the contents of the packet.  Finally,
+> a pointer to the state stack's head pointer is provided for manipulation.
+>
+> The nextstate pointer is a next state pointer for the callback function()
+> to transition to if it wants to.  A function() that does not cause a
+> state transition doesn't use this field.
+>
+> Many standard callback functions attach a module which reads and parses
+> the contents or prefix of a packet to the parser's output.  These modules,
+> when they hit the end of the packet, call function2() with arguments that
+> describe what they found.
+>
+> arg1, etc. are fields for the use of the callback function().  The
+> pre-written function()s have not been fully fleshed out and the number
+> of extra parameters that appear to be useful will determine the number
+> of arg fields.
+>
+>
+> 7.1.2. The PgpParserStack structure
+>
+> /* An entry on the push-down automaton's state. */
+> struct PgpParserStack {
+> 	struct PgpParserStack *next;
+> 	struct PgpParserCallback const *state;	/* Array of callbacks */
+> 	int type;
+> 	void *data;
+> };
+>
+> This is a standard push-down automaton state stack, stored as a linked list.
+> Each entry has a state table pointer (The top stack entry's state table
+> is the current one), a type, and some type-specific data.
+>
+>
+> 7.1.3. The PgpBuffer structure
+>
+> /* An opaque structure that holds an arbitrary number of bytes */
+> struct PgpBuffer;
+>
+> This structure's innards are not exposed; it's just an opaque object
+> that can store an arbitrarily long string of bytes and read it back on
+> demand.
+>
+>
+> 7.1.4. The PgpLineLexer structure
+>
+> The ASCII armor parser has a first stage which recognizes lines which
+> are tokens in the ASCII armor language, such as "-----BEGIN PGP" and
+> "Version: 2.6.2".  To do this, it places each input line into a buffer
+> and calls a series of Line Lexer functions.  The lexing is somewhat
+> context-dependent (e.g. radix-64 encoded data is special only within
+> "-----BEGIN PGP MESSAGE-----" and the like), so a finite state machine
+> is provided to do the analysis.  Like the parser, a state in the machine
+> is given by an array of structures, each containing a function pointer
+> and some additional data.
+>
+> /* A function to attempt to recognize a line of input */
+> struct PgpLineLexer {
+> 	struct PgpBuffer *(*function)(strut PgpLineLexer const *state,
+> 		struct PgpLineLexer const **statep,
+> 		struct PgpResources *res, struct PgpLexerObj **headp,
+> 	 	struct PgpBuffer *input, struct PgpBuffer *output,
+> 		int *errcode);
+> 	struct PgpLineLexer const *nextstate;	/* State transition */
+> 	int outputType;				/* Output */
+> 	void *arg1, *arg2, ...;			/* Extra arguments */
+> };
+>
+>
+> The function() gets called with a pointer to its own structure, a pointer
+> to the ASCII armor parser's "next state" pointer for it to update to make a
+> state transition, the PgpResources for memory allocation and fatal errors,
+> a pointer to a simple linked-list symbol table (described later), an
+> input and an output buffer, and a way to return an error code.
+>
+> The output buffer is initially empty.  The lexer must return either NULL,
+> indicating that it did not "accept" the line and the same input line
+> must be passed on to the next function, or the input or output buffer.
+> In the latter case, the buffers may be modified, and contain the
+> "data" of the line (such as the binary form of a radix-64 line, or
+> the body of a clear-signed line without any quoting).  In this case,
+> the next state is entered with the next input line.
+>
+> The nextstate is a pointer to a state to jump to (a state is just an array
+> of functions representing possible edges) for the use of the lexer function.
+> Note that the default state pointer is the PgpLineLexer structure immediately
+> after the current one in the array; a lexer function must almost always
+> reset the state if it succeeds, if only back to the beginning of the same
+> table.  A function is also permitted to cause a transition on failure.
+>
+> The outputType gives a "token type" to the output of a line lexer.  The
+> basic types are "surrounding non-PGP text", "clear-signed text" and
+> "radix-64 encoded binary data", although an additional one could be
+> added to, for example, represent the Version: line if that was worth
+> emitting.  (The current behaviour is to silently ignore it.)
+>
+> The output of the lexer module is tagged with the type, and the data fed
+> to a second parser just like the binary parser, but with the output
+> types used instead of the packet types to drive the automaton.  Also,
+> consecutive lines with the same output type are merged together into a
+> single "chunk" of that type.
+>
+> A chunk of type T is terminated when a line of type -T is encountered.
+> Type -T is a "clean EOF" for a chunk of type T; this is the expected
+> end of the chunk.  (E.g. an -----END PGP line.)  The line lexer sends
+> the output data from the lexer (if any) downstream, followed by
+> sizeAdvise(0), then tears down the stream.
+>
+> If a line of some type T' != T is encountered, then the output stream is
+> treated to a "dirty EOF"; it is torn down unceremoniously and the parser
+> told about the new chunk of type T' that is beginning.
+>
+> The various arg fields are for extra data which is passed to the line
+> lexer functions.  Percisely how many fields are needed will be
+> determined when the functions are written in detail.
+>
+>
+> 7.1.5. The PgpLexerObj structure
+>
+> Line lexers do not generally have private places that they can store
+> state.  For certain operations, an analogue to a compiler's symbol table
+> is useful.  An example is storing information about the type of opening
+> line that began a radix-64 block (was it BEGIN PGP MESSAGE or BEGIN PGP
+> PUBLIC KEY BLOCK?) so that you can check it for agreement with the
+> closing delimiter line.
+>
+> An extremely primitive sumbol table is provided, in the form of a
+> linked list of "PgpLexerObj" structures.  They are defined as follows.
+>
+> /*
+>  * Lexer modules can dump information they need into this list.
+>  * The "deallocate" function is used in case of unexpected termination
+>  * to free the object.
+>  */
+> struct PgpLexerObj {
+> 	struct PgpLexerObj *next;
+> 	void (*deallocate)(struct PgpLexerObj *obj, struct PgpResources *res);
+> 	int type;
+> 	void *data;
+> };
+>
+> This is extremely straightforward.  The only possibly unexpected
+> component is the deallocate function, which is expected to deallocate
+> the PgpLexerObj structure passed in and the "data" pointed to.
+> The function is needed to, for example, know which pool the memory was
+> allocated from (secret or top secret) and how large the allocation is.
+>
+> Normally, these objects will be freed by the state transitions that
+> refer to them, but if the ASCII armor parser gets an unexpected teardown or
+> the file ends abruptly, then the ASCII armor parser needs some way to
+> clean up the data.
+>
+>
+> 7.2. Parsing functions
+> ----------------------
+>
+> While encryption does not need to interpret the data being encrypted,
+> decryption has to read and understand a structured format with various
+> consistency checks.  E.g. a public-key encrypted packet followed by a
+> signature packet is illegal.  Just defining what is correct is a bit
+> involved, then all the error cases have to be categorized.  Fortunately,
+> there is a well-developed theory of parsing and automata that can be
+> drawn on.  If you don't know anything about parsing, this may be
+> confusing.  Reading one of the "dragon books" by Aho, Hopcroft and
+> Ullmann would be useful.
+>
+>
+> 7.2.1. Binary packet parsing
+>
+> Some familiarity with the PGP packet format is useful here.  Basically,
+> PGP produces a binary output file (usually "foo.pgp") which contains
+> a series of "packets", each with a header containing a type and a body
+> that contains some type-specific data.
+>
+> Just dealing with specific packet types is easy; you can dispatch on
+> the packet type.  But some structures are multi-packet (e.g.
+> public-key encrypted conventional keys, followed by conventionally
+> encrypted data) and need some mechanism to link the parts together.
+>
+> The mechanism provided is a push-down automaton, equivalent in principle
+> (and power) to the engine at the heart of systems like yacc.  However,
+> the amount of parsing to be done is far less, so efficiency is not as
+> big a concern as with yacc, and the number of states involved is far
+> less, so there's no need for an input language and a preprocessor.
+>
+> The implementation is very straightforward.  A state is represented by
+> a table of (token type, action) pairs, where the token type is the
+> packet type, and the action is a callback with a few arguments.  The
+> table is terminated by a "default" action.  There are also some "EOF"
+> and "invalid packet" pseudo-tokens.
+>
+> A stack is kept, each entry of which contains a state and a symbol.
+> Since in the current grammar, the symbol is always a terminal, which is
+> a packet, it's referred to as a packet, but nothing prevents it from
+> being a non-terminal.  The symbol is an integer type and a void * to the
+> body.
+>
+> In the current grammar, there are three states:
+> - The default initial state
+> - Some public-key-encrypted packets have been received;
+>   waiting for a conventionally-encrypted body.
+> - Some signatures have been received; waiting for a literal packet that
+>   they apply to.
+>
+> The state stack is manipulated by the call-back functions and things
+> that they invoke.  The parser module proper does not use it except to
+> use the top state's callback table.  The parser promises to shut down
+> one output pipeline fully before examining the state stack to tell how
+> to dispatch on the next packet.  Thus, the callbacks can conspire to
+> delay until the packet is successfully parsed before altering the state
+> stack.
+>
+> The callback is passed the following arguments:
+>
+> - struct PgpResources *resources
+> - struct PgpParserCallback *callback
+> - struct PgpModule **tail
+> - struct PgpParserStack **stackhead
+> - int *errcode
+>
+> The pipeline is passed in for global variable access.
+> The "struct PgpParserCallback" holds the packet type, the callback function,
+> and a number of "void *" generic arguments for the use of the callback
+> function.  (The number and names of such slots is to be determined
+> by need as the code gets written.)
+>
+> One more of the arguments for the callback to use is a second callback,
+> which gets a parsed form of the structure fields of the packet.
+> For example, the packet type, filename, and timestamp of a literal
+> packet; or all the various fields in a public-key-enctypted packet.
+> A user can often just replace this second function to do some custom
+> processing and not have to muck with the details of parsing packets.
+>
+>
+*******************************************************************
+WE ARE STILL RETHINKING THIS PART
+*******************************************************************
+ASCII-armor is primarily needed for compatiblity for pgp 2.6 and
+earlier and there is no intrinisic reason why a crypto-library should
+be fooling with this stuff.  my opinion is that we need to not waste
+too much effort here, as new applications will probably use a
+different method for encoding binary data into 7-bit ascii.
+
+[RLL note: there will probably just be a module which strips off ASCII
+armor and makes fake PGP 2.6 messages out of them. Similarly for
+encrufting -- the module will take valid PGP 2.6 messages and just add
+ASCII armor.]
+
+> 7.2.2. ASCII armor parsing
+>
+> This is actually messier than the binary parsing.  The problem is that the
+> binary packets are all in the same general format, with a structure that
+> is easy for a computer to read.  The ASCII armor is in a format designed
+> to be easy for a human to read and a mailer to accept.  So a "token" is
+> not as easy to recognize.  ASCII armor has a strong line orientation,
+> but there are many different line formats.  Here is an example:
+>
+> Here is a signed message:		Surrounding "plaintext"
+> -----BEGIN PGP SIGNED MESSAGE-----	Delimiter
+> 					Blank line
+> Hello, world!				Clear-signed text
+> 					Trailing newline
+> -----BEGIN PGP SIGNATURE-----		Delimiter
+> Version: 2.9 beta J			Header line
+> 					Blank line
+> iQCVAgUBLtxBiA/D7AL7u4qxAQEV0AP/YhxihV30d6Ol6UASDzzd9F5ejEZBL0/J  Radix 64
+> w9nPT/w/O3Vf76XGiMQZXAGOoG2Z6Ccxe9M2ym/bLlIZTgx24Qi+DhKMDctDqZ9l
+> Zohr8P1B4TVvu0IR05HML5OhZYkYLLKOdrtu5aJ9D1lTKZLsx5PonaxnRDNGpIR1
+> lLu/GLuYnVU=				Radix 64 last line
+> =dkbP					Checksum
+> -----END PGP SIGNATURE-----		Delimiter
+>
+> That's 12 sorts of lines.  And there's an ordering relationship on
+> them.  The first clear-signed chunk is optional, but after that the
+> various bits have to appear in the proper order, and there's a special
+> syntax for each.
+>
+> So the ASCII armor parser is divided into two stages, which are vaguely
+> analagous to the lexical and syntactic analysis phases of a compiler.
+> (Think of lex and yacc.)
+>
+> Code in the ASCII armor parser module proper breaks the input into
+> lines.  (There is some hair involved because while lines *tend* to be
+> reasonably short, their length is unbounded.)  Then a finite state
+> machine attempts to recognize the line, assign it a token type (this is
+> context-dependent, since e.g. a radix-64 line is valid in a
+> clear-signed message), and convert it to output (a clear-signed line is
+> unquoted; a radix-64 line is converted to binary).  Then a parser akin
+> to the binary parser parses the output data stream based on the token
+> types.
+>
+> Both state machines are driven by tables in a manner very similar to
+> the binary parser.
+>
+> The ASCII Armor parser can be structured just like the binary parser;
+> it just takes a bit of thinking to see how to do it.
+>
+> So, the lines are parsed with a similar parsing table strategy.  This is
+> a finite state machine (no stack), made up of function tables.  It works
+> as follows:
+>
+> - The ASCII armor parser sticks each input line into a buffer.  The
+>   buffer has some complex internal data structure that lets it cope
+>   with arbitrarily long lines, but the buffer structure guarantees that
+>   the first N characters (N at least 128; in practice it'll actually be
+>   more like 1024) of the line will be in a contiguous piece, so for the
+>   99 44/99% of all cases when you only need the beginning of the line to
+>   determine what kind it is, you can make the simplifying assumption
+>   that it's a contiguous buffer.
+> - The current lexical analysis state is a pointer to a matching function
+>   structure.  These are generally in an array, and the default state
+>   transition is to the next matching function in the array.
+> - The ASCII armor parser passes the buffer to the current matching
+>   function.  The matching function either rejects the data, or accepts
+>   it and produces output of a given type.  In either case, it can also
+>   cause a state transition to something other than the default next
+>   state (the next function in the array).
+> - The second stage of the ASCII armor parser creates (if necessary) a
+>   module of a type appropriate to the type of the output produced, and
+>   writes the data to it.
+> - If the data stream of type X ends, the output module is shut down, and
+>   the next data to arrive, of type Y, causes a new stream to be created.
+>
+> Basically, you have a finite state machine lexical analyzer and a
+> more general parser, and they are separated.  The lexer handles "tokens"
+> which are assumed to be small (it will still work if they're huge, but
+> it's not going to be amazingly efficient) by buffering them and treating
+> them atomically, while larger elements are handled by the stream-oriented
+> parser.
+>
+> The way the line lexer functions are called is with:
+> - A (const) pointer to the line lexer structure, which has additional
+>   constant arguments like the state to transition to on success, and
+>   an integer type of the output produced by this lexer function if
+>   it succeeds.  This can be:
+>   x = 0 - no output expected; do not change state
+>   x > 0 - Output of type x
+>   x < 0 - Output of type -x, followed by "clean EOF" (expected termination
+>           of a chunk of this type)
+> - A pointer to the PgpResources structure for any allocations that need to
+>   be done.
+> - A pointer to the head pointer of a linked list of generic objects,
+>   each with a:
+>   - next pointer
+>   - integer type
+>   - deallocation function (called in case of nasty abort)
+>   - void *body, uninterpreted
+>   This is a (very primitive) symbol table for the lexer to store
+>   data in, like the string and part number after "-----BEGIN PGP"
+>   to make sure it matches the "-----END PGP" message.  It's a linked list,
+>   so you can also use it as a stack if desired.  Obviously, much more
+>   sophisticated things are possible, but hardly desirable.
+> - A pointer to a buffer full of input data (one line, including terminating
+>   CR or LR, if any; the buffer is empty iff we're at EOF)
+> - A pointer to an empty buffer for output data.
+> - A pointer to the ASCII armor parser's current state pointer to a line lexer
+>   structure, which is pre-set to the next line lexer after this one.  The
+>   lexer can re-set this to any other state.  NOTE that any time a line
+>   is accepted, re-setting the state is an excellent idea!  If nothing
+>   else, to the start of the current state's line lexer table.
+> - A pointer to an integer errcode, for returning errors to the top level.
+>   Note that if a function wants to signal an error process a line again
+>   after the error has ben dealt with, it should reset the ASCII armor
+>   parser's state pointer to point to itself, set the errcode to non-zero,
+>   and return "failed to parse."
+>
+> The line lexer returns a pointer to a buffer.  This can be NULL if it
+> wants to reject the line, in which case the input and output buffers
+> must be unmodified, or one of the two.  The buffers do get reinitialized,
+> but never created or destroyed.  (Efficiency win.)
+>
+> For simple transformations, like stripping a leading "- " from clear-signed
+> text lines, it's simpler to modify the input buffer in place and return
+> that.  For more complex ones, line aSCII de-armoring, it's simpler to
+> copy it to the output buffer and return that.  If a lexer wants to eat
+> a line and produce no output, it can return the output buffer unmodified.
+>
+> Note that there is no place for a lexer to keep private state.  The
+> line lexer structure is NOT like a module structure that's unique
+> per-instance; it can be shared by multiple ASCII armor parsers at the
+> same time, so it can't be modified.  The only out is that a lexer can
+> put something on the stack the ASCII armor parser provides for that
+> purpose.
+>
+>
+> Also note that the entire lexer state machine need only be diddled with
+> if you want to change the ASCII armor syntax in some way.  It's there
+> because I'd be building half that mechanism to create an ad-hoc,
+> non-extensible solution to the problem anyway, and this is vastly more
+> flexible without raising the implementation complexity significantly.
+> (In some ways, it simplifies it by supplying a well-understood
+> framework and breaking it into smaller pieces.)
+>
+> The big thing that does happen at the lexer level is piecing together
+> multi-part messages.  Because I don't currently have any really good
+> general ideas for doing this, this flexibility lets me feel confident
+> that whatever the eventual solution is, I haven't precluded it.
+> (I think the technique is going to involve building a multi-way join
+> and feeding the various parts to it.)
+>
+>
+> If a lexer function returns success, the type of output it's expected to
+> produce, which is a constant in the descriptor structure, is examined.
+> The ASCII armor parser has a "current output module" and a "current output
+> type".  If an output module currently exists and the new type is different
+> from the existing type, the output module is ungracefully torn down.
+> Then, if an output module of the appropriate type does not exist, it
+> is created using the parser table's callback functions.  (Just like
+> the binary parser, based on a lookup on packet type.)  Then the data
+> (if any) is written to it.  Finally, if the result type was negative,
+> the output module is gracefully shut down.
+>
+> All of these actions are taken by the ASCII armor parser module proper,
+> which can deal with propagating flush() calls or whatever.  The ASCII
+> armor module makes no attempt to propagate sizeAdvise() information.
+> 
+
+************************************************************************
+THE END
+************************************************************************
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.6
+
+iQBVAwUBLz1jsN+u0E8bJx6hAQFFnQH/cNJ913Q2WjNroy5QjB4bb9J3kBe9tC8P
+tC09/E/qXMKwt8FYCXMAvZZGggBJt56FFNEt4/jvfBhkU5AmaCFXMQ==
+=FQf2
+-----END PGP SIGNATURE-----

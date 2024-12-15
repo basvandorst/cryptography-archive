@@ -1,0 +1,1 @@
+/*____________________________________________________________________________	Copyright (C) 1997 Network Associates, Inc. and its affiliates.	All rights reserved.				$Id: CInternetUtilities.cp,v 1.2.12.1 1998/11/12 03:22:23 heller Exp $____________________________________________________________________________*/#include "CInternetUtilities.h"

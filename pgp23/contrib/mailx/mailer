@@ -1,0 +1,104 @@
+To: warlord@MIT.EDU
+Subject: Re: Request for Mailer Scripts
+Newsgroups: alt.security.pgp
+In-Reply-To: <WARLORD.93Feb28225941@toxicwaste.mit.edu>
+Organization: Little to None
+Cc: 
+Message-Id: <9303022351.AA17838@colnet.cmhnet.org>
+Date: Tue, 2 Mar 93 23:51:30 EST (-0500)
+From: res@colnet.cmhnet.org (Rob Stampfli)
+
+In article <WARLORD.93Feb28225941@toxicwaste.mit.edu> you write:
+>I am trying to collect mailer scripts for use with PGP!  Basically, if
+>you have written a script to integrate PGP into some mailer, mailer
+>agent, mail reader, news reader, or anything like that, please send me
+>a copy of the script, any documentation you may have, and instructions
+>for use.
+
+Here is a shellscript that I use with the "mailx" mailer to send encrypted
+messages under Unix.  Basically, to use this script, I have the following
+command in my .mailrc file:  "set sendmail=/the/full/path/name/to/this/script"
+This has the effect of causing mailx to invoke the script, rather then
+/bin/mail as the Unix mailer.  In this respect, it can be used by any mailer
+that can be made to pass off the to-be-mailed message to a script rather
+than the /bin/mail program.  The script is written for the Korn Shell,
+although it would be fairly trivial to modify it to work with the standard
+Bourne Shell.  It looks for two special mail "addresses":
+	enc=pgp_identifier
+	sig=pgp_identifier
+The first form "enc=pgp_identifier" or "encrypt=pgp_identifier" specifies
+that the pgp public key uniquely identified by <pgp_identifier> be used to
+encrypt the message.  The second "sig=pgp_identifier" specifies that the
+secret key identified by <pgp_identifier> be used to sign the message.
+Either or both can be used.  If enc is given, the message is encrypted,
+optionally signed, ascii armored and delivered to the real mailer for
+distribution.  If only sig is given, the message is signed in +clearsig
+mode and the result passed on.  In any case, the header is exempt from
+the process and is passed on intact.
+
+To send an encrypted message, address the mail to both the recipient and
+the mail address "enc=pgp_identifier".  Ditto to sign a message.  Mailx
+allows use of a "bcc: " field (Blind copy-to), so the enc= or sig= can
+be optionally specified there.
+
+There are a few gotchas:  Since pgp grabs the first key that matches
+the pgp_identifier, you can encrypt to the wrong key if you specify
+pgp_identifier too loosely.  Also, if you break out of the script, it
+delivers a null message.  
+
+Without further ado, here is the script:
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+#!/bin/ksh
+# This script is invoked by adding the line "set sendmail=pgpmail" to your
+# .mailrc file.  mailx then invokes pgpmail instead of /bin/mail to deliver
+# email.  This script checks whether encryption, a signature, or both are
+# specified, and automatically performs whatever is required.
+#
+# Modified 6-Mar-93 by warlord@MIT.EDU to include multiple recipients
+#
+ 
+trap "" 1 2 3				# req'd since this can run in bg
+exec 2>/dev/tty				# can be "exec 2>/dev/null"
+
+nl="" en="" sg=""
+for i					# for each argument...
+do
+  case "$i" in				# look for encryption specifier...
+#     Unclear this will work
+#  *encrypt=*)	en="`sed 's/.*=//'`"	# this line req'd if SHELL=sh
+  *encrypt=*)	en="$en ${i#*=}";;	# this line is faster if SHELL=ksh
+  *enc=*)	en="$en ${i#*=}";;	# this line is faster if SHELL=ksh
+  *sig=*)	sg="${i#*=}";;		# a pgp signature specification...
+  *)		nl="$nl $i";;		# a real mail address...
+  esac
+done
+
+[ X = "X$en" -a X = "X$sg" ] && exec /bin/rmail "$@"	# not a pgp request
+
+[ Xy = "X$sg" -o Xyes = "X$sg" ] && sg="Robert E. Stampfli" # just for me...
+
+# If we get here, encryption or sig *was* specified:
+(
+  OIFS="$IFS"				# needed to preserve tabs in header
+  IFS='
+'
+  while read x		 		# read and process header intact
+  do
+    print - "$x"			# ksh only -- for sh, use echo
+    [ X = "X$x" ] && break
+  done
+  IFS="$OIFS"				# reset field separators
+  if [ X = "X$sg" ]; then		# no signature specified:
+    pgp -feat "$en"			#   encrypt the message...
+  elif [ X = "X$en" ]; then		# no encrypt specified:
+    sed -e 's/^From />From /' |		#   pre-convert mail glitcher...
+    pgp -fast +clearsig=on -u "$sg"	#   sign msg in MIC-CLEAR mode...
+  else					# both encrypt and sig specified:
+    pgp -feast "$en" -u "$sg"		#   encrypt and sign armored...
+  fi
+  echo "Encryption phase completed" 1>&2
+) | /bin/rmail $nl
+
+-- 
+Rob Stampfli  rob@colnet.cmhnet.org      The neat thing about standards:
+614-864-9377  HAM RADIO: kd8wk@n8jyv.oh  There are so many to choose from.

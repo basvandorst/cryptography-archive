@@ -1,0 +1,365 @@
+/************************************************************************/
+
+/* Porting  ENIGMA.C                                                    */
+
+/* (c) by Andreas G. Lessig, Hamburg                                    */
+
+/* 26.1.1994                                                            */
+
+/************************************************************************/
+
+
+
+
+Conditions for porting:
+-----------------------
+
+   You should be able to port enigma.c to another System if the following
+   conditions are fulfilled:
+
+   1. You can compile a C program for this system
+
+   2. This system uses the ASCII character set (EBDIC would be fatal)
+
+   3. It can run in 80*25 text mode
+
+   4a. It is either MS-DOS 
+        or 
+   4b. has a vt100 screen  
+        or
+   4c. you know somebody who supplies you with functions
+
+       ScreenPutChar(c,mode,x,y)  /* puts c in colour mode to position (x,y)*/
+          and
+       ScreenSetCursor(x,y)       /* move Cursor to x,y */.
+          and
+       cls(colour)                /* paint the whole screen in colour */
+                                  /* or at least erases it */
+
+       (S)he will probably also have to redefine the colour constants in the
+       header of the source. More ahead...
+  
+   5a. It has a getch() function (normally in the standart or in the curses 
+       library)
+          or
+   5b. you know somebody who supplies you with a function
+
+       inkey()                 /* returns a single integer fo every pressed*/
+                               /* key. The key isn't echoed */ 
+                               /* and is imidiatly returned without waiting*/
+                               /* for <CR> */
+
+       S(h)e will probably also have to redefine the special key constants in 
+       the header of the source. More ahead...  
+
+
+
+
+How it's done:
+--------------
+        
+        **************************************
+        Please note:
+
+        All your changes to the source should
+        depend on a switch specific to your
+        system. E.g.:
+
+            #ifdef <MySystem>
+                <MyCode>
+            #else
+                <NormalDefault>
+            #endif
+        where
+            <MySytem> something your compiler 
+                  defines for your system
+
+            <MyCode> what you wanted to insert
+            <NormalDefault>
+                 what was there before  
+
+        Mark all changes as yours and add a 
+        short explanation on what you did to 
+        the header. Sign it with a name, 
+        nickname or any other sign you use.
+        (So they don't blame me for your
+        errors. I do enough of them myself)
+
+        If you want your fame for porting,
+        or if you did changes altering the
+        the behaviour of the Enigma, add
+        a notice to title(). This way 
+        everybody knows that this is a
+        altered version.
+
+        Again, don't make the people 
+        believe I'm responsible for your 
+        changes.
+ 
+        **************************************
+
+
+
+1. MS-DOS (colour) 
+
+    You'll have to install ANSI.SYS.
+    If you have garbage on your screen define MSDOS.
+    (__MSDOS__ will do it, too.)
+    If your linker complains about not being able to
+    find _getch, you must use a curses library. If
+    you dont have one, you must write your own getkey()
+    function. 
+
+1a. DJ GCC
+
+    This is the gcc version which uses the go32 extender.
+    To compile just say:
+    
+        gcc enigma.c
+        copy /b bin/go32.exe a.out enigma.exe 
+
+1b. EMX GCC with BSD curses
+
+        set TERM=mono
+        set TERMCAP=<Drive for gcc>\emx\etc\termcap.dat
+
+        gcc enigma.c -DMSDOS -DCURSES -lcurses -ltermcap
+
+2. MS-DOS (black and white)
+
+    Define MSDOSBW  additionally to the above mentioned.
+
+3. Atari and vt52 terminals
+	hopefully the only switch you have to set is
+
+    ATARI_ST for atari's
+       or
+    VT52 for other vt52 terminals
+
+	However this only applies if you have a getch() function.
+    If you haven't, read under 4 and 5 about rewriting the 
+    inkey() function.   
+
+4. UNIX, vt100 terminals, curses
+    Hopefully just compile.(uses vt100)
+    For inverse Graphics define MSDOSBW. (also vt100)
+    
+    There is one problem with Unix however. getch() might
+    not be in the standard library. If this is the case
+    define CURSES and try linking the curses library:
+        cc -o enigma enigma.c  -DCURSES -lcurses
+    This way getch() is imported from the curses library.
+    There are also some initialisation routines called 
+    to make it work correctly.
+    
+    On our system only xterm understands vt100. So make sure you 
+    have a terminal which does work with vt100.
+    
+    If the clearing of the Screen doesn't work correct try defining
+    VT320. It uses ESC sequences ANSI.SYS doesn't know. I found
+    them in a manual for an vt320 terminal. Don't use it under DOS,
+    ansi.sys will set your Screen to graphic mode 320*200. This
+    means your screen has suddenly only 40 columns with big
+    letters. It's ugly.  
+
+    On a SUN system cls() might not owrk anyway. This is because
+    SUN uses <CNTRL>L ('\014') to clear the screen. You can 
+    additionally define SUN to support this.
+
+    Setting the switches bave mentioned can be avoided if you use 
+    the curses library for output, too.
+    This can be achieved by defining SWEARWORDS or BSDCURSES.
+        SWEARWORDS: use the System V curses library
+        BSDCURSES:  use the BSD version of curses
+                    (necessary if the linker can't find _keypad)
+    Both define CURSES.
+
+    To use curses you have to link the curses libraries (-lcurses).
+    Additionally you might have to link the termcap libraries if you
+    use a BSD library.
+
+    Example:
+        cc -o enigma enigma.c -DSWEARWORDS [-DNEEDSCR] -lcurses
+           or
+        cc -o enigma enigma.c -DBSDCURSES [-DNEEDSCR] -lcurses -ltermcap
+
+		(the brackets mean optional)
+  
+    My definitions for the Cursorkeys and F1 won't work except with
+    SWEARWORDS. You might 
+
+        1. change the inkey() function to return
+                UpArrw
+                DwnArrw
+                LftArrw
+                RghtArrw    
+                F1
+           if the corresponding keys are pressed
+
+        2. use 
+                Cntrl-p
+                Cntrl-n
+                Cntrl-b
+                Cntrl-f
+                1
+           instead (like less, emacs, ...)
+            
+    Enigma has an option -d to show the switches set for compiling.
+    if the output seem to be drifting to the right define NEEDSCR.
+
+
+        
+5. other Systems:
+    
+    Definitions:
+    
+        In the header a lot of switches are set. 
+        I've marked the inner #else. Normally
+        at this place VT is defined (for vt100).
+        Now define your own switch instead.
+
+        
+        If your system is capable of colours,
+        define COLOUR. If you don't want to use
+        my defines for certain colours go on to
+        the section where the colours are defined.
+        I've marked, where you can insert your 
+        own definitions.(For the explanation how
+        this values are composed, please look
+        next section.)
+        
+        I don't think it should be necessary to
+        change the colour defines in b/w mode.          
+
+    Graphics:
+    
+        You'll have to rewrite ScreenPutChar()
+        and ScreenSetCursor()(as mentioned above). 
+        The latter can be a dummy.
+        If your graphics have to be initialised use
+        gr_init().
+        If you want to clean up the screen at leaving
+        use gr_exit (current Version calls cls()).
+        The ScreenXXX functions expects to get
+        foreground and background colour as one argument.
+        The original version uses:
+        
+            black & white:
+                0 black on white
+                1 white on black
+            colour:
+                foreground:
+                    1 blue
+                    2 green
+                    4 red
+                    8 dark grey
+                background:
+                    16 blue
+                    32 green
+                    64 red
+                These values can be added. 15 is a white character
+                on black background, 28 (4+8+16) a bright red on blue.
+                
+        The ScreenPutChar function won't show characters > 127 unless
+        MSDOS is defined. So you can define the special characters in the
+        definition section e.g. to 200 to get smaller rotors.           
+        
+        You'll also have to supply a cls(attr) funktion. It clears the 
+        screen and sets it to the colour attr. For specification of attr
+        look above. With a fast library you can simply 
+        
+            putxy(' ',attr,<every x>,<every y>)
+        
+        I wouldn't recommend it for use with escape sequences  
+        because it is rather slow.
+        Not every terminal knows a fast way to set the background colour.
+        The curses library doesn't, too. So you might simply clear the
+        sreen in b/w mode.
+
+        Another slow function is writexy(s, mode, x, y). It works like
+        putxy(), but expects a string as argument. Every character of s 
+        is passed to putxy(). On a terminal this is rather slow, so you
+        might want to write a better function. 
+             
+    Keys:
+        Check out the key constants in the header.
+        At least the Cntrl - keys should be quite portable.
+        make sure that on your system <ESC> = 27, else
+        change the #define of ESC. This is the most 
+        important key, since it allows you to leave the
+        program.
+                        
+        The function that takes input is inkey().
+        If you don't have a getch() function or if it returns
+        more than one time on a single key hit, here is the place
+        to make changes. 
+
+        inkey() is supposed to:
+           - return immediatly on every keypress 
+             (without waiting for <Return>)
+           - return only once on every keypress
+           - return a integer consistent with the defines in the header
+           - not to interpret Controll characters (ASCII < 32), because
+             Cntrl-p,Cntrl-n,Cntrl-f,Cntrl-b and Escape are used by this 
+             program.  
+
+         It might change characters to lowercase (it actually does).
+         This is recommended because uppercase isn't used and this way
+         a accidental pressing of <Capslock> has no effect.
+         (This way it is much simpler than testing for twice as much
+         characters in various switch() statements.
+
+        
+Switches:
+---------
+
+     The following is copied from the header of the source.
+
+
+
+ 
+/* SWITCHES: some #define's change the behaviour of ENIGMA                 */
+
+/*            ATARI_ST          ENIGMA assumes it is running on an         */
+/*                              Atari ST, VT52 is used                     */
+/*            MSDOS, __MSDOS__  ENIGMA assumes it is running on a PC       */
+/*            __GNUC__          test() says "compiled with Gnu C"          */
+/*            MSDOSBW           On PC: black & white, uses ANSI.SYS        */
+/*                              else:  inverse to default vt100            */
+/*            VT320             *** Never use this one on a PC! ****       */
+/*                              It uses some special ESC Sequences         */
+/*                              unknown to ANSI.SYS. It might help if      */
+/*                              cls() doesn't work on vt100 terminals.     */
+/*                              I'm not sure if this Sequences are vt100.  */
+/*                              I found them in a manual for a vt320       */
+/*                              terminal                                   */
+/*            VT52              use vt52 Graphics                          */
+/*            CURSES            should be defined when getch() has to be   */
+/*                              imported from the curses library           */
+/*                              does minimal initialisation, but no        */ 
+/*                              keypad(), no use of curses for output      */
+/*            SWEARWORDS        use curses for output, too                 */
+/*                              (includes CURSES)                          */
+/*                              uses keypad() for input, this means F1 and */
+/*                              cursor keys will be correctly recognized   */
+/*                              without the need to know the scan codes    */
+/*            BSDCURSES         don't use System V specific curses routines*/
+/*                              (includes SWEARWORDS, but puts             */
+/*                              restrictions on it)                        */
+/*                              no keypad()                                */
+/*            UNIX              test() says "compiled for UNIX"            */
+/*            SUN               for SUN Workstations,                      */
+/*                              uses CntrlL ('\014') for cls()             */
+/*            NEEDSCR           defines puts(s) as printf("%s\r\n",s)      */
+
+/*            DEBUG             You get a lot of strange messages.Not for  */
+/*                              normal use                                 */
+
+/*            These are set automatically:                                 */
+
+/*            COLOUR            indicates that the system can display      */
+/*                              colours. At the moment only with MSDOS     */
+/*            VT                use vt100                                  */
+
+/*            ANSI_COL          use ANSI.SYS for colours                   */
+

@@ -1,0 +1,427 @@
+From msuinfo!uwm.edu!news.alpha.net!news.mathworks.com!news.duke.edu!eff!news.umbc.edu!haven.umd.edu!cs.umd.edu!mojo.eng.umd.edu!taylor.src.umd.edu!not-for-mail Tue Nov  8 21:49:48 1994
+Path: msuinfo!uwm.edu!news.alpha.net!news.mathworks.com!news.duke.edu!eff!news.umbc.edu!haven.umd.edu!cs.umd.edu!mojo.eng.umd.edu!taylor.src.umd.edu!not-for-mail
+From: uweh@Glue.umd.edu (Uwe Hollerbach)
+Newsgroups: sci.crypt,alt.sources
+Subject: SHA code, optionally with NIST's proposed modifications
+Date: 5 Nov 1994 17:25:43 -0500
+Organization: Project Glue, University of Maryland, College Park
+Lines: 414
+Message-ID: <39h0p7$h7u@taylor.src.umd.edu>
+NNTP-Posting-Host: taylor.src.umd.edu
+Xref: msuinfo sci.crypt:33552 alt.sources:11100
+
+Hey, folks, I was cleaning up some of my files earlier today and
+noticed that I had been working on this implementation of NIST's
+secure hash algorithm (SHA) some while ago. I also found an
+announcement of the proposed modification to SHA to fix the slight
+weakness NIST claims to have found; so I put the two together, and
+give you the following small package. You can choose to use the
+modification, or not, and you can choose to unroll the four loops, or
+not. If you don't unroll the loops, the routine is slightly slower,
+but it will compile into smaller object code, and the compiler uses
+less memory. So choose which one you'd like, depending on your
+application. Look at the Makefile and at the top of sha.c for more
+details. Enjoy!
+
+Uwe Hollerbach
+
+#! /bin/sh
+# This is a shell archive.  Remove anything before this line, then feed it
+# into a shell via "sh file" or similar.  To overwrite existing files,
+# type "sh file -c".
+# The tool that generated this appeared in the comp.sources.unix newsgroup;
+# send mail to comp-sources-unix@uunet.uu.net if you want that tool.
+# Contents:  sha.c sha.h sha_driver.c sha.good.outputs Makefile
+#   appgen.c
+# Wrapped by uweh@taylor.src.umd.edu on Sat Nov  5 17:12:49 1994
+PATH=/bin:/usr/bin:/usr/ucb ; export PATH
+echo If this archive is complete, you will see the following message:
+echo '          "shar: End of archive."'
+if test -f 'sha.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'sha.c'\"
+else
+  echo shar: Extracting \"'sha.c'\" \(5586 characters\)
+  sed "s/^X//" >'sha.c' <<'END_OF_FILE'
+X/* NIST Secure Hash Algorithm */
+X/* heavily modified by Uwe Hollerbach uh@alumni.caltech edu */
+X/* from Peter C. Gutmann's implementation as found in */
+X/* Applied Cryptography by Bruce Schneier */
+X
+X/* NIST's proposed modification to SHA of 7/11/94 may be */
+X/* activated by defining USE_MODIFIED_SHA */
+X
+X#include <stdlib.h>
+X#include <stdio.h>
+X#include <string.h>
+X#include "sha.h"
+X
+X/* SHA f()-functions */
+X
+X#define f1(x,y,z)	((x & y) | (~x & z))
+X#define f2(x,y,z)	(x ^ y ^ z)
+X#define f3(x,y,z)	((x & y) | (x & z) | (y & z))
+X#define f4(x,y,z)	(x ^ y ^ z)
+X
+X/* SHA constants */
+X
+X#define CONST1		0x5a827999L
+X#define CONST2		0x6ed9eba1L
+X#define CONST3		0x8f1bbcdcL
+X#define CONST4		0xca62c1d6L
+X
+X/* 32-bit rotate */
+X
+X#define ROT32(x,n)	((x << n) | (x >> (32 - n)))
+X
+X#define FUNC(n,i)						\
+X    temp = ROT32(A,5) + f##n(B,C,D) + E + W[i] + CONST##n;	\
+X    E = D; D = C; C = ROT32(B,30); B = A; A = temp
+X
+X/* do SHA transformation */
+X
+Xstatic void sha_transform(SHA_INFO *sha_info)
+X{
+X    int i;
+X    LONG temp, A, B, C, D, E, W[80];
+X
+X    for (i = 0; i < 16; ++i) {
+X	W[i] = sha_info->data[i];
+X    }
+X    for (i = 16; i < 80; ++i) {
+X	W[i] = W[i-3] ^ W[i-8] ^ W[i-14] ^ W[i-16];
+X#ifdef USE_MODIFIED_SHA
+X	W[i] = ROT32(W[i], 1);
+X#endif /* USE_MODIFIED_SHA */
+X    }
+X    A = sha_info->digest[0];
+X    B = sha_info->digest[1];
+X    C = sha_info->digest[2];
+X    D = sha_info->digest[3];
+X    E = sha_info->digest[4];
+X#ifdef UNROLL_LOOPS
+X    FUNC(1, 0);  FUNC(1, 1);  FUNC(1, 2);  FUNC(1, 3);  FUNC(1, 4);
+X    FUNC(1, 5);  FUNC(1, 6);  FUNC(1, 7);  FUNC(1, 8);  FUNC(1, 9);
+X    FUNC(1,10);  FUNC(1,11);  FUNC(1,12);  FUNC(1,13);  FUNC(1,14);
+X    FUNC(1,15);  FUNC(1,16);  FUNC(1,17);  FUNC(1,18);  FUNC(1,19);
+X
+X    FUNC(2,20);  FUNC(2,21);  FUNC(2,22);  FUNC(2,23);  FUNC(2,24);
+X    FUNC(2,25);  FUNC(2,26);  FUNC(2,27);  FUNC(2,28);  FUNC(2,29);
+X    FUNC(2,30);  FUNC(2,31);  FUNC(2,32);  FUNC(2,33);  FUNC(2,34);
+X    FUNC(2,35);  FUNC(2,36);  FUNC(2,37);  FUNC(2,38);  FUNC(2,39);
+X
+X    FUNC(3,40);  FUNC(3,41);  FUNC(3,42);  FUNC(3,43);  FUNC(3,44);
+X    FUNC(3,45);  FUNC(3,46);  FUNC(3,47);  FUNC(3,48);  FUNC(3,49);
+X    FUNC(3,50);  FUNC(3,51);  FUNC(3,52);  FUNC(3,53);  FUNC(3,54);
+X    FUNC(3,55);  FUNC(3,56);  FUNC(3,57);  FUNC(3,58);  FUNC(3,59);
+X
+X    FUNC(4,60);  FUNC(4,61);  FUNC(4,62);  FUNC(4,63);  FUNC(4,64);
+X    FUNC(4,65);  FUNC(4,66);  FUNC(4,67);  FUNC(4,68);  FUNC(4,69);
+X    FUNC(4,70);  FUNC(4,71);  FUNC(4,72);  FUNC(4,73);  FUNC(4,74);
+X    FUNC(4,75);  FUNC(4,76);  FUNC(4,77);  FUNC(4,78);  FUNC(4,79);
+X#else /* !UNROLL_LOOPS */
+X    for (i = 0; i < 20; ++i) {
+X	FUNC(1,i);
+X    }
+X    for (i = 20; i < 40; ++i) {
+X	FUNC(2,i);
+X    }
+X    for (i = 40; i < 60; ++i) {
+X	FUNC(3,i);
+X    }
+X    for (i = 60; i < 80; ++i) {
+X	FUNC(4,i);
+X    }
+X#endif /* !UNROLL_LOOPS */
+X    sha_info->digest[0] += A;
+X    sha_info->digest[1] += B;
+X    sha_info->digest[2] += C;
+X    sha_info->digest[3] += D;
+X    sha_info->digest[4] += E;
+X}
+X
+X#ifdef LITTLE_ENDIAN
+X
+X/* change endianness of data */
+X
+Xstatic void byte_reverse(LONG *buffer, int count)
+X{
+X    int i;
+X    BYTE ct[4], *cp;
+X
+X    count /= sizeof(LONG);
+X    cp = (BYTE *) buffer;
+X    for (i = 0; i < count; ++i) {
+X	ct[0] = cp[0];
+X	ct[1] = cp[1];
+X	ct[2] = cp[2];
+X	ct[3] = cp[3];
+X	cp[0] = ct[3];
+X	cp[1] = ct[2];
+X	cp[2] = ct[1];
+X	cp[3] = ct[0];
+X	cp += sizeof(LONG);
+X    }
+X}
+X
+X#endif /* LITTLE_ENDIAN */
+X
+X/* initialize the SHA digest */
+X
+Xvoid sha_init(SHA_INFO *sha_info)
+X{
+X    sha_info->digest[0] = 0x67452301L;
+X    sha_info->digest[1] = 0xefcdab89L;
+X    sha_info->digest[2] = 0x98badcfeL;
+X    sha_info->digest[3] = 0x10325476L;
+X    sha_info->digest[4] = 0xc3d2e1f0L;
+X    sha_info->count_lo = 0L;
+X    sha_info->count_hi = 0L;
+X}
+X
+X/* update the SHA digest */
+X
+Xvoid sha_update(SHA_INFO *sha_info, BYTE *buffer, int count)
+X{
+X    if ((sha_info->count_lo + ((LONG) count << 3)) < sha_info->count_lo) {
+X	++sha_info->count_hi;
+X    }
+X    sha_info->count_lo += (LONG) count << 3;
+X    sha_info->count_hi += (LONG) count >> 29;
+X    while (count >= SHA_BLOCKSIZE) {
+X	memcpy(sha_info->data, buffer, SHA_BLOCKSIZE);
+X#ifdef LITTLE_ENDIAN
+X	byte_reverse(sha_info->data, SHA_BLOCKSIZE);
+X#endif /* LITTLE_ENDIAN */
+X	sha_transform(sha_info);
+X	buffer += SHA_BLOCKSIZE;
+X	count -= SHA_BLOCKSIZE;
+X    }
+X    memcpy(sha_info->data, buffer, count);
+X}
+X
+X/* finish computing the SHA digest */
+X
+Xvoid sha_final(SHA_INFO *sha_info)
+X{
+X    int count;
+X    LONG lo_bit_count, hi_bit_count;
+X
+X    lo_bit_count = sha_info->count_lo;
+X    hi_bit_count = sha_info->count_hi;
+X    count = (int) ((lo_bit_count >> 3) & 0x3f);
+X    ((BYTE *) sha_info->data)[count++] = 0x80;
+X    if (count > 56) {
+X	memset((BYTE *) &sha_info->data + count, 0, 64 - count);
+X#ifdef LITTLE_ENDIAN
+X	byte_reverse(sha_info->data, SHA_BLOCKSIZE);
+X#endif /* LITTLE_ENDIAN */
+X	sha_transform(sha_info);
+X	memset(&sha_info->data, 0, 56);
+X    } else {
+X	memset((BYTE *) &sha_info->data + count, 0, 56 - count);
+X    }
+X#ifdef LITTLE_ENDIAN
+X    byte_reverse(sha_info->data, SHA_BLOCKSIZE);
+X#endif /* LITTLE_ENDIAN */
+X    sha_info->data[14] = hi_bit_count;
+X    sha_info->data[15] = lo_bit_count;
+X    sha_transform(sha_info);
+X}
+X
+X/* compute the SHA digest of a FILE stream */
+X
+X#define BLOCK_SIZE	8192
+X
+Xvoid sha_stream(SHA_INFO *sha_info, FILE *fin)
+X{
+X    int i;
+X    BYTE data[BLOCK_SIZE];
+X
+X    sha_init(sha_info);
+X    while ((i = fread(data, 1, BLOCK_SIZE, fin)) > 0) {
+X	sha_update(sha_info, data, i);
+X    }
+X    sha_final(sha_info);
+X}
+X
+X/* print a SHA digest */
+X
+Xvoid sha_print(SHA_INFO *sha_info)
+X{
+X    printf("%08lx %08lx %08lx %08lx %08lx\n",
+X	sha_info->digest[0], sha_info->digest[1], sha_info->digest[2],
+X	sha_info->digest[3], sha_info->digest[4]);
+X}
+END_OF_FILE
+  if test 5586 -ne `wc -c <'sha.c'`; then
+    echo shar: \"'sha.c'\" unpacked with wrong size!
+  fi
+  # end of 'sha.c'
+fi
+if test -f 'sha.h' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'sha.h'\"
+else
+  echo shar: Extracting \"'sha.h'\" \(618 characters\)
+  sed "s/^X//" >'sha.h' <<'END_OF_FILE'
+X#ifndef SHA_H
+X#define SHA_H
+X
+X/* NIST Secure Hash Algorithm */
+X/* heavily modified from Peter C. Gutmann's implementation */
+X
+X/* Useful defines & typedefs */
+X
+Xtypedef unsigned char BYTE;
+Xtypedef unsigned long LONG;
+X
+X#define SHA_BLOCKSIZE		64
+X#define SHA_DIGESTSIZE		20
+X
+Xtypedef struct {
+X    LONG digest[5];		/* message digest */
+X    LONG count_lo, count_hi;	/* 64-bit bit count */
+X    LONG data[16];		/* SHA data buffer */
+X} SHA_INFO;
+X
+Xvoid sha_init(SHA_INFO *);
+Xvoid sha_update(SHA_INFO *, BYTE *, int);
+Xvoid sha_final(SHA_INFO *);
+X
+Xvoid sha_stream(SHA_INFO *, FILE *);
+Xvoid sha_print(SHA_INFO *);
+X
+X#endif /* SHA_H */
+END_OF_FILE
+  if test 618 -ne `wc -c <'sha.h'`; then
+    echo shar: \"'sha.h'\" unpacked with wrong size!
+  fi
+  # end of 'sha.h'
+fi
+if test -f 'sha_driver.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'sha_driver.c'\"
+else
+  echo shar: Extracting \"'sha_driver.c'\" \(545 characters\)
+  sed "s/^X//" >'sha_driver.c' <<'END_OF_FILE'
+X/* NIST Secure Hash Algorithm */
+X
+X#include <stdlib.h>
+X#include <stdio.h>
+X#include <string.h>
+X#include <time.h>
+X#include "sha.h"
+X
+Xint main(int argc, char **argv)
+X{
+X    FILE *fin;
+X    SHA_INFO sha_info;
+X
+X    if (argc < 2) {
+X	fin = stdin;
+X	sha_stream(&sha_info, fin);
+X	sha_print(&sha_info);
+X    } else {
+X	while (--argc) {
+X	    fin = fopen(*(++argv), "rb");
+X	    if (fin == NULL) {
+X		printf("error opening %s for reading\n", *argv);
+X	    } else {
+X		sha_stream(&sha_info, fin);
+X		sha_print(&sha_info);
+X		fclose(fin);
+X	    }
+X	}
+X    }
+X    return(0);
+X}
+END_OF_FILE
+  if test 545 -ne `wc -c <'sha_driver.c'`; then
+    echo shar: \"'sha_driver.c'\" unpacked with wrong size!
+  fi
+  # end of 'sha_driver.c'
+fi
+if test -f 'sha.good.outputs' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'sha.good.outputs'\"
+else
+  echo shar: Extracting \"'sha.good.outputs'\" \(180 characters\)
+  sed "s/^X//" >'sha.good.outputs' <<'END_OF_FILE'
+X0164b8a9 14cd2a5e 74c4f7ff 082c4d97 f1edf880	appgen 1 | sha
+Xd2516ee1 acfa5baf 33dfc1c4 71e43844 9ef134c8	appgen 2 | sha
+X3232affa 48628a26 653b5aaa 44541fd9 0d690603	appgen 3 | sha
+END_OF_FILE
+  if test 180 -ne `wc -c <'sha.good.outputs'`; then
+    echo shar: \"'sha.good.outputs'\" unpacked with wrong size!
+  fi
+  # end of 'sha.good.outputs'
+fi
+if test -f 'Makefile' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'Makefile'\"
+else
+  echo shar: Extracting \"'Makefile'\" \(703 characters\)
+  sed "s/^X//" >'Makefile' <<'END_OF_FILE'
+X# By default, the code is compiled for a "big endian" machine.
+X# To compile on a "little endian" machine set the LITTLE_ENDIAN flag.
+X# To make smaller object code, but run a little slower, don't use UNROLL_LOOPS.
+X# To use NIST's modified SHA of 7/11/94, define USE_MODIFIED_SHA
+X
+XCC = gcc
+XCFLAGS = -O2 -ansi -Wall -pedantic -DUNROLL_LOOPS # -DLITTLE_ENDIAN # -DUSE_MODIFIED_SHA
+X
+Xall:	sha
+X
+Xsha:	sha_driver.o sha.o
+X	$(CC) -o $@ sha_driver.o sha.o
+X	strip $@
+X
+Xtest:	sha appgen
+X	appgen 1 | sha
+X	appgen 2 | sha
+X	appgen 3 | sha
+X	@echo "Values should be:"
+X	@cat sha.good.outputs
+X	@echo "except if you defined USE_MODIFIED_SHA!"
+X	@echo "I have no known-good comparisons for that case!"
+X
+Xclean:
+X	rm *.o sha appgen
+END_OF_FILE
+  if test 703 -ne `wc -c <'Makefile'`; then
+    echo shar: \"'Makefile'\" unpacked with wrong size!
+  fi
+  # end of 'Makefile'
+fi
+if test -f 'appgen.c' -a "${1}" != "-c" ; then 
+  echo shar: Will not clobber existing file \"'appgen.c'\"
+else
+  echo shar: Extracting \"'appgen.c'\" \(321 characters\)
+  sed "s/^X//" >'appgen.c' <<'END_OF_FILE'
+X#include <stdlib.h>
+X#include <stdio.h>
+X
+Xint main(int c, char **v)
+X{
+X    int i, t;
+X    t = atoi(v[1]);
+X    if (t == 3) {
+X	for (i = 0; i < 1000000; ++i) {
+X	    putchar('a');
+X	}
+X    } else if (t == 2) {
+X	printf("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq");
+X    } else {
+X	printf("abc");
+X    }
+X    return(0);
+X}
+END_OF_FILE
+  if test 321 -ne `wc -c <'appgen.c'`; then
+    echo shar: \"'appgen.c'\" unpacked with wrong size!
+  fi
+  # end of 'appgen.c'
+fi
+echo shar: End of archive.
+exit 0
+-- 
+Uwe Hollerbach                            uh@alumni.caltech.edu (preferred)
+Computational microlithography            or uweh@src.umd.edu
+These are not necessarily my employer's opinions.
+

@@ -1,0 +1,97 @@
+Path: msuinfo!netnews.upenn.edu!news.amherst.edu!news.mtholyoke.edu!news.byu.edu!news.kei.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: More interesting attacks on BLOWFISH
+Date: Tue, 19 Apr 94 13:13:44 CDT
+Organization: University of Missouri, Columbia
+Lines: 87
+Message-ID: <16F9DBA08S86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+ 
+   Before, I introduced a way to recover the s-box contents from the
+BLOWFISH f-function, if you could directly feed 1040 chosen 32-bit
+inputs into the F-function, and directly observe the 32-bit outputs.
+I was able to extend that to a chosen-plaintext attack on a 3-round
+version of BLOWFISH without subkeys.  (All the P(i) are 0.)
+ 
+   I've been playing with this some more, and I've found a couple of
+useful extensions to this:
+ 
+1.  Given control over X, I apply my attack to F(X) xor K, where K is
+    a constant 32-bit value.
+ 
+2.  Given control over X, I apply a variant of my attack to F(X xor K),
+    where K is a constant value.  This yields a set of differences for
+    each of the s-boxes (ie, S4(i) - S4(0)), but it looks to be impossible
+    to directly solve for the actual values in the s-boxes.
+ 
+    Basically, 1 is easy, and it's done in a way analogous to my general
+attack on F:
+ 
+    Choose 0|0|0|0 and 0|0|0|1 to send through F().  The output values
+are Q0 and Q0'.  Q0 = F(0|0|0|0) xor K.
+ 
+    Next, choose 1|1|1|0 and 1|1|1|1 to send through F().  The output
+values are Q1 and Q1'.
+ 
+   Now, start a brute-force search through all possible 32-bit values.
+Let's call out search value i.  When
+ 
+  (Q0' xor i) - (Q0 xor i) == (Q1' xor i) - (Q1 xor i)
+ 
+then, we've got the right i.  (There may be collisions, I'm not sure.
+These can be gotten rid of by trying some other Q0,Q0',Q1,Q1' values.)
+ 
+   This works because when K = i, Q0' xor i = F(0|0|0|0) xor K xor i,
+which equals F(0|0|0|0).  Since F(0|0|0|1) - F(0|0|0|0) = s4(1) - s4(0),
+it will be the same as F(1|1|1|1) - F(1|1|1|0).
+ 
+   After we've solved for K, we can apply the standard attack to F().
+ 
+   When we're given F(K xor X), we can apply a the same chosen-input
+attack on F().  We can learn the differences, ie S4(99) - S4(0) and
+S0'(255) - S0'(0), but we can't get the actual inputs without some
+further information--which I don't think is generally going to be
+available.
+ 
+   These two can be used to break a 3-round BLOWFISH with all the subkeys
+except the last two.  This looks like:
+ 
+     L(in)    R(in)
+     |        |
+P0->XOR       |
+     |-> F ->XOR
+     |        |
+     |       XOR<-P1
+    XOR<- F <-|
+     |        |
+P2->XOR       |
+     |-> F ->XOR
+     |        |
+     L(out)   R(out)
+ 
+1.  By holding L(in) constant, we can directly vary the inputs to the
+    second-round F().  This allows the recovery of the s-box differences.
+ 
+2.  If we knew P1, we would know the whole set of s-boxes.  Try a brute-
+    force search of possible P2's, for i = 0 to 2**32-1.  When i = P2,
+    we'll see R(out) = R(in) xor i xor F(L(out)).  F() is calculated with
+    the s-boxes as they must be, if i = P2.  It's possible there will be
+    collisions--we may need to try several constant values of L (in).
+ 
+ 
+3.  From here, we know P0 xor P2 (because we know the s-boxes and P1).
+    Knowing the s-boxes, we can invert F() by brute-force search--
+    guess all possible P0's that would result in the observed values
+    for L(in),R(in) --> L(out),R(out).  With full knowledge of the
+    s-boxes, there's probably a better way, but I don't see it right
+    now.
+ 
+    This attack may require about 2080 chosen-plaintexts.  (Two fixed
+values of L(in)).  It requires on the order of 2**34 operations.
+ 
+   Any comments?  Anyone see how to extend this to the full 3-round
+BLOWFISH?
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

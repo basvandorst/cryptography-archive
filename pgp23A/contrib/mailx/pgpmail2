@@ -1,0 +1,121 @@
+From mstar.morningstar.com!n8emr!colnet!res Fri May 14 07:18:01 1993
+Return-Path: <n8emr!colnet!res@mstar.morningstar.com>
+Received: from volitans.MorningStar.Com by web.apc.org with smtp
+	(Smail3.1.28.1 #6) id m0ntxlx-0000nBC; Fri, 14 May 93 07:17 EDT
+Received: from trigger.morningstar.com by volitans.MorningStar.Com (5.65a/92122901)
+	id AA12267; Fri, 14 May 93 07:24:03 -0400
+Received: by trigger.MorningStar.Com (5.65a/93011501)
+	id AA01843; Fri, 14 May 93 07:24:01 -0400
+Received: by n8emr.cmhnet.org (Ohio AMPR Gateway Smail3.1.16.1 #16.33)
+	id <m0ntv0v-00007rC@n8emr.cmhnet.org>; Fri, 14 May 93 04:21 EDT
+Received: by colnet.cmhnet.org (smail2.5+)
+	id AA05251; Thu, 13 May 93 22:04:33 EDT (-0400)
+To: colin@web.apc.org (Colin Plumb)
+Subject: Re: Contributions to the PGP 2.3 release
+Message-Id: <9305132204.AA05251@colnet.cmhnet.org>
+Date: Thu, 13 May 93 22:04:33 EDT (-0400)
+From: res@colnet.cmhnet.org (Rob Stampfli)
+Status: R
+
+In recent email to me you write:
+>Hi, folks!  The 2.3 release of PGP is coming, as they say, Real Soon Now.
+>If you have any changes you'd like made to scripts in the contrib part
+>of PGP 2.2, now is the time to send them in.
+>
+>If you want to start any work for inclusion in the release, it's
+>needed in roughly a week ("roughly" means maybe a day or two less!),
+>but write and I'll keep you informed.
+
+Colin,
+
+I don't know what the latest version I sent you contains, but here is
+the latest of what I am using.  Also, I would like to ask if the pgp
+maintainers have made the signal mods I have suggested repeatedly on
+the alt.security.pgp group:  namely, if the interrupt or quit signals
+are ignored on entry, then pgp leaves them ignored.  This permits running
+pgp as a background task under Unix.  If they have not put these changes
+into 2.3, let me know and I'll send the diffs to you.  They are very
+straightforward, simple and noncontroversial, and I'd like to see this
+made the standard.
+
+Here is my latest version of "pgpmail" the script which takes the
+place of the standard mailer in "mailx" to perform in-line encryption.
+I have dropped bourne shell support entirely -- this now requires ksh
+to run:
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# This ksh script is invoked by adding the line "set sendmail=pgpmail" to your
+# .mailrc file.  mailx then invokes pgpmail instead of /bin/mail to deliver
+# email.  This script checks whether encryption, a signature, or both are
+# specified, and automatically performs whatever is required.
+#	Rob Stampfli			12 March 1993
+
+STDSIG="John Q. Public"			# sig to use if "sig=y"
+trap "" 1 2 3				# req'd so this can run in bg
+exec 2>/dev/tty				# can be "exec 2>/dev/null"
+set +o nounset
+unset en sg nl
+
+j=1
+for i					# for each argument...
+do
+  case "$i" in				# look for encryption specifier...
+  *encrypt=*)	en[$j]="${i#*=}";;	# requires KSH
+  *enc=*)	en[$j]="${i#*=}";;	# requires KSH
+  *sig=*)	sg="${i#*=}";;		# a pgp signature specification...
+  *)		nl[$j]="$i";;		# a real mail address...
+  esac
+  ((j += 1))				# increment array counter...
+done
+
+[ X = "X${en[*]}" -a X = "X$sg" ] && exec /bin/rmail "$@"   # not a pgp request
+[ Xy = "X$sg" -o Xyes = "X$sg" ] && sg="$STDSIG"	    # std sig request
+
+# If we get here, encryption and/or sig *was* specified:
+(
+  OIFS="$IFS"				# needed to preserve tabs in header
+  IFS='
+'
+  while read x		 		# read and process header intact
+  do
+    echo "$x"				# echo the line...
+    [ X = "X$x" ] && break		# and if NULL line, break
+  done
+  IFS="$OIFS"				# reset field separators
+  if [ X = "X$sg" ]; then		# no signature specified:
+    pgp -feat "${en[@]}"		#   encrypt the message...
+  elif [ X = "X${en[*]}" ]; then	# no encrypt specified:
+    sed -e 's/^From />From /' |		#   pre-convert mail glitcher...
+    pgp -fast +clearsig=on -u "$sg"	#   sign msg in MIC-CLEAR mode...
+  else					# both encrypt and sig specified:
+    pgp -feast "${en[@]}" -u "$sg"	#   encrypt and sign armored...
+  fi
+  echo "Encryption phase completed" 1>&2
+) | /bin/rmail "${nl[@]}"
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+Here is a copy of "pgpm", which I use to decrypt pgp mail I receive.  To use,
+just pipe the encrypted mail message to "pgpm" and it will ask the questions,
+decrypt it, and remail the decrypted version back to you.  You can then delete
+the encrypted version and do what you like with the plaintext mail msg:
+
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+# This script is used from mailx or vi to mail invoker the decrypted input
+# make sure stderr comes out on screen, to undo vi bogosity
+exec 2>/dev/tty
+(
+	OIFS="$IFS"			# we must preserve tabs in header
+	IFS='
+'
+	while read x		 	# read and process header intact
+	do
+	echo "$x"
+	[ "" = "$x" ] && break
+	done
+	IFS="$OIFS"			# reset field separators
+	pgp ${1-}			# encrypt or decrypt the rest
+) | rmail $LOGNAME
+=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+-- 
+Rob Stampfli  rob@colnet.cmhnet.org      The neat thing about standards:
+614-864-9377  HAM RADIO: kd8wk@n8jyv.oh  There are so many to choose from.
+

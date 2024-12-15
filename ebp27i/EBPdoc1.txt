@@ -1,0 +1,1036 @@
+
+EBP - Even Better Privacy
+Brief manual
+Dr. Yongfei Han, Jonas Löfgren and Niklas Jarl.
+
+
+Even Better Privacy keeps your files safe from prying eyes. This software provides encryption of your files for storage and communication. The EBP hybrid public key/symmetric key scheme allows you to exchange data with others when sending files across the Internet. It also provides privacy of your personal files even if you allow other people to use your PC.
+
+EBP(c) - Even Better Privacy - is the new generation of public key cryptography. EBP was developed by Niklas Jarl (LTH-LU, ISS-NUS), Jonas Loefgren (LTH-LU, ISS-NUS) and Dr. Yongfei Han (ISS-NUS). The main purpose of this release is to let people that may need strong cryptography try the new algorithms and give them the option to choose the algorithms they trust the most. 
+
+<niklas@iss.nus.sg>   <e92nja@efd.lth.se>
+ <jonas@iss.nus.sg>     <e92jl@efd.lth.se>
+ 
+If you are not familiar with PGP, we advice you to take a look at Phil Zimmermann's PGP User's Guide in EBPdoc2.txt, or even better, buy Zimmermann's book "PGP User's Guide".
+
+[Brackets] mean that you don't have to write what they enclose.
+
+Encrypting, Signing and Decrypting:
+ebp -e textfile recipient's_userID				Encrypt a file
+ebp -s textfile [-u your_userID]				Sign a file
+ebp -es textfile recipient's_userID [-u your_userID]		Encrypt and sign a file
+ebp -c textfile						Encrypt with SAFER/IDEA
+ebp -esa textfile recipient's_userID [-u your_userID]		-es as ascii
+ebp -sta textfile [-u your_userID]				-s as ascii
+ebp ciphertextfile [-o plaintextfile]				Decrypt a ciphertext
+
+Key Management:
+ebp -k							Key help menu
+ebp -kg							Key generation
+ebp -kp							Key generation++
+ebp -ka keyfile [keyring]					Add key to keyring
+ebp -kx userID keyfile [keyring]				Extract key from keyring
+ebp -kxx userID keyfile [keyring]				Extract key into PGP ring
+ebp -kxa userID keyfile [keyring]				-kx as ascii
+ebp -kxxa userID keyfile [keyring]				-kxx as ascii
+ebp -kv[v] [userID] [keyring]				View public key ring
+ebp -kvc  [userID] [keyring]				View fingerprint of public key
+ebp -kc  [userID] [keyring]				View public keys and certs
+ebp -km [keyring]					Maintenance of key ring
+ebp -ke  userID [keyring]					Edit key or trust parameters
+ebp -kr  userID [keyring]					Remove key or userID
+ebp -ks recipients_userID [-u your_userID] [keyring]		Certify public key
+ebp -krs userID [keyring]					Remove signatures
+ebp -kd your_userID					Permanently revoke key
+ebp -kd userID						Disable public key
+ebp -ki [pgp_secring] [ebp_secring] [userID]		Import PGP key to EBP
+
+Algorithm choices:
+ebp -j							Algorithm help menu
+ebp -ja							Set Rabin encryption
+ebp -jb							Set RSA encryption
+ebp -jc							Set Rabin signing
+ebp -jd							Set RSA signing
+ebp -je							Set SAFER encryption
+ebp -jf							Set IDEA encryption
+ebp -jg							Set HAVAL hashing
+ebp -jh							Set MD5 hashing
+ebp -ji							Set HAVAL length
+ebp -jj							Set HAVAL passes
+ebp -jk							Set default PGP algorithms
+ebp -jl							Set default EBP algorithms
+
+Extra:
+ebp -esw message.txt recipients_userID			Wipe out the plaintext
+ebp -esat message.txt recipients_userID			Specify ASCII text
+ebp -esatm message.txt recipients_userID			Show ONLY on screen
+ebp -p ciphertextfile					Don't use original filename
+ebp -m ciphertextfile					View plaintext on screen
+
+
+Key generation ++:
+When choosing key generation ++ (ebp -kp) you have more options for the key generation. You can choose to use less keystrokes when generating your random primes, use five more strong primetests, and use the Goodprime function that makes sure that your primes are good against some of the classic attacks.
+
+Import old PGP key:
+By importing your old secret PGP key into EBP (ebp -ki), you can upgrade your PGP key to an EBP key without revoking your public key.
+
+Extract public EBP key to PGP user:
+To be able to distribute your public key to PGP users, you have use the special Extract Key-option (ebp -kxx).  
+
+Also note that EBP automatically recovers the original filename, while PGP uses the command pgp -p to recover it.
+
+Copyrights:
+Who wrote the code?
+Niklas Jarl & Jonas Loefgren created EBP source code from:
+
+PGP 2.6.3i source code by Philip Zimmermann, Stale Schumacher, and others.
+SAFER source code by Richard De Moliner.
+HAVAL source code by Yuliang Zheng.
+Please note that these people have nothing to do with the release of EBP - Even Better Privacy - so they can not be blamed for any bugs (hopefully we've already gotten rid of all the bugs) in the program.
+
+Warning! EBP is for non-commercial use only!
+
+Differences between EBP and PGP 2.6.3i
+What's new?
+You can choose new, non-patented algorithms.
+Public Key: RABIN or RSA.
+Blockcipher: SAFER or IDEA.
+Hashfunction: HAVAL or MD5.
+RABIN is proven to be as hard to break as to factorize the public key, while RSA is not.
+HAVAL only uses highly non-linear functions and can provide a hash with the length 256 bits, MD5 partly broken.
+Rabin-Miller prime-tests (a.k.a. SPRP) instead of some of the Fermat-tests.
+Half as many modular multiplications when using modular exponentiation.
+PGP-compatible, except when using the new algorithms.
+
+What follows is our preliminary report on the project. Since we don't want to use up all of your hard drive we have it in textformat, which means that we might lose some equations and pictures.
+
+
+Introduction
+PGP - Pretty Good Privacy - is a program written by Philip Zimmermann, that uses some strong cryptographic algorithms to encrypt and sign digital documents, e-mail, files and so on. The algorithm that encrypts the file that is to be secured is called IDEA, a block cipher that uses the same secret 128-bit key for encrypting as well as for decrypting. To be able to send the IDEA-key to the recipient PGP uses the public key algorithm called RSA, which uses large prime numbers to create one public and one secret key. The secret key can be used to decrypt an IDEA-key that has been encrypted by the sender with the recipient's public key. Another important part of PGP is the one-way hashing-function MD5, that produces a 128-bit message digest, or fingerprint, that can be used for digital signatures. The message digest is encrypted with the secret key, and can then be decrypted by anyone who has the signer's public key, and thus prove that the message indeed was signed by the sender. This gives Pretty Good Privacy, but sometimes pretty good isn't good enough. 
+
+Our job is to locate the possible weak spots in PGP and then try to give the user alternatives to the algorithms used by PGP. IDEA will be replaced with a newer algorithm called SAFER, which was created by Professor J. L. Massey, who was one of the inventors of  IDEA. Since RSA never has been proved to be as hard to crack as to factorize the public key, we have decided to implement the RABIN algorithm for the public key scheme. To offer a better security level when signing a message, we have used HAVAL instead of MD5. HAVAL is a hashing function that has optional output lengths, with a maximum of 256 bits, which is twice as many bits as the length of the MD5 message digest. Another reason to replace MD5 is that there has been a few successful attempts to find collisions. Furthermore, none of the added algorithms are patented as far as we know.
+
+
+PGP
+
+Pretty Good Privacy, PGP for short, was created by Philip Zimmermann in the early ninties. By distributing the source code freely and letting people contribute with additional source code to fix bugs or add new features to the program, he has made PGP one of the most popular cryptographically strong programs today. 
+
+
+PGP in general
+
+PGP is a hybrid single-key/public-key program that can be used for digital signatures and encryption of files. 
+
+Single-key schemes are conventional blockciphers that use the same key for encryption as well as for decryption. This means that both parties, i.e. the sender and the recipient, must know the key. The problem is how to transmit the key from the sender to the recipient without using insecure channels. If secure channels existed there would be little need for cryptography. Some of the more famous conventional blockciphers are Data Encryption Standard (DES), International Data Encryption Algorithm (IDEA), and Secure And Fast Encryption Routine (SAFER). The conventional cipher used in PGP is IDEA.
+
+Public-key schemes are a completely different kind of cryptosystems. They have two kinds of keys; one public and one private, or secret, key. The public key can be published widely, while the private key is kept secret by the key pair's holder. The secret key can be used to decrypt ciphertexts that has been encrypted with the corresponding public key, and vice versa. Thus anyone that has access to someone's public key can encrypt a message to that person, and he/she will decrypt it with his/her secret key. Likewise anyone can use a person's public key to check whether a signature has been made with his/her secret key. The most famous public key scheme is RSA, and this is also the one used in PGP.
+
+Unfortunately the public key schemes are much slower than the conventional blockciphers, so it is a very time-consuming process to encrypt a long message with a public key. This is why PGP encrypts the message with the conventional blockcipher IDEA using a random session-key, and then encrypts the IDEA session-key with the recipient's public key. The encrypted session-key is then appended to the conventionally encrypted message, so that the receiver can use his/her secret key to retrieve the key that decrypts the message.
+
+The same problem occurs when a message should be signed with the secret key. If the message is long it will take far too much time to sign it. For this reason PGP uses a one-way hash function called MD5, to get a compact "representative", or fingerprint, for the message. MD5 creates a message digest that consists of 128 bits. This digest is cryptographically strong in the sense that it is supposed to be computationally infeasible for an attacker to find a message that would produce an identical message digest. Since the digest is short enough to be signed within reasonable time, PGP uses RSA to sign it with the user's secret key. 
+
+
+Basic commands
+First of all, the user must generate a public/secret key pair of his/her own, so that he/she can sign files and let other people encrypt files to him/her. The command used is:
+
+pgp -kg
+
+The program will ask you for a user ID, let's call it YourOwnUserID for example, and a passphrase for your secret key. The passphrase will be hashed by MD5 and used as an IDEA-key to unlock your secret key when you're trying to access it.
+
+The most commonly used command in PGP is probably the encryption with a person's public RSA key. To encrypt a message, or any file, called textfile.txt to a recipient with the user ID Annie, you just type:
+
+pgp -e textfile.txt Annie
+
+If the recipient's user ID has spaces you have to enclose it in quotes. For instance, if the recipient's user ID is Annie Somerset, and you have another friend with the user ID Annie Raffles, you'll have to type:
+
+pgp -e textfile.txt "Annie Somerset"
+
+When you only have one user ID that starts with Annie in your public key ring, you only need to type Annie as recipient, without using quotes. PGP will then automatically choose the most recently added key with a user ID that starts with Annie.
+
+Sometimes you might want to send the same message to several recipients. This can be done by adding user IDs after the first one. For example, if you wish to send your encrypted file to Annie Raffles, Benny Beres, and Conny Chimon, you should, assuming they use their first names as their user IDs, type as seen below:
+
+pgp -e textfile.txt Annie Benny Conny
+
+When Annie tries to decrypt the message she won't notice anything different, but when Benny and Conny are decrypting they will be asked for the password to Annie's secret key. All they have to do is press carriage return and the program will ask for the password to Benny's secret key. Now Benny can decrypt the message, while Conny once again has to press carriage return before he can decrypt the ciphertext. 
+
+To decrypt the ciphertext, called textfile.pgp, the recipient uses the command:
+
+pgp textfile
+
+PGP will then ask for the passphrase to his/her secret key and then decrypt the message. 
+
+Another very useful feature in PGP is the digital signature option. By encrypting a message digest of a file with the secret key, anyone can check that it has been signed by the sender, by decrypting the signature with the sender's public key. It also makes impossible for the sender to deny that he was the one who sent the message. The command that is used to sign a file is:
+
+pgp -s textfile.txt -u YourOwnUserID
+
+Now anyone that has access to your public key can check that you have signed the file with your secret key, by choosing the command:
+
+pgp textfile
+
+PGP will go through the public-key ring until it finds a public key with the same key ID as the one used for the signature. The public key is then used to decrypt the message digest that was encrypted with the corresponding secret key. Finally, the decrypted message digest is compared with a new message digest that has been hashed from the signed file.
+
+If you would like to combine the two features above, and both encrypt and sign a message, you can do so by typing:
+
+pgp -es textfile.txt -u YourOwnUserID Annie
+
+This will make PGP sign the message with your secret key and then encrypt the message to Annie by using her public key.
+
+/* To be written */
+
+
+Description of RSA
+
+All modern algorithms use a key to control the encryption and decryption. The message can only be decrypted if the key matches the one it was encrypted with. The key used for decryption can be different from the key used in encryption, and this divides the algorithms in symmetric (or secret-key) and asymmetric (or public-key) classes. The secret-key class is the traditional way of  sending secret messages and today they are both fast and very secure (e.g. IDEA). But because they use the same key for both encryption and decryption they have one big problem, the key distribution. How can we distibute our key to decrypt the message in a secure manner? For this we use the slower public-key class. By encrypting the key for the secret-key cryptosystem with the public-key cryptosystem we can then send both the secret-key encrypted message and the public-key encrypted key securely.
+
+Diffie and Hellmann introduced the radically new general concept of public-key cryptosystems in 1976 [1]. The algorithms for this new cryptosystem require the use of one-way trapdoor functions for their implementation. A one-way trapdoor function is an invertible function but which invers is computationally infeasible to compute unless you know a certain parameter. The first proposal of such a public-key cryptosystem was made in 1978 by the M.I.T. researchers R. L. Rivest, A. Shamir and L. Adleman (RSA for short), see [x]. 
+
+The cryptosystem they developed, called RSA, is the most well-known public-key cryptosystem. The public and the secret keys for this scheme is computed as follows: take two large primes, p and q (RSA suggested that they have about 200 decimal digits), and find their product n = p*q. Choose a number, e, less than n and relatively prime to (p-1)(q-1), and find its inverse, d mod (p-1)(q-1), which means that e*d = 1 mod (p-1)(q-1). The numbers e and d are called the public and private exponents, respectively. The public key is the pair (n, e); the private key is d. The factors p and q must be kept secret, or destroyed.
+
+The RSA conjecture really reduces to the two conjectures that, first, any way of finding d, given the public key (n, e) is computationally equivalent to factoring n into p and q and, second, that factoring n is computationally infeasible when p and q are randomly chosen large primes. It is clear that the security of this cryptosystem is broken if one can factor n into its two prime factors, p and q. However, factoring an integer into its two large prime factors is still considered to be computationally infeasible.
+The problem with RSA is the first of these two conjectures, it has still not been proved and it is still not known whether breaking RSA is as hard as factoring a large number. 
+
+Another way to break RSA is to find a technique to compute e's  roots mod n. Since c = me, the eth  root of c is the message m. This attack would allow someone to recover encrypted messages and forge signatures even without knowing the private key. This attack is not known to be equivalent to factoring. No methods are currently known though that attempt to break RSA in this way.
+ 
+Example:
+If  Annie and Benny wishes to communicate secretly with RSA they first have to compute their own secret and public keys.
+Annie chooses two primes p = 7 and q = 11 and computes their product n = pq = 77. She then chooses an e = 13 and computes its inverse modulo (p-1)*(q-1), d = 37, because 13*37 mod 60 = 1. Now she has her secret key (p, q, d) = (7, 11, 37) and her public key (n, e) = (77, 13).
+Before communicating she first exchange public key with Benny.
+
+
+Encryption for RSA
+
+In order to encrypt a message with RSA the plaintext to be encrypted is simply raised to the eth power modulo n, i.e., C = M^e mod n, where e and n is the recipients public key, M is the plaintext and C is the ciphertext. The power function is computed by the square-and-multiply algorithm explained in chapter XX. Modular exponentiation is considered a one-way trapdoor function because it is still not known how to find the inverse of e unless the p and q are known.
+
+Example (cont.):
+If  Benny wants to send the message M = 15 to Annie, he takes Annie's public key, (n, e) = (77, 13), and computes the ciphertext C = 1513 mod 77 = 64.
+
+In PGP the procedure which makes the actual encryption is called mp_modexp and is explained in chapter xx.
+
+
+Decryption for RSA
+
+Decrypting a ciphertext is done as easily as to encrypt. When p, q, and e are known, one can easily compute Euler's function ((n) = (p-1)(q-1) (while when p and q is not known it is computationally infeasible to compute d). The multiplicative inverse of e, d = e-1 mod (p-1)(q-1), can be found easily by using, say, Euclid's extended greatest common divisor algorithm. The decrypting of the ciphertext is done in the same way as the encryption but with the secret key d as the power to which the ciphertext is raised to, i.e., M = C^d mod n. 
+
+Example (cont.):
+When Annie receives the ciphertext, C = 64, she can easily decrypt that by using her secret key, d = 37, and her public modulo, n = 77, to compute M = 6437 mod 77 = 15, which is the same as the encrypted plaintext.
+
+
+Signing with RSA
+
+Diffie and Hellman also showed in 1976 that a trapdoor one-way function can be used to ensure the authenticity of a message, or as they more colourfully described it, to create digital signatures. With digital signatures you can be sure that the message is indeed sent by the claimed sender and that it has not been modified on the way.
+
+In PGP the one-way hash function MD5 is used to compute a hash of the message to be signed from any length into a fixed length of 128 bits, see chapter xx. If user i wishes to sign a message M, which has the hashed message digest D, so that it is certain that it came from him, user i uses his secret key, d, to compute S = D^d mod n. Any other user, say user j, who obtains the signature S and the message M can fetch user i's public key to compute the message digest D' = Se mod n and hash the message M to get D before verifying the signature by comparing D and D'. Nobody else can make the same signature without knowing user i's secret key. 
+
+
+Description of IDEA
+
+PGP uses a conventional single-key block encryption algorithm, called IDEA(tm), to encrypt the message. Because public-key ciphers is much slower, when encrypting and decrypting a message, than secret-key ciphers, they are usually not used for encrypting long messages. Instead a faster secret-key cipher is used and only the key of this cipher is then decrypted by the public-key cipher.
+
+The block cipher IDEA (an acronym for International Data Encryption Algorithm) is a commonly used secret-key cipher. It was developed at ETH in Zürich by Xuejia Lai and James L. Massey, and published in 1990. The plaintext (i.e. the text to be encrypted) and the secret key is used as input for the algorithm which computes the output (the ciphertext) as to look as random as possible. The secret key is 128 bits long and the plaintext and the ciphertext in IDEA are 64 bit blocks, which means that the plaintext has to be divided into blocks of 64 bits before encrypting each block with IDEA. The design of the encryption/decryption algorithm is based on the concept of "mixing operations from different algebraic groups". 
+
+Designs of secret-key cryptosystems of today are generally guided by two principles suggested by Shannon: confusion and diffusion. The enciphering transformation should greatly complicate the manner in which the statistics of the plaintext affect the statistics of the ciphertext, i.e., they should create confusion. Also, a single plaintext digit and/or a single secret-key digit should influence the values of many ciphertext digits, i.e., the cipher should cause diffusion of the plaintext statistics and/or the secret-key statistics. The required confusion is achieved by successively using three "incompatible" group operations on pairs of 16-bit sub-blocks and the cipher structure provides the necessary diffusion. IDEA is an iterated cipher consisting of 8 rounds followed by an output transformation.
+
+
+Encryption for IDEA
+
+IDEA mixes algorithms from three algebraic groups: XOR, addition (modulo 216), and multiplication (modulo 216+1). The 64-bit plaintext block X is divided into four 16-bit sub-blocks X1, X2, X3, X4, i.e., X = (X1, X2, X3, X4). These four plaintext sub-blocks are then transformed into four 16-bit ciphertext sub-blocks Y1, Y2, Y3, Y4 by using the 52 key sub-blocks of 16 bits that are formed from the 128-bit secret key, see fig. XX. The transformation is repeated 8 rounds before the final output transform is computed. For the rounds r = 1, 2,..., 8, the six key sub-blocks used in the r-th round will be denoted as . The keys used for the output transformation are denoted .
+
+
+Decryption for IDEA
+
+To decrypt a block the same process is used with the only change being that the key sub-blocks  are computed from the encryption key sub-blocks as follows:
+
+
+
+           (K1(r), K2(r), K3(r), K4(r)) 	= (Z1(10-r)-1, -Z3, -Z2 , Z4)  	for r = 2, 3, ..., 8;
+           (K1(r), K2(r), K3(r), K4(r)) 	= (Z1, -Z2, -Z3 , Z4)           	for r = 1 and 9;
+                           (K5(r), K6(r)) 		= (Z5(r), Z6(r))                    	for r = 1, 2, ..., 8;
+
+where Z-1 denotes the multiplicative inverse (modulo 216+1) of Z, i.e, Z-1 ( Z = 1. () and   -Z denotes the additive inverse (modulo 216) of Z, i.e., .
+
+
+The Key Schedule for IDEA
+
+The procedure for generating the 52 key sub-blocks from the session key is as follows: The 128-bit session key is partitioned directly into the 8 key sub-blocks, where the ordering of the key sub-blocks is defined as:  . The 128-bit session key is then cyclic shifted to the left by 25 positions, after which the resulting 128-bit block is again partitioned into eight sub-blocks that are taken as the next eight key sub-blocks. The obtained 128-bit block is again cyclic shifted to the left by 25 positions to produce the next eight keys sub-blocks, and this procedure is repeated until all 52 key sub-blocks have been generated.
+
+
+Description of MD5
+
+To make sure that a received message has been sent from the claimed sender, and to make it impossible to deny that one has sent a message, we need a digital signature. In PGP this implemented by encrypting the message with the sender's private key, which makes it possible for the recipient to check the signature by decoding with the sender's public key. However, encrypting the whole message with the private key would take to much time and computer power, so PGP only encrypts a 128 bits message digest. This message digest is created by the MD5 algorithm, a one-way hashing function that makes a 128 bits hash from any message of arbitrary length [1]. It is conjectured that it is computationally infeasible to create two messages having the same message digest, or to create any message having an already given message digest. 
+
+
+Hashing for MD5
+
+Let's say that we have a message of the arbitrary length b bits that we want to sign. The bits in the message are denoted as m[0], m[1], ..., m[b - 1]. We now use the MD5 algorithm to produce a message digest.
+
+The MD5 message digest is done in five steps: Padding, Length-appending, Initializing MD5 buffer, Processing the message, and finally the completed output.
+
+Step 1: The adding of padding bits
+The first thing that is done, is extension of the message, so that its length in bits is congruent to 512 - 64 = 448, modulo 512. The 64 bits that are "missing" will later be used to keep information about the length of the message. This extension, or padding, of the message is always done, even if the message already is congruent to 448, modulo 512. The padding is done in the following way: one single "1" is appended to the message, and after that only "0" bits are appended until we have reached the desired length. This means that we have to do at least one bit of padding, and at most 512.
+
+Step 2: The length of the message
+The 64 bits that are left unused, after the padding has been done, are used to represent the number of bits in the original message, i.e. b. If b should be more than 264 bits long, only the 64 least significant bits of b will be appended to the message. However, a message of that length is very unlikely, since that would mean that the message consisted of more than 2.3·10^18 bytes. To make sure that the message is an exact multiple of 512 bits, all 64 bits are used to represent b, no matter how long the message is. Now the message should consist of a multiple of 16 words, where each word is 32 bits. We now denote the message M[0, ..., N - 1], where N is a multiple of 16.
+
+Step 3:  Initializing the MD buffer
+The message digest is stored in a four-word buffer (A, B, C, D), where each of A, B, C, and D is a register with 32 bits. The buffer is initialized with the following hexadecimal values (least significant bits are first):
+
+Word A = (01  23  45  67)
+Word B = (89 AB CD EF)
+Word C = (FE DC BA 98)
+Word D = (76  54  32  10)
+
+This buffer is not only used to store the final output, but is also used during the computation of the message digest, hence the initial values. 
+
+Step 4: Processing the message
+This is the core of the MD5 algorithm, where the message digest is made. First we have to define the four auxiliary functions that each has an input of three 32 bits words, X, Y, and Z, and has an output that is one single 32 bits word. The functions are called F(X,Y,Z), G(X,Y,Z), H(X,Y,Z), and I(X,Y,Z), and are defined as seen below.
+
+F(X,Y,Z) = (XY) or (not(X) Z)
+G(X,Y,Z) = (XZ) or (Y not(Z))
+H(X,Y,Z) = (X) ( (Y) ( (Z)
+I(X,Y,Z) = (Y) ( ((X) or (not(Z)))
+
+where ( denotes bit-by-bit addition, i.e. the exclusive-or function.
+
+Each of the four functions acts in bit-wise parallel to produce their output, which gives that if the corresponding bits of X, Y, and Z are independent and unbiased, then each bit of the output will be independent and unbiased. The output from F(X,Y,Z) is Y if X=1, else it will be Z. G(X,Y,Z) is a similar function that uses Z as condition instead of X, and gives X when Z=1 and Y when Z=0. The H(X,Y,Z)-function is the bit-wise exclusive-or or parity function, i.e. the output bit is set to "1" if there are an odd number of ones in the corresponding position of X, Y, and Z. Finally, the I(X,Y,Z)-function performs a not(Y)-operation, if X=1 or Z=0. 
+
+We also need a table T[1, ..., 64] with 64 elements generated from the sine function. The i-th element T[i] is equal to the integer part of 4294967296 *|(sin(i)|, where i is in radians.
+
+Since the processing of the message is a bit hard to explain in words we just take a look at Rivest's pseudo-code below.
+
+Do the following:
+/* Process each 16-word block */
+For i = 0 to N/16 - 1 do
+
+	/* Copy block i into X */
+	For j = 0 to 15 do
+		Set X[j] to M[i(16 + j]
+	end /* of loop on j */
+
+	/* Save A as AA, B as BB, C as CC, and D as DD */
+	AA = A
+	BB = B
+	CC = C
+	DD = D
+
+	/* Round 1 */
+	/* Let [abcd k s i] denote the operation */
+	/*	a = b + ((a + F(b,c,d) + X[k] +T[i]) <<< s */
+	/* Do the following 16 operations: */
+	[ABCD  0   7   1]    [DABC  1  12   2]    [CDAB  2  17   3]    [BCDA  3  22  4]
+[ABCD  4   7   5]    [DABC  5  12   6]    [CDAB  6  17   7]    [BCDA  7  22  8]
+[ABCD  8   7   9]    [DABC  9  12 10]    [CDAB 10 17 11]    [BCDA 11 22 12]
+[ABCD 12  7 13]    [DABC 13 12 14]    [CDAB 14 17 15]    [BCDA 15 22 16]
+
+/* Round 2 */
+	/* Let [abcd k s i] denote the operation */
+	/*	a = b + ((a + G(b,c,d) + X[k] +T[i]) <<< s */
+	/* Do the following 16 operations: */
+	[ABCD   1  5 17]    [DABC   6  9  18]    [CDAB 11 14 19]    [BCDA  0  20 20]
+[ABCD   5  5 21]    [DABC 10  9  22]    [CDAB 15 14 23]    [BCDA  4  20 24]
+[ABCD   9  5 25]    [DABC 14  9  26]    [CDAB   3 14 27]    [BCDA  8  20 28]
+[ABCD 13  5 29]    [DABC   2  9  30]    [CDAB   7 14 31]    [BCDA 12 20 32]
+
+/* Round 3 */
+	/* Let [abcd k s i] denote the operation */
+	/*	a = b + ((a + H(b,c,d) + X[k] +T[i]) <<< s */
+	/* Do the following 16 operations: */
+	[ABCD   5  4 33]    [DABC   8 11 50]    [CDAB 11 16 35]    [BCDA 14 23 36]
+[ABCD   1  4 37]    [DABC   4 11 38]    [CDAB   7 16 39]    [BCDA 10 23 40]
+[ABCD 13  4 41]    [DABC   0 11 42]    [CDAB   3 16 43]    [BCDA   6 23 44]
+[ABCD   9  4 45]    [DABC 12 11 46]    [CDAB 15 16 47]    [BCDA   2 23 48]
+
+/* Round 4 */
+	/* Let [abcd k s i] denote the operation */
+	/*	a = b + ((a + I(b,c,d) + X[k] +T[i]) <<< s */
+	/* Do the following 16 operations: */
+	[ABCD   0  6 49]    [DABC   7 10 50]    [CDAB 14 15 51]    [BCDA   5 21 52]
+[ABCD 12  6 53]    [DABC   3 10 54]    [CDAB 10 15 55]    [BCDA   1 21 56]
+[ABCD   8  6 57]    [DABC 15 10 58]    [CDAB   6 15 59]    [BCDA 13 21 60]
+[ABCD   4  6 61]    [DABC 11 10 62]    [CDAB   2 15 63]    [BCDA   9 21 64]
+
+/* Now perform the following additions, i.e. add the values of the results from */
+/*  the processing of the previous block */    
+
+A = A + AA
+B = B + BB
+C = C + CC
+D = D + DD
+
+end /* All of the N/16 blocks have been processed */
+
+Step 5: The output
+We have now produced a message digest from the message. The digest, or the fingerprint, consists of the values of the registers A, B, C, and D after the whole message has been processed. The least significant word is A, then B and C, and finally D as the most significant word. It is conjectured that the difficulty of coming up with two messages that have the same digest is on the order of 264 operations, and that the difficulty of finding a message with a digest identical to a given digest from another message, is on the order of 2128 operations [1]. 
+
+The MD5 hashing function is actually an extension of its predecessor MD4 [1, 2]. The major differences between the two algorithms is that MD5 processes the data for four rounds instead of three, G(X,Y,Z) has been modified to be less symmetric, and a faster avalanche effect has been added by using the values from the result of the processing of the previous block. 
+
+Lately the safety of the MD5 algorithm has been questioned. It has been shown that it is possible to find a message with the same digest as a given message digest within reasonable time [4]. A specially designed collision search machine (which would cost about US$ 10 Millions in 1994) could find a collision for MD5 in 24 days on average [5]. The most serious attack was presented in 1996, though. It was Hans Dobbertin at German Information Security Agency who had found collisions without having different initial values when computing the collision [6]. By setting the initial value to A = (12 AC 23 75), B = (3B 34 10 42), C = (5F 62 B9 7C), and D = (4B A7 63 ED) and defining the input X = (Xi)i<16 as below, it is possible to find a collision in about 10 hours with a Pentium PC.
+
+X0 = (AA 1D DA 5E)  X4 = (10  06  36  3E)   X8 = (98 A1 FB 19)  X12 = (13 26 ED 65)
+X1 = (D9  7A BF  F5)  X5 = (72  18  20  9D)  X9 = (1F AE 44 B0)  X13 = (D9 3E 09 72)
+X2 = (55   F0  E1  C1)  X6 = (E0 1C 13  5D)  X10 = (23 6B B9 92)  X14 = (D4 58 C8 68)
+X3 = (32   77  42   44)  X7 = (9D A6 4D 0E)  X11 = (6B 7A 66 9B)  X15 = (6B 72 74 6A)
+
+With the input and initial values as described above we will get a collision if we just change X14 to X14 + 29. The message digest will in both cases be A = (BF 90 E6 70), B = (75 2A F9 2B), C = (9C E4 E3 E1), and D = (B1 2C F8 DE).
+
+ However, it's probably still quite hard to find a message that is suitable for a fraud.
+
+
+Implementation of PGP
+
+/* To be written */
+
+Generating a new public key
+If we want to use PGP to generate a new public key we just type the command pgp -kg in MS-dos or press the key generation button in any Windows PGP Shell. To fully understand how the key generation is implemented in PGP, we take a walk through the PGP source code [1]. 
+
+The k-part in the command is to make the key operations in PGP available, and the g is to start a generation of a new RSA key. When the command pgp -k is used, the program will enter the do_keyopt function from the main program. In the do_keyopt function the letter g will call another function called dokeygen, which automatically calls all the necessary functions to create a key.
+
+Number of keybits
+The first thing we have to do when we want to generate a new public key in PGP is to choose the number of bits that the key should consist of. The three different standard default key lengths that we can choose are 512 bits (denoted in the program as "low commercial grade"), 768 bits ("high commercial grade") and 1024 bits ("military grade"). During debugging it is more convenient to use the "low commercial grade" keys instead of the larger ones, since larger keys take more time to generate. The relatively small number of bits will of course lead to a less secure key, but the security is of no importance during  key generation tests. The choice of key length is handled by the dokeygen function itself.
+
+Passphrase for secret key
+To protect the key from being used by another person than the one that created it we need to choose a passphrase that prevent others from accessing the secret key. After we have entered a user ID (i.e. our name and e-mail address) we get to choose our password. This is done by a function called GetHashedPassPhrase(ideakey,2). The number 2 is a parameter that makes the function ask for the passphrase twice to make sure that we don't happen to make an orthographical error when we spell our passphrase. The alternative would have been 0 to type the passphrase once and get an echo or 1 to type the passphrase once, without echo. When the passphrase has been typed twice the GetHashedPassPhrase function will use MD5 to hash it to an IDEA-key. 
+
+Random number generation
+Now the program enters the function rsa_keygen, and the key generation begins. A delicate problem when dealing with public keys based on prime factors is the way to get truly random primes for the secret key. Computers are made for logical decisions and can therefore not provide any truly random numbers by themselves. In PGP this problem is solved by letting the user type randomly on the keyboard. This is done in the trueRandAccum(keybits + 2(UNITSIZE) function. The function generates a truly random number that consists of  enough bits to cover
+
+1) 	The needed keybits. In this case 512 bits.
+2) 	2(32 = 64 bits for combined discarded bit losses in the function randombits.
+3) 	Requested random bits. The function trueRandAccumLater has collected the number of requested bits from other functions. For instance, in this case the idea key generation needs 64 random bits.
+
+That means that we need 512 + 64 + 64 = 640 random bits. Fortunately we have already gotten some random bits when we typed our user ID and chose number of bits, since the getstring function collects randomness every time it is used. In our case the collected bits at this time was 200, which means that we only would need 440 more bits.  These bits are collected as the user strikes the keyboard randomly until no more bits are needed. When a key has been struck the program will enter the trueRandEvent(event) function, where the event denotes the key that was struck. Then the noise() function is called to add some noise from the system clocks. This is done by adding clock(), time((time_t *) 0) and pctimer0() to a pool of randomness, the randPool, by calling the randPoolAddBytes function. Right after the time noise has been added, the event itself (the struck key's ASCII representation) is added to the randPool. If the same event occurs more than two times in a row, it's considered suspiciously non-random, and the value of the event will be set to zero. This procedure will be repeated until we have enough random bits for the key generation.
+
+Prime number generation
+At this point we have only generated a random bit stream, which we will use to generate a random prime number, p. This prime, a part of the secret key, will be half the length of the desired public key length, i.e. 512/2 = 256 bits. The function trueRandConsume is called from rsa_keygen to "consume" 256 bits from the amount of available random bits. After we have "consumed" bits for p, we will only have 640 - 256 = 384 random bits left to use later.
+
+Next step is to generate the prime. The function randomprime(p, pbits) is called to find a random prime p that is pbits bits long. By using the function randombits(p, pbits - 2) we get an array of random bits that is pbits - 2 bits long. The two most significant bits are set to ones to make sure that the product of the prime factors will have the desired amount of bits, i.e. length(n) = length(p(q) = 512. The functions that do the work in randombits are randomunit (fills a unit, i.e. 32 bits, with random bytes), which calls trueRandByte, which gets the byte from randPoolGetByte.
+
+We now have a random number p, that is 256 bits long. This number is used as a candidate when we start searching for the next higher prime from p, which is done in the nextprime(p) function. This function uses the "Fast Prime Sieving Algorithm" (see Appendix A) to search sequentially after it has made sure that p = 3 mod 4. First it uses buildsieve(p, remainders) to build a remainders table relative to the initial p from a corresponding prime table. Then it calls fastsieve(pdelta, remainders) to check whether p is a possible prime. This is done by testing whether pdelta, which is initially set to zero, plus a remainders table entry is evenly divisible by the corresponding prime table entry. If that situation occurs for any of the prime table entries, then p + pdelta is factorable by that prime table entry, and can therefore not be a prime. When this happens pdelta will be increased by four and a new fastsieve will take place until a possible prime is found. To test the possible prime nextprime calls slowtest(p). Slowtest uses Fermat's theorem to test whether it is likely that p is a prime. According to Fermat's theorem a number p is not a prime if x(p -1) mod p ¹ 1 for any x. This test is done four times by PGP, each time with a different value x. Ronald Rivest has given a theoretical argument [2] that says that the chances of finding a non-prime, p, of the length of 256 bits such that 2(p -1) mod p = 1 is less than 10-22. This argument comes from a conjecture by Carl Pomerance [3, 4] that says that the number of pseudoprimes (non-primes that pass the Fermat test) less than n is at most n/L(n)1 + o(1) where L(n) = exp((ln n ln ln ln n)/(ln ln n)). If that is correct and o(1) can be ignored, then the number of pseudoprimes less than 2256 is at most 4ž1052, while the number of primes with a length of 256 bits is approximately 6.5ž1074. Since this test is done four times, the chances that any number p that passes Fermat's test is not a prime should be less than 10-88. However, this is probably an exaggeration, since Rivest only tests numbers that doesn't have any number less than 104 as a factor. Thus, as Rivest says in his paper, he has only showed that pseudo-primes are rare among numbers with no small divisors.
+
+By measuring the time between the moment randomprime(p) is called for the first time, and the moment right before derive_rsakeys is called, we can approximate the time for key generation in PGP. When doing ten such measurements on the generation of a 512-bit key, we got an average of 10.55 seconds (see Table 1).
+
+Table 1: Time to generate p and q for 512-bit key.
+/* This table didn't make it into text-mode. */
+
+To create a 768-bit key it will take between 30 and 60 seconds, and a 1024-bit key will take a couple of minutes.
+
+After we have created a probable prime number p, we continue the same way to search for another prime q, which must be larger than p. To make sure that p and q aren't too close to each other, PGP checks that the number of bits in (q - p) is less than the number of bits in q minus seven. 
+
+RSA keys
+When we have two primes, p and q, we can create a set of RSA keys. At this point rsa_keygen will call the function derive_rsakeys(n, e, d, p, q, u, ebits), which starts by computing the Euler totient function phi(n) = (p -1)(q - 1). Then it calculates the number of "spare key sets", G(n) = gcd(p - 1, q - 1), for the given modulus n. The smaller it is, the better. This G(n) is used to get F(n) = phi(n)/G(n). 
+
+With the ((n) and the F(n) we can calculate an e and a d for our key. The minimum number of bits in e is by default set to 5, but this can be chosen arbitrarily. To avoid testing obvious non-primes, the program starts the search for a proper e by setting its least significant bit to one, i.e. making e an odd number. The e is set so that the greatest common divider   gcd(e, phi(n)) = 1 by using Euclid's algorithm in the function mp_gcd (see Appendix B), and the d is set so that e*d mod F(n) = 1, i.e. d is the inverse to e modulus F(n). To achieve this inverse d derive_rsakeys calls the function mp_inv (see Appendix B), which is an extended version of Euclid's algorithm. Then a u is computed in the same way so that p*u mod q = 1. Finally the n itself is calculated as a product of the two primes, i.e. n = p*q.
+
+Test of RSA keys
+To make sure that the new key is usable as an RSA key, PGP tests the key before it is written to the keyrings. This is done by encrypting a dummy signature in the function rsa_private_encrypt and then decrypt it in the function rsa_public_decrypt to see if we get the same thing back. This eliminates the possibility that any of the probable primes p and q wasn't a real prime. If the key shouldn't be a proper RSA key, the key generation will start all over again.
+
+Goodprime
+If we wish to ensure ourselves that the primes really are good primes for an RSA key, there is an alternative to the ordinary keygeneration. We could let rsa_keygen call the Goodprime function that is part of the PGP source code instead of the randomprime function. This function will find primes such that they won't be easy to find through factorizing the public key n by using the Pollard rho and p - 1 attacks.
+
+First Goodprime will call randomprime(p, minbits-1), which will find a prime the ordinary way as described above. Then the prime p will be used in the function tryprime(p1, p, midbits), where midbits is the number of bits right in the middle of minbits and the desired number of bits maxbits. Tryprime will generate another prime p1 such that (p1 - 1) has the prime p as its largest factor. Prime p1 = i*2*p + 1, where i is a small prime. When such a prime p1 is found the tryprime(p, p1, maxbits) function will be called again to get a prime p of the desired length. When Goodprime has found two suitable primes, the RSA key will be generated and tested with a dummy signature exactly as in the case of ordinary prime generation.
+
+Writing the key to rings
+When the key generation is done the secret key will be saved in a secret key-ring file and the public key will be added to the public key-ring file. To ensure that the secret key won't fall into the wrong hands too easily, it is encrypted by IDEA with a hashed version of the earlier chosen password as a key. The public key is, of course, saved without any encryption.
+
+Signing the key
+As a last step when generating a new key the dokeygen function calls the do_sign function, which is used to sign the public key with the secret key. To do this do_sign has to call make_signature_certificate, which uses the rsa_private_encrypt function to make a certificate for the key.
+
+
+Modular Exponentiation
+
+The basis of several cryptographic algorithms, such as RSA and Rabin, is the exponentiation of large integers (modulo a large integer). PGP uses the generally accepted method for performing modular exponentiation, the 'square-and-multiply' technique; see, for example [5]. The procedure which performs this is called mp_modexp and is found in the file mpilib.c. When computing me mod n and e has the binary representation es-1es-2...e0, where es-1 is the most significant bit, it follows the scheme below:
+
+d = m;
+for ( i = s-2 downto 0){
+	d = d2 mod n
+	if (ei = 1)  d = d mod n;
+}
+The result will be contained in d.
+
+Note that the number of modular multiplications involved in performing the algorithm is determined by the number of ones in the binary representation of e. 
+
+
+IDEA
+
+In PGP the procedure idea_file uses IDEA in cipher feedback (CFB) mode, described in chapter xx, to encrypt or decrypt a file.  The encrypted material starts out with a 64-bit random prefix, which serves as an encrypted random CFB initialization vector, and following that is 16 bits of "key check" material.  The encrypted key check bytes detect if correct IDEA key was used to decrypt ciphertext. The initialization procedure also expands the key used for IDEA.
+
+The procedure idea_file then continues by calling either the procedure ideaCfbEncrypt or ideaCfbDecrypt, which follows the cipher feedback scheme presented in chapter xx. It takes a block of the text and calls the procedure ideaCipher repeatedly until all the text is encrypted/decrypted. IdeaCipher performes the actual encryption or decryption, depending on which keys are used. 
+
+
+The MD5 Interface in PGP
+
+In PGP the interface between MD5 and the main PGP program is slightly more complicated than called for. Instead of just using file-in-file-out to and from one single MD5 function, PGP uses some of the MD5 sub-functions on several occasions. The natural choice would have been to use either MDfile(), a function that opens and hashes a whole file, or MDfile0_len(), a function that hashes a file from the current position for a desired number of bytes. Both these functions must be followed by a function called MD_addbuffer() to finish the calculation of the message digest.
+
+/* To be written */
+
+
+EBP
+
+/* To be written */
+
+Description of RABIN
+
+In 1979 Michael O. Rabin [3] proposed a public-key encryption and digital signature scheme using quadratic residue theory. Instead of using exponentiation as the encryption function, Rabin used the much simpler operation of squaring. Rabin proved that the difficulty of breaking his scheme (i.e. finding square roots) is equivalent to the maximum difficulty of breaking the RSA scheme. In other words, as long as factorization of integers into large primes remains practically intractable, this scheme remains computationally secure. In 1991 the best factoring algorithms could factor a 100 decimal digit number in about 10 days (i.e. about 0.027 years) on the fastest supercomputer. In 1995 one Cray 3 supercomputer and 30 workstations could factor a 124 decimal digit number in 8 months (i.e. about 0.67 years). Moreover, all fast general factoring algorithms have running times that grow with the size of the integer n to be factored in such a way that when n has between 50 and 200 decimal digits, the factoring time increases by a factor of 10 when n is increased by about 15 decimal digits (i.e. about 50 binary digits). Thus it would take about (0.67) ž 10(200-124)/15 > 5 ( 104 years today to factor an n having about 200 decimal digits (~700 binary digits), which is the size recommended by RSA.
+
+One good feature of Rabin's scheme is that the computation time for message encryption or digital signature verification is much faster than that for the RSA scheme. However, due to a property of quadratic residue theory, the encryption scheme requires that the sender append redundant information so that the receiver will be able to extract the correct information, and the digital signature scheme requires that the sender non-deterministically produce a ciphertext which is a quadratic residue and then append the signature to the ciphertext. We signed 100000 messages which gave the probability that the message was a quadratic residue to be 0.250, wich means to produce a ciphertext wich is a quadratic residue requires approximately four trials.
+
+
+Encryption for RABIN
+
+As in the RSA scheme, each user selects two large primes, p and q, and calculates n = p*q. Another value b, 0 ( b ( (n-1), is also selected and the public-key (n, b) is published. The private key is (p, q). The one-way function, using Rabin's notation, is as follows: for message M, 0 ( M ( (n-1), C = En,b(M) = M(M + b) mod n. 
+
+In EBP we simplify the quadratic equation to be solved to X2 - C = 0 mod n (Rabin's scheme with b = 0) from the start to eliminate an extra step that unnecessarily complicates the method.
+
+First choose two large primes, p and q, both congruent to 3 mod 4. These primes are the private key; the product n = p*q is the public key.
+
+The encryption of a message is then made by squaring the message modulo n, e.g., if Benny wants to send a message, M (M must be less than n), to Annie, Benny takes Annie's public key, n, and computes the ciphertext C = M2 mod n.
+
+Example:
+Annie has the secret key (p, q) = (7, 11) and the public key n = 77. If Benny wants to send the message M = 15 to Annie, he takes Annie's public key, n = 77, and computes the ciphertext C = 152 mod 77 = 71.
+
+
+Decryption for RABIN
+
+When user A wishes to communicate in a secure manner with B, user A uses user B's public-key, (nB, bB), to produce the ciphertext C. Receiving the ciphertext C, user B needs to solve the quadratic equation X2 - C = 0 mod n - i.e. finding square roots of C. This number C will most probably have four square roots (x = +/- 1 mod p and x = +/- 1 mod q.), one of which, call it M, will be the correct solution. Rabin, in his 1979 paper, did not state precisely how user B is to select the correct square root, M, of C. Finding square roots modulo n can be reduced to finding square roots modulo p and modulo q, and then using the Chinese Remainder Theorem. 
+
+Many ways of how to decrypt Rabin's cryptosystem without use of any redundant information have been presented of which Hugh Williams' redefined Rabin's scheme is probably the best known. Hugh Williams proved that in the special case where p and q are both congruent to 3 modulo 4, the four square roots of any quadratic residue modulo n = p*q can be neatly characterized, two with Jacobian value modulo n of 1 (of Type 1) and two with Jacobian value -1 (of Type 2). Williams further divided the two roots of Type 1 and Type 2 on the basis of whether they where even or odd. There has to be one of each. He further defined the distinguished root as the one that is of Type 1 and is even. By restricting attention to Type 1 roots for the special case where p was congruent to 3 modulo 8 and q was congruent to 7 modulo 8, Williams produced a scheme with which one could select the right solution without any extra information. Williams paid a price though. He had to transform a message M into a distinguished root before squaring. This required that the message be of size less than n/4.
+
+Many other schemes has been presented which also make use of the Jacobi function. The trouble with this is, however, that the Jacobi function is not easily computed. The definition of the Jacobi function is: 
+
+J(a/n) = L(a/p) * L(a/q),
+
+where n = p*q, for p and q odd primes, a is relatively prime to p, and L() is the Legendre function defined as
+
+                                                                  	+1, if a is QRp                                       
+                                               L(a/p) = 
+					 -1, if a is QNRp.
+
+Given natural numbers a and n that are relatively prime (gcd(a,n)=1), a is a quadratic residue modulo n iff the equation x2 mod n = a mod n has a solution; and a is a quadratic non-residue modulo n iff the equation x2 mod n = a mod n has no solution. 
+
+The symbol QRn represent the set of all integers between 1 and n-1 inclusive that are quadratic residues modulo n, and the symbol QNRn to represent those that are quadratic non-residues modulo n.
+
+The problem with the schemes using the Jacobi function is that it is very time consuming to compute the set of integers in QRn and QNRn. 
+
+We choose to use Rabin's method and add to it a technique for selecting the correct square root to the quadratic equation, where we add a known header to the message before encrypting. We have chosen the header to be five byte long, a longer header is not necessary because the probability of getting two solutions, where one is false, with the same header and taking the false one as the right solution is insignificant. ((Compute the probability))
+
+Decrypting a message is easy, but slightly more annoying than encrypting. First we compute  
+
+a = q*(q^-1 mod p)
+b = p*(p^-1 mod q).
+
+Since the receiver knows p and q, finding square roots modulo n can be reduced to finding square roots modulo p and modulo q, and then use the Chinese Remainder Theorem. Compute
+
+m1 = C^(p+1)/4         mod p
+m2 = (p - C^(p+1)/4) mod p
+m3 = C^(q+1)/4         mod q
+m4 = (q - C^(q+1)/4) mod q 
+
+The four possible solutions will then be
+
+M1 = (a*m1 + b*m3) mod n
+M2 = (a*m1 + b*m4) mod n
+M3 = (a*m2 + b*m3) mod n
+M4 = (a*m2 + b*m4) mod n
+
+One of those four results, M1, M2, M3, or M4, equals the plaintext M.
+
+Example (cont.):
+When Annie receives the ciphertext, C = 71, she can easily decrypt that by using her secret key, (p, q) = (7, 11), and her public key, n = 77, to compute a = 56 and b = 22. She then computes
+
+m1 = 4
+m2 = 7
+m3 = 1
+m4 = 6
+which gives the four possible solutions
+M1 = 15
+M2 = 48
+M3 = 29
+M4 = 62
+One of these four results is the right soulution and we can see that in this example M1 = 15 equals the plaintext.
+
+
+Signing with Rabin
+
+To sign a message with Rabin's scheme takes a little more effort than encrypting/decrypting, while verifying a signature with Rabin's scheme is very fast, faster than RSA. Due to a property of quadratic residue theory, the digital signature scheme requires that the sender non-deterministically produce a ciphertext which is a quadratic residue. To produce such a ciphertext requires an average of four trials. 
+
+For any message M, where 0 < M < ni and gcd(M,ni)=1, user i wants to generate a unique signature S. First, due to one possible attack suggested by A. Shamir and C. P. Schnorr [4], the message M itself, before being signed, needs to be perturbed in a totally unpredictable way that affects most of the message bits. This is done with a one-way hash function which not only perturbs the message but also reduces it from any size into a fixed length, see chapter XX. Then user i needs to access his/her own secret keys, pi and qi, to  calculate the square root of the hashed message.
+
+To verify that the signature S is a valid signature for message M transmitted from user i, any receiver needs to access the public-key, ni, of user i. First the receiver applies the publicly known one-way hash function to the message M to obtain D'. Then he verifies the signature simply by squaring the received signature S modulo n to get D, D = S2 mod n. If D and the hashed message D' are the same, the signature is valid.
+
+It is possible to factorize by using a chosen message attack when signing. This attack is easily avoided with the use of a one-way hash function and random padding appended to the message.
+
+Comparison between RABIN and RSA
+
+The security of RSA rely on the fact that breaking RSA is as hard as factoring an integer into two large primes, which is still computationally infeasible. It has still not been proven though that RSA is as hard to break as factoring, which is disquieting since RSA still is one of the most used crytposystems. Rabin's scheme on the other hand has been proven to be as hard to break as to factor an integer. This makes Rabin's scheme more secure than RSA. In fact, breaking Rabin's scheme is equivalent to the maximum difficulty of breaking the RSA scheme.
+
+
+Proof:
+
+The proof shows that if an adversary can decrypt a message sent using Rabin's function with any algorithm without knowing the secret key, then one can also factor products of two primes efficiently, see [3].
+ 
+Let n be the modulus, n = p*q, p and q primes known only to the recipient. The encryption function is E(M) = M^2. Decryption is simply root extraction. To
+find the square root modulo n, first find roots modulo p and q individually using one of the standard algorithms and then apply the Chinese Remainder Theorem (CRT). 
+
+Let g be the non-trivial square root of unity mod n, which is exactly given by (u*p-v*q), where u and v are coefficients found by the extended euclidean algorithm such that u*p + v*q = 1. This means g<> +/- 1 mod n, g mod p = 1 and g mod q = -1, so g^2 = 1 mod n. 
+
+If s is the square root for any quadratic residue t = x^2, then so is -s, -g*s, and g*s. Suppose that algorithm D finds square roots mod n. To find the factorization, choose a random r, and find x =D (r^2). With the probability 1/2, r/x = +/-g. Having +/-g, we compute gcd(+/-g - 1, p*q) -- g = u*p-v*q implies g = 2u*p - 1 = 1 - 2v*q, thus the gcd is one of p or q. 
+
+This shows that if we can decrypt a message sent using Rabin's function without knowing the secret key p and q, then one can also factor a product of two primes. Since factoring is still computationally infeasible, decrypting messages must also be computationally infeasible.
+
+
+
+Another good feature of Rabin's scheme is that the computation time for message encryption or digital signature verification is much faster than that for the RSA scheme. Which is easy to see since Rabin's scheme uses modular squaring instead of the time consuming operation modular exponentiation.
+
+RSA decryption can be made with a faster modulo exponentiation with the primes p and q known and an input relatively prime to the modulus and then use the Chinese Remainder Theorem to do the computation modulo p and modulo q before combining the result. If the decryption is made with this procedure, then the time for decrypting with RSA is comparable with that of Rabin (they both do two modular exponentiations). But if the ordinary way of computing modular exponentiation is used Rabin's scheme is faster than RSA.
+
+Signing a message with Rabin's scheme is unfortunately slower than that of the RSA because not every message digest can be used for signing. If the message cannot be used for signing the message must be changed and the procedure of signing has to be made all
+over.
+
+
+Description of SAFER
+
+EBP uses a new non-proprietary secret-key block-enciphering algorithm, called SAFER SK-128, to encrypt messages. The block cipher SAFER SK-128 (an acronym for Secure And Fast Encryption Routine with a Strengthened Key of length 128 bits) and its previous versions, with the SAFER K-64 as the first, was developed at ETH in Zürich by James L. Massey for Cylink Corporation and was announced in 1995 in [3]. 
+
+The original SAFER algorithm is called "SAFER K-64" to emphasize that it has a user-selected key of 64 bits. Later the 128 bit key schedule propsed by the Special Projects Team of the Ministry of Home Affairs, Singapore was incorporated to obtain "SAFER K-128" , see [2]. The intent was to strengthen the cipher. The government of Singapore is planning to use this algorithm for a wide variety of applications.
+
+In J. L. Massey's e-mail announcement of 5 Sept. 1995 (revised slightly on 15 Sept. 1995 because of a programming glitch), it was reported on two weaknesses in SAFER. Both these weaknesses stemmed from the fact that, in the key schedule, a user-selected key byte affects only the byte in the corresponding position in all round keys. Lars Knudsen proposed an innovative new key schedule that not only avoids this byte stationarity but has other nice properties as well. In this e-mail announcement, Massey adopted Knudsen's key schedule in a new version of SAFER called SAFER SK-64 and SAFER SK-128 (where SK stands for Strengthened Key)
+
+On p. 341 of  the 2nd edition of his book, Applied Cryptography, Bruce Schneier has written: "SAFER was designed for Cylink, and Cylink is tainted by the NSA [80]. I recommend years of intense cryptanalysis before using SAFER in any form." J. L. Massey responded by telling the history and facts of SAFER and repudiates the implication made by Schneier firmly and is prepared at any time to take an oath on its veracity. SAFER has been rapidly accepted within the cryptographic users' community.
+
+The plaintext and the ciphertext in SAFER SK-128 are 64 bit (8 bytes) blocks and only byte operations are used in the processes of encryption and decryption. The secret key is 128 bits long, which is the same as for IDEA. New cryptographic features in SAFER includes the use of an unorthodox linear transform, called Pseudo-Hadamard Transform (PHT), and the use of additive key biases to eliminate the possibility of "weak keys" (i.e., eliminates the possibility that all sub-keys can be all-zero). The use of such biases, which appears to be new, is clearly a good idea in general for iterated ciphers. The PHT achieves the desired diffusion, i.e., small changes in the plaintext or the key spreads rapidly over the resulting ciphertext. SAFER is an iterated cipher in the sense that encryption is performed by applying the same transformation for r rounds, and finally applying an output transformation. In EBP the number of rounds is set to be 13, which is the maximum number of rounds used in SAFER SK-128.
+
+
+Encryption for SAFER
+
+The detailed encryption round structure of SAFER is shown in Fig. XX. The first step consists of the bit-by-bit XOR of bytes 1, 4, 5, and 8 of the sub-key Z(1) with the corresponding bytes of the input together with the byte-by-byte addition (modulo-256 addition) of bytes 2, 3, 6, and 7 of the sub-key Z(1). This is referred to as the Mixed XOR/Byte-Addition operation. 
+
+The eight bytes of the result are then passed through a nonlinear layer and individually subjected to one of the two different "highly nonlinear" transformations, namely:
+* the operation labeled "45(.)" in fig. XX, which notation is to suggest that if the byte input is the integer j then the byte output is 45j modulo 257 and
+*   the operation labeled "log45" , which notation is to suggest that if the byte is the integer j then the byte output is log45(j).
+In the implementation of SAFER, these two nonlinear operations are realized with two look-up tables of 256 bytes each.
+
+The output bytes 1, 4, 5, and 8 of the eight nonlinear transformations are then byte-by-byte added (modulo-256 addition), and the output bytes 2, 3, 6 and 7 are bit-by-bit XORed (modulo-2 sum), with the corresponding bytes of the sub-key Z(2). 
+
+This nonlinear layer gives the cipher the confusion required, in accordance with Shannon's principles [4], to make the statistics of the ciphertext depend in a complicated way on the statistics of the plaintext - provided that small changes diffuse quickly through the cipher.
+
+The output of the mixed byte-addition/XOR operation then passes through a three-level "linear layer", which boxes that are labeled "2-PHT" in fig. XX. This notation indicates a 2-point PHT (for Pseudo-Hadamard Transform), see [1]. If the two input bytes to a 2-PHT are (a1, a2), where a1 is the more significant byte, then the two output bytes are (b1, b2) where
+  (1)
+and where the arithmetic is normal byte arithmetic, i.e., arithmetic modulo 256. The output of this linear layer constitutes to the round output.
+
+The linear layer is made to guarantee the necessary diffusion in the cipher. For instance (1,0,0,0,0,0,0,0) has the PHT (8,4,4,2,4,2,2,1). This cipher is supposed to have the most rapid guaranteed diffusion. 
+
+This round output is then taken as the next rounds input and the whole sequence is done over again with the next sub-keys, which for round i is Z(2i-1) and Z(2i). In EBP this is done 13 times, i.e., rounds r = 13.
+
+The final step is the output transformation, which is the same as the Mixed XOR/Byte-Addition described above.
+
+
+Decryption for SAFER
+
+The decryption structure of SAFER is similar to the encryption process, but here an input transformation is applied to the ciphertext block, followed by r rounds of identical transformation. The input transformation consists of the Mixed XOR/Byte-Subtraction of sub-key Z(2r+1) from the ciphertext block. Round i starts with the three-level inverse linear layer, followed by the Mixed Byte-Subtraction/XOR of the output of the inverse linear layer with the sub-key Z(2r+2-2i).
+
+In the next step of the decryption round, the eight bytes from the previous step are passed through the inverse non-linear layer, which differs from the nonlinear layer in the encryption round only by changing the boxes labeled 45(.) to log45 and vice versa. 
+
+The last step within the i-th decryption round is the Mixed XOR/Byte-Subtraction of the round input with the sub-key Z(2r+1-2i). 
+
+A characterizing feature of SAFER is that decrypting rounds differ from encrypting rounds so that an encrypter cannot be converted to a decrypter by simply reversing the key schedule.
+
+In EBP though, SAFER is used in CFB-mode (Cipher FeedBack-mode) which is a method for using block ciphers to encrypt/decrypt messages, files, and blocks of data. In CFB-mode the encryption procedure is used also for decryption (see code below). There are four such "modes of operation" in which CFB is one of the stronger and more complex one, recommended by the Federal Data Encryption Standard (DES). The use of this mode is mainly to make conceal the plaintext pattern and make the input to the block cipher randomized.
+
+The method is explained below in C-language-like notation, where
+
+P[n]	is the nth block of plaintext,
+
+C[n]	is the nth block of ciphertext, and
+
+E(m)	is the encryption function,
+
+IV	is the "initialization vector" is a secret value which, along with the key, is shared 
+by both encryptor and decryptor.
+
+I[n] and R[n] is just the nth value of the variable.
+
+k-bit Cipher FeedBack (CFB):
+
+	Encryption:					Decryption:
+	I[0]  = IV					I[0]  = IV
+(n>0)	I[n]  = I[n-1] << k | C[n-1]			I[n]  = I[n-1] << k  |  C[n-1]
+(all n)	R[n] = MSB(E(I[n]),k)				R[n] = MSB( E( I[n] ), k)
+(all n)	C[n] = P[n]R[n]					P[n] = C[n]R[n]
+
+Note that since I[n] depends only on the plain or cipher text from the previous operation, the E() function can be performed in parallel with the reception of the text with which it is used.
+
+
+The Key Schedule for SAFER
+
+The key schedule for SAFER SK-128, i.e., the procedure for generating the sub-keys Z(1), Z(2),..., Z(2r+1) from the randomly chosen session key, is indicated in fig. XX. In EBP the number of rounds is set to be maximum, i.e., which means that 27 sub-keys are needed. The first version of SAFER, called SAFER K-64, used a key of length 64 bits. Special Projects Team of the Ministry of Home Affairs in Singapore designed a key schedule, for a 128-bit session key, to be used with the basic SAFER algorithm. The sub-keys are still 64 bits long but derived from a 128-bit randomly chosen session key. The right and the left halves of the 128-bit session key are denoted Za and Zb, respectively, in fig XX where we abide the convention that more significant bits and bytes are to the left.
+
+The quantities B(2), B(3),..., B(2r-1) are the key biases that have the purpose of ensuring that the round sub-keys appear individually "random" and, in particular, that no more than one round sub-key can be all-zero. If b[i,j] denotes the j-th byte of bias Bi, then this byte is expressed as the double exponential
+
+which defines the key biases used in SAFER. 
+
+In order to generate the additional 64-bit sub-keys Z(1), Z(2),..., Z(2r+1), for r  rounds, from the randomly chosen 128-bit session key, the key is first divided into two 64-bit keys, Za and Zb where Z(1) is taken to be Zb, and then, before the addition of a new bias is added, the sub-key register is byte-wise rotated by 3 bits to the left. The bias addition is made as byte-by-byte byte addition modulo 256. The procedure is made to make the entire sub-key sequence Z(1), Z(2),..., Z(2r+1) have the character of a sequence of independently-chosen uniformly-random sub-keys. This can of course not be achieved in a strict sense, since all the sub-keys are determined from the session key, but the design of the key schedule is made to make the keys depend in such a complicated way that it cannot be exploited by an attacker. That is the purpose of both the byte rotations and the addition of sub-key biases. 
+
+
+Description of HAVAL
+
+Another one-way hashing function, that is similar to MD5, is called HAVAL [7] and it features the option to choose the length of the message digest. The length can be specified to 128, 160, 192, 224 or 256 bits, and the algorithm processes blocks of the size 1024 bits. The processing can be done in 3, 4, or 5 rounds. According to the authors of the HAVAL algorithm paper, their algorithm is faster than MD5. When using 3 rounds HAVAL is supposed to be 60 % faster than MD5, with 4 rounds it's 15 % faster, and if all of the 5 rounds are used in HAVAL, it will be as fast as the 4-round MD5. 
+
+Hashing for HAVAL
+
+First we have to define some denotations. Single bits from GF(2) will be denoted by a subscript letter, and strings of bits will be denoted by a superscript letter. A word is 32 bytes, and a block is 32 words, i.e. 1024 bits. The most significant bit is to the left of a string of bits. Modulo-2-multiplication and modulo-2-addition of two bits, xi and xj, will be written xixj and xi+xj respectively. The bit-wise modulo-2-addition of two strings, Si and Sj, of the same length is denoted Si+Sj, and bit-wise modulo-2-multiplication is denoted Si*Sj. Word-wise addition modulo 232 will be written as Si++Sj.
+
+To make sure that the length of the message that is to be hashed is a multiple of 1024, HAVAL pads the message with one single "1" and then all zeros. This padding is done even if the message should be of the correct length already. The last 64 bits are used to specify the length of the unpadded message. Another 10 bits of the padding-field is used to specify the number of bits that was chosen for the fingerprint, 3 bits for the number of passes and 3 bits for the version number of HAVAL (we have used version number 1 in EBP).
+
+HAVAL can process a block, B, in 3, 4, or 5 passes. The passes are called H1, H2, H3, H4, and H5. The processing can be described as seen below.
+
+E0 = Din
+E1 = H1(E0, B)
+E2 = H2(E1, B)
+E3 = H3(E2, B)
+E4 = H4(E3, B)
+E5 = H5(E4, B)
+Dout = Ei++E0, where i is the number of passes.
+
+Din is a constant that is taken from the fraction part of pi = 3.1415..., and Dout is the 8-word output. 
+
+Each of the five passes has 32 rounds of operations, and each round processes a different word from B. Each pass processes the words in B in different orders as seen in table 1.
+
+Table 1: Word Processing Orders.
+/* Didn't make it to text-format. */
+
+Every pass also uses a different boolean function to do the bit-wise operations on the words. The five functions are:
+
+f1 = x1x4+x2x5+x3x6+x0x1+x0
+f2 = x1x2x3+x2x4x5+x1x2+x1x4+x2x6+x3x5+x4x5+x0x2+x0
+f3 = x1x2x3+x1x4+x2x5+x3x6+x0x3+x0
+f4 = x1x2x3+x2x4x5+x3x4x6+x1x4+x2x6+x3x4+x3x5+x3x6+x4x5+x4x6+x0x4+x0
+f5 = x1x4+x2x5+x3x6+x0x1x2x3+x0x5+x0
+
+These functions all have properties such as
+
+1) 0 - 1 balance
+2) highly non-linear
+3) satisfying the Strict Avalanche Criterion (SAC)
+4) linearly inequivalent in structure, compared to each other
+5) mutually output-uncorrelated.
+
+The first property makes sure that the output is a "0" with the probability 0.5 when the input is picked randomly and uniformly over all possible vectors. The non-linearity is needed to avoid easy ways to break the algorithm. The Strict Avalanche Criterion means that for every 1 ( i ( n, complementing xi results in the output being complemented 50 % of the time over all possible input vectors. The fourth property ensures that the five functions cannot be transformed into each other by applying linear transformation to the input coordinates. The final property makes sure that the sequences of the functions are not mutually correlated either via linear functions or via the bias in output bits.
+
+Note that the functions in MD5 not always have the properties above. For instance, H(X,Y,Z) is linear, and G(X,Y,Z) and I(X,Y,Z) can easily be transformed into F(X,Y,Z) by [X ==> Y, Y ==> Z, Z ==> X] and [X ==> Y+Z, Y ==> X+Z+1, Z ==> X] respectively.
+
+Now let's take a look at the hashing itself. In EBP we use all the five passes as default, so we will have to describe them all thoroughly. 
+
+Pass 1:
+The input to the first hashing pass H1 is denoted (E0, B), where E0 consists of 8 words E0,7, E0,6, E0,5, E0,4, E0,3, E0,2, E0,1, E0,0, and B of 32 words W31, W30, ..., W0. The processing of block B is done in a word-by-word way, and transforms the input into a 8-word output E1 =  E1,7, E1,6, ..., E1,0. To rotate a word X s positions to the right we write ROT(X, s), and by f * g we denote the composition of two functions f and g, where g is evaluated first. Now let's take a look at the different steps of the first hash:
+
+1) Let T0i = E0i, 0 <= i <= 7.
+2) Repeat the following steps for i from 0 to 31:
+P = f1 * phik1(Ti,6,Ti,5,Ti,4,Ti,3,Ti,2,Ti,1,Ti,0), where k is the chosen number of passes.
+R = ROT(P, 7) ++ ROT(Ti,7,11) ++ Wi
+      Ti+1,7 = Ti,6; Ti+1,6 = Ti,5; Ti+1,5 = Ti,4; Ti+1,4 = Ti,3;
+      Ti+1,3 = Ti,2; Ti+1,2 = Ti,1; Ti+1,1 = Ti,0; Ti+1,0 = R.
+3)   Let E1,i = T32,i, and set the output to E1 = E1,7, E1,6 ..., E1,0.
+
+The permutation function phikl(x6, x5, x4, x3, x2, x1, x0) can be seen in table 2 below:
+
+Table 2: Permutations on coordinates.
+Permutations
+/* Didn't make it. */
+
+Pass 2: Similar to the first pass.
+For pass H2 we have the input (E1, B), which is processed according to table 1. This pass uses 32 constant words K2,31, K2,30, ..., K2,0, which are taken from the fraction part of (. The processing in H2 is similar to the one in H1:
+
+1) Let T0,i = E1,i, 0 ( i ( 7.
+2) Repeat the following steps for i from 0 to 31:
+P = f2 ( (k,2(Ti,6,Ti,5,Ti,4,Ti,3,Ti,2,Ti,1,Ti,0), where k is the chosen number of passes.
+R = ROT(P, 7) ( ROT(Ti,7,11) ( Word2(i) ( K2,i
+      Ti+1,7 = Ti,6; Ti+1,6 = Ti,5; Ti+1,5 = Ti,4; Ti+1,4 = Ti,3;
+      Ti+1,3 = Ti,2; Ti+1,2 = Ti,1; Ti+1,1 = Ti,0; Ti+1,0 = R.
+3)   Let E2,i = T32,i, and set the output to E2 = E2,7, E2,6 ..., E2,0.
+
+Pass 3:
+The third pass uses the input (E2, B) and the words K3,31, K3,30, ..., K3,0.
+
+1)   Let T0,i = E2,i, 0 ( i ( 7.
+2)   Repeat the following steps for i from 0 to 31:
+P = f3 ( (k,3(Ti,6,Ti,5,Ti,4,Ti,3,Ti,2,Ti,1,Ti,0), where k is the chosen number of passes.
+R = ROT(P, 7) ( ROT(Ti,7,11) ( Word3(i) ( K3,i
+      Ti+1,7 = Ti,6; Ti+1,6 = Ti,5; Ti+1,5 = Ti,4; Ti+1,4 = Ti,3;
+      Ti+1,3 = Ti,2; Ti+1,2 = Ti,1; Ti+1,1 = Ti,0; Ti+1,0 = R.
+3)   Let E3,i = T32,i, and set the output to E3 = E3,7, E3,6 ..., E3,0.
+
+Pass 4:
+The fourth pass, H4, is only used when the chosen number of passes is 4 or 5. To get maximum security we have chosen to use all the five passes in EBP as default. The input to this pass is (E3, B) and the constant words used are K4,31, K4,30, ..., K4,0.
+
+1)   Let T0,i = E3,i, 0 ( i ( 7.
+2)   Repeat the following steps for i from 0 to 31:
+P = f4 ( (k,4(Ti,6,Ti,5,Ti,4,Ti,3,Ti,2,Ti,1,Ti,0), where k is the chosen number of passes.
+R = ROT(P, 7) ( ROT(Ti,7,11) ( Word4(i) ( K4,i
+      Ti+1,7 = Ti,6; Ti+1,6 = Ti,5; Ti+1,5 = Ti,4; Ti+1,4 = Ti,3;
+      Ti+1,3 = Ti,2; Ti+1,2 = Ti,1; Ti+1,1 = Ti,0; Ti+1,0 = R.
+3)   Let E4,i = T32,i, and set the output to E4 = E4,7, E4,6 ..., E4,0.
+
+Pass 5:
+The final pass! The input is (E4, B) and the constant words used are K5,31, K5,30, ..., K5,0.
+
+1)   Let T0,i = E4,i, 0 ( i ( 7.
+2)   Repeat the following steps for i from 0 to 31:
+P = f5 ( (5,5(Ti,6,Ti,5,Ti,4,Ti,3,Ti,2,Ti,1,Ti,0)
+R = ROT(P, 7) ( ROT(Ti,7,11) ( Word5(i) ( K5,i
+      Ti+1,7 = Ti,6; Ti+1,6 = Ti,5; Ti+1,5 = Ti,4; Ti+1,4 = Ti,3;
+      Ti+1,3 = Ti,2; Ti+1,2 = Ti,1; Ti+1,1 = Ti,0; Ti+1,0 = R.
+3)   Let E5,i = T32,i, and set the output to E5 = E5,7, E5,6 ..., E5,0.
+
+The Output:
+Since the message digest is 256 bits as default in EBP, we can use the output from the last pass directly as message digest. However, if we want a shorter message digest, we have to fold the last output until we get a digest of desired length.
+
+About the security of HAVAL, it is conjectured that, if n is the number of bits in the digest, it takes 2n/2 operations to find a digest collision and 2n operations to find a message that is mapped to an already given digest. Apart from the fact that MD5 has suffer from some more or less successful attacks lately, the possibility of an increased number of bits in the message digest conjectures that it is harder to find a collision for a full length HAVAL digest than for a MD5 digest. An attack to a single pass of MD5 that has been proposed by T. A. Berson [8] applies to a single pass of HAVAL as well, but it is highly unlikely that this attack can be extended to more passes than one.  The earlier mentioned MD5 attack by den Boer and Bosselaers [4] is however not directly applicable to HAVAL. Whether the German attack on MD5 is applicable on HAVAL or not, is not known to the authors at this point of time.
+
+
+Implementation of EBP
+
+/* To be written */
+
+Compatibility with PGP
+To make EBP as user-friendly as possible, we have tried to keep it fully compatible with the old PGP program. The idea is to let people that use PGP change their old program to EBP in a smooth way. Now they can still exchange encrypted documents with anyone who uses PGP for secure message transfers. Naturally, PGP doesn't support the new algorithms, so to send something to a recipient that only has PGP, the sender must use RSA, IDEA and MD5, when encrypting and signing. This is easily done by selecting the default PGP algorithms (i.e. the command ebp -jk) before encrypting or signing. The EBP program recognizes that the PGP algorithms are set and makes the ciphertext fully PGP compatible, and even sets the ciphertext file's extension to ".pgp" instead of ".ebp", so that the recipient doesn't have to worry about the extension when decrypting.
+
+To make sure that the user won't have to revoke his old public key when changing from PGP to EBP, we have supplied an "import old PGP key"-function (the command ebp -ki). This enables the user to import his old secret key from PGP, and create an EBP key, i.e. add the secret components that are necessary for Rabin's scheme. 
+
+Another function that has been added is the PGP-extracting of public keys (the command ebp -kxx). Since the old PGP doesn't support the new algorithms, we have to use this new extract-function if we wish to send a public key to a PGP user. This function loads the public key from the public key ring and creates a new key certificate with the default PGP algorithms if the secret key is available.
+
+Key generation in EBP
+In EBP we wanted to use a stronger primetest than Fermat's test. We chose to use the Rabin-Miller strong probable-primality test (or SPRP). This test requires that we calculate the s and the d in (p - 1) = d*2s, where p is the possible prime, d is odd, and s is non-negative. If either x^d = 1 mod p or (x^d)^(2^r) = -1 mod p for some non-negative r less than s, then p is a strong probable-prime base x (an x-SPRP). If we have a relatively small d the calculation of x^d will be much faster than for the Fermat test, but most of the time d is no smaller than half or a fourth of p - 1. The Rabin-Miller-test has one disadvantage, though. When x^d <> 1 mod p we have to test (x^d)^(2^r) for all non-negative r less than s until we find an r that gives the result -1 mod p. This is especially time-consuming when p is not a prime and the test was in vain. That is why we have chosen to keep the Fermat tests to try each possible prime until we find a number that passes. Then we test that number with three Rabin-Miller-tests to make sure that it is very probably a prime number.
+
+To give the user a few more options in the key generation, we have provided a command called "Key Generation++" (dos command: ebp -kp). With this command you can choose if you want to use less keystrokes while generating your random prime, if you want to use five extra Rabin-Miller-test, or if you wish to use the Goodprime-function that can be found in the previous PGP source codes.
+
+When generating a large random prime number you need to enter some random text on the keyboard to make sure that your prime is truly random. Since every keystroke only adds eight bits of randomness in PGP, it will be a quite tedious process when generating a large key. That is why we give the user the option to use all the bits that are generated from each keystroke (usually 20 - 25 bits), so that he/she doesn't have to enter as much input for the random number generation. Of course we might get less randomness with fewer keystrokes, but since most of the randomness comes from the time interval between the keystrokes, we will still get a very random number. Furthermore, this feature is very convenient when you're just testing the program and may want to generate many test-keys, or if you would like to demonstrate the program to someone and don't want to waste too much of his/her time.
+
+The most important feature in Key Generation++ is the extra Rabin-Miller-tests. This is done to be sure that the secret key components p and q are prime numbers and not only pseudo-primes. Even if the chance of getting a pseudo-prime after one Fermat-test and three Rabin-Miller-tests is very small, we don't want to take the risk that our public key is easy to factorize due to composite factors. When the extra Rabin-Miller-tests are chosen we test the possible prime with one Fermat-test and eight different Rabin-Miller-tests.
+
+The Goodprime-function was implemented to prevent the public key from being factorized into its prime factors by the Pollard rho and p - 1 attacks. However, the Pollard attacks are considered oldfashioned and the "good" primes do not prevent the elliptic curve attacks that are used today, which would mean that any random prime is a good prime [5]. Nevertheless we let the user make his own choice. If someone prefers to use the Goodprime-function it is their own choice, but they must be aware that their primes are less random than without Goodprime.
+
+ 
+The New Modular Exponentiation
+
+In the modular exponentiation algorithm used by PGP the number of modular exponentiations is determined by the number of ones in the binary representation of e. D. Gollmann, Y. Han, and C. Mitchell presented a paper [6] where they used an alternative representation of e, which, when used in combination with slight variants of the algorithm used by PGP, can considerably reduce the number of multiplications involved.
+
+The String Replacement Representation
+
+In the modified algorithm a binary representation of a number are allowed as entries of 2i-1 for any i satisfying 2 <= i <= k, where k is a small integer. This alternative representation has the effect of allowing the replacement of any string of i consecutive ones in the binary representation of any string of i-1 zeros followed by the value 2i-1. Hence we call such a representation a k-ary String Replacement representation (or a k-SR representation).
+
+In EBP k is set to be 5 and, for example, the binary string 10111011 is represented as 10007003. This representation significantly reduces the number of multiplications because the multiplication is not performed for zeros in the binary representaion of e.
+
+The Implementation of the New Modular Exponentiation Algorithm
+
+The new modular exponentiation procedure, called mp_modexp, is found in the file mpilib.c and it computes me mod n, where e has the binary representation es-1es-2...e0. In the following a draft of the procedure is presented in a C like notation where m[k] = m2k-1:
+
+EBPmodexp(c)
+for (i = s - 1 downto 0){
+	while (ei = 1 & ones < 5){
+		ones++;
+		d = d2;
+		if (m[ones] = 0)  m[ones] = m[ones-1]2 ( m[1];
+	}
+	if (ones)
+		d = d2;
+	else
+		d = d ( m[ones];
+}
+
+Instead of precomputing m3, m7, ...,m31 as done in [5] we calculate them when needed and then store them.
+
+
+The Implementation of RABIN in EBP
+
+The public key in EBP is the same as for PGP which makes EBP completely compatible with PGP. The secret key on the other hand is modified slightly with the addition of ( and (, because they only depend on p and q and are time consuming to compute. 
+
+In order not to make it necessary to distribute new public keys, a new function is added in EBP. The function improve secret key, -ki, loads the secret key from the PGP secret key ring and computes ( and ( before saving the new key in the EBP secret key ring.
+
+
+Encryption
+
+Because PGP already adds a lot of random padding to the message, the adding of a header needed to distinguish the correct solution is made just by replacing some of the random padding with the header. In EBP the message that is to be encrypted has the build-up shown in figure X. Both PGP and EBP adds a type byte and a framing byte of 0 to the user data. The random padding is needed to make sure that the message is large enough, i.e., to guarantee that when the message is squared, it will be much larger than the modulo n. Some random bytes is put before the header to ensure that the header does not give any additional information to somebody who would like to crack the ciphertext and then comes the rest of the random padding needed. The actual user data (i.e. the key of the block cipher used) is put last. All of this is done in the procedure rabin_public_encrypt before calling mod_square to do the actual encryption. It is easy to see that encrypting with Rabin's scheme is faster than RSA because the exponent in Rabin is always two while the exponent in RSA is always larger than two (usually 17).
+
+
+Decryption
+
+The decryption of a message is done in the procedure rabin_private_decrypt. It begins with calling the procedure Rabin_Decrypt, which makes the decryption, before it checks the decrypted data. The decryption procedure Rabin_Decrypt has the data to be encrypted, the private keys, p, q, (, and (, and the public key, n, as input parameters and the encrypted data as output parameter. The procedure follows the scheme presented above, where it checks the header after every solution, Mx, computed. The time consuming operation in Rabin_Decrypt is the mp_modexp function which computes modular exponentiation for multi-precision integers. 
+
+
+Signing
+
+The signing of a message is done in the procedure rabin_public_encrypt. This procedure builds the message to be signed before calling Rabin_Sign. The build-up for the message to be signed is similar to the build-up for the message to be encrypted. We need to fill the buffer with leading zeroes in the unused most significant byte positions. Then follows nine random bytes, the five byte header, the type byte and the rest of the space is filled with non-zero random padding before the zero framing byte, the ASN data, and the user data at the end.
+
+The signing with Rabin's scheme is done in Rabin_Sign in the following steps:
+First we calculate	
+
+m1 = D^(p+1)/4         mod p
+m2 = (p - D^(p+1)/4) mod p
+m3 = D^(q+1)/4         mod q
+m4 = (q - D^(q+1)/4) mod q 
+
+where D is the message digest, of the message M, to be signed.
+
+With the a and b chosen to be
+
+a = q*(q^-1 mod p)
+b = p*(p^-1 mod q).
+
+we calculate one possible solution
+
+S1 = (a*m1 + b*m3) mod n.
+
+The next step is to check whether this solution can be used to sign the message. If not, we change the random padding to get a new D and then we start all over again until we have a D which can be used for signing. This is needed because only D's which are a quadratic residue modulo n can be used, i.e., if x2 mod n = D mod n has a solution. 
+
+The signature S is then verified as a valid signature for message M transmitted from user i, by accessing the public-key, ni, of user i. First the receiver squares the received signature S modulo n to get D, D = S2 mod n. Then he verifies the signature simply by applying the one-way hash function (HAVAL or MD5) to the message M to obtain D'. If the received D and the hashed message D' coincide, the signature is valid.
+
+
+The Implementation of SAFER in EBP
+
+A new file, called safer.c, is added to EBP which contains the necessary procedures for SAFER, namely, Safer_Init_module, Safer_Divide_Key, Safer_Expand_Userkey and Safer_Block. The file safer.c was originally written at ETH in Zürich by Richard De Moliner and is in EBP added with procedures originally written for IDEA by Philip Zimmermann. Both these files have been modified by the authors to facilitate SAFER in EBP. The file crypto.c has also been modified for the use of SAFER instead of IDEA, although with IDEA as an option. The source code for the procedures explained below are to be found in the appendix.
+
+
+Expanding the key
+
+The three procedures Safer_Init_module, Safer_Divide_Key, and Safer_Expand_Userkey expands the randomly chosen 128-bit session key into 27 64-bit sub-keys, for r = 13 rounds, used in SAFER SK-128.
+
+The first procedure, Safer_Init_Module, initializes a logarithm- and an exponent-table to be used in Safer_Expand_Key. The log-table gives the output log45(j) modulo 257 and the exp-table gives the output 45j modulo 257 if the input is the integer . 
+
+The procedure Safer_Divide_Key divides the 128-bit session key into two 64-bit keys needed for Safer_Expand_Userkey. This is done simply by taking the first 64 bits in the session key as userkey_1 and the second 64 bits as userkey_2. This is needed because the procedure Safer_Expand_Userkey is implemented to be able to handle a 64-bit session key as well (if userkey_2 is zero). 
+
+The procedure for generating the sub-keys Z(1), Z(2),..., Z(27) from the session key is called Safer_Expand_Userkey. In EBP the strengthened 128-bit key schedule is used and the number of rounds is set to13 which is the maximum for SAFER SK-128.
+
+
+Encrypting a Block
+
+The actual encryption of the text is made by the procedure Safer_Block, which has the 8-byte plaintext-block and the 27 sub-keys as input and the encrypted 8-byte block as output. It is important to note that the interface for SAFER differs from the interface for IDEA in that the key for IDEA is of the type unsigned short while the key for SAFER is of  the type unsigned char.
+
+
+
+Acknowledgments
+
+We would like to thank our superb supervisor Dr. Yongfei Han for all support, help, kindness and for leading us further in cryptography. 
+
+We would also like to thank Prof. Dr. James L. Massey at ETH in Zurich and Institute of Systems Science at National University of Singapore for giving us the opportunity to do this project. We would especially like to thank Professor Massey for helping us with his SAFER algorithm.
+
+Finally we would like to thank our examiner Professor Ben Smeets, Dr. Mats Cedervall, Dr. Thomas Johansson, Henrik Nilsson and all the people in Information Security Group at ISS for their assistance and helpful suggestions.
+
+
+Bibliography
+
+[ ] P. Zimmermann, PGP User's Guide, The MIT Press, 1995.
+
+KEY GENERATION References
+References
+[1]  P. Zimmermann, PGP Source code and internals. The MIT Press, 1995.
+[2]  R. Rivest, "Finding Four Million Large Random Primes", in Advances in Cryptology: Proceedings of Crypto '91.
+[3]  C. Pomerance, "On the distribution of pseudoprimes", in Mathematics of Computation, 37(156):587-593, 1981.
+[4]  C. Pomerance, "Two methods in elementary analytic number theory", in R. A. Mollin, editor, Number Theory and Applications, pp. 135-161, Kluwer Academic Publishers, 1989.
+[5]  D. A. Buell, "Factoring", in Journal of Supercomputing 1, pp. 191-216, 1987.
+
+
+RSA/RABIN References 
+
+References
+ 
+[1] W. Diffie, and M. E. Hellman, "New Direction in Cryptography", IEEE Trans. Info. Theory 22, pp. 643-654, 1976.
+[2] M. O. Rabin, "Digitalized Signatures", Foundations of Secure Computation, New York: Academic Press, pp. 155- 168, 1978.  
+[3] M. O. Rabin, "Digitalized Signatures and Public Key Functions as Intractable as Factorization", MIT Laboratory for Computer Science, Technical Report LCS/TR-212, January 1979.
+[4] Shamir, A. and Scnorr, C. P., "Cryptanalysis of Certain Variants of Rabin's Signature Scheme", Information Processing Letters, pp. 113-115, October 1984.
+
+IDEA/SAFER References
+
+References
+
+[1] J. L. Massey, "SAFER K-64: A Byte-Oriented Block-Ciphering Algorithm", Fast Software Encryption (ED. R Anderson), Lecture Notes in Computer Science No. 809, New York: Springer, pp. 1-17, 1994.
+ 
+[2] J. L. Massey, "SAFER K-64: One Year Later", Fast Software Encryption II, Lecture Notes in Computer Science Series, Springer-Verlag, 1995.
+ 
+[3] J. L. Massey, "Announcement of a Strengthened Key Schedule for the Cipher SAFER", Sept. 1995.
+ 
+[4] C. E. Shannon, "Communication Theory of Secrecy Systems", Bell System Tech. J., vol. 28, pp. 656-715, Oct. 1949.
+
+MD5/HAVAL References
+
+References
+
+[1] R. L. Rivest, "The MD5 Message Digest Algorithm", Internet RFC 1321, April 1992.
+[2] R. L. Rivest, "The MD4 Message Digest Algorithm", in A. J. Menezes and S. A. Vanstone, editors, Advances in Cryptology - CRYPTO `90 Proceedings, pp. 303-311, Springer-Verlag, 1991.
+[3] R. L. Rivest, "The MD4 Message Digest Algorithm", RFC 1320, MIT and RSA Data Security.
+[4] B. den Boer and A. Bosselaers, "Collisions for the compression function of MD5", in Advances in Cryptology - Eurocrypt `93, pp. 293-304, Springer-Verlag, 1994.
+[5] P. van Oorschot and M. Wiener, "Parallel collision search with application to hash functions and discrete logarithms", in Proceedings of 2nd ACM Conference on Computer and Communication Security, 1994. 
+[6] H. Dobbertin, "Cryptanalysis of MD5 Compress", EUROCRYPT `96 Rump Session, http://www.iacr.org/conferences/ec96/rump/index.html.
+[7] Y. Zheng, J. Pieprzyk and J. Seberry, "HAVAL - A One-Way Hashing Algorithm with Variable Length of Output", in Advances in Cryptology - AUSCRYPT `92, Lecture Notes in Computer Science, Vol. 718, pp. 83-104, Springer-Verlag, 1993.
+[8] T. A. Berson, "Differential cryptanalysis mod 232 with applications to MD5", in Advances in Cryptology - EUROCRYPT `93, vol. 765 of Lecture Notes in Computer Science, Berlin, pp. 71-80, Springer-Verlag, 1993.
+
+[] B. Schneier, "Applied Cryptography, 2nd edition", Wiley, 1996.
+
+
+Appendix A
+The Fast Sieving Algorithm is used to find large primes for the RSA keys in PGP. To start the search we need a random numer, p, that is of the desired length.
+
+Fast Sieving Algorithm
+
+Set p =3 mod 4.
+/* buildsieve */
+Build remainders table relative to p from a corresponding prime table.
+pdelta = 0
+i = 0
+repeat
+/* fastsieve */
+do
+{
+olddelta = pdelta
+if mod(pdelta + remainder[i], prime[i]) = 0 then
+		pdelta = pdelta + 4
+i = i +1
+}
+while (pdelta > olddelta)
+p = p + pdelta
+/* slowtest */
+again = true
+okey = true
+while (test && prime)
+{
+/* any number x is ok, here we use numbers from the primetable */
+if prime[i](p - 1) mod p ( 1 then
+		okey = false
+i = i + 1
+if i = 4 then
+		again = false
+}
+until okey
+Appendix B
+To calculate the greatest common divider of two numbers, a  and b, PGP uses the function mp_gcd(result, a, n), which uses Euclid's algorithm to find the greatest common divider as seen below.
+
+mp_gcd(result, a, n)
+
+g(0) = n
+g(1) = a
+i = 1
+while g(i) ( 0
+{
+g(i + 1) = remainder(g(i), g(i - 1))
+i = i + 1
+}
+result = g(i - 1)
+
+
+An extended version of Euclid's algorithm is used in the function mp_inv(x, a, n) to find an inverse, x, to the number a modulus n.
+
+mp_inv(x , a, n)
+
+g(0) = n
+g(1) = a
+v(0) = 0
+v(1) = 1
+i = 1
+while g(i) ( 0
+{
+g(i + 1) = remainder(g(i), g(i - 1))
+y = quotiant(g(i), g(i - 1))
+/* g(i - 1) = g(i)(y + g(i + 1) */
+v(i + 1) = v(i - 1) - y(v(i)
+i = i + 1
+}
+x = v(i - 1)
+
+

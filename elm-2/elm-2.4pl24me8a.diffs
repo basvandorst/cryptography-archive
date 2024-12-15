@@ -1,0 +1,562 @@
+This is a patch for elm-2.4pl24me8a against elm-2.4pl24me8.
+Use patch -p1 < this_file to apply it.
+
+
+diff -c elm-2.4pl24me8/ChangeLog.ME elm-2.4pl24me8a/ChangeLog.ME
+*** elm-2.4pl24me8/ChangeLog.ME	Thu Sep 21 14:54:58 1995
+--- elm-2.4pl24me8a/ChangeLog.ME	Tue Sep 26 15:16:38 1995
+***************
+*** 1,3 ****
+--- 1,11 ----
++ ----------------
++ Changes from ME8
++ ----------------
++ Fixed bug in conversion of text/plain => application/pgp in newmbox.c which
++ was causing Elm to segfault. (Thanks to Kari.Hurtta@fmi.fi)
++ 
++ Fixed bug where builtin++ segfaults when viewing zero length messages.
++ 
+  -----------------------
+  Changes from ME8alpha19
+  -----------------------
+
+diff -c elm-2.4pl24me8/hdrs/me.h elm-2.4pl24me8a/hdrs/me.h
+*** elm-2.4pl24me8/hdrs/me.h	Thu Sep 21 13:20:31 1995
+--- elm-2.4pl24me8a/hdrs/me.h	Fri Sep 22 14:21:47 1995
+***************
+*** 42,48 ****
+  extern int pgp_menu			PARAM((char *));
+  extern int pgp_extract_public_key	PARAM((void));
+  #ifdef MIME
+! extern void mime_pgp_decode		PARAM((mime_t *, state_t *));
+  #endif
+  #endif
+  
+--- 42,48 ----
+  extern int pgp_menu			PARAM((char *));
+  extern int pgp_extract_public_key	PARAM((void));
+  #ifdef MIME
+! extern void pgp_decode  		PARAM((mime_t *, state_t *));
+  #endif
+  #endif
+  
+***************
+*** 107,112 ****
+--- 107,113 ----
+  extern void mime_warnings		PARAM((struct header_rec *));
+  extern mime_t *rfc822_parse		PARAM((FILE *, int));
+  extern void attach_parse		PARAM((struct header_rec *,FILE *));
++ extern mime_t *mime_read_header         PARAM((FILE *, int));
+  
+  /* attach_menu.c */
+  extern mime_t *attach_menu		PARAM((mime_t *, int));
+
+diff -c elm-2.4pl24me8/hdrs/patchlevel.h elm-2.4pl24me8a/hdrs/patchlevel.h
+*** elm-2.4pl24me8/hdrs/patchlevel.h	Thu Sep 21 15:19:18 1995
+--- elm-2.4pl24me8a/hdrs/patchlevel.h	Tue Sep 26 12:30:39 1995
+***************
+*** 1 ****
+! #define PATCHLEVEL "24 ME8"
+--- 1 ----
+! #define PATCHLEVEL "24 ME8a"
+
+diff -c elm-2.4pl24me8/src/builtin++.c elm-2.4pl24me8a/src/builtin++.c
+*** elm-2.4pl24me8/src/builtin++.c	Thu Sep 21 13:12:07 1995
+--- elm-2.4pl24me8a/src/builtin++.c	Tue Sep 26 10:38:38 1995
+***************
+*** 9,15 ****
+--- 9,17 ----
+    /* A help screen for the pager below. */
+  
+    ClearScreen ();
++   StartInverse();
+    Write_to_screen ("Help for builtin++", 0);
++   EndInverse();
+    NewLine ();
+    NewLine ();
+    Write_to_screen ("Key\t\tAction", 0);
+***************
+*** 60,65 ****
+--- 62,68 ----
+    int searching = FALSE;
+    long end_offset = begin + length;
+    int idx = -textlen, cur_line_len;
++   int is_end = 0;
+  
+    if (fseek (fp, begin, 0) == -1) {
+      dprint (1, (debugfile, "pager2(): fseek() returned errno %d!\n", errno));
+***************
+*** 73,79 ****
+    ClearScreen();
+  
+    for (;;) {
+!     while (ftell (fp) < end_offset && 
+  	   (lines < LINES || searching || slurping)) {
+  
+        if (pending == NULL) {
+--- 76,82 ----
+    ClearScreen();
+  
+    for (;;) {
+!     while (((ftell (fp) < end_offset) || (idx < 0)) &&
+  	   (lines < LINES || searching || slurping)) {
+  
+        if (pending == NULL) {
+***************
+*** 200,211 ****
+      }
+  
+      StartBold();
+!     len = 100 * (ftell (fp) - begin) / length;
+!     if (len == 100)
+!       Write_to_screen ("Command ('i' to return to index):", 0);
+      else {
+!       sprintf (buffer, "MORE (you've seen %d%%):", len);
+!       Write_to_screen (buffer, 0);
+      }
+      EndBold();
+  
+--- 203,231 ----
+      }
+  
+      StartBold();
+!     if (idx < 0) {
+!       Write_to_screen ("More (you've seen 0%)", 0);
+!       len = 0;
+!       is_end = 0;
+!     }
+      else {
+!       if (length < 1)
+!         len = 100;
+!       else {
+!         long pos = ftell (fp);
+! 
+!         len = 100 * (pos - begin) / length;
+!       }
+! 
+!       if (len == 100) {
+!         Write_to_screen ("Command ('i' to return to index):", 0);
+!         is_end = 1;
+!       }
+!       else {
+!         sprintf (buffer, "MORE (you've seen %d%%):", len);
+!         Write_to_screen (buffer, 0);
+!         is_end = 0;
+!       }
+      }
+      EndBold();
+  
+***************
+*** 213,219 ****
+      switch (ch) {
+      case ' ':
+      case '+':
+!       if (len == 100) {
+  	DestroyDynamicArray (offsets);
+  	return (' ');
+        }
+--- 233,239 ----
+      switch (ch) {
+      case ' ':
+      case '+':
+!       if (is_end) {
+  	DestroyDynamicArray (offsets);
+  	return (' ');
+        }
+***************
+*** 221,227 ****
+        ClearScreen ();
+        break;
+      case '^':      
+!       idx = 0;
+        fseek (fp, begin, 0);
+        lines = 0;
+        ClearScreen ();
+--- 241,247 ----
+        ClearScreen ();
+        break;
+      case '^':      
+!       idx = -textlen;
+        fseek (fp, begin, 0);
+        lines = 0;
+        ClearScreen ();
+***************
+*** 228,234 ****
+        break;
+      case 'G':
+        idx = offset_len;
+!       fseek (fp, *offsets[idx-1], 0);
+        slurping = TRUE;
+        lines = 0;
+        ClearScreen ();
+--- 248,254 ----
+        break;
+      case 'G':
+        idx = offset_len;
+!       fseek (fp, *offsets[idx > 0 ? idx-1 : 0], 0);
+        slurping = TRUE;
+        lines = 0;
+        ClearScreen ();
+
+diff -c elm-2.4pl24me8/src/metapager.c elm-2.4pl24me8a/src/metapager.c
+*** elm-2.4pl24me8/src/metapager.c	Thu Sep 21 14:25:59 1995
+--- elm-2.4pl24me8a/src/metapager.c	Tue Sep 26 10:45:36 1995
+***************
+*** 229,242 ****
+          else
+            fprintf(fpout, "%s\n", buf);
+        }
+!       else {
+!         if (builtin > 1) {
+!           text[text_idx] = (char *) safe_malloc(1);
+!           *text[text_idx++] = '\0';
+!         }
+!         else
+!           fputc('\n', fpout);
+        }
+        
+        /* now some information about this message */
+        
+--- 229,241 ----
+          else
+            fprintf(fpout, "%s\n", buf);
+        }
+! 
+!       if (builtin > 1) {
+!         text[text_idx] = (char *) safe_malloc(1);
+!         *text[text_idx++] = '\0';
+        }
++       else
++         fputc('\n', fpout);
+        
+        /* now some information about this message */
+        
+
+diff -c elm-2.4pl24me8/src/mime_decode.c elm-2.4pl24me8a/src/mime_decode.c
+*** elm-2.4pl24me8/src/mime_decode.c	Thu Sep 21 13:57:42 1995
+--- elm-2.4pl24me8a/src/mime_decode.c	Fri Sep 22 14:16:01 1995
+***************
+*** 518,524 ****
+  #ifdef USE_PGP
+      else if (ptr->type == MIME_TYPE_APPLICATION &&
+               (istrcmp(ptr->subtype, "pgp") == 0))
+!       return mime_pgp_decode;
+  #endif
+  
+      return null_decode;
+--- 518,524 ----
+  #ifdef USE_PGP
+      else if (ptr->type == MIME_TYPE_APPLICATION &&
+               (istrcmp(ptr->subtype, "pgp") == 0))
+!       return pgp_decode;
+  #endif
+  
+      return null_decode;
+
+diff -c elm-2.4pl24me8/src/mime_encode.c elm-2.4pl24me8a/src/mime_encode.c
+*** elm-2.4pl24me8/src/mime_encode.c	Wed Sep 20 16:46:10 1995
+--- elm-2.4pl24me8a/src/mime_encode.c	Tue Sep 26 10:54:12 1995
+***************
+*** 20,26 ****
+  	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D',
+  	'E', 'F',
+  };
+- #define hexchar(c) (((c) >= 0) && ((c) < 16)) ? hexchars[(c)] : -1
+  
+  int
+  update_encoding(top_encoding,encoding)
+--- 20,25 ----
+***************
+*** 373,380 ****
+        c2 = (c1 >> 4) & 0xf;
+        c3 = c1 & 0xf;
+        buffer[chars++] = '=';
+!       buffer[chars++] = hexchar(c2);
+!       buffer[chars++] = hexchar(c3);
+      }
+    }
+  
+--- 372,379 ----
+        c2 = (c1 >> 4) & 0xf;
+        c3 = c1 & 0xf;
+        buffer[chars++] = '=';
+!       buffer[chars++] = hexchars[c2];
+!       buffer[chars++] = hexchars[c3];
+      }
+    }
+  
+
+diff -c elm-2.4pl24me8/src/mime_parse.c elm-2.4pl24me8a/src/mime_parse.c
+*** elm-2.4pl24me8/src/mime_parse.c	Thu Sep 21 13:20:00 1995
+--- elm-2.4pl24me8a/src/mime_parse.c	Fri Sep 22 14:18:37 1995
+***************
+*** 66,72 ****
+    else if (p->type == MIME_TYPE_MULTIPART && pagemultipart)
+      return FALSE;
+  #ifdef USE_PGP
+!   else if (d == mime_pgp_decode)
+      return FALSE;
+  #endif
+    return TRUE;
+--- 66,72 ----
+    else if (p->type == MIME_TYPE_MULTIPART && pagemultipart)
+      return FALSE;
+  #ifdef USE_PGP
+!   else if (d == pgp_decode)
+      return FALSE;
+  #endif
+    return TRUE;
+
+diff -c elm-2.4pl24me8/src/newmbox.c elm-2.4pl24me8a/src/newmbox.c
+*** elm-2.4pl24me8/src/newmbox.c	Thu Sep 21 14:56:18 1995
+--- elm-2.4pl24me8a/src/newmbox.c	Tue Sep 26 10:25:39 1995
+***************
+*** 1181,1188 ****
+  		  (istrcmp(current_header->mime_rec.subtype,"plain")==0)) {
+  		current_header->mime_rec.type = MIME_TYPE_APPLICATION;
+  		strcpy(current_header->mime_rec.subtype, "pgp");
+! 		if (current_header->mime_rec.type_opts)
+  		  free(current_header->mime_rec.type_opts);
+  	      }
+  #endif
+  	      if (strncmp(buffer + 15, "PUBLIC", 6) == 0) {
+--- 1181,1190 ----
+  		  (istrcmp(current_header->mime_rec.subtype,"plain")==0)) {
+  		current_header->mime_rec.type = MIME_TYPE_APPLICATION;
+  		strcpy(current_header->mime_rec.subtype, "pgp");
+! 		if (current_header->mime_rec.type_opts) {
+  		  free(current_header->mime_rec.type_opts);
++ 		  current_header->mime_rec.type_opts = NULL;
++                 }
+  	      }
+  #endif
+  	      if (strncmp(buffer + 15, "PUBLIC", 6) == 0) {
+
+diff -c elm-2.4pl24me8/src/pgp.c elm-2.4pl24me8a/src/pgp.c
+*** elm-2.4pl24me8/src/pgp.c	Thu Sep 21 13:25:23 1995
+--- elm-2.4pl24me8a/src/pgp.c	Fri Sep 22 14:43:40 1995
+***************
+*** 537,577 ****
+  }
+  
+  #ifdef MIME
+  void
+! mime_pgp_decode (m, s)
+       mime_t *m;
+       state_t *s;
+  {
+!   FILE *pgpin, *pgpout;
+!   int len, raw, opts = 0, length = m->length;
+!   char buffer[VERY_LONG_STRING] = {0};
+!   
+!   /* See if we are in Raw mode so that we can return to this state
+!    * after calling PGP.
+     */
+-   raw = RawState();
+  
+!   if (m->type_opts) {
+!     if (mime_get_param("format", buffer, m->type_opts, sizeof(buffer))) {
+!       if (istrcmp (buffer, "keys-only") ==  0)
+! 	opts = PGP_PUBLIC_KEY;
+!     }
+!     if (! opts) {
+!       if (mime_get_param("x-action", buffer, m->type_opts, sizeof(buffer))) {
+! 	if (istrcmp(buffer, "encryptsign") == 0)
+! 	  opts = PGP_MESSAGE | PGP_SIGNED_MESSAGE;
+! 	else if (istrcmp(buffer, "encrypt") == 0)
+! 	  opts = PGP_MESSAGE;
+! 	else if (istrcmp(buffer, "sign") == 0)
+! 	  opts = PGP_SIGNED_MESSAGE;
+!       }
+!     }
+    }
+!   if (!opts)
+!     /* Assume the worst case... */
+!     opts = PGP_MESSAGE;
+!   dprint(2, (debugfile, "mime_pgp_decode: opts=%d\n", opts));
+  
+    /* Tell the user why they are waiting */
+    if (opts & PGP_MESSAGE) {
+      if (raw)
+--- 537,618 ----
+  }
+  
+  #ifdef MIME
++ int
++ pgp_mime_opts (s)
++      char *s;
++ {
++   char value[STRING];
++ 
++   if (s) {
++     if (mime_get_param ("format", value, s, sizeof(value))) {
++       if (istrcmp (value, "keys-only") ==  0)
++ 	return PGP_PUBLIC_KEY;
++     }
++     if (mime_get_param ("x-action", value, s, sizeof (value))) {
++       if (istrcmp (value, "encryptsign") == 0)
++ 	return (PGP_MESSAGE | PGP_SIGNED_MESSAGE);
++       else if (istrcmp (value, "encrypt") == 0)
++ 	return PGP_MESSAGE;
++       else if (istrcmp (value, "sign") == 0)
++ 	return PGP_SIGNED_MESSAGE;
++     }
++   }
++   return PGP_MESSAGE;
++ }
++ 
+  void
+! pgp_decode (m, s)
+       mime_t *m;
+       state_t *s;
+  {
+!   /* This procedure implements the de-facto standard for using PGP with MIME.
+!    * Content-Type: application/pgp
+!    * Required-Parameters: none
+!    * Optional parameters: format, x-action
+!    *     format = mime | text | keys-only
+!    *         mime : indicates that the signed/encrypted body contains a MIME
+!    *                compliant body and should be parsed recursively.
+!    *         text : [DEFAULT if there is no format option].  This option
+!    *                means that the encrypted/signed data should be presented
+!    *                to the user after processing, no additional processing
+!    *                needed.
+!    *         keys-only:
+!    *                The data in the body represents public key data only
+!    *     x-action = encryptsign | encrypt | sign
+!    *         This keyword is meant to be helpful to the application, but is
+!    *         not required, and may not even be necessary to look at.
+!    *
+!    *         encryptsign : the application/pgp data is both signed and
+!    *                       encrypted.
+!    *         encrypt     : the data is encrypted only
+!    *         sign        : the data is signed only
+     */
+  
+!   char tempfile[STRING], buffer[STRING];
+!   FILE *pgpout, *pgpin, *tmpfp, *savefp;
+!   int
+!     inbody = FALSE,
+!     opts,
+!     len,
+!     raw,
+!     bytes = 0,
+!     nested = FALSE; /* PGP output should be parsed as a MIME body */
+!   mime_t *tmpmt;
+! 
+!   raw = RawState ();
+! 
+!   if (mime_get_param ("format", buffer, m->type_opts, sizeof (buffer)) &&
+!       (istrcmp (buffer, "mime") == 0)) {
+!     nested = TRUE;
+!     sprintf (tempfile, "%selmPT%d", temp_dir, getpid ());
+!     tmpfp = fopen (tempfile, "w");
+!     dprint (3, (debugfile, "pgp_decode: format=mime\n"));
+    }
+!   else
+!     tmpfp = s->fpout;
+  
++   opts = pgp_mime_opts (m->type_opts);
++ 
+    /* Tell the user why they are waiting */
+    if (opts & PGP_MESSAGE) {
+      if (raw)
+***************
+*** 600,627 ****
+    }
+    strcat (buffer, " **)\n\n");
+    state_puts (buffer, s);
+! 	
+    if (pgp_decrypt_init (&pgpout, &pgpin, opts) == -1) {
+!     state_puts ("[Internal error while calling PGP!]\n", s);
+      if (raw)
+!       Raw(ON);
+      return;
+    }
+! 
+!   while (length > 0) {
+!     len = mail_gets (buffer, sizeof(buffer), s->fpin);
+      if (len < 1)
+        break;
+      fputs (buffer, pgpin);
+!     length -= len;
+    }
+    fclose (pgpin);
+!   while ((len = mail_gets (buffer, sizeof(buffer), pgpout)) > 0)
+!     state_puts (buffer, s);
+    fclose (pgpout);
+    PressAnyKeyToContinue();
+    if (raw)
+!     Raw(ON);
+  }
+  #endif /* MIME */
+  #endif /* USE_PGP */
+--- 641,690 ----
+    }
+    strcat (buffer, " **)\n\n");
+    state_puts (buffer, s);
+!   
+    if (pgp_decrypt_init (&pgpout, &pgpin, opts) == -1) {
+!     state_puts ("[internal error while calling pgp, skipping...]\n", s);
+      if (raw)
+!       Raw (ON);
+      return;
+    }
+!   
+!   while (bytes < m->length) {
+!     len = mail_gets (buffer, sizeof (buffer), s->fpin);
+      if (len < 1)
+        break;
+      fputs (buffer, pgpin);
+!     bytes += len;
+    }
+    fclose (pgpin);
+! 
+!   bytes = 0;
+!   while ((len = mail_gets (buffer, sizeof (buffer), pgpout)) > 0) {
+!     if (buffer[0] == '\n' || (buffer[0] == '\r' && buffer[1] == '\n'))
+!       inbody = TRUE;
+!     fputs (buffer, tmpfp);
+!     if (inbody)
+!       bytes += len;
+!   }
+    fclose (pgpout);
+    PressAnyKeyToContinue();
++ 
++   if (nested) {
++     dprint (3, (debugfile, "pgp_decode: parsing decrypted data as MIME\n"));
++     tmpfp = freopen (tempfile, "r", tmpfp);
++     unlink (tempfile);
++     tmpmt = mime_read_header (tmpfp, 0);
++     tmpmt->length = bytes;
++     savefp = s->fpin;
++     s->fpin = tmpfp;
++     mime_decode (tmpmt, s);
++     mime_destroy (tmpmt);
++     fclose (s->fpin);
++     s->fpin = savefp;
++   }
++ 
+    if (raw)
+!     Raw (ON);
+  }
+  #endif /* MIME */
+  #endif /* USE_PGP */
+
+diff -c elm-2.4pl24me8/src/remailer.c elm-2.4pl24me8a/src/remailer.c
+*** elm-2.4pl24me8/src/remailer.c	Tue Sep 19 17:48:41 1995
+--- elm-2.4pl24me8a/src/remailer.c	Tue Sep 26 10:41:32 1995
+***************
+*** 208,214 ****
+--- 208,218 ----
+        close (1);
+        dup (fd[1]);
+        close (fd[1]);
++ #ifdef __FreeBSD__
++       sprintf (buf, "/usr/bin/finger %s", REMAILER_SITE);
++ #else
+        sprintf (buf, "/usr/ucb/finger %s", REMAILER_SITE);
++ #endif
+        _exit (system (buf));
+      }
+    

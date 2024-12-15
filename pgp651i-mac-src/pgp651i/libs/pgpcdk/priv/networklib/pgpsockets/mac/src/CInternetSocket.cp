@@ -1,0 +1,1 @@
+/*____________________________________________________________________________	Copyright (C) 1997 Network Associates Inc. and affiliated companies.	All rights reserved.				$Id: CInternetSocket.cp,v 1.3 1999/03/10 02:34:06 heller Exp $____________________________________________________________________________*/#include <stdarg.h>#include "CInternetSocket.h"

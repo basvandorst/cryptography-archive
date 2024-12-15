@@ -1,0 +1,62 @@
+*** deflate.c	Wed Apr 27 19:37:21 1994
+--- deflate-steg.c	Wed Apr 27 19:13:24 1994
+***************
+*** 71,76 ****
+--- 71,101 ----
+  static char rcsid[] = "$Id: deflate.c,v 0.15 1993/06/24 10:53:53 jloup Exp $";
+  #endif
+  
++ /* gzsteg: our declarations */
++ 
++ extern int steg;			/* steganography flag */
++ extern int sfd;				/* file descriptor */
++ extern int stegidx;			/* 0-7: next bitpos 8-39: length bit */
++ extern ulg steglength;			/* file length (bytes) */
++ extern ulg stegbits;			/* file length (bits) */
++ extern uch stegbyte;			/* next byte */
++ 
++ local int steg_rbit()
++ {
++   ush retval;
++ 
++   if(stegidx>=8) {			/* 39..8 = length */
++     stegidx--;
++     return ((steglength & (1L<<(stegidx-7L)))!=0);
++   }
++   if(stegidx==7)
++     read(sfd,&stegbyte,1);
++   retval = ((stegbyte & (1L<<stegidx))!=0);
++   if(!stegidx--)
++     stegidx=7;
++   return retval;
++ }
++ 
+  /* ===========================================================================
+   * Configuration parameters
+   */
+***************
+*** 705,710 ****
+--- 730,752 ----
+           * match is not better, output the previous match:
+           */
+          if (prev_length >= MIN_MATCH && match_length <= prev_length) {
++ /*
++  * gzsteg: now we know that match_length is long enough for our needs we
++  *         make room for our bit, then hide it.
++  */
++ 
++ 	  if(steg && stegbits) {
++ 	    if(prev_length>MIN_MATCH+1) {
++ 	      prev_length--;
++ 	      if(steg_rbit())
++ 		prev_length|=1;
++ 	      else
++ 		prev_length&=(~1);
++ 	      stegbits--;
++ 	    }
++ 	    else if(prev_length==MIN_MATCH+1)
++ 	      prev_length--;
++ 	  }
+  
+              check_match(strstart-1, prev_match, prev_length);
+  

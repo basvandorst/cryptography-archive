@@ -1,0 +1,86 @@
+Path: msuinfo!agate!usenet.ins.cwru.edu!howland.reston.ans.net!vixen.cso.uiuc.edu!sdd.hp.com!hplabs!unix.sri.com!csl.sri.com!boucher
+From: boucher@csl.sri.com (Peter K. Boucher)
+Newsgroups: sci.crypt
+Subject: Re: Maurer's test for one-time pads
+Date: 3 Dec 1993 00:24:14 GMT
+Organization: Computer Science Lab, SRI International
+Lines: 74
+Distribution: world
+Message-ID: <2dm0veINN1a8@roche.csl.sri.com>
+References: <2dk9nl$efe@sol.ctr.columbia.edu> <1993Dec2.162532.11884@infodev.cam.ac.uk>
+NNTP-Posting-Host: redwood.csl.sri.com
+
+
+/*
+Here's a little ditty that passes Maurer and is not random at all.
+
+For each character-pair X,Y in the output, this program is designed
+such that that previous time X appeared, it was followed by Y-1, and the 
+next time X appears, it will be followed by Y+1.
+
+-Peter
+
+P.S. It does fail my chi-square test, though.
+*/
+
+#include <stdio.h>
+#include "crp/stabs.h"
+
+#define BUFSIZE 8192
+
+static unsigned char buf[BUFSIZE];
+
+main(argc,argv)
+int argc;
+char *argv[];
+{
+    int  c = 0, prev = 0;
+    long count = (argc >= 2) ? atol(argv[1]) : 65536;
+    long num_bufs = count/BUFSIZE;
+    long partial_buf = count%BUFSIZE;
+    FILE *outf = (argc >= 3 && strcmp(argv[2],"stdout")) ?
+				fopen(argv[2], "w") : stdout;
+    long i;
+
+    if ((outf == NULL) || (count <= 0L)) {
+	int err_id = 1;
+	fprintf(stderr, "Error:\n");
+	for (i=4; i<argc; i++) {
+	    fprintf(stderr, "Unknown argument %s\n", argv[i]);
+	}
+	if (outf == NULL) {
+	    fprintf(stderr, "Couldn't open `%s' for write\n", argv[2]);
+	    err_id += 2;
+	} else {
+	    fclose(outf);
+	}
+	if (count == 0L) {
+	    fprintf(stderr, "Count of `%s' invalid\n", argv[1]);
+	    err_id += 4;
+	}
+	fprintf(stderr, "Usage:  %s [ count [ outfile ] ]\n",argv[0]);
+	exit(err_id);
+    }
+
+    srand(time(NULL)*getpid());
+
+    init_stabs(1); /* sets up 256 lookup tables (char stab[256][256]) */
+
+    while (num_bufs--) {
+	for (i=0; i<BUFSIZE; i++) {
+	    buf[i] = stab[prev][c]++;
+	    prev = c;
+	    c = buf[i];
+	}
+        fwrite(buf,1,BUFSIZE,outf);
+    }
+    for (i=0; i<partial_buf; i++) {
+	buf[i] = stab[prev][c]++;
+	prev = c;
+	c = buf[i];
+    }
+    fwrite(buf,1,partial_buf,outf);
+
+    fclose(outf);
+    return(0);
+}

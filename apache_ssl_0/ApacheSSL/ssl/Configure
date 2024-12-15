@@ -1,0 +1,283 @@
+#!/usr/local/bin/perl
+# extra options
+# -DRSAref	build to use RSAref
+# -DNOIDEA	build with no IDEA algorithm
+# -DNORC4	build with no RC4 algorithm
+#
+# DES_USE_PTR	use pointer lookup vs arrays in the DES in crypto/des/des_locl.h
+# BN_LLONG	use the type 'long long' in crypto/bn/bn.h
+# MD2_CHAR	use 'char' instead of 'int' for MD2_INT in crypto/md/md2.h
+# MD2_LONG	use 'long' instead of 'int' for MD2_INT in crypto/md/md2.h
+# IDEA_SHORT	use 'short' instead of 'int' for IDEA_INT in crypto/idea/idea.h
+# IDEA_LONG	use 'long' instead of 'int' for IDEA_INT in crypto/idea/idea.h
+# RC4_CHAR	use 'char' instead of 'int' for RC4_INT in crypto/rc4/rc4.h
+# RC4_LONG	use 'long' instead of 'int' for RC4_INT in crypto/rc4/rc4.h
+# RC4_INDEX	define RC4_INDEX in crypto/rc4/rc4_enc.c.  This turns on
+#		array lookups instead of pointer use.
+
+#config-string	CC : CFLAGS : LDFLAGS : special header file mods:asm
+%table=(
+# A few of my development configs
+"purify",	"pcc:-g -DPURIFY -Wall:-lsocket -lnsl::",
+"debug",	"cc:-g -Xa:-lefence -lsocket -lnsl::",
+"dist",		"cc:-O -DNOPROTO:::",
+
+# Basic configs that should work on any box
+"gcc",		"gcc:-O3::BN_LLONG:",
+"cc",		"cc:-O -DNOPROTO -DNOCONST:::",
+
+# My solaris setups
+"solaris-x86-gcc","gcc:-O3 -fomit-frame-pointer -m486 -Wall:\
+	-lsocket -lnsl:BN_LLONG MD2_CHAR RC4_INDEX:",
+"solaris-sparc-gcc","gcc:-O3 -fomit-frame-pointer -mv8 -Wall:\
+	-lsocket -lnsl:BN_LLONG RC4_CHAR:",
+"solaris-sparc-cc","cc:-fast -Xa:\
+	-lsocket -lnsl:DES_USE_PTR:",
+
+# Sunos configs, assuming sparc for the gcc one.
+"sunos-cc", "cc:-O4 -DNOPROTO -DNOCONST:::",
+"sunos-gcc","gcc:-O3 -mv8::BN_LLONG RC4_CHAR:",
+
+# SGI configurations.  If the box is rather old (r3000 cpu), you will
+# probably have to remove the '-mips2' flag.  I've only been using
+# IRIX 5.[23].
+"irix-gcc","gcc:-O2 -mips2::BN_LLONG RC4_INDEX RC4_CHAR:",
+"irix-cc", "cc:-O2:::",
+
+# HPUX config.  I've been building on HPUX 9, so the options may be
+# different on version 10.
+"hpux-cc",	"cc:-Ae +ESlit +Oall -Wl,-a,archive -DNOPROTO -DNOCONST:::",
+"hpux-gcc",	"gcc:-O3 -mpa-risc-1-1::BN_LLONG:",
+
+# Dec Alpha, OSF/1
+"alpha-gcc","gcc:-O3::SIXTY_FOUR_BITS:",
+"alpha-cc", "cc:-O2::SIXTY_FOUR_BITS:",
+
+# The intel boxes :-), It would be worth seeing of bsdi-gcc can use the
+# x86-lnx.o file file since it is hand tweaked assembler.
+"linux",	"gcc:-O3 -fomit-frame-pointer -m486 -DTERMIO -Wall::BN_LLONG MD2_CHAR RC4_INDEX:",
+"NetBSD",	"gcc:-O3 -fomit-frame-pointer -m486 -DTERMIO -Wall -D_ANSI_SOURCE::BN_LLONG MD2_CHAR RC4_INDEX:",
+"bsdi-gcc",	"gcc2:-O3 -ffast-math -m486::RSA_LLONG MD2_CHAR RC4_INDEX:",
+"next-gcc",	"gcc:-O3::BN_LLONG MD2_CHAR RC4_INDEX:",
+"freebsd",	"gcc:-O3 -fomit-frame-pointer -m486 -DTERMIOS -Wall -D_ANSI_SOURCE::BN_LLONG MD2_CHAR RC4_INDEX:",
+
+# IBM's AIX.
+"aix-cc",   "cc:-O -DAIX:::",
+
+# DGUX, 88100.
+"dgux-gcc",	"gcc:-O3::RC4_INDEX:",
+);
+
+$postfix="org";
+$Makefile="Makefile.ssl";
+$des	="crypto/des/des_locl.h";
+$bn	="crypto/bn/bn.h";
+$md2	="crypto/md/md2.h";
+$rc4	="crypto/rc4/rc4.h";
+$rc4_enc="crypto/rc4/rc4_enc.c";
+$idea	="crypto/idea/idea.h";
+$bn_mulw="bn_mulw.o";
+
+if ($#ARGV < 0)
+	{
+	&bad_target;
+	exit(1);
+	}
+
+$flags="";
+foreach (@ARGV)
+	{
+	if ($_ =~ /^-/)
+		{ $flags.=$_." "; }
+	else
+		{
+		die "target already defined - $target\n" if ($target ne "");
+		$target=$_;
+		if (!defined($table{$target}))
+			{
+			&bad_target;
+			exit(1);
+			}
+		}
+	}
+
+if (!defined($table{$target}))
+	{
+	&bad_target;
+	exit(1);
+	}
+
+($cc,$cflags,$lflags,$bn_ops,$bn_obj)=split(/\s*:\s*/,$table{$target});
+$cflags=$flags if ($flags ne "");
+
+$bn_obj=$bn_mulw unless ($bn_obj =~ /\.o$/);
+
+open(IN,"<".$Makefile) || die "unable to read $Makefile:$!\n";
+open(OUT,">".$Makefile.".new") || die "unable to read $Makefile.new:$!\n";
+while (<IN>)
+	{
+	chop;
+	s/^CC=.*$/CC= $cc/;
+	s/^CFLAG=.*$/CFLAG= $cflags/;
+	s/^EX_LIBS=.*$/EX_LIBS= $lflags/;
+	s/^BN_MULW=.*$/BN_MULW= $bn_obj/;
+	print OUT $_."\n";
+	}
+close(IN);
+close(OUT);
+rename($Makefile,$Makefile.".old");
+rename($Makefile.".new",$Makefile);
+print "CC=$cc\n";
+print "CFLAG=$cflags\n";
+print "EX_LIBS=$lflags\n";
+print "BN_MULW=$bn_obj\n";
+
+$des_ptr=0;
+$bn_ll=0;
+$def_int=2;
+$rc4_int=$def_int;
+$md2_int=$def_int;
+$idea_int=$def_int;
+$rc4_idx=0;
+@type=("char","short","int","long");
+($b64,$b32,$b16)=(0,1,0);
+
+foreach (split(/\s+/,$bn_ops))
+	{
+	$des_ptr=1 if /DES_USE_PTR/;
+	$bn_ll=1 if /BN_LLONG/;
+	$rc4_int=0 if /RC4_CHAR/;
+	$rc4_int=3 if /RC4_LONG/;
+	$rc4_idx=1 if /RC4_INDEX/;
+	$md2_int=0 if /MD2_CHAR/;
+	$md2_int=3 if /MD2_LONG/;
+	$idea_int=1 if /IDEA_SHORT/;
+	$idea_int=3 if /IDEA_LONG/;
+
+	($b64,$b32,$b16)=(1,0,0) if /SIXTY_FOUR_BITS/;
+	($b64,$b32,$b16)=(0,1,0) if /THIRTY_TWO_BITS/;
+	($b64,$b32,$b16)=(0,0,1) if /SIXTEEN_BITS/;
+	}
+
+(($in=$bn) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $bn:$!\n";
+open(OUT,">".$bn.".new") || die "unable to read $bn.new:$!\n";
+while (<IN>)
+	{
+	if	(/^#((define)|(undef))\s+SIXTY_FOUR_BIT/)
+		{ printf OUT "#%s SIXTY_FOUR_BIT\n",($b64)?"define":"undef"; }
+	elsif	(/^#((define)|(undef))\s+THIRTY_TWO_BIT/)
+		{ printf OUT "#%s THIRTY_TWO_BIT\n",($b32)?"define":"undef"; }
+	elsif	(/^#((define)|(undef))\s+SIXTEEN_BIT/)
+		{ printf OUT "#%s SIXTEEN_BIT\n",($b16)?"define":"undef"; }
+	elsif	(/^#((define)|(undef))\s+BN_LLONG/)
+		{ printf OUT "#%s BN_LLONG\n",($bn_ll)?"define":"undef"; }
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($bn,$bn.".old");
+rename($bn.".new",$bn);
+
+(($in=$des) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $des:$!\n";
+open(OUT,">".$des.".new") || die "unable to read $des.new:$!\n";
+while (<IN>)
+	{
+	if	(/^\#(define|undef)\s+DES_USE_PTR/)
+		{ printf OUT "#%s DES_USE_PTR\n",($des_ptr)?'define':'undef'; }
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($des,$des.".old");
+rename($des.".new",$des);
+
+(($in=$rc4) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $rc4:$!\n";
+open(OUT,">".$rc4.".new") || die "unable to read $rc4.new:$!\n";
+while (<IN>)
+	{
+	if	(/^#define\s+RC4_INT\s/)
+		{ printf OUT "#define RC4_INT unsigned %s\n",$type[$rc4_int]; }
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($rc4,$rc4.".old");
+rename($rc4.".new",$rc4);
+
+(($in=$rc4_enc) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $rc4_enc:$!\n";
+open(OUT,">".$rc4_enc.".new") || die "unable to read $rc4_enc.new:$!\n";
+while (<IN>)
+	{
+	if	(/^#((define)|(undef))\s+RC4_INDEX/)
+		{ printf OUT "#%s RC4_INDEX\n",($rc4_idx)?"define":"undef"; }
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($rc4_enc,$rc4_enc.".old");
+rename($rc4_enc.".new",$rc4_enc);
+
+(($in=$md2) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $bn:$!\n";
+open(OUT,">".$md2.".new") || die "unable to read $bn.new:$!\n";
+while (<IN>)
+	{
+	if	(/^#define\s+MD2_INT\s/)
+		{ printf OUT "#define MD2_INT unsigned %s\n",$type[$md2_int]; }
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($md2,$md2.".old");
+rename($md2.".new",$md2);
+
+(($in=$idea) =~ s/\.([^.]+)/.$postfix/);
+open(IN,"<".$in) || die "unable to read $idea:$!\n";
+open(OUT,">".$idea.".new") || die "unable to read $idea.new:$!\n";
+while (<IN>)
+	{
+	if	(/^#define\s+IDEA_INT\s/)
+		{printf OUT "#define IDEA_INT unsigned %s\n",$type[$idea_int];}
+	else
+		{ print OUT $_; }
+	}
+close(IN);
+close(OUT);
+rename($idea,$idea.".old");
+rename($idea.".new",$idea);
+
+print "SIXTY_FOUR_BIT mode\n" if $b64;
+print "THIRTY_TWO_BIT mode\n" if $b32;
+print "SIXTEEN_BIT mode\n" if $b16;
+print "DES_USE_PTR used\n" if $des_ptr;
+print "BN_LLONG mode\n" if $bn_ll;
+print "RC4 uses u$type[$rc4_int]\n" if $rc4_int != $def_int;
+print "RC4_INDEX mode\n" if $rc4_idx;
+print "MD2 uses u$type[$md2_int]\n" if $md2_int != $def_int;
+print "IDEA uses u$type[$idea_int]\n" if $idea_int != $def_int;
+exit(0);
+
+sub bad_target
+	{
+	print STDERR "bad target OS-compiler; pick one of:\n";
+	$j=0;
+	foreach $i (sort keys %table)
+		{
+		print STDERR "\n" if ($j++ % 4) == 0;
+		printf(STDERR "%-19s ",$i);
+		}
+	print STDERR "\n";
+	}
+
+
+
+

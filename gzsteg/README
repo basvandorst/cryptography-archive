@@ -1,0 +1,107 @@
+From: asb@cs.nott.ac.uk (Andrew Brown)
+Newsgroups: sci.crypt
+Subject: Hiding things in gzip files (source)
+Date: 28 Apr 94 12:49:02 GMT
+
+The attached patches will allow you to hide information inside GZIP
+compressed files.
+
+
+APPLYING THE PATCHES
+
+You need the gzip source code distribution. At the time of writing
+this is version 1.2.4. The patches are context diffs so you stand a
+good chance of them working on versions other than 1.2.4. Firstly
+unpack the gzip source tree, then unpack the attached patches into the
+main source directory. Now apply the patches thus:
+
+patch -c < patch1
+patch -c < patch2
+patch -c < patch3
+
+Now all you need to do is follow the normal procedure for making gzip.
+
+
+USER INTERFACE
+
+A new option is added to gzip, "-s" or "--steg", that provides for the
+hiding/revealing of files. You hide files during compression and
+reveal them during decompression. e.g.
+
+gzip -s file-to-hide file-to-compress
+
+This will hide "file-to-hide" inside file-to-compress as it is
+compressed. Extracting a file could be done like this:
+
+gunzip -s file-to-extract-to compressed-file
+
+This will simultaneously decompress the compressed file and extract
+the hidden file to file-to-extract-to. To extract the hidden file
+without uncompressing you might do the following:
+
+gzip -cds file-to-extract-to compressed-file > /dev/null
+
+
+HOW IT'S DONE
+
+gzip uses LZ77 which compresses data by storing length/offset pairs
+that refer back in the uncompressed data stream to previous
+occurrences of the information being compressed. gzip considers a
+length of 3 to be the shortest acceptable length. We allow gzip to
+find the length/offset pairs and then do the following.
+
+If the length is at least 5 then we subtract 1 and set bit 0 to the
+value of the bit that we need to hide. We have now hidden information
+in the length without pushing it beyond a valid value.  Drawbacks are
+a slight decrease in compression (very slight) since we have to
+disallow lengths of 4 and some of our meddling will decrease the
+actual matched length by 1. The hidden file is totally invisible to
+the normal operation of gzip, gunzip et al and (if encrypted) will
+only be visible to those in the know. When the "-s" flag is not used
+gzip performs as normal.
+
+Testing was performed on a 486/33 running Linux, using a 1Mb tar file
+to hide the test information inside. The patched files (inflate.c,
+deflate.c, gzip.c) should compile OK on any system that can compile
+gzip, although non-Unix users may have trouble applying the patches in
+the first place. My tests have shown that you can hide about 1 Kbyte
+in every 100 Kbytes of uncompressed data. This ratio would be
+considerably better if gzip wasn't so damned efficient :)
+
+
+Regards,
+
+- Andy <asb@cs.nott.ac.uk>
+
+From: ken@chinook.halcyon.com (Ken Pizzini)
+Newsgroups: sci.crypt
+Subject: Re: Hiding things in gzip files (source)
+Date: 29 Apr 1994 09:19:00 GMT
+
+In article <1994Apr28.124902.5107@cs.nott.ac.uk>,
+Andrew Brown <asb@cs.nott.ac.uk> wrote:
+>The attached patches will allow you to hide information inside GZIP
+>compressed files.
+
+The code has an amusing bug in that uncompressing a file will
+output the steganographied file to file descriptor 0.  If you
+just use "gunzip foo.gz" you won't notice this, as the file
+foo.gz gets opened read only as fd 0; but if you use "gzip
+-dc foo.gz >foo" it is quite apparent.  Here is a patch to
+fix this (apply to gzip source after Andrew's patches):
+
+***begin patch***
+--- inflate.c-stegbug   Fri Apr 29 01:36:47 1994
++++ inflate.c   Fri Apr 29 02:07:38 1994
+@@ -592,7 +592,7 @@
+  * gzsteg: bit 0 of n is ours, so long as n>3 (MIN_MATCH)
+  */
+
+-      if(n>3)
++      if(n>3 && steg)
+        steg_wbit(n&1);
+
+       /* do the copy */
+***end patch***
+
+		--Ken Pizzini

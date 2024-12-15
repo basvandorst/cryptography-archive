@@ -1,0 +1,59 @@
+!include <ntwin32.MAK>
+
+srcdir=		..
+
+#CC=		
+
+DEFS=		-DHAVE_CONFIG_H
+
+INCLDIR=	$(srcdir)\Include
+OPT=		$(cvars) $(cdebug) $(cflags)
+CFLAGS=		$(OPT) -I$(INCLDIR) -I.. $(DEFS) -Dwrite=_write
+
+PARSEROBJS=	acceler.obj grammar1.obj \
+		intrcheck.obj listnode.obj myreadline.obj node.obj parser.obj \
+		parsetok.obj tokenizer.obj bitset.obj \
+		firstsets.obj grammar.obj metagrammar.obj pgen.obj \
+		printgrammar.obj
+
+PGENOBJS=	pgenmain.obj
+
+OBJS=		$(PGENOBJS) $(PARSEROBJS)
+
+PGEN=		pgen.exe
+
+XLIB=		Parser.lib
+
+
+all:		$(XLIB) $(PGEN)
+
+$(XLIB):	$(PARSEROBJS)
+		$(implib) -out:$(XLIB) $(PARSEROBJS)
+
+$(PGEN):	$(PGENOBJS) $(XLIB)
+		$(link) $(linkdebug) crtdll.lib $(conflags) $(conlibs) \
+			 $(PGENOBJS) $(XLIB) -out:$(PGEN)
+
+clean:
+		-rm -f *.obj *.lib
+
+clobber:	clean
+		-rm -f $(PGEN) *.a tags TAGS
+
+acceler.obj: acceler.c
+grammar1.obj: grammar1.c
+intrcheck.obj: intrcheck.c
+listnode.obj: listnode.c
+myreadline.obj: myreadline.c
+node.obj: node.c
+parser.obj: parser.c
+parsetok.obj: parsetok.c
+tokenizer.obj: tokenizer.c
+bitset.obj: bitset.c
+firstsets.obj: firstsets.c
+grammar.obj: grammar.c
+metagrammar.obj: metagrammar.c
+pgen.obj: pgen.c
+printgrammar.obj: printgrammar.c
+pgenmain.obj: pgenmain.c
+

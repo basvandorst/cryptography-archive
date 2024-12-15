@@ -1,0 +1,52 @@
+#!/usr/local/bin/perl
+$|=1;
+$h1="-----------------------BEGIN L3 SIGNED MESSAGE-----------------------";
+$h2="--------------------------BEGIN L3 SIGNATURE-------------------------";
+$h4="---------------------------END L3 SIGNATURE--------------------------";
+$state = 0;
+@msg = ();
+$bindir="XYZZY/";
+$sfile="/tmp/.$$.sig";
+open(SFILE, "| ${bindir}prencode -d >".$sfile);
+while (<STDIN>) {
+    chop $_;
+        
+    if ($_ eq $h1) {
+        die "corrupt\n" if ($state != 0);
+        $state = 1;
+        next;
+    }
+    if ($_ eq $h2) {
+        die "corrupt\n" if ($state != 1);
+        $uid=<STDIN>;
+        chop $uid;
+        $state = 2;
+        next;
+    }
+    if ($_ eq $h4) {
+        last;
+    }
+    push (@msg, $_) if ($state == 1);
+    print SFILE "$_", "\n" if ($state == 2);
+}
+close(SFILE);
+
+open (SPIPE, "| ".$bindir."vsign $uid $sfile") || die "cannot open pipe\n";
+
+for $i (@msg) {
+    print SPIPE $i, "\n";
+}
+close(SPIPE);
+if ($?) {
+    print "BOGUS SIGNATURE\n";
+}
+else {
+print "-BEGIN SIGNED MESSAGE-\n";
+
+for $i (@msg) {
+    print $i, "\n";
+}
+print "-END SIGNED MESSAGE-\n";
+print "SIGNATURE OK\n";
+}
+unlink($sfile); 

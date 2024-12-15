@@ -1,0 +1,79 @@
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!europa.eng.gtefsd.com!uunet!hotmomma!brent!steve.allen
+From: steve.allen@brent.uucp (Steve Allen) 
+Newsgroups: sci.crypt
+Subject: Questions about designing
+Message-ID: <9533.552.uupcb@brent.uucp>
+Date: 25 Jan 94 14:19:00 GMT
+Distribution: world
+Organization: The Brentwood BBS Harrison, NY  914-381-1600
+Reply-To: steve.allen@brent.uucp (Steve Allen) 
+References: <CJw0F3.KuE@ecf.toronto.edu>
+Lines: 67
+
+hojunya@ecf.toronto.edu (HO  JUNYA) writes:
+
+>My question is, I am trying to come up with ways of building
+>this true RNG (random number generator) using a few simple components.
+>For my noise source, I will probably be using thermal noise in
+>electrical components.
+
+>I understand that noise has a Gaussian distribution  through
+>time (i assume time referring to the time interval between successive
+>signals of a certain power/amplitude?), and will be finding the
+>median of this distribution so as to sample the random binary bits
+>on either side of this median.  We will attempt to design something
+>which will automatically find the median in a given set of
+>conditions.  (I am told this is called anti-biasing?)
+
+>  we're looking for bitrates
+>of about 1kbits/s from the RNG, since 75% of that will likely be
+>thrown away in the process of 'pairwise (something)'.  (if two
+>consecutive bits are the same, throw them out, if they are different,
+>take the first one)
+
+I'm sort of playing around with this stuff a little. The inside
+of a computer is an *extremely* noisy place. Lots of oscillators,
+generating highly regular noise. You will have difficulty shielding
+your microvolt thermal noise source.
+My solution (for IBM PC) is to take noise from a radio tuned
+between stations, amplify and schmitt-trigger it, and sample. The
+circuit is based on a 324 chip, and is powered by the serial port
+(DTR high, RTS low). Signal is input to CTS. Since the noise input
+is at line level, shielding is not too much of an issue.
+I have two software routines, written in assembler, which
+interface to a C caller. Both involve reprogramming the system
+timer from 18.2 ticks/sec to something higher, and using a custom
+int8 handler.
+The first routine needs the system clock to go at speeds up to
+about 1K/sec. It simply samples the input at that rate. There's a
+problem that the ground reference in the schmitt trigger is
+slightly offset, and I get about 55% 1's and 45% 0's. So I MD5 64
+data bytes at a time to get 16 random numbers. Another solution is
+to take one of the unused amps and make an adjustable ground out of
+it. This requires tweaking it to the individual serial port, unless
+you use zeners or something.
+The second routine reprograms the timer to 20K/sec. (You need a
+fast PC for this.) It zeros the timercount, and times a 0-1
+transition on the input. If it takes longer than the reference,
+output a zero-- shorter, put a one. It keeps a running total of
+timercounts, and when 16 are done, it does a 4-bit right-shift on
+the total (divide by 16) and makes that result the new reference
+timercount.  This routine is slightly skewed toward certain numbers
+(can't remember in which ones offhand, tho). Next part will be to
+sample 9 bits at a time instead of 8, and see if that helps the
+distribution.
+This second routine has a more complicated relationship between
+noise characteristics and timer characteristics, and requires some
+tweaking. I may change the timercount value to a long, which should
+help in that department. There are probably better ways to husband
+the reference, too.
+
+When I get around to devising a .gif of the schematic, I'll zip
+up the whole package and send it off to rpub.cl.msu.edu. Don't hold
+your breath....
+-Steve Allen <73277.620@compuserve.com>
+---
+. QMPro 1.51 . The best thing about censorship is .......
+
+----
+The Brentwood BBS!  12 Nodes  (914)-381-1600

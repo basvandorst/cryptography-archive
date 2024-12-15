@@ -1,0 +1,1059 @@
+% Last updated 28 June 1993
+%
+% This incorporates comments on the draft of June 24th.
+%
+
+\input amstex
+
+\documentstyle{amsppt}
+
+%\input amshead
+
+% Definitions for this paper only
+\def\congruent{\equiv}
+\def\divides{\mid}\def\notdivides{\nmid}\def\exdivides{\parallel}
+\define\lcm{{\operatornamewithlimits{lcm}}}
+\def\sB{{\Cal B}}
+\def\sE{{\Cal E}}
+\def\sX{{\Cal X}}
+\def\sY{{\Cal Y}}
+\def\sZ{{\Cal Z}}
+\def\half{{\textstyle{\frac12}}}
+\def\Z{{\Bbb Z}}
+\def\O(#1){{\text{O}\left(#1\right)}}
+\def\o(#1){{\text{o}\left(#1\right)}}
+\def\d{\hbox{d}}
+\def\P#1,#2(#3){{P_{{\text{#1}},#2}\left({#3}\right)}}
+\def\prob(#1){{{\text{prob}}\left({#1}\right)}}
+\def\GF(#1){{\text{GF}\left(#1\right)}}
+
+% We use A4 paper!
+\pagewidth{16truecm}\pageheight{23truecm}
+
+\topmatter
+\title Some primality testing algorithms \endtitle
+\author R.G.E. Pinch \endauthor
+\affil Department of Pure Mathematics and Mathematical Statistics, \\
+       University of Cambridge \endaffil
+\address University of Cambridge,
+Department of Pure Mathematics and Mathematical Statistics,
+16 Mill Lane, Cambridge  CB2 1SB, U.K. \endaddress
+\email {\tt rgep \@ pmms.cam.ac.uk} \endemail
+\date 24 June 1993 \enddate
+\subjclass Primary 11Y11; Secondary 11A51 \endsubjclass
+\abstract
+We describe the primality testing algorithms in use in some popular
+computer algebra systems, and give some examples where they break
+down in practice.
+\endabstract
+\endtopmatter
+\document
+
+
+\subhead Introduction \endsubhead
+
+In recent years, fast primality testing algorithms have been a popular
+subject of research and some of the modern methods are now incorporated
+in computer algebra systems (CAS) as standard.  In this review I give
+some details of the implementations of these algorithms and
+a number of examples where the algorithms prove inadequate.
+
+The algebra systems reviewed are Mathematica, Maple V, Axiom and Pari/GP.
+The versions we were able to use were Mathematica 2.1 for Sparc, copyright dates
+1988-1992; Maple V Release 2, copyright dates 1981-1993; Axiom Release 1.2 (version
+of February 18, 1993); Pari/GP 1.37.3 (Sparc version, dated November 23, 1992).
+The tests were performed on Sparc workstations.
+
+Primality testing is a large and growing area of research.  For further reading
+and comprehensive bibliographies, the interested reader could consult the works
+of Bressoud \cite{11}, Brillhart et al \cite{12}, Knuth \cite{26}, Koblitz \cite{27},
+Ribenboim \cite{40,41} or Riesel \cite{42}.
+
+\subhead Primality tests \endsubhead
+
+The first and most obvious test is {\it trial division}: that is,
+given an integer $n$, try all integers from 2 up to $\sqrt{n}$
+to see whether any are factors of $n$.  If one is found, then $n$
+is composite; if not, then $n$ is prime.
+
+This test has two drawbacks,
+the most obvious being that the time taken (even with obvious refinements)
+is, in the worst case (which will occur when $n$ is prime), of the order of $\sqrt n$
+and this is not a practical proposition for $n$ of the order likely to
+occur in practice.
+This is in itself a sufficient reason for searching for other, more efficient,
+tests.
+The second drawback, less obvious, is that the test does not
+always produce a {\it certificate} for its answer.
+When $n$ is composite, then a factor $f$
+will be found, and the character of $n$ can then be verified quickly: it is
+much easier to show that $n$ is divisible by some number $f$ than to find $f$
+in the first place.  Unfortunately when $n$ is prime, all that emerges from
+the computation is a
+bare assertion that no factor was found, and in order to check the
+calculation (for example, to check whether any error has occurred, or to convince
+a sceptical onlooker), it is necessary to repeat it all over again.
+
+Most modern algorithms depend in some way on the converse of Fermat's
+Theorem, that if $p$ is prime then, for $1 \le a < p$, we
+have $a^{p-1} \congruent 1 \bmod n$.  Given a number $n$ to be tested
+for primality, we see that if there is an $a$ with $1 < a < n$
+and $a^{n-1} \not\congruent 1 \bmod n$, then $n$ must be composite, and
+$a$ is a certificate for the compositeness of $n$ (although no factor
+of $n$ need have been found).
+Since $a^{n-1}$ can be computed modulo $n$ in about $\log n$ multiplications
+modulo $n$, this condition is very fast to check.  This is the {\it Fermat
+test}, and $a$ is the {\it base}.
+
+What happens if we find that $a^{n-1} \bmod n$ is 1?  We cannot conclude
+that $n$ is prime from just one test: for example,
+given $n = 341 = 11 \times 31$ and $a = 2$ we find
+that $a^{n-1} = 2^{340} \congruent 1$.  We describe $n$ as a {\it Fermat
+pseudoprime base 2}.
+
+It is not hard to show that there are infinitely many Fermat pseudoprimes
+to any given base, although it is true that Fermat pseudoprimes are rarer
+than primes.
+Put
+$$
+L(X) = \exp\left(- {\log X \log\log\log X \over \log\log X}\right) .
+$$
+If $\P F,a(X)$ denotes the number of Fermat
+pseudoprimes base $a$ less than $X$, then Pomerance has shown \cite{35,36} that
+$$
+\exp\left({\left(\log X\right)^{5/14}}\right) \le \P F,a(X) \le X L(X)^{1/2}
+$$
+for sufficiently large $X$;  compare this with the number $\pi(X)$ of
+primes up to $X$, which is well-known to be asymptotic to
+$$
+{X \over \log X} = X \exp\left( - \log\log X \right) .
+$$
+For $X = 10^{13}$, calculations \cite{33} show
+that $\P F,2(X) = 264239$, compared with $\pi(X) = 37 607 912 018$.
+
+Even worse, if we take $n = 561 = 3 \times 11 \times 17$, then we find
+that $a^{n-1} \congruent 1 \bmod n$ for every base $a$ which is coprime
+to $n$.  Such an $n$ is called an {\it absolute Fermat
+pseudoprime}, or a {\it Carmichael number}, and it has recently been
+proved by Alford, Granville and Pomerance \cite{1} that there are infinitely
+many Carmichael numbers --- see Granville's article in these {\sl Notices} \cite{22}.
+Carmichael numbers are of course less numerous than Fermat pseudoprimes to
+any fixed base: letting $C(X)$ denote the number of Carmichael numbers
+up to $X$, we have \cite{1},\cite{35}
+$$
+X^{2/7} \ll C(X) \ll X L(X)
+$$
+and for $X = 10^{16}$ we have \cite{31} $C(X) =  246683$
+compared with $\pi(X) = 279 238 341 033 925$.
+
+It seems plausible to conjecture that in fact both $C(X)$ and $\P F,a(X)$ exceed
+$X^{1 - \epsilon}$ for sufficiently large values of $X$.
+
+We describe a number which passes the Fermat test (or one of the derivatives
+to be described later) as a {\it (Fermat) probable prime}.  We should emphasise
+at this point that the phrase ``probable prime'' is to be read as if it were
+a single word:
+\footnote{Students of the English legal system may be reminded
+of the title of Lord Privy Seal, who is neither a Lord, nor $\ldots$}
+it has become standard because a number which passes the test is
+``probably prime'' in the intuitive sense that there are ``fewer'' pseudoprimes
+than primes.  We shall make this qualitative shortly.
+
+To improve the performance of the Fermat test we observe that, since we may
+assume $n$ is odd, $n - 1$ is even and so $a^{n-1}$ is a square.  If $n$ is
+a prime, 1 has only two square roots, $\pm 1 \bmod n$.
+If an odd number $n$ passes the Fermat test (faster primality tests are
+possible for even numbers!) then $a^{n-1} \congruent 1$ is a square, so
+we require that $a^{(n-1)/2} \congruent \pm 1 \bmod n$.
+This further requirement we call the {\it Fermat--Euler test} (although the result
+was already known to Fermat).
+
+Iterating, we arrive at the {\it strong} or {\it Miller--Rabin} test \cite{28,39}.
+Write $n-1 = 2^r s$, where $s$ is odd.  For base $a$, form the Miller--Rabin
+sequence
+$$
+a^s, a^{2s}, \ldots, a^{2^{r-1}s} \congruent a^{n-1 \over 2}, a^{2^rs} \congruent a^{n-1}
+\bmod n
+$$
+in which each term is the square root of its successor.
+Then $n$ passes the test base $a$ if the last term in the sequence is 1
+(this is just the requirement of the Fermat test), and the first occurrence
+of 1 either is the first term or is preceded by $-1$.
+
+Since the strong test includes the Fermat test, the number of strong
+pseudoprimes for a fixed base $a$
+up to $X$, $\P MR,a(X)$ is bounded above by $\P F,a(X)$, but the best upper bound
+known is no better than that implied by the upper bound for $\P F,a(X)$ above.
+%It is known that there are infinitely many strong pseudoprimes base 2.
+For $X = 10^{13}$ we have \cite{10},\cite{33} $\P MR,2(X) = 58897$.
+
+As with the Fermat test, the strong test with a single base does not characterise
+primes: for example, if $n = 2047 = 23 \times 89$, then $n-1 = 2^1.1023$ and
+the Miller--Rabin sequence is $2^{1023} \congruent 1, 2^{2046} \congruent 1$.
+So 2047 is an example of (indeed, the smallest) {\it strong pseudoprime base 2}.
+We have however made an advance: {\sl if $n$ is composite then it passes the
+strong test to at most $1/4$ of the bases $a \bmod n$.}  (Thus
+composite numbers can be detected in random non-deterministic polynomial time.)
+
+Miller \cite{28} observed that a theorem of Ankeney \cite{2} could be applied 
+to turn the strong test into a conditional polynomial-time characterisation of primes: 
+the quantitative version due to Bach \cite{7}
+states that {\sl provided a suitable generalisation of the Riemann hypothesis
+(GRH) holds, a number $n$ is prime iff it passes the strong test to all
+bases $a$ with $1 < a \le 4(\log n)^2$}.
+
+If one does not assume the GRH then a result of Burgess \cite{14}
+implies that testing up to $a \le n^{1/4\sqrt{e}} < n^{.151633}$ is sufficient.
+
+In the opposite direction, it follows from the result of Alford, Granville and
+Pomerance \cite{1,22} that there are infinitely many numbers which are strong
+pseudoprimes with respect to any fixed finite set of bases.
+
+We shall call a primality test {\it probabilistic} if it employs some
+random input, so that the precise sequence of operations performed may
+vary from call to call, even if the input parameters remain the same.
+A test is {\it deterministic} otherwise: such a test will repeat exactly the
+same operations and give exactly the same output, for the same input.
+
+Consider a probabilistic algorithm consisting of $t$ rounds of the
+strong test with bases chosen uniformly and independently at random modulo $n$.
+If the input $n$ is composite, the chance of it passing such a test is at most
+$4^{-t}$.  Assuming that there is a probability distribution on the
+input $n$, we can say
+$$
+\multline
+\prob( \text{test gives wrong answer}) =  \\
+ \sum_n \prob( \text{test gives wrong answer for } n) \prob(n \text{ is input}) \\
+%        = \sum_n \prob( n \text{ is composite} \wedge n \text{ passes $t$ rounds} \vert n \text{ is composite}) \prob(n \text{ is input})  \\
+        = \sum_n \prob( n \text{ passes $t$ rounds} \vert n \text{ is composite})
+       \prob( n \text{ is composite} \vert n \text{ is input}) \prob(n \text{ is input}) \\
+       \le 4^{-t} .
+\endmultline
+$$
+
+Let us note at this point that if the test is deterministic, we can make no such assertion
+without some knowledge of a probability distribution on the input $n$.  For example, with
+a deterministic test always using base 2, and a probability distribution on the input
+concentrated at $n = 2047$, the test is certain to produce the wrong answer.
+
+It is possible to do considerably better given reasonable assumptions
+on the probability distribution on the input numbers $n$.
+If, for example, we assume that $n$ is distributed uniformly over all $k$-bit
+odd integers, then it can be shown, using the methods of Kim, Pomerance,
+Damg\aa rd and Landrock \cite{18,19,24}
+that for $k \ge 100$ and $5 \le t \le k/9 + 2$,
+$$
+\prob( n \text{ is composite} \vert n \text{ passes $t$ rounds})
+   \le 0.4\,k 2^t \left(0.6 \cdot 2^{-2\sqrt{k(t-2)}} + 2^{-t\sqrt{k/2}}\right);
+$$
+and for $t > k/9 + 2$,
+$$
+\prob( n \text{ is composite} \vert n \text{ passes $t$ rounds})
+   \le0.4\,k\left(11.32\sqrt{k}\,2^{-2t -k/3} +  2^{t-t\sqrt{k/2}}\right) .
+$$
+
+For $t = 6$ and $k = 250$ this is less than $2^{-56}$ and for $t=10$ and $k=2000$
+the probability of a wrong answer is less than $2^{-228}$.
+
+If we consider a deterministic algorithm using $t$ rounds of the
+strong test, say with the first $t$ primes as bases, we cannot immediately say that the
+same estimates apply.   It is plausible to suppose that tests with
+distinct prime bases behave independently, although this will not be so for 
+multiplicatively dependent bases: if $n$ is a strong pseudoprime
+base $a$ and base $b$ it is likely, although not certain, to be
+a strong pseudoprime base $ab$.
+
+Assuming that a deterministic test with a fixed set of $t$ multiplicatively
+independent bases behaves in the same way as a probabilistic test with random
+bases, then the test should characterise primes for values of $k$ for
+which the expected number of pseudoprimes is less than 1.  This suggests that $k$
+should not exceed $3t$ or, as a rule of thumb, $t$ should be about the
+number of decimal digits in the input.  The result of Bach implies that, if the
+GRH holds, taking $t > 2k^2$ is sufficient to characterise primes.
+
+The number $341550071728321 = 10670053 \times 32010157$ of 15 digits, 49 bits,
+is a strong pseudoprime for all bases up to 22, that is, for 8 primes;
+the number
+$$68528663395046912244223605902738356719751082784386681071$$
+of 56 digits, 186 bits, is a strong pseudoprime for all bases up to 100, 
+that is, for 25 primes.
+
+
+\subhead Quadratic tests \endsubhead
+
+A common feature in the Fermat test and its refinements is the use of a
+group defined algebraically modulo $n$ which has a predictable number of
+elements when $n$ in prime: the group in this case being the multiplicative
+group modulo $n$ with order $n-1$ when $n$ is prime.
+
+We can extend our tests by considering further groups.  One important case
+is taking the multiplicative group of the quadratic extension $\Z/n[\sqrt{d}]$
+when $d$ is not a quadratic residue of $n$.  If $n$ is prime, then this quadratic
+ring is the finite field of $n^2$ elements, with a multiplicative group of
+order $n^2 -1$.  The elements of $\Z/n[\sqrt{d}]$ may be represented in the
+form $x + y \sqrt{d}$ with $x$ and $y$ taken modulo $n$ and multiplication
+defined in the obvious way, with $\sqrt{d} \cdot \sqrt{d}$ defined to be $d \bmod n$.
+The {\it norm} of such an element will be $x^2 - d y^2$, and the elements of norm
+1 form a subgroup of the multiplicative group of exponent $n+1$ when $n$ is prime.
+If we let $d$ be the discriminant of the equation $X^2 - tX + u = 0$, and let
+$\alpha$ be a root, then if the Jacobi symbol $\left({d \over n}\right)$ is $-1$,
+and $n$ is prime, the map $\alpha \mapsto \alpha^n$ will
+be the Frobenius automorphism of the finite field $\GF(n^2)$ and so $\alpha^n$ must be
+equal to $\alpha'$, where $(x + y \sqrt{d})' = x - y \sqrt{d}$.  This is the
+{\it Lucas test}.  
+
+The equivalent of the Fermat test for this group would be to
+require $\alpha^{n^2-1} = 1$ but this is not as strong as the Lucas test, 
+as we shall see.  We can make a better parallel with the Fermat test by
+considering the elements of norm $1$, i.e. with $u = 1$.  The condition
+$\alpha^n = \alpha'$ is equivalent to $\alpha^{n+1} = \alpha\alpha' = 1$.
+The {\it norm-one Lucas test} consists of taking the smallest $t$ such that the
+Jacobi symbol is $-1$ and then requiring that $\alpha^{n+1} \congruent 1 \bmod n$.
+%An alternative formulation is to require that $\alpha^n \congruent \alpha'$ where
+%$(x + y \sqrt{d})' = x - y \sqrt{d}$, since if $n$ is prime this map will
+%be the Frobenius automorphism of the finite field $\GF(n^2)$.
+
+As before, we call $n$ a {\it Lucas probable prime} if it passes the Lucas test,
+and a {\it Lucas pseudoprime} if it is a composite probable prime.
+A refinement of the norm-one Lucas test proceeds by considering the iterated square roots
+of $\alpha^{n+1}$: as in the Miller--Rabin test, let $s$ be the odd
+part of $n+1$ and then repeatedly square $\alpha^s$.  Let us call this the
+{\it strong norm-one Lucas test}.
+
+Letting $\P L,d(X)$ denote the number of Lucas pseudoprimes, with respect to $d$ as
+a quadratic non-residue, up to $X$, we have
+$$
+\exp\left({\left(\log x\right)^c}\right) \le \P F,a(X) \le X L(X)^{1/3}
+$$
+for some constant $c$.
+
+We should note that finding a quadratic non-residue is not guaranteed to be easy:
+the best results are those of Bach (on the GRH) and Burgess (unconditionally)
+mentioned above.
+
+Pomerance et al \cite{34} describe two methods of finding a suitable $d$ and
+element $\alpha$.  They have issued a challenge (with a total prize now \$620)
+for an example of a composite number which passes both the strong test base 2
+and one of the versions of the Lucas test they propose, or for a proof that no
+such number exists.  At present, the prize is unclaimed: the computations 
+of \cite{32,33} show there is no such number less than $10^{13}$.
+
+\subhead Primality proofs \endsubhead
+
+The probable-prime tests we have described all test for properties which $n$ must
+have it is prime.  Hence the failure of any of these tests proves the compositeness
+of $n$, and in all the methods described, the test also furnishes a certificate 
+of the compositeness which may be verified quickly (in time polynomial in $\log n$).  
+We now turn
+to methods for proving the primality of $n$.  It is well-known that the only odd
+numbers $n$ for which the multiplicative group modulo $n$ is cyclic are those $n$
+which are prime powers.  Since it is possible to test whether $n$ is a
+perfect power quickly, we assume that $n$ is known not to be a perfect power,
+so that $n$ is prime if and only if the multiplicative group is cyclic.  To prove
+$n$ prime, it suffices to find an element of exact order $n-1$, and indeed, to
+find elements whose orders have least common multiple $n-1$.  
+A certificate then consists of a list of such elements together with their orders.
+
+Unfortunately, to exhibit an element of exact order $d$, it is necessary to show
+that the order is not any proper factor of $d$, and this requires factorisation
+of $d$.  So we need to be able to factorise $n-1$ in order to use this method.
+
+Assuming for the moment that we can do this, we obtain the factorisation of $n-1$
+as a list of primes and their exponents.  The factorisation method will undoubtedly
+use some form of primality test to decide when a prime factorisation has been obtained.
+To certify that $n$ is prime will require a certificate that the factors of $n-1$
+are themselves prime and so the certification will be recursive: Atkin has called
+this ``Downrun''.  Verification of the certificate is fast: see Pratt \cite{38}.
+
+This proof method works well on numbers of special form, for example,
+$n-1 = 2^r s$ with $s < 2^r$.  Suppose that $a^{2^{r-1}} \congruent -1 \bmod n$.
+Then if $n$ is composite, take $p$ to be the smallest prime factor of $n$, so that
+$p < \sqrt{n}$.  In particular, $p < 2^r$.  But $a$ is an element of order $2^r$ modulo
+$p$, so $2^r \le p-1$, a contradiction.  The partial factorisation if $n-1$ 
+together with the base $a$ forms a certificate of primality.
+
+
+\subhead Elliptic curve tests \endsubhead
+
+The primality proof method just described depends on the factorisation of
+$n-1$.  In cases where this is difficult, one can work in a suitable quadratic
+extension (as in the Lucas method) and instead try to factorise $n+1$.  
+
+Morain \cite{6,29} suggested replacing these multiplicative groups by the 
+group of points on
+an elliptic curve modulo $n$, which can have any order between $n+1 \pm 2\sqrt{n}$
+when $n$ is prime.  The order of this group is determined by the theory of
+complex multiplication, and the certificate consists of the order, its factorisation,
+the points on the curve of orders with least common multiple the order of the group,
+and (recursively) certificates of the primality of the factors.
+
+
+\subhead The tests performed \endsubhead
+
+We used three lists of composite numbers
+to exercise the primality testing routines of the various systems.
+The first list, $\sX$, was that of the 246683 Carmichael numbers up to $10^{16}$
+described in \cite{30,31};
+the second, $\sY$, was that of the 264239 Fermat pseudoprimes base two \cite{32,33},
+and the third, $\sZ$, was a
+``zoo'' of special cases specifically intended to defeat various tests, 
+largely obtained from Arnault \cite{3,4,5}, Bleichenbacher \cite{9,10},
+and Davenport \cite{20}.
+
+
+\subhead The Maple {\tt isprime} function \endsubhead
+
+Maple V provides a function {\tt isprime}, (also invoked as {\tt type/primeint}).
+
+The Maple V language reference manual \cite{15} \S1.2, p.7 simply asserts that Maple can
+test integers for primality.  The Maple library reference 
+manual \cite{16} \S2.1.164, p.120 and the on-line documentation state
+\block
+{\tt isprime (n, iter)}
+
+The function {\tt isprime} is a probabilistic primality testing routine.
+
+It returns {\tt false} if $n$ is shown to be composite within {\it iter} tests
+and returns {\tt true} otherwise.  If {\tt isprime} returns {\tt true}, $n$ is
+``very probably'' prime -- see Knuth Vol 2, 2nd edition, section 4.5.4,
+algorithm P for a reference.
+\endblock
+and
+\block
+{\tt type (expr, primeint)}
+
+This function returns {\tt true} if {\it expr} is a prime integer and {\tt false} 
+otherwise.
+
+The function {\tt isprime} is used to check the primality of {\it expr}, 
+once {\it expr} has been determined to be an integer.
+\endblock
+
+The algorithm employed by {\tt isprime} tests initially for divisibility by primes
+up to 1000, and then performs the strong test with the first {\it iter} primes
+as base (up to a maximum of 25 tests).  The default value of {\it iter} is 5.
+
+There are 2 numbers in list $\sY$ which pass the strong test bases 2,3,5,7 and 11
+and which have no factor under 1000: they 
+are $2152302898747 = 6763 \times 10627 \times 29947$
+and $3474749660383 = 1303 \times 16927 \times 157543$, 
+and {\tt isprime} accordingly declares them prime.
+(Curiously, there are no such pseudoprimes with a factor less than 1000.)
+We find that $3474749660383$ is a strong pseudoprime base 13 as well, and so
+passes {\tt isprime} with {\it iter} set to 6, the smallest number to do so.
+
+There are three further numbers from list $\sX$ which pass {\tt isprime}:
+$10710604680091 = 3739 \times 18691 \times 153259$, 
+$4498414682539051 = 46411 \times 232051 \times 417691$ 
+and $6830509209595831 = 21319 \times 106591 \times 3005839$.
+
+Surprisingly, the integer factorisation function {\tt ifactor} 
+gave the correct answer for $3474749660383$, 
+although for the remaining four numbers it returns the
+number itself.
+
+The {\tt ifactor} function is described in \cite{16} \S2.1.151, p.107 and
+the on-line documentation as
+\block
+{\tt ifactor} returns the complete integer factorisation of $n$.
+\endblock
+The first step in this function is to extract prime factors up to 1699.  Then,
+in subprocedure {\tt ifact0th}, a call is made to
+{\tt isprime} before embarking on any of the more sophisticated algorithms which
+{\tt factor} can use.  This explains the discrepancy between the results of
+{\tt isprime} and {\tt ifactor} on $1303 \times 16927 \times 157543$.
+
+There is also a discrepancy between the behaviour of {\tt isprime} and the
+{\tt safeprime} function from the {\tt numtheory} package \cite{16} \S4.4.26, p.528.
+
+\block
+The function {\tt safeprime}
+will compute the smallest safe prime that is greater than $n$.
+A safe prime is a number $p$ such that $p$ is prime and $(p-1)/2$ is prime.
+\endblock
+
+The {\tt safeprime} function does not call {\tt isprime} internally, but
+declares a number to be prime if it has no factor $\le 113$ and passes the
+Fermat--Euler test for bases 2,3,5,7 and 11.
+This test is rather weaker than the strong test used by {\tt isprime} and
+fails, for example, by declaring $p = 1879894019$ to be a safe prime even
+though $(p-1)/2 = 939947009 = 263 \times 1049 \times 3407$ and is
+declared composite by {\tt isprime}.  This is the smallest counter-example:
+there are four such $p$ up to $10^{12}$. Fortunately if $p$ is declared a
+safe prime by this method, and $(p-1)/2$ is indeed prime, then it will be true
+that $p$ is prime as well, since 2 is an element of order at least $(p-1)/2$ modulo $p$.
+I was not able to find any examples with both $p$ and $(p-1)/2$ composite.
+
+\medskip
+
+Gaston Gonnet has informed me that he plans to include a stronger version of 
+{\tt isprime} in a new release.
+
+\subhead The Mathematica {\tt PrimeQ} and {\tt ProvablePrimeQ} functions \endsubhead
+
+The Mathematica version 2 number theoretic functions are reviewed by Wagon \cite{44}
+(who discusses version 1 functions in \cite{43} \S1.1).
+
+The Mathematica built-in primality test {\tt PrimeQ} is described
+briefly in \cite{45} (first edition)
+\block
+{\tt PrimeQ[{\it expr}]} yields {\tt True} if {\it expr} is a prime number
+and yields {\tt False} otherwise.
+\endblock
+and less tersely in the on-line documentation
+\block
+{\tt PrimeQ[{\it expr}]} yields {\tt True} if {\it expr} is a prime number, and yields {\tt False}
+otherwise. In the current version of Mathematica, the algorithm used for
+large integers is probabilistic, but very reliable (pseudoprime test and
+Lucas test).
+\endblock
+Unfortunately, all these assertions are incorrect.
+The value {\tt True} is returned
+if the argument is a probable prime, and there are at least two pseudoprimes
+which it fails to detect.  Finally, it appears from the more extensive
+description \cite{13} below that the algorithm is in fact deterministic.
+(Perhaps the documenter confused a probable-prime test with a probable
+prime-test.)
+\block
+In Mathematica 2.0, the built-in function {\tt PrimeQ} uses the Rabin
+strong pseudoprime test and the Lucas test. This procedure has been
+proved correct for all $n < 2.5*10^{10}$ and for special numbers of
+the form $a 2^b + 1$, where $a < 2^b$. As of April 1991, the procedure
+has not been proved correct for larger $n$, nor has a counterexample
+been found. However, it is a mathematical theorem that when {\tt PrimeQ[$n$]}
+returns {\tt False}, the number $n$ is genuinely composite. Thus {\tt PrimeQ[$n$]}
+can only fail if $n$ is composite but {\tt PrimeQ} declares it to be prime.
+It is important to note that {\tt PrimeQ} is deterministic; no computations
+based on random numbers are involved.
+\endblock
+
+We note in passing that it is not correct to state that if $n$ is a strong
+probable prime base 2 and $n$ is of the form $a 2^b + 1$ where $a < 2^b$, then
+$n$ is prime.  Consider $n = 4294967297 = 641 \times 6700417 = 2^{2^5} + 1$
+(the fifth, and first composite, Fermat number).  It is of the special
+form stated, and a strong pseudoprime base 2: the Miller--Rabin
+sequence of repeated squares of 2 clearly contains $2^{2^5} \congruent -1 \bmod n$.
+Clearly any composite Fermat number will have this property.  
+For numbers of the special form stated, as described above, the strong test 
+is capable of proving primality if that the occurrence of $-1$ in the sequence 
+is sufficiently late.
+
+The second edition of \cite{45} states correctly
+\block
+$\bullet$  In {\it Mathematica} 2.0, the built-in function {\tt PrimeQ} uses the Rabin
+strong pseudoprime test and the Lucas test. This procedure has been
+proved correct for all $n < 2.5 \times 10^{10}$.  As of 1990, however,
+the procedure has not been proved correct for larger $n$ and it is conceivable
+that it could claim that a composite number was prime (though not vice-versa).
+Nevertheless, as of 1990, no example of such behaviour is known.
+\endblock
+
+On applying the function to lists $\sX$ and $\sY$,
+there were two composite numbers for which
+the test returns the result {\tt True}:  $38200901201 = 89 \times 11551 \times 37159$
+and $6646915915638769 = 7309 \times 321553 \times 2828197$.
+
+Examination of the source code shows that the function {\tt PrimeQ} first performs
+the strong test base 2.
+Next the smallest $t \ge 2$ for which the Jacobi symbol $(1 - 4t^2 | n) = -1$ is found.
+Let $\alpha$ denote a root of $X^2 - t^{-1}X + 1$ modulo $n$.  
+Then a variant of the strong Lucas test is performed, except that
+iterated square roots of the $\left(n^2 - 1\right)$-power 
+of $\alpha$ are used, rather than of the $\left(n + 1\right)$-power.  
+If we consider $n = 6646915915638769$, we find that $t = 9$
+and $\alpha^n \congruent \alpha \bmod n$.
+This would cause $n$ to fail the Lucas test, which requires that
+$\alpha^n \congruent \alpha'$: the variant used by Mathematica is
+strictly weaker.  The other exceptional number also fails the stricter Lucas test.
+The test performed by Mathematica is therefore not that referred to by Pomerance
+et al \cite{34}: there appears to have been confusion between the
+Lucas test and the norm-one Lucas test.
+
+The package {\tt NumberTheory`PrimeQ`} already referred to contains the routine
+{\tt ProvablePrimeQ[$n$]}, described \cite{13} as
+\block
+This package implements primality proving.  If {\tt ProvablePrimeQ[$n$]}
+returns {\tt True}, then the number $n$ can be mathematically proven to be
+prime. In addition, {\tt PrimeQCertificate[$n$]} prints a certificate that
+can be used to verify that $n$ is prime or composite. In Mathematica
+Version 2.0, the built-in primality testing function {\tt PrimeQ} does
+not actually give a proof that a number is prime.  However, as of
+this writing, there are no known examples where {\tt PrimeQ} fails.
+\endblock
+
+The certificate returned can be complicated, involving several
+methods of primality proof recursively.  It would be of considerable
+assistance to the user if the methods were more comprehensively documented.
+
+The description in \cite{13} continues:
+
+\block
+As noted above, there is a possibility that {\tt PrimeQ} is incorrect,
+i.e., it asserts that a number is prime when it is really composite.
+It is unclear whether {\tt ProvablePrimeQ} always detects this, but if
+it does, an error message is generated and a counterexample to
+{\tt PrimeQ} is returned.
+\endblock
+
+Applying the {\tt ProvablePrimeQ} function to $38200901201$, the function appears
+to enter a loop (possibly looking for a primitive root?).
+Applied to $6646915915638769$,
+the function prints out a number of error messages, finishing with the message
+{\tt PrimeQCertificate::false: Warning: PrimeQCertificate has detected a
+counterexample to PrimeQ} and then returns the value {\tt True}: this is a bug.
+
+The second edition of \cite{45} states
+\block
+$\bullet$  In {\it Mathematica} version 2.0, the package {\tt NumberTheory`PrimeQ`}
+contains a much slower {\tt PrimeQ} based on a procedure which has been proved
+correct for all numbers.
+\endblock
+
+This seems to be incorrect: the results from {\tt PrimeQ} do not appear to
+differ if the package {\tt NumberTheory`PrimeQ`} has been preloaded.  Perhaps
+the author means ``... a much slower primality test ...'', referring to
+{\tt ProvablePrimeQ}.
+
+\medskip
+
+Jerry Keiper has stated on behalf of Mathematica Inc.{} that revised code for
+{\tt PrimeQ} using a strong form of the norm-one Lucas test, 
+which deals correctly with the two counter-examples to the
+present version, will be incorporated in version 2.3.
+``Likewise the anomalies in ProvablePrimeQ are being looked into 
+(the one has been fixed already).''
+
+
+
+\subhead The Axiom {\tt prime?} function \endsubhead
+
+The Axiom package IntegerPrimesPackage includes the function {\tt prime?}
+described in \cite{24} \S9.30.2, p.384, as
+\block
+The operation {\tt prime?} returns {\tt true} or {\tt false} depending on whether
+its argument is a prime.
+\endblock
+There is greater detail documented in the source code:
+\block
+\def\spad#1{{\tt #1}}%In the original
+\spad{prime?(n)} returns {\tt true} if $n$ is prime and {\tt false} if not.
+The algorithm used is Rabin's probabilistic primality test
+(reference: Knuth Volume 2 Semi Numerical Algorithms).
+If \spad{prime? n} returns {\tt false}, $n$ is proven composite.
+If \spad{prime? n} returns {\tt true}, {\tt prime?} may be in error
+however, the probability of error is very low
+and is zero below $25.10^9$ (due to a result of Pomerance et al)
+and below $10^{12}$ due to a result of Pinch,
+and below 341550071728321 due to a result of Jaeschke.
+Specifically, this implementation does at least 10 pseudo prime
+tests and so the probability of error is $< 4^{-10}$.
+The running time of this method is cubic in the length
+of the input $n$, that is $\O((\log n)^3)$, for $n < 10^{20}$
+beyond that, the algorithm is quartic, $\O((\log n)^4)$.
+Two improvements due to Davenport have been incorporated
+which catches some trivial strong pseudo-primes, such as
+[Jaeschke, 1991] $1377161253229053 \times 413148375987157$, which
+the original algorithm regards as prime.
+\endblock
+
+The results referred to are Pomerance et al \cite{34}, Pinch \cite{32},
+Davenport \cite{20} and Jaeschke\cite{unpublished}.
+
+The algorithm is deterministic and rather sophisticated: see Davenport \cite{20}
+for a full description.
+
+The initial stage is a simple check for divisibility by small
+primes (up to a limit of 313).
+
+For numbers less than $10^{20}$, the next stage is to apply the strong test with
+a suitable set $\sB$ of bases and a set $\sE$ of exceptional pseudoprimes.
+For input up to $25.10^9$, $\sB = \{2,3,5\}$ with $\sE$ of order 12;
+up to $10^{12}$, $\sB = \{2,3,7,10\}$ with $\sE$ of order 7;
+and up to $10^{20}$, $\sB = \{2,3,5,7,11,13,17\}$ with $\sE$ empty.
+It is shown in \cite{34}, \cite{32} and \cite{23} that the sets $\sE$ are indeed the
+pseudoprimes for this stage of the test --- that is, the answer returned is
+correct for all input up to $10^{20}$.
+
+For input greater than $10^{20}$, the next stage is to perform the strong test
+with the first ten primes as base.  Then a test is made for numbers of the form
+$3n + 1$ or $8n+1$ a perfect square (in which case $n$ has an obvious factorisation).
+Finally for $n$ of $d$ decimal digits, up to $d/2$ strong tests are made with
+successive primes as base.
+
+The {\tt prime?} function is correct for numbers up to $10^{20}$, except that
+in the current distribution (updated 9 April 1993) the set of $\sE$
+of exceptional pseudoprimes up to $25.10^9$ has been incorrectly
+transcribed, and so the test incorrectly reports
+that $19887974881 = 81421 \times 244261$ is prime.
+
+There were two composite numbers for which the function incorrectly
+returns {\tt true}:
+$$
+168790877523676911809192454171451
+=  266420043451 \times 4674035851 \times 135547039651
+$$
+and
+$$
+\multline
+68528663395046912244223605902738356719751082784386681071 \\
+ = 18215745452589259639 \times 4337082250616490391 \times 867416450123298079 .
+\endmultline
+$$
+The first is a strong pseudoprime for bases 2 to 82; the second
+%, as noted above,
+for bases up to 100.  These numbers were obtained by Bleichenbacher \cite{9}.
+
+We note that up to $10^{13}$ one can take $\sB = \{ 2,3,5,7,11\}$ with an exceptional
+set $\sE$ of size 2 \cite{33}, or even $\sB = \{ 2,3,5,7,61\}$ with no exceptions,
+as observed by Bleichenbacher \cite{10}.
+
+\medskip
+
+James Davenport has told me that the misprint mentioned has been corrected, and that
+a new version of {\tt isprime?} will use an improved test.
+
+
+\subhead  The Pari/GP {\tt ispsp} and {\tt isprime} functions  \endsubhead
+
+The Pari {\tt ispsp} and {\tt isprime} functions are described in the
+user manual \cite{8} and the on-line documentation:
+\block
+{\tt ispsp}$(x)$: true (1) if $x$ is a strong
+pseudo-prime for a randomly chosen base, false (0) otherwise.
+\nobreak
+{\tt isprime}$(x)$: true (1) if $x$ is a strong pseudo-prime
+for 10 randomly chosen bases, false (0) otherwise.
+\endblock
+
+Pari declared all the numbers in lists $\sX$, $\sY$ and $\sZ$ composite.
+Since the algorithm is probabilistic, the analysis above applies, and we
+conclude that for $k$-bit numbers, $k \ge 100$, the probability of Pari
+returning an incorrect answer is at most $4.1 \, k \, 2^{-\sqrt{8k}}$.  For
+$k = 100$ this is less than $2^{-19}$.
+
+The Pari {\tt factor} function, when applied to integers, calls the library routine
+{\tt auxdecomp} which declares a number to be prime if it passes 10 initial
+rounds of the strong test with random bases, followed by a further 5 rounds
+for every 32 bits.
+Curiously, then, {\tt factor} is more likely to detect compositeness than
+{\tt isprime}.
+
+
+\subhead  Conclusions  \endsubhead
+
+All of the tests reviewed fall short, to some extent, of what I would look for.
+Among the features I regard as desirable are:
+
+\medskip
+
+\item{$\bullet$} Predictability.  If a ``random'' choice of bases is to be used,
+there should be an option to reset the random number generator to a consistent
+initial state.
+
+\medskip
+
+\item{$\bullet$} Consistency.  The same tests should be used in all routines in
+the package.
+
+\medskip
+
+\item{$\bullet$} Speed versus certainty.  The user should be able to specify 
+the use of a fast test with possibility of error or a slower test with ``proof''
+status.  
+
+\medskip
+
+\item{$\bullet$} Documentation.  
+Whatever the method used, the documentation should make it clear
+what the algorithm is, what the known classes of exception (if any) are, and
+an indication of the probability of an incorrect answer.  No test which may
+accept composite numbers should be described as a test for primality.
+Axiom, Maple and Mathematica all make this claim.
+\item{} Primality certificates, where provided, should be described in sufficient
+detail for the user, at least in principle, to check it independently.
+
+\medskip
+
+\item{$\bullet$} Nomenclature.  
+I strongly suggest that tests for probable primality should be called by names
+which reflect their status, such as {\tt IsProbPrime}.
+
+\medskip
+
+\item{$\bullet$} Power.
+Routines which use the strong test only should use as many bases as decimal
+digits in the input.
+\item{} On the basis of present knowledge, the best test would appear to be some
+combination of Miller--Rabin and Lucas tests.
+
+\medskip
+
+\subhead  Acknowledgements \endsubhead
+
+I am grateful to Daniel Bleichenbacher, James Davenport, Gaston Gonnet,
+Dan Grayson, Jerry Keiper,
+Roman Maeder, Carl Pomerance, Stan Wagon and Sam Wagstaff jr for 
+helpful discussions on the topics covered in this review.  
+Thanks are also due to the Department
+of Pure Mathematics and Mathematical Statistics, the Isaac Newton Institute
+for Mathematical Sciences and the University
+Computing Service, Cambridge, and the Mathematical Sciences Research
+Institute, Berkeley, for use of their computer facilities.
+
+
+\Refs
+
+\ref \no 1 \by W.R. Alford, A. Granville and C. Pomerance
+\paper There are infinitely many Carmichael numbers
+\jour Ann. Math. \toappear
+%\paperinfo Preprint 3 April 1992
+\endref
+
+\ref \no 2 \by N.C. Ankeney
+\paper The least quadratic non-residue
+\jour Ann. of Math. \vol 55 \yr 1952 \pages 65--72
+\endref
+
+\ref \no 3 \manyby F. Arnault
+\paper Carmichaels fortement pseudo-premiers, pseudo-premiers de Lucas
+\yr 1993 \paperinfo Universit\'e de Poitiers preprint, Jan 1993
+\endref
+
+\ref \no 4 \bysame % F. Arnault
+\paper Rabin--Miller primality test: composite numbers which pass it
+\yr 1992 \paperinfo Universit\'e de Poitiers preprint, Sep 1992
+\endref
+
+\ref \no 5 \bysame % F. Arnault
+\paper
+Le test de primalit\'e de Rabin--Miller: un nombre compos\'e qui le ``passe''
+\yr 1991 \paperinfo Universit\'e de Poitiers preprint, Nov 1991
+\endref
+
+\ref \no 6 \by A.O.L. Atkin and F. Morain
+\paper Elliptic curves and primality proving
+\jour Math. Comp. \vol 61 \yr 1993 \pages 29--68
+\endref
+
+\ref \no 7 \by E. Bach
+\paper Explicit bounds for primality testing and related problems
+\jour Math. Comp. \vol 55 \yr 1990 \pages 355--380
+\endref
+
+\ref \no 8 \by C. Batut, D. Bernardi, H. Cohen and M. Olivier
+\book User's Guide to PARI-GP
+\yr 1992
+\endref
+
+\ref \no 9 \by D. Bleichenbacher
+\paper Re: Pseudoprimes too strong for Maple
+\paperinfo Usenet {\it sci.math} posting {\tt 1993Apr27.141249.29080 
+\@neptune.inf.ethz.ch} 27 Apr 1993
+\endref
+
+\ref \no 10 \by D. Bleichenbacher and U. Maurer
+\paper Finding all strong pseudoprimes $\leq x$
+\yr 1993
+\paperinfo Extended abstract
+\endref
+
+\ref \no 11 \by D.M. Bressoud
+\book Factorization and Primality Testing
+\publ Springer \publaddr New York \yr 1989
+\endref
+
+\ref \no 12 \by J. Brillhart, D.H. Lehmer, J.L. Selfridge, B. Tuckermann
+               and S.S. Wagstaff jr
+\book Factorizations of $b^n \pm 1$ (2nd ed)
+\publ American Mathematical Society \publaddr Providence, R.I. \yr 1988
+\endref
+
+\ref \no 13 \by P. Boyland et al.
+\paper Guide to standard {\it Mathematica} packages
+\jour {\it Mathematica} technical reports \yr 1991
+\endref
+
+\ref \no 14 \by D.A. Burgess
+\paper The distribution of quadratic residues and non-residues
+\jour Mathematika \vol 42 \yr 1957 \pages 106--112
+\endref
+
+\ref \no 15 \manyby B.W. Char, K.O. Geddes, G.H. Gonnet, B.L. Leong, M.B. Monaghan and S.M. Watt
+\book Maple V language reference manual
+\publ Springer \publaddr New York \yr 1991
+\endref
+
+\ref \no 16 \bysame % B.W. Char, K.O. Geddes, G.H. Gonnet, B.L. Leong, M.B. Monaghan and S.M. Watt
+\book Maple V library reference manual
+\publ Springer \publaddr New York \yr 1991
+\endref
+
+\ref \no 17 \bysame % B.W. Char, K.O. Geddes, G.H. Gonnet, B.L. Leong, M.B. Monaghan and S.M. Watt
+\book First leaves: a tutorial introduction to Maple V
+\publ Springer \publaddr New York \yr 1992
+\endref
+
+\ref \no 18 \by I. Damg\aa rd and P. Landrock
+\paper Improved bounds for the Rabin primality test
+\inbook Proc. 3rd IMA conference on coding and cryptography, Cirencester, Dec. 1991
+\ed M. Ganley \publ Oxford University Press \yr 1993
+\endref
+
+\ref \no 19 \by I. Damg\aa rd, P. Landrock and C. Pomerance
+\paper Average error estimates for the strong probable prime test
+\jour Math. Comp. \vol 61 \yr 1993
+\endref
+
+\ref \no 20 \by J.H. Davenport
+\paper Primality testing revisited
+\inbook Proc. ISSAC 1992
+\ed P.S. Wang
+\publ ACM \publaddr New York
+\yr 1992
+\pages 123--129
+\moreref \paper \rom{(revised) Axiom technical report}
+\yr 1993
+\endref
+
+\ref \no 21 \by S. Goldwasser and J. Kilian
+\paper Almost all primes can be quickly certified
+\inbook Proc. 18th ACM Symposium on Theory of Computing
+\yr 1986
+\pages 316--329
+\endref
+
+\ref \no 22 \by A. Granville
+\paper Primality testing and Carmichael numbers
+\jour Notices Amer. Math. Soc. \vol 37 \yr 1992 \pages 696--700
+\endref
+
+\ref \no 23 \by G. Jaeschke
+\paper On strong pseudoprimes to several bases
+\jour Math. Comp.
+\yr 1993
+\toappear
+\endref
+
+\ref \no 24 \by R.D. Jenks and R.S. Sutor
+\book Axiom: the scientific computation system
+\publ Springer \publaddr New York \yr 1992
+\endref
+
+\ref \no 25 \by S.H. Kim and C. Pomerance
+\paper The probability that a random probable prime is composite
+\jour Math. Comp. \vol 53 \yr 1989 \pages 721--741
+\endref
+
+\ref \no 26 \by D.E. Knuth
+\book The Art of Computer Programming II: Seminumerical algorithms \bookinfo 2nd ed
+\yr 1981
+\publ Addison--Wesley
+\publaddr Reading, Mass.
+\endref
+
+\ref \no 27 \by N. Koblitz
+\book A course in number theory and cryptography
+\publ Springer \publaddr New York \yr 1987
+\endref
+
+\ref \no 28 \by G.L. Miller
+\paper Riemann's hypothesis and tests for primality
+\inbook Proc. 7th Annual ACM Symposium on Theory of Computing, Albuquerque
+\yr 1975 \pages 234--239
+\endref
+
+\ref \no 29 \by F. Morain
+\paper Distributed primality proving and the primality of $\left(2^{3539}+1\right)/3$
+\jour INRIA Tech. Report \vol 1152 \yr 1989
+\endref
+
+\ref \no 30 \manyby R.G.E. Pinch
+\paper The Carmichael numbers up to $10^{15}$
+\jour Math. Comp. \vol 61 \yr 1993 \pages 381--391
+\endref
+
+\ref \no 31 \bysame % R.G.E. Pinch
+\paper The Carmichael numbers up to $10^{16}$
+\yr 1993
+\paperinfo Preprint
+\endref
+
+\ref \no 32 \bysame % R.G.E. Pinch
+\paper The pseudoprimes up to $10^{12}$
+\yr 1992
+\paperinfo Unpublished
+\endref
+
+\ref \no 33 \bysame % R.G.E. Pinch
+\paper The pseudoprimes up to $10^{13}$
+\yr 1993
+\paperinfo Preprint
+\endref
+
+\ref \no 34 \by C. Pomerance, J.L. Selfridge and S.S. Wagstaff jr
+\paper The pseudoprimes to $25.10^9$
+\jour Math. Comp. \vol 35 \yr 1980 \pages 1003--1026
+\endref
+
+\ref \no 35 \manyby C. Pomerance
+\paper On the distribution of pseudoprimes
+\jour Math. Comp. \vol 37 \yr 1981 \pages 587--593
+\endref
+
+\ref \no 36 \bysame % C. Pomerance
+\paper A new lower bound for the pseudoprime counting function
+\jour Illinois J. Maths \vol 26 \yr 1982 \pages 4--9
+\endref
+
+\ref \no 37 \bysame % C. Pomerance
+\paper Two methods in elementary analytic number theory
+\inbook Number theory and its applications (ed R.A. Mollin)
+\publ Kluwer \publaddr Dordrecht \yr 1989
+\endref
+
+\ref \no 38 \by V.R. Pratt
+\paper Every prime has a succint certificate
+\jour SIAM J. Comput. \vol 4 \yr 1975 \pages 214--220
+\endref
+
+\ref \no 39 \by M.O. Rabin
+\paper Probabilistic algorithm for testing primality
+\jour J. Number Theory \vol 12 \yr 1980 \pages 128--138
+\endref
+
+\ref \no 40 \manyby P. Ribenboim
+\book The book of prime number records
+\publ Springer \publaddr New York \yr 1988
+\endref
+
+\ref \no 41 \bysame % P. Ribenboim
+\book The little book of big primes
+\publ Springer \publaddr New York \yr 1991
+\endref
+
+\ref \no 42 \by H. Riesel
+\book Prime numbers and computer methods for factorization
+\publ Birkhauser \publaddr Boston, Mass. \yr 1985
+\endref
+
+\ref \no 43 \manyby S. Wagon
+\book {\it Mathematica} in action
+\publ W.H. Freeman \publaddr San Francisco \yr 1991
+\endref
+
+\ref \no 44 \bysame % S. Wagon
+\paper Review: Number theory
+\jour Mathematica Journal \vol 2 \yr 1992 \pages 24--26
+\endref
+
+\ref \no 45 \by S. Wolfram
+\book Mathematica: a system for doing mathematics by computer
+\publ Addison--Wesley \publaddr Redwood City, Ca \yr 1988
+\moreref \book \rom{(2nd edition)} \yr 1991
+\endref
+
+\endRefs
+
+\enddocument
+
+\end

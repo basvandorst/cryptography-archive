@@ -1,0 +1,115 @@
+#!/usr/bin/perl
+
+($visual = $ENV{'VISUAL'}) || ($visual = '/usr/ucb/vi');
+$topgp = 0;
+$blanks = 0;
+$paragraphs = 1;
+$blankcompress = 1;
+$name=@ARGV[$#ARGV];
+umask (077);
+open (INPUT, "<$name");
+open (OUTPUT, ">${name}.rply") || die "Cannot open ${name}.rply for output.\n";
+while (<INPUT>) {
+	if (!$topgp && !m/^> -----BEGIN PGP .*-----/) {
+		if (m/^> *$/) {
+			if ($paragraphs) {
+				if ($blankcompress) {
+					if ($blanks == 0) {
+						print OUTPUT "\n";
+						$blanks = 1;
+					}
+				} else {
+					print OUTPUT "\n";
+				}
+			} else {
+				print OUTPUT;
+			}
+		} elsif (m/^ *$/) {
+			if ($blankcompress) {
+				if ($blanks == 0) {
+					print OUTPUT "\n";
+					$blanks = 1;
+				}
+			} else {
+				print OUTPUT;
+			}
+		} else {
+			print OUTPUT;
+			if ($. == 1 && !m/^> /) {
+				print OUTPUT "\n";
+				$blanks = 1;
+			} else {
+				$blanks = 0;
+			}
+		}
+	}
+	if (!$topgp && m/^> -----BEGIN PGP .*-----/) {
+		$topgp = 1;
+		$tmpfile = "${name}.pgp",
+		unlink ($tmpfile);
+		open (TMPFILE, ">$tmpfile") || die "Cannot open $tmpfile for output.\n";
+	}
+	if ($topgp) {
+		$_ =~ s/^> //;
+		print TMPFILE $_;
+		if (m/^-----END PGP .*-----/) {
+			$topgp = 0;
+			close TMPFILE;
+			$clrfile = "${name}.clr";
+			`pgp $tmpfile -o $clrfile`;
+			open (CLEAR, "<$clrfile") || die "Cannot open $clrfile for input.\n";
+			print OUTPUT "-----BEGIN OF PGP DECRYPTED TEXT-----\n\n";
+			while (<CLEAR>) {
+				if (m/^$/) {
+					print OUTPUT "\n";
+				} else {
+					print OUTPUT "> ";
+					print OUTPUT;
+				}
+			}
+			close CLEAR;
+			unlink ($clrfile);
+			unlink ($tmpfile);
+			print OUTPUT "\n-----END OF PGP DECRYPTED TEXT-----\n\n";
+		}
+	}
+}
+close OUTPUT;
+close INPUT;
+unlink ($name);
+rename ("${name}.rply", "$name");
+
+system ($visual,@ARGV);
+
+while (!$q) {
+	print "Sign this message? [Y]: ";
+	$q = <STDIN>;
+	$q =~ s/[ \t\n]//g;
+	$q = substr ($q, 0, 1);
+	if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+		push(@opts,'-st','+clearsig=on');
+		$q = "y";
+	} elsif (($q ne 'N') && ($q ne 'n')) {
+		$q = '';
+	}
+}
+$q='';
+while (!$q) {
+	print "Encrypt this message? [Y]: ";
+	$q = <STDIN>;
+	$q =~ s/[ \t\n]//g;
+	$q = substr ($q, 0, 1);
+	if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+		push(@opts,'-e');
+		$q = "y";
+	} elsif (($q ne 'N') && ($q ne 'n')) {
+		$q = '';
+	}
+}
+if (@opts) {
+	system ('pgp','-a',@opts,$name);
+	if ($? == 0) {
+		unlink ${name};
+		rename ("${name}.asc", "$name");
+	}
+}

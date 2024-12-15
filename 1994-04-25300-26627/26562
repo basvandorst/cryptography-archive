@@ -1,0 +1,146 @@
+Path: msuinfo!agate!howland.reston.ans.net!wupost!gumby!yale!yale.edu!nigel.msen.com!zib-berlin.de!fauern!rrze.uni-erlangen.de!not-for-mail
+From: unrza3@cd4680fs.rrze.uni-erlangen.de (Markus Kuhn)
+Newsgroups: sci.crypt
+Subject: Videocrypt (was: can smart cards be copied)
+Date: Fri, 29 Apr 1994 13:37:49 +0200
+Organization: Regionales Rechenzentrum Erlangen, Germany
+Message-ID: <2pqridE72q@uni-erlangen.de>
+References: <210310Z23041994@anon.penet.fi> <2pg0nlE545@uni-erlangen.de> <2pgk93$g5v@electra.saaf.se>
+Reply-To: mskuhn@cip.informatik.uni-erlangen.de
+NNTP-Posting-Host: cd4680fs.rrze.uni-erlangen.de
+Lines: 134
+
+pausch@electra.saaf.se (Paul Schlyter) writes:
+
+>In article <2pg0nlE545@uni-erlangen.de>,
+>Markus Kuhn <mskuhn@cip.informatik.uni-erlangen.de> wrote:
+> 
+>> The Videocrypt system itself is very secure as long as the algorithm
+>> in the smart card is secure and secret.
+> 
+>Which means the system is not secure.  Security should rely on secrecy
+>of the key only, not secrecy of the algorithm.
+
+I think it doesn.
+
+In the Sky Videocrypt system, both the key and the algorithm have been
+secret until about half a year ago. Now both are known, but I believe
+that the algorithm is still quite secure even if they use the
+same algorithm in the next card generation and exchange only the
+key.
+
+The basic principle of the system is that over the air every two seconds
+a 32-byte message is broadcasted. This message is received and transmitted
+to the card which answers to the 32 bytes with an 8-byte hash value
+determined by an algorithm using a secret key. The 32-byte messages
+are signed using the same key bytes and the card answers only with 8
+00 bytes if the signature and chechsum of the 32-byte message isn't correct.
+So a choosen plaintext attack isn't easy. The 8-byte answer is then used
+as the seed for a PRNG which controls the decrambling process for the 
+next 2.5 seconds. The same hash function and PRNG are used at the
+senders side in order to scramble the image by rotating each individual
+line by a pseudo-random number of pixels.
+
+The algorithm for the secret 32->8 byte mapping follows below. I have already
+spent a few weekends working on methods that can determine the key[]
+values by just looking at recorded (msg, answ) pairs, but I haven't been
+very successful, yet. The weakest point of the algorithm seems to be
+the signature (the last 5 bytes), because there only very few iterations
+of kernel() happen between known values. As there are some chances, that
+they do not change the algorithm, but only the key in the next card
+generation, cryptoanalysis of this algorithm might not only be of
+pure academic interest. :-) Once you know the signature key, you'll
+automatically also know the hash key, because they are identical.
+Cryptoanalytic ideas are welcome!
+
+------------------------------------------------------------------------
+
+/*
+ * This module contains the critical algorithm and secret key
+ * used by British Sky Broadcasting in their Videocrypt pay-TV
+ * chip card in 1993 and early 1994.
+ */
+
+
+/*
+ * the secret key -- for your eyes only :-)
+ */
+const unsigned char key[56] = {
+  0x65, 0xe7, 0x71, 0x1a, 0xb4, 0x88, 0xd7, 0x76,
+  0x28, 0xd0, 0x4c, 0x6e, 0x86, 0x8c, 0xc8, 0x43,
+  0xa9, 0xec, 0x60, 0x42, 0x05, 0xf2, 0x3d, 0x1c,
+  0x6c, 0xbc, 0xaf, 0xc3, 0x2b, 0xb5, 0xdc, 0x90,
+  0xf9, 0x05, 0xea, 0x51, 0x46, 0x9d, 0xe2, 0x60,
+  0x70, 0x52, 0x67, 0x26, 0x61, 0x49, 0x42, 0x09,
+  0x50, 0x99, 0x90, 0xa2, 0x36, 0x0e, 0xfd, 0x39
+};
+
+
+/*
+ * This is the core function of the decryption algorithm
+ * which is iterated 99 times by decode(). This code assumes that
+ * unsigned char is exactly 8-bit long.
+ */
+void kernel(unsigned char *out, int *oi, const unsigned char in,
+            int offset)
+{
+  unsigned char b, c;
+
+  out[*oi] ^= in;
+  b = key[offset + (out[*oi] >> 4)];
+  c = key[offset + (out[*oi] & 0x0f) + 16];
+  c = ~(c + b);
+  c = (c << 1) | (c >> 7);    /* rotate 1 left */
+  c += in;
+  c = (c << 1) | (c >> 7);    /* rotate 1 left */
+  c = (c >> 4) | (c << 4);    /* swap nibbles */
+  *oi = (*oi + 1) & 7;
+  out[*oi] ^= c;
+
+  return;
+}
+
+
+/*
+ * The decoder requests every ~2.5 seconds an answer to a 32-byte
+ * packet (msg) from the chip card. The card's 8-byte answer (answ) to
+ * this request is calculated by this function.
+ */
+int decode(const unsigned char *msg, unsigned char *answ)
+{
+  int i;
+  int oi = 0;           /* index in output array answ[] */
+  int offset = 0;       /* secret key table selection   */
+  int check = 0;        /* flag for incorrect checksum  */
+  unsigned char b = 0;
+
+  if (msg[1] > 0x32) offset = 0x08;  /* key selection */
+  if (msg[1] > 0x3a) offset = 0x18;
+  for (i = 0; i < 8; i++) answ[i] = 0;
+  for (i = 0; i < 27; i++)
+    kernel(answ, &oi, msg[i], offset);
+  for (i = 27; i < 31; i++) {
+    kernel(answ, &oi, b, offset);
+    kernel(answ, &oi, b, offset);
+    b = msg[i];
+    if (answ[oi] != msg[i]) check |= 1;  /* test signature */
+    oi = (oi + 1) & 7;
+  }
+  for (i = 0; i < 64; i++)
+    kernel(answ, &oi, msg[31], offset);
+
+  /* test checksum */
+  b = 0;
+  for (i = 0; i < 32; i++)
+    b += msg[i];
+  if (b != 0) check |= 2;
+
+  return check;     /* if check != 0, the real card doesn't answer */
+}
+------------------------------------------------------------------------
+
+Markus
+
+-- 
+Markus Kuhn, Computer Science student «°o°» University of Erlangen, Germany
+Internet: mskuhn@cip.informatik.uni-erlangen.de   |   X.500 entry available

@@ -1,0 +1,401 @@
+\subsection{Low Level Cryptography}         
+
+
+\subsubsection{Low Level Cryptography}
+\nm{3X}{Low Level Cryptography}{Multiprecision arithmetics, encryption, signature, hashing}
+\label{lowlevel}
+
+\hl{Description}
+
+The following routines are internal SecuDE low level routines for cryptographic and related
+operations. They are called from sec\_encrypt(), sec\_decrypt(), sec\_sign(), sec\_verify(),
+sec\_hash() and sec\_gen\_key(). Programmers who use these sec\_* routines do not need to know
+the low level functions. They are listed here for people with particular interest
+in such functions.
+
+\hl{Multi-precision arithmetic operations}
+
+Asymmetric cryptographic algorithms like RSA and DSA require to perform arithmetic operations
+on very large integer numbers with up to some thousand binary digits. In SecuDE,
+a multi-precision integer number, in the following referred to as long number, is internally stored 
+and processed in an array of unsigned integers.
+\begin{quote}
+typedef unsigned int L\_NUMBER; \\
+L\_NUMBER long\_number[MAXLGTH]
+\end{quote}
+The maximum length of the array is MAXLGTH (which is a parameter set at compile-time). 
+
+The first element (long\_number[0]) indicates the number of
+following words which contain the long number, starting with
+the least-significant word (the word itself may be ordered in different ways,
+depending on the machine type). Routines exist which transform from a SecuDE
+long number to an OctetString (ordered most-significant octet first) and vice-versa.
+The OctetString representation of a long number can be used to derive the ASN.1 code
+with e\_INTEGER() which generates the BER-code of an ASN.1 INTEGER.
+A long number of value zero is indicated through long\_number[0] $=$ 0. If long\_number[0] $\neq$ 0,
+long\_number[long\_number[0]] must be non-zero.
+
+Following are arithmetic and other functions available for long numbers. None of
+these does allocate memory for returned results. This must be provided by the
+calling functions through the use of appropriate parameters. Note also that none of
+these routines does any parameter checking and that unexpected program terminations
+may result from the use of inappropriate or syntactically wrong parameters. 
+\\ [1ex]
+
+{\bf \_add} {\em (op1, op2, result)} \\
+L\_NUMBER {\em *op1, *op2, *result}; 
+
+$result = op1 + op2$
+\\ [1ex]
+
+{\bf \_sub} {\em (op1, op2, result)} \\
+L\_NUMBER {\em *op1, *op2, *result}; 
+
+$result = op1 - op2$
+\\ [1ex]
+
+{\bf \_mult} {\em (op1, op2, result)} \\
+L\_NUMBER {\em *op1, *op2, *result}; 
+
+$result = op1 * op2$
+\\ [1ex]
+
+{\bf \_div} {\em (op1, op2, result, rest)} \\
+L\_NUMBER {\em *op1, *op2, *result, *rest}; 
+
+$result = op1 / op2$ \\
+$rest = op1\ (\ {\rm mod }\ op2 )$
+\\ [1ex]
+
+{\bf \_shift} {\em (op, bits, result)} \\
+L\_NUMBER {\em *op, *result}; \\
+int {\em bits};
+
+$result = op * 2^{bits}$
+\\ [1ex]
+
+int {\bf \_comp} {\em (op1, op2)} \\
+L\_NUMBER {\em *op1, *op2}; 
+\btab
+Returns \1 zero \1 if {\em op1} $=$ {\em op2}, \\
+        \1 1 \1 if {\em op1} $>$ {\em op2} \\
+        \1 -1 \1 if {\em op2} $>$ {\em op1} \\
+\etab
+
+{\bf msub} {\em (op1, op2, result, modulus)} \\
+L\_NUMBER {\em *op1, *op2, *result, *modulus};
+
+$result = op1 - op2\ (\ {\rm mod }\ modulus )$
+\\ [1ex]
+
+{\bf mmult} {\em (op1, op2, result)} \\
+L\_NUMBER {\em *op1, *op2, *result}; 
+
+$result = op1 * op2\ (\ {\rm mod }\ modulus )$
+\\ [1ex]
+
+{\bf mdiv} {\em (op1, op2, result, modulus)} \\
+L\_NUMBER {\em *op1, *op2, *result, *modulus}; 
+
+$result = op1 / op2\ (\ {\rm mod }\ modulus )$
+\\ [1ex]
+
+{\bf mexp} {\em (op1, op2, result, modulus)} \\
+L\_NUMBER {\em *op1, *op2, *result, *modulus};
+
+$result = {op1}^{op2}\ (\ {\rm mod }\ modulus )$
+\\ [1ex]
+
+int {\bf lngtouse} {\em (lnum)} \\
+L\_NUMBER {\em *lnum}; 
+
+lngtouse returns the number of significant binary digits of the L\_NUMBER {\em lnum},
+i.e.omitting leading zeroes. It returns $-1$ if $lnum=0$ or the long number is syntactically wrong.
+\\ [1ex]
+
+
+int {\bf octetstoln} {\em (octs, lnum, offset, size)} \\
+OctetString {\em *octs}; \\
+L\_NUMBER {\em *lnum}; \\
+int {\em offset, size}; 
+
+octetstoln transforms the OctetString starting at {\em octs} $+$ {\em offset} 
+and of length {\em size} to a long number {\em lnum}. The OctetString is
+interpreted most-significant octet first.
+\\ [1ex]
+
+int {\bf lntoctets} {\em (lnum, octs, size)} \\
+L\_NUMBER {\em *lnum}; \\
+OctetString {\em *octs}; \\
+int {\em size}; 
+
+lntoctets converts the long number {\em lnum} (least-significant word first) 
+to an OctetString (most-significant octet first). 
+If $size=0$, this OctetString is returned in {\em octs}.
+If $size\neq 0$, {\em size} octets of this OctetString are appended to {\em octs}.
+if {\em size} exceeds the number of significant octets of {\em lnum}, leading
+zero-octets are padded.
+\\ [1ex]
+
+int {\bf bitstoln} {\em (bits, lnum, offset, size)} \\
+BitString {\em *octs}; \\
+L\_NUMBER {\em *lnum}; \\
+int {\em offset, size}; 
+
+bitstoln is the corresponding function to octetstoln for a BitString.
+\\ [1ex]
+
+
+int {\bf lntobits} {\em (lnum, bits, size)} \\
+L\_NUMBER {\em *lnum}; \\
+BitString {\em *bits};\\
+int {\em size}; 
+
+lntobits is the corresponding function to lntoctets for a BitString.
+
+
+\hl{RSA Functions}
+
+int {\bf rsa\_gen\_key} {\em (keysize, skey, pkey)} \\
+int {\em keysize}; \\
+BitString {\em **skey}; \\
+BitString {\em **pkey}; 
+
+rsa\_gen\_key generates an RSA key pair with a modulus of {\em keysize} bits.
+Pointers to the ASN.1 encoded secret and public key are returned in {\em *skey} and {\em *pkey}.
+See INTRO(3) about the ASN.1 structure of RSA keys. 
+\\ [1ex]
+
+
+
+int {\bf rsa\_set\_key} {\em (key, keytype)} \\
+char {\em *key}; \\
+int {\em keytype}; 
+
+rsa\_set\_key stores the given {\em key} in a static
+structure for further use through rsa\_encrypt(), rsa\_decrypt(),
+rsa\_sign() or rsa\_verify(). {\em key} may be either a secret or a public key.
+
+If {\em keytype} is 0, {\em key} must be a pointer to a KeyBits structure.
+Otherwise it must be a pointer to a BitString which contains the ASN.1 
+encoded key. rsa\_set\_key casts {\em key} to the appropriate type.
+\\ [1ex]
+
+
+int {\bf rsa\_encrypt} {\em (in, out, more, keysize)} \\
+OctetString {\em *in}; \\
+BitString {\em *out}; \\
+More {\em more}; \\
+int {\em keysize}; 
+
+rsa\_encrypt encrypts {\em in} with the public key previously 
+set by rsa\_set\_key and appends the result
+to {\em out}. In each step of the encryption a block of
+$(keysize-1) / 8$ octets is encrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  rsa\_encrypt.
+If $more =$ SEC\_END, it is padded and the key is deleted
+after the encryption.
+\\ [1ex]
+
+
+int {\bf rsa\_decrypt} {\em (in, out, more, keysize)} \\
+BitString {\em *in}; \\
+OctetString {\em *out}; \\
+More {\em more}; \\
+int {\em keysize}; 
+
+rsa\_decrypt decrypts {\em in} with the secret key previously set by 
+rsa\_set\_key and appends the result
+to {\em out}. In each step of the decryption a block of
+$keysize$ bits is decrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  rsa\_encrypt.
+If $more =$ SEC\_END, it is padded and the key is deleted
+after the decryption.
+\\ [1ex]
+
+
+int {\bf rsa\_sign} {\em (hash, sign)} \\
+OctetString {\em *hash}; \\
+BitString {\em *sign}; 
+
+rsa\_sign creates a signature {\em sign} of {\em hash} with the secret key previously 
+set by rsa\_set\_key
+and deletes that key afterwards.
+\\ [1ex]
+
+
+int {\bf rsa\_verify} {\em (hash, sign)} \\
+OctetString {\em *hash}; \\
+BitString {\em *sign}; 
+
+rsa\_verify checks the signature {\em sign} of {\em hash} with the public key previously
+set by rsa\_set\_key
+and deletes that key afterwards. In case of success $0$ is returned, otherwise
+$-1$ is returned.
+\\ [1ex]
+
+
+\hl{DSA Functions}
+
+
+int {\bf dsa\_gen\_key} {\em (keysize, skey, pkey)} \\
+int {\em keysize}; \\
+BitString {\em **skey}; \\
+BitString {\em **pkey}; 
+
+dsa\_gen\_key generates a DSA key pair with a prime modulus $p$ of {\em keysize} bits.
+Pointers to the ASN.1 encoded secret and public key are returned in {\em *skey} and {\em *pkey}.
+See INTRO(3) about the ASN.1 structure of DSA keys.
+\\ [1ex]
+
+int {\bf dsa\_set\_key} {\em (key, keytype)} \\
+char {\em *key}; \\
+int {\em keytype}; 
+
+dsa\_set\_key stores the given {\em key} in a static
+structure for further use through dsa\_sign() or dsa\_verify().
+{\em key} may be a secret or public key. If {\em keytype} is 0, {\em key} must be a pointer to a KeyBits structure, otherwise it must be a pointer to a BitString which
+contains the ASN.1 encoded key. dsa\_set\_key casts {\em key} to the appropriate type.
+\\ [1ex]
+
+
+int {\bf dsa\_sign} {\em (hash, sign)} \\
+OctetString {\em *hash}; \\
+BitString {\em *sign}; 
+
+dsa\_sign creates a signature {\em sign} of {\em hash} with the key previously set by dsa\_set\_key
+and deletes that key afterwards.
+\\ [1ex]
+
+
+int {\bf dsa\_verify} {\em (hash, sign)} \\
+OctetString {\em *hash}; \\
+BitString {\em *sign}; 
+
+dsa\_verify checks the signature {\em sign} of {\em hash} with the key previously set by dsa\_set\_key
+and deletes that key afterwards. In case of success, $0$ is returned. Otherwise, $-1$
+is returned.
+\\ [1ex]
+
+
+\hl{DES Functions}
+
+int {\bf des\_encrypt} {\em (in, out, more, keyinfo)} \\
+OctetString {\em *in}; \\
+BitString {\em *out}; \\
+More {\em more}; \\
+KeyInfo {\em *keyinfo}; 
+
+des\_encrypt encrypts {\em in} with the key given in {\em keyinfo} and appends the result
+to {\em out}. The DES mode and padding method modes are derived from the algorithm identifier
+contained in {\em keyinfo}.
+In each step of the encryption a block of
+$64$ bits is encrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  des\_encrypt.
+If $more =$ SEC\_END, it is padded and the key, which was hold in static memory since
+the first call, is deleted after the encryption.
+
+A DES key is a BitString of 64 bits length, or of 128 bits length in case of DES 3 mode.
+It can be created with sec\_random\_bstr(64).
+\\ [1ex]
+
+int {\bf des\_decrypt} {\em (in, out, more, keyinfo)} \\
+BitString {\em *in}; \\
+OctetString {\em *out}; \\
+More {\em more}; \\
+KeyInfo {\em *keyinfo}; 
+
+des\_decrypt decrypts {\em in} with the key given in {\em keyinfo} and appends the result
+to {\em out}. The DES mode and padding methods are derived from the algorithm identifier
+contained in {\em keyinfo}.
+In each step of the decryption a block of
+$64$ bits is decrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  des\_decrypt.
+If $more =$ SEC\_END, the padding of the last decrypted block is tested and the key, which was hold in static memory since
+the first call, is deleted.
+\\ [1ex]
+
+
+
+
+\hl{IDEA Functions}
+
+
+
+int {\bf idea\_encrypt} {\em (in, out, more, keyinfo)} \\
+OctetString {\em *in}; \\
+BitString {\em *out}; \\
+More {\em more}; \\
+KeyInfo {\em *keyinfo}; 
+
+idea\_encrypt encrypts {\em in} with the key given in {\em keyinfo} and appends the result
+to {\em out}. 
+In each step of the encryption a block of
+$64$ bits is encrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  idea\_encrypt.
+If $more =$ SEC\_END, it is padded and the key, which was hold in static memory since
+the first call, is deleted after the encryption.
+
+An IDEA key is a BitString of 128 bits length.
+It can be created with sec\_random\_bstr(128).
+\\ [1ex]
+
+
+int {\bf idea\_decrypt} {\em (in, out, more, keyinfo)} \\
+OctetString {\em *in}; \\
+BitString {\em *out}; \\
+More {\em more}; \\
+KeyInfo {\em *keyinfo}; 
+
+idea\_decrypt decrypts {\em in} with the key given in {\em keyinfo} and appends the result
+to {\em out}.
+In each step of the decryption a block of
+$64$ bits is decrypted. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  idea\_decrypt.
+If $more =$ SEC\_END, the padding of the last decrypted block is tested and the key, which was hold in static memory since
+the first call, is deleted.
+\\ [1ex]
+
+
+
+\hl{Hash Functions}
+
+
+
+int {\bf sha\_hash} {\em (in\_octets, hash\_result, more)} \\
+OctetString {\em *in\_octets}; \\
+OctetString {\em *hash\_result}; \\
+More {\em more}; 
+
+sha\_hash hashes {\em in\_octets}. In each step of the hashing a block of
+$160$ bits is computed. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  sha\_hash.
+If $more =$ SEC\_END, it is padded and the result of the last hashing is stored in {\em hash\_result}.
+\\ [1ex]
+
+
+int {\bf md*\_hash} {\em (in\_octets, hash\_result, more)} \\
+OctetString {\em *in\_octets}; \\
+OctetString {\em *hash\_result}; \\
+More {\em more}; 
+
+md*\_hash hashes {\em in\_octets}. * may be 2, 4 or 5. In each step of the hashing a block of
+$128$ bits is computed. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  md*\_hash.
+If $more =$ SEC\_END, it is padded and the result of the last hashing is stored in {\em hash\_result}.
+\\ [1ex]
+
+
+int {\bf hash\_sqmodn} {\em (in\_octets, hash\_result, more, keysize)} \\
+OctetString {\em *in\_octets}; \\
+OctetString {\em *hash\_result}; \\
+More {\em more}; \\
+int {\em keysize};
+
+hash\_sqmodn hashes {\em in\_octets}. For this operation it needs a public RSA key with 
+modulus length {\em keysize} previously set by rsa\_set\_key.
+In each step of the hashing a block of
+$(keysize - 1) / 16$ octets is computed. If $more =$ SEC\_MORE,
+the remaining block is filled by the next call of  hash\_sqmodn.
+If $more =$ SEC\_END, it is padded and the result of the last hashing is stored in {\em hash\_result}.
+

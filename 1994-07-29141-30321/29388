@@ -1,0 +1,109 @@
+Path: msuinfo!agate!library.ucla.edu!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: hiding ciphertext in ciphertext
+Date: Tue, 05 Jul 94 19:47:10 CDT
+Organization: University of Missouri, Columbia
+Lines: 99
+Message-ID: <16FEA1163ES86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+ 
+   To restate the problem:  I want to be able to send ciphertext messages
+to a friend, or store them on my disk, so that there are two keys to each
+ciphertext.  One key decrypts to the actual message.  A different key
+decrypts to a "throwaway" message.
+ 
+   Here are two solutions to this problem.  Both depend on some loss of
+bandwidth.  Both *may* draw the attention of the authorities for being
+out-of-the-ordinary encryption schemes, but both use modifications to
+standard schemes that actually make the standard schemes more secure.
+ 
+    I posted some ideas about simple randomized encryption before.  One
+    simple way of doing randomized encryption is to fill half of each
+    block with random bits, and half with message.  This decreases your
+    bandwidth by half, but it makes a lot of attacks against the cipher
+    *much* harder.  The recipient should discard the random blocks.
+ 
+    In other words:
+ 
+    E(X,K) is the encryption of X with key K,
+    A_i is the ith 32-bit random bit block
+    M_i is the ith 32-bit message block
+    C_i is the ith 64-bit ciphertext block
+    X+Y is the concatenation of 32-bit X and 32-bit Y into a 64-bit block.
+ 
+    Encryption is:  C_i = E(A_i+M_i,K)
+ 
+    Decrypter simply decrypts C_i, and throws away the high 32 bits.
+ 
+    Now, I'm going to suggest a variation of this to allow encryption of
+multiple messages.  This scheme is probabilistic--it can occasionally fail
+to produce a valid message pair.
+ 
+   The general scheme works like this:
+ 
+   Let A_i and B_i be 35-bit blocks.       Let K0 and K1 be keys.
+   Let M_i be a 29-bit message block.
+   Let C_i be a 64-bit ciphertext block.
+   Let X_i be a 29-bit dummy message block.
+ 
+   To encrypt block 1, we form about 2**32 encryptions of the message
+under K0, and 2**32 under K1.  Each encryption is of the form
+    E(A_i+M_i,K0) or E(B_i+X_i,K1)
+ 
+   The encryptions are different because about 2**32 different A_i and
+B_i values are used.  We combine the encryptions into one big list, sort
+the list, and search for duplicates.  When we find a duplicate, we've
+found our A_i value, and thus our C_i value.  If I'm doing my calculations
+right, this will happen more than half the time with 32 bits in each A_i.
+I'm not sure how many more bits are needed to ensure that a 1000-block
+message has a 99% chance of going through on the first try.
+ 
+   When Alice sends Bob a stream of C's, he decrypts with K0 and discards
+the A_i's.  When the secret police start threatening Alice, she grudgingly
+coughs up K1.  The secret police decrypt C, and find some less incriminating
+amidst the random noise.  (Hopefully, Alice has the software to do this
+scheme well-hidden.)
+ 
+   There are variations on this scheme which will work with varying levels
+of practicality.
+ 
+1.  You can use smaller random bit blocks, but you have to deal with
+    cases where, for a given M_i, X_i, K0, and K1, there is no A_i, B_i
+    that satisfies E(A_i+M_i,K0) = E(B_i+X_i,K1).
+ 
+2.  To deal with smaller A_i and B_i blocks, you can try more keys,
+    or allow lots of different candidate X_i's.
+ 
+3.  If you don't mind waiting all day for your encryption to work,
+    you could probably get A_i and B_i down to quite small blocks,
+    but then try many, many different keys and variations of your
+    dummy message, and maybe even of your real message.
+ 
+4.  If you're trying multiple keys, you'll want to make sure that
+    you automatically generate them from rememberable passwords,
+    so Alice doesn't have to keep two 128-bit IDEA keys written
+    down somewhere.  Make sure that the password-to-key hashing
+    works the same for both your "standard" program and your
+    two-message program.
+ 
+Another possible scheme:
+ 
+    Use a compression scheme which pre-builds a dictionary of commonly-
+    occurring strings, and somehow separates the dictionary from the
+    compressed message.  Encrypt the dictionary with a one-time pad.
+    Then, encrypt dictionary+message with a normal cipher, like IDEA.
+    To derive your innocuous message, you choose changes in the one-
+    time pad that change your compression dictionary entries--this
+    should allow you to do a sort-of global search-and-replace on
+    incriminating, commonly-occurring words and phrases.  If you
+    design your message carefully, this will allow you to change
+    your message to discuss "tobacco" instead of "cocaine".  This
+    scheme is pretty limited in immediate uses, alas.
+ 
+   There are other possible schemes, especially dealing with using
+locally generated secret random bits in the encryption.
+ 
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu

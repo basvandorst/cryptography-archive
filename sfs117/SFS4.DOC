@@ -1,0 +1,1310 @@
+Controlling SFS Volumes with Smart Cards
+----------------------------------------
+
+Requiring the entry of a complex pass phrase to allow access to an SFS volume
+can be troublesome since not everyone will be able to remember, and want to
+type in, long complicated passwords.  As a result, people may be tempted to
+write them down, or choose simple passwords which are easily guessed.  In order
+to ease this problem, SFS supports the use of passwords stored in physical
+devices such as smart cards and cryptographic ignition keys or datakeys.
+
+The simplest way to store a password in a physical device is on a magnetic
+stripe card similar to a credit card or ATM card.  Unfortunately these cards
+are totally passive, and must rely on an external source to process the
+information stored on them.  Both reading and writing the information stored on
+the card can be done with relatively little effort[1].
+
+A better solution is to use a so-called *smart card* containing built-in memory
+circuitry and possibly also access control logic or even a microprocessor.  A
+smart card is able, in the face of a given situation, to make decisions by
+itself, while a passive card only provides a means to store information.
+
+There are three main classifications of what are generally referred to as smart
+cards:
+
+  Memory cards, which function as an electronic form of magnetic stripe card
+  and are actually passive cards, not smart cards.
+
+  Logic cards, which contain memory and some form of access control logic such
+  as circuitry to check a PIN code before allowing access to the memory (these
+  can be regarded as not-very-smart cards).
+
+  Smart cards, which contain a microprocessor capable of carrying out complex
+  functions above and beyond the capabilities of simple logic cards.
+
+Most cards in use today are smart cards, although some applications really only
+need basic memory cards (smart cards can be programmed to function as simpler
+logic cards if necessary).  Examples of memory cards are cards which can be
+pre-loaded with a certain amount of monetary credit and then be used to pay for
+bus fares or phonecalls[2].  Examples of smart cards are the cards used to
+descramble encrypted pay-TV transmissions such as the ones used by Sky TV and
+other broadcasters.
+
+SFS currently supports only basic memory cards, as true smart cards for
+security applications are still hard to come by, although a card for storing
+encryption keys under controlled conditions has recently been released by Xicor
+and will be supported by SFS as soon as it becomes generally available.
+
+Normally the keying information needed to access an encrypted volume is derived
+from your passphrase.  However the "sfscard" program allows the access
+information to be transferred to a smart card so that you can only access to
+the encrypted data through the use of the card.  Each memory card can store one
+encrypted key used to access one or more disk volumes and is protected by a
+passphrase in the same way that a normal encrypted volume would be.  An
+attacker would therefore need to gain control of both your passphrase and the
+smart card the access information is stored on in order to access any encrypted
+data.
+
+In normal operation, each SFS disk volume is encrypted with a unique disk key
+which is completely unrelated to the your passphrase, or key.  When you enter
+your user key, it is used to decrypt the disk key, and the disk key is then
+used to decrypt the encrypted volume.  There is no correlation between the user
+key and the disk key, so that revealing the disk key does not reveal the user
+key.  This access mechanism looks as follows:
+
+ + User  - - - +            + Encrypted volume  - - - - - - - - - - - - +
+
+ | +--------+  |  decrypt   | +--------+   decrypt    +--------------+  |
+   |User Key|   ----------->  |Disk Key| -----------> |Encrypted Data|
+ | +--------+  |            | +--------+              +--------------+  |
+
+ + - - - - - - +            + - - - - - - - - - - - - - - - - - - - - - +
+
+When used with a smart card, the user key is instead used to decrypt a key
+stored in the smart card which is in turn used to decrypt the disk key:
+
+ + User  - - - +            + Smart card  +
+
+ | +--------+  |  decrypt   | +--------+  |  decrypt
+   |User Key|   ----------->  |Card Key|   ----------+
+ | +--------+  |            | +--------+  |          |
+                                                     |
+ + - - - - - - +            + - - - - - - +          |
+                                                     |
+                     +-------------------------------+
+                     |
+                     |      + Encrypted volume  - - - - - - - - - - - - +
+                     |
+                     |      | +--------+   decrypt    +--------------+  |
+                     +----->  |Disk Key| -----------> |Encrypted Data|
+                            | +--------+              +--------------+  |
+
+                            + - - - - - - - - - - - - - - - - - - - - - +
+
+Since the password is no longer used to directly decrypt the disk key to access
+the encrypted volume, knowledge of the user password or key, or any attack
+based on the user password or key is of no use unless the attacker is also in
+posession of the smart card containing the card key.  Since a single card key
+can be used to decrypt multiple disk keys, it is possible for one card to
+control access to multiple encrypted volumes.  Finally, since each card key can
+also contain extra information such as access rights to an encrypted volume, it
+is possible for a central authority to issue to cards which control the type of
+access allowed for the volume, such as cards which only grant read access to
+their holders.
+
+A more detailed analysis of the manner in which SFS works with smart cards is
+given in the section "Smart Cards and SFS" below.
+
+Footnote [1]: Even something as simple as a modified tape recorder can be
+              persuaded to read magnetic stripe cards.  This is usually
+              unnecessary, however, as magnetic card readers can be purchased
+              freely from some electronic equipment suppliers.
+
+Footnote [2]: Most of these however have some form of access control mechanism
+              and are in fact true smart cards.
+
+
+Working with Smart Cards
+
+The sfscard program is run in the following manner:
+
+  sfscard [format] [clone] [information] [cardcontrol=<action>]
+          [retries=retry count] [vol=volume name] [<drive letter>]
+
+Since all arguments are named, you can give them in any order.  The order shown
+here is merely an example.  In addition, you can abbreviate all commands, so
+that for example you can give the `volume=' command as `volume=', `vol=', or
+even just `v='.  The full commands are given in the documentation for
+completeness.
+
+The SFS software uses the LED on the card reader to indicate the current usage
+of the reader by the SFS driver.  If the LED is green, the reader is not in use
+and no card is inserted.  If the LED is orange, a card is inserted but is not
+being used by the SFS driver.  If the LED is red, a card is inserted and is in
+use by the driver.  Removing the card when the LED is red may, depending on how
+the card is configured, result in the volumes controlled by the card being
+unmounted.  However, the SFS software can suspend the driver's access to the
+card to allow use of the card reader for other purposes.
+
+When sfscard is run, it may find that the card reader is already in use by the
+SFS driver, which would be the case if a smart card had been used to mount an
+encrypted volume which is still in use.  This is indicated by the reader LED
+being red, meaning that a card is inserted and in active use.  In this case
+sfscard will prompt:
+
+  The smart card reader is currently in use by the SFS driver.  In order to
+  process a new card, sfscard must temporarily suspend the driver's handling
+  of the card reader.  Do you want to suspend the driver and continue [y/n]
+
+At this point you can enter `Y' to temporarily suspend the driver's handling of
+the card reader, or `N' to exit the program.
+
+Once the driver has been suspended, sfscard will set the card reader LED to
+orange to indicating that a card is inserted but not in use by the driver, and
+ask you to remove the card that was being used by the driver:
+
+  Please remove the current card from the reader
+
+It will then set the reader LED to green to indicate that there is no card
+present.
+
+When it has finished running, sfscard will ask you to remove the new card:
+
+  Please remove the current card from the reader
+
+and reinsert the original card:
+
+  Please re-insert the original card into the reader
+
+and will reenable the driver.  The reader LED will be set back to red as the
+SFS driver once again takes over use of the reader.  The temporary suspension
+of the driver by sfscard allows operations to be performed on smart cards
+without the need to unmount any volumes which are controlled by a currently
+inserted card.  Only the driver's handling of the card is suspended by this
+process - access to encrypted volumes is still possible.
+
+Before you can use a new card to control access to SFS volumes, you will need
+to format it just like a blank disk needs to be formatted before it can be
+used.  The command to format a card is:
+
+  sfscard format
+
+If a blank card is not already present, the program will prompt you to insert a
+new card:
+
+  Please insert a smart card into the reader.
+
+Once you have inserted a card which is usable by the SFS software, sfscard will
+check to see whether it is already set up for use with SFS.  If it is, it will
+warn you about this with a message like:
+
+  Warning: This card is already set up for use by SFS and controls access to
+           the following volumes:
+
+             `Encrypted data', created 14/07/94, size 152.7 MB
+
+           Are you sure you want to overwrite [y/n]
+
+At this point you can enter `Y' to continue or `N' to exit the program.
+
+sfscard will now ask you for a password to use with this card, just as mksfs
+does.  The password can range in length from 10 to 100 characters, and should
+be made up of a complete phrase or sentence rather than just a single word
+(sfscard will complain if it thinks the password is of an insecure form and
+request that you use a different one).  More details on choosing a password are
+given in the section "The Care and Feeding of Password" below.  The smart card
+password is completely independant of any passwords used for SFS disk volumes.
+
+When asking for the password, sfscard will prompt:
+
+  Please enter smart card password (10...100 characters), [ESC] to quit:
+
+You should now enter the password, which for security reasons is not echoed to
+the screen.  You can correct any typing errors with the backspace key, and use
+the Esc key to quit.  The software will check for a password longer than the
+maximum of 100 characters or an attempt to backspace past the start of the
+password, and beep a warning when either of these conditions occur.
+
+Once you have entered the password, sfscard will again prompt:
+
+  Please reenter smart card password to confirm, [ESC] to quit:
+
+This confirmation is necessary to eliminate any problems with hitting an
+incorrect key when you enter the password the first time.  Note that every
+single letter, space, and punctuation mark in the password is critical.  Making
+a single mistake (getting a letter mixed up, typing a letter in upper case
+instead of lower case, or missing a punctuation mark) will completely change
+the encryption key.  For this reason, sfscard performs a double-check on the
+password to ensure it really is the correct one.
+
+Once you have finished entering the password, there is a brief delay while
+sfscard performs the complex processing needed to turn it into a key suitable
+for the encryption system.  When this has been completed, sfscard will write
+the encryption information to the card and exit.  At this stage the new card is
+formatted for use with SFS but, just like a freshly-formatted disk, it contains
+no information and cannot yet be used to control access to encrypted volumes.
+
+In order to use a card to control access to an SFS volume, you must bind the
+card to the volume, which links the encrypted key on the card with the one used
+to encrypt the volume.  You can do this with the `sfscard volume=<volume name>'
+or `sfscard <drive letter>' commands, which tell sfscard which encrypted volume
+to bind the card to.  In general you can specify the SFS volume to use by
+giving the volume's name with the `volume=' option.  For example if the name
+was "Secure disk volume" then the command to bind a smart card to it would be:
+
+  sfscard volume=secure
+
+You can give the name in upper or lower case and don't have to specify the full
+name, as sfscard will match whatever part of the name you supply to the names
+of any SFS volumes it finds until it finds a match.  The SFS volumes are
+checked in the same order as they are displayed with the `mountsfs info' or
+`mountsfs information' command.
+
+Alternatively, if the SFS volume to be accessed is on a removable disk, you can
+specify it using its drive letter instead of its volume name.  For example if
+the disk drive was A: then the command to bind whatever volume it contained to
+the card would be:
+
+  chsfs <command> a:
+
+To find all available SFS volumes on all disks, you can use the `mountsfs info'
+option as explaind in the section "Mounting an SFS Volume" above.
+
+You can specify the action to be taken for a volume when the card is removed
+from the reader with the `cardcontrol=' option.  The possible card control
+actions are `none', which does nothing, `readonly', which makes the volume
+readonly, and `unmount' and `unmountall', which unmounts the given volume or
+all volumes.  The `unmountall' action takes precedence over all other actions,
+so that a single volume with the `unmountall' action set would, if mounted,
+cause all other volumes to become unmounted when the card is removed.
+
+Using the previous example in which the card is bound to whatever volume is in
+the A: drive, but with the added condition that the volume be unmounted when
+the card used to mount it is removed, the command would be:
+
+  sfscard cardcontrol=unmount a:
+
+If the bound volume is mounted in the future, it will be unmounted if the smart
+card used to mount it is removed from the card reader.
+
+The program will now check the disk volume and display information on it and
+the process which is about to take place:
+
+  Encrypted volume is `Encrypted data disk', created 07/11/94
+
+  In order to allow the transfer of the access information from the disk
+  volume to the card, you need to enter first the password for the SFS disk
+  volume, and then for the smart card.  sfscard will ask first for the disk
+  password, then the smart card password.
+
+sfscard will now ask for the password for the encrypted SFS volume:
+
+  Please enter password (10...100 characters), [ESC] to quit:
+
+It will then request that you insert a smart card into the reader if one is not
+already present, check the smart card to ensure it has been formatted for use
+with SFS, and ask for the password for the card:
+
+  Please enter smart card password (10...100 characters), [ESC] to quit:
+
+Once this process is complete, it will transfer the access information for the
+SFS volume over to the smart card and exit with the message:
+
+  Volume characteristics successfully updated.
+
+From now on, all access to the volume must be done with the smart card.  It is
+no longer possible to use the previous volume password to access the volume
+directly.
+
+To determine which volumes are bound to a particular card, you can use the
+command:
+
+  sfscard info
+
+which will ask for a card to be inserted if necessary, and then display
+information on the card and the volumes it controls access to, for example:
+
+  This card is a standard 256-byte memory card which controls access to the
+  following volumes:
+
+    `Encrypted data', created 14/07/94, size 152.7 MB
+    `Personal Financial Records', created 06/09/93, size 10.0 MB
+    `Data Backup', created 02/09/94, in drive B:
+
+In this case one smart card is used to control access to at least three volumes
+(it may also be bound to other removable volumes which are currently not
+present).
+
+If sfscard cannot find any volumes which are bound to the card in the reader,
+it will instead display:
+
+  This card is a standard 256-byte memory card which controls access to the
+  following volumes:
+
+    No matching volumes found
+
+This will occur if the card has been formatted but not yet bound to an SFS
+volume, or if the card is bound to removable volumes which are currently not
+present.
+
+
+WinSFS - Using SFS with Windows
+-------------------------------
+
+The SFS Control Panel item is used to control the operation of SFS in the same
+way that the DOS mountsfs program does.  To change the SFS settings, click on
+the "Secure FileSystem" icon.  The program will perform a brief scan for SFS
+volumes, displaying the following message as it scans:
+
+                       [Scanning for Volumes dialog]
+
+You can cancel the scan and return to Windows at this point by clicking on the
+"Cancel" button.
+
+After a few seconds, the main SFS window will be displayed.  This contains
+information on mounted and unmounted SFS volumes, and on the current
+quick-unmount hotkey and auto-unmount timeout settings:
+
+                         [SFS Main Window dialog]
+
+The "SFS Volumes" section of the window contains a list of mounted and
+unmounted SFS volumes.  By default all unmounted volumes are shown.  You can
+display only mounted volumes, or a mixture of mounted and unmounted volumes, by
+choosing the appropriate setting in the "Volume Type" settings box.  Mounted
+and active volumes are shown with a dark disk icon to the left, unmounted and
+inactive volumes are shown with a light disk icon to the left.
+
+If no SFS volumes are shown then there are no volumes of the selected kind
+available.  For example if "Mounted volumes" is selected in the "Volume Type"
+box but no volumes are displayed, then all volumes are currently unmounted.
+You can view them by choosing "Unmounted volumes" or "All volumes" in the
+"Volume type" box.
+
+The "Volume Information" box contains more details on the currently selected
+volume.  You can view information on different volumes by changing the volume
+selection in the list box.
+
+To mount or unmount a volume, either double-click on the volume name or icon in
+the list box, or click on the "Mount" or "Unmount" button (this will be
+labelled "Mount" or "Unmount" depending on whether the volume is currently
+unmounted or mounted).
+
+If the volume is currently mounted, you will be asked to confirm the unmount:
+
+                        [Confirm Unmount dialog]
+
+Choosing "OK" will unmount the volume, chosing "Cancel" will leave it mounted.
+
+If the volume is currently unmounted, you will be asked for the password to
+access and mount the volume:
+
+                         [Mount Volume dialog]
+
+You can now enter the password and choose "OK" to mount the volume.  After a
+delay of a few seconds, you will be returned to the main SFS window, and the
+volume you have just mounted will become part of the "Mounted volumes"
+selection.
+
+To change the quick-unmount hotkey, choose "Change" in the "Unmount Hotkey"
+box.  This will display a window containing the current hotkey settings:
+
+                                [Hotkey dialog]
+
+The hotkey can be any combination of the Shift, Control, Alt, and letter keys.
+You can select or deselect each key type to build up the key combination you
+prefer.  Selecting the letter key option on the bottom right of the "Unmount
+Hotkey" box will allow you to choose a letter in the range A-Z to use as part
+of the unmount hotkey combination.  If no letter key is in use, this selection
+will be disabled.
+
+Once you have selected the key combination, choose "OK" to set it or "Cancel"
+to return to the main window without updating the hotkey.
+
+To change the auto-unmount timeout settings for the currently selected volume,
+choose "Change" in the "Unmount Timeout" box.  The timeout setting can only be
+changed if the volume is mounted.  If the currently selected volume is not
+mounted, this option will be disabled.
+
+Selecting the change timeout option will display a window containing the
+current timeout settings:
+
+                                [Timeout dialog]
+
+The value shown for the "Current Timeout" setting is the total timeout value
+for the volume.  The "Time Remaining" value is the time remaining before the
+volume is automatically unmounted.  Every time the volume is accessed, the
+"Time Remaining" value is reset back to the "Current Timeout" setting.
+
+You can change the timeout value by changing the setting of the scrollbar in
+the "Set New Timeout" box.  The actual timeout value you have selected will be
+displayed as the "New Timeout" for the volume.  Once you have set the required
+timeout, choose "OK" to update it or "Cancel" to stay with the original
+timeout.
+
+From the main SFS window, you can choose "Rescan" to rescan all drives for SFS
+volumes.  This can be useful if you change encrypted floppies and need to tell
+SFS to update its settings.  Choose "Close" to exit the program and return to
+Windows.
+
+WinSFS contains internationalization support and will use the date, time, and
+language options set from the "International" item in the Windows control
+panel.  WinSFS currently supports the English, German, and Italian languages,
+if you select any other language from the control panel, the program will
+default to using English.
+
+
+Usage Examples
+--------------
+
+This section contains examples of various basic operations to illustrate the
+use of the SFS software, although not every single possibility is covered.  It
+can be used as a quick reference for SFS use, although it is recommended that
+the sections of the documentation mentioned in each example be read for more
+information.
+
+
+To Create an SFS Volume
+
+To encrypt the E: drive to create a volume with the name "Encrypted volume":
+
+  mksfs "volume=Encrypted volume" e:
+
+Note that that "volume=..." option is quoted, as the volume name contains a
+space.  Volume names without a space don't need to be quoted.
+
+To encrypt the floppy in the A: drive without giving it a volume name:
+
+  mksfs a:
+
+More information on creating SFS volumes is given in the section "Creating an
+SFS Volume" above.
+
+
+To Delete an SFS Volume
+
+To delete the volume "Secure data", rendering its contents unreadable:
+
+  chsfs delete volume=secure
+
+Note the use of only a portion of the full volume name.  SFS will match any
+part of the given name to the name of the encrypted volume.  More information
+on deleting SFS volumes is given in the section "Changing the Characteristics
+of an SFS Volume" above.
+
+
+To Convert an SFS Volume back to the Unencrypted Form
+
+To convert the encrypted floppy in the A: drive back to a normal DOS disk:
+
+  chsfs convert a:
+
+More information on converting SFS volumes back to their unencrypted form is
+given in the section "Changing the Characteristics of an SFS Volume" above.
+
+
+To Mount an SFS Volume
+
+To mount the volume "Personal Info" and make it available for use:
+
+  mountsfs volume=personal
+
+Note the use of only a portion of the full volume name.  SFS will match any
+part of the given name to the name of the encrypted volume.
+
+To mount the encrypted floppy in the B: drive:
+
+  mountsfs b:
+
+To mount the volume "Encrypted data" onto the F: drive so that it becomes
+available for use as F:
+
+  mountsfs mountdrive=f: volume=encrypt
+
+More information on mounting SFS volumes is given in the section "Mounting an
+SFS Volume" above.
+
+
+To Obtain Information on Mounted SFS Volumes
+
+To obtain information on all currently mounted volumes and volume mount points:
+
+  mountsfs status
+
+More details on obtaining information SFS volumes are given in the section
+"Mounting an SFS Volume" above.
+
+
+To Unmount an SFS Volume
+
+To unmount the volume currently mounted as D:
+
+  mountsfs d:
+
+There are several other ways to unmount volumes without using mountsfs which
+depend on the way the volume is set up.  More information on unmounting SFS
+volumes is given in the section "Unounting an SFS Volume" above.
+
+
+To Change the Password of an SFS Volume
+
+To change the password for the volume "My Data Disk":
+
+  chsfs newpass
+
+There are several other characteristics of encrypted volumes which can be
+changed such as the timed unmount information, the disk access mode, and the
+volume name.  More information on changing the properties of SFS volumes is
+given in the section "Changing the Characteristics of an SFS Volume" above.
+
+
+To Set Up a Smart Card for use with SFS
+
+To initialise a smart card in order to allow it to be used with SFS:
+
+  sfscard format
+
+To bind an initialised card to the volume "Business Records", allowing use of
+the card to mount the volume:
+
+  sfscard volume=business
+
+Note the use of only a portion of the full volume name.  SFS will match any
+part of the given name to the name of the encrypted volume.
+
+More information on using smart cards with SFS is given in the section
+"Controlling SFS Volumes with Smart Cards" above.
+
+
+To Change the Quick-unmount Hotkey
+
+To change the quick-unmount hotkey for all mounted volumes to a combination of
+the Control, Alt, and Z keys:
+
+  mountsfs hotkey=ctrl-alt-z
+
+
+To Change the Auto-unmount Timeout for a Mounted Volume
+
+To change the auto-unmount timeout for the SFS volume mounted as D: to 30
+minutes:
+
+  mountsfs timeout=30 d:
+
+
+Command Summary
+---------------
+
+This section serves as a quick-reference for the options available with the
+various SFS programs.  The available options for mksfs, mountsfs, chsfs, and
+adminsfs are:
+
+MakeSFS - Make Secure Filesystem
+
+  -c = Perform a confidence test on the volume to be encrypted without
+       actually encrypting it
+  -t = Test the integrity of the MDC/SHS encryption code used in SFS
+  -e = Display an extended error code if an error occurs.  This provides
+       extra information on the nature of some errors
+
+  multiuser         = Allow multiuser access on the volume to be created
+  access=<mode>     = Specify the disk access mode (as given by the
+                      output of the `-c' option) to use for this volume
+  timeout=<timeout> = Specify the auto-unmount timeout for this volume
+  wipe              = Wipe the original data before overwriting it with
+                      encrypted data (this option is very slow)
+  serialnumber=<serial number> = Specify the serial number of the volume to
+                                 be created
+
+  volume=<volume name> = Specify the name of the volume to be created
+  <drive letter>       = Specify the letter of the drive to create the
+                         encrypted volume on
+
+MountSFS - Mount Secure Filesystem
+
+  -c = Used an escrowed key to access the volume
+
+  +r  = Mount the encrypted volume with read-only access
+  +rw = Mount the encrypted volume with read/write access (default)
+
+  info        = Show brief information on all available SFS volumes
+  information = Show detailed information on all available SFS volumes
+  status      = Show information on mounted volumes only
+  unmount     = Unmount the volume
+
+  hotkey=<hotkeys>       = Set the quick-unmount hotkey combination
+  timeout=<timeout>      = Set the auto-unmount timer value in minutes
+  cardcontrol=<action>   = Specify the action to take when the smart
+                           card corresponding to the mounted volume is
+                           removed
+  mountdrive=<drive unit>= Specify the SFS drive unit to mount the
+                           volume on
+  user=<username>        = Specify the user name when mounting
+                           a volume with multiuser access
+  userfile=<filename>    = Specify the path to the information file
+                           associated with a volume which allows
+                           multiuser access
+
+  volume=<volume name> = Specify the name of encrypted volume to mount
+  <drive letter>       = Specify the drive letter of the volume to mount
+                         (For volumes on floppy disks only)
+
+  <action> = The smart card control action, which can be one of:
+             none      = Do nothing when card is removed
+             readonly  = Make volume readonly when card is removed
+             unmount   = Unmount current volume when card is removed
+             unmountall= Unmount all volumes when card is removed
+
+ChangeSFS - Change Secure Filesystem
+
+  -c = Used an escrowed key to access the volume
+
+  newpassword             = Set a new volume password
+  newvolume=<volume name> = Specify the new volume name
+  newtimeout=<timeout>    = Specify the new auto-unmount timeout
+  newaccess=<access mode> = Specify the new disk access mode
+  newcardcontrol=<action> = Specify the action to take when the smart
+                            card corresponding to the given volume is removed
+
+  delete  = Delete SFS volume
+  convert = Convert volume back to unencrypted form
+
+  splitkey=<quorum>/<total>= Split key for escrow purposes (refer
+                             to documentation)
+
+  volume=<volume name> = Specify the name of the encrypted volume to change
+  <drive letter>       = Specify the drive letter of the volume to change
+                         (For volumes on floppy disks only)
+
+  <action> = The smart card control action, which can be one of:
+             none      = Do nothing when card is removed
+             readonly  = Make volume readonly when card is removed
+             unmount   = Unmount current volume when card is removed
+             unmountall= Unmount all volumes when card is removed
+
+AdminSFS - Administer SFS User Database
+
+  adduser=<user name> = Add a new user with the given name to the database
+  deluser=<user name> = Remove user with the given name from the database
+  chuser=<user name>  = Change user database entry for the named user
+  showuser=<user name>= Show access information for a given user
+  showall             = Show access information for all users
+
+  validfrom=<DDMMYY>  = Set date after which access for a user is allowed
+  validto=<DDMMYY>    = Set date at which a users access expires
+
+  userfile=<filename> = Specify the path to the user information file
+
+SFSCard - Manage SFS Smart Cards
+
+  format      = Initialise a card to prepare it for use
+  information = Show information on a smart card
+  clone       = Clone a card for another user
+
+  cardcontrol=<action> = Specify the action to take when the smart
+                         card corresponding to the given volume is removed
+
+  volume=<volume name> = Specify the name of the volume which the card
+                         is to be used as a key for
+  <drive letter>       = Specify the drive letter of the volume which the
+                         card is to be used as a key for (For volumes on
+                         floppy disks only)
+
+  <action> = The smart card control action, which can be one of:
+             none      = Do nothing when card is removed
+             readonly  = Make volume readonly when card is removed
+             unmount   = Unmount current volume when card is removed
+             unmountall= Unmount all volumes when card is removed
+
+
+Troubleshooting
+---------------
+
+Over the years a variety of strange hardware and software setups have been
+created in order to get around some of the shortcomings of the PC hardware and
+DOS (and occasionally other operating systems) software.  Since SFS accesses
+the disk at a level below that normally used by the operating system, it will
+bypass special options like compressed volumes and non-local networked drives,
+and won't recognise nonstandard hardware like drives with more than 1024
+cylinders which require special software patches in order to work with DOS.
+For example, SFS will recognise the uncompressed volumes used by Stacker,
+DoubleSpace, and JAM, but won't see the compressed volumes as these are an
+illusion created through software and visible only to DOS.  It is therefore not
+possible to encrypt compressed volumes (there would be very little point, as
+encryption would render the data completely uncompressible), although it is
+possible to create a compressed volume inside an encrypted volume (this is
+covered in the section "Creating Compressed SFS Volumes" above).
+
+
+Checking for Problems with mksfs
+
+If your system has an unusual setup, or if you're worried about what SFS may
+do, you can use a special option with the mksfs program to perform a check on
+the drive which is to be encrypted.  This option also bypasses a number of the
+usual checks SFS performs relating to duplicate volume names, anonymous
+volumes, and so on, to allow all types of volume arrangements to be checked.
+
+When you use `-c' check option for mksfs along with the drive letter of the
+drive which you intend to encrypt, mksfs will (if the volume in question is a
+fixed disk) first display technical information on all available fixed disk
+volumes, so that the command:
+
+    mksfs -c e:
+
+might produce the following output:
+
+  Drive partition information follows:
+
+  Ph Bt Dr Cyl. Head Sec. Cyl. Head Sec.  Size  ID Type
+  -- -- -- ---- ---- ---- ---- ---- ---- ------ -- ----
+   0  N  C    0    1    0  379   15   39 121600 06 DOS (16-bit FAT, >= 32M)
+   0  Y  -  380    0    0  383   15   39   1280 0A OS/2 boot manager
+   0  N  D  384    1    0  594   15   39  67200 06 DOS (16-bit FAT, >= 32M)
+   0  N  E  595    1    0 1022   15   39 136640 06 DOS (16-bit FAT, >= 32M)
+                                                   This would be the SFS disk
+  06  N  -    0    1    0  442   63   31 452608 07 OS/2 HPFS
+  06  N  F  443    0    0  571   63   31 131072 06 DOS (16-bit FAT, >= 32M)
+  06  N  G  572    0    0  872   63   31 307200 06 DOS (16-bit FAT, >= 32M)
+
+This is only displayed for fixed disks, as floppy disks don't contain this
+information.  The values in the various columns are Ph = physical drive number,
+Bt = bootable flag, Dr = DOS drive letter, Cyl,Head,Sec = partition start,
+Cyl,Head,Sec = partition end, Size = size in kbytes, ID = partition ID byte,
+and Type = partition type.  The proposed SFS partition will be marked as such.
+The drive with an apparent 2-digit physical drive number is a SCSI drive which
+isn't accessible through the BIOS; the first digit is the SCSI target ID, the
+second digit is the logical unit number.  If you don't know what these values
+mean, don't worry - this option is mainly useful in providing technical
+information for those who want it.
+
+Once all drives have been checked, mksfs will display specific information on
+the actual volume in question:
+
+  Volume will be checked on fixed drive E:
+  This drive has a capacity of 136.6 MB and is labelled `Data disk'
+  Are you sure you want to check this volume [y/n]
+
+As with the usual mksfs process, entering 'Y' will continue with the volume
+check and entering 'N' will exit.  If you choose to continue, mksfs will first
+perform an initial disk confidence test which consists of some general checks
+on the volume layout to make sure its format is valid, and will then perform a
+read confidence test in which it reads random disk blocks and compares them
+with the data reported by the operating system.  If any errors are encountered,
+it will print a diagnostic message before continuing.  If all is OK, the
+sequence of messages will be:
+
+  Performing disk confidence test...
+  Performing read confidence test...
+  [various test-in-progress messages]
+
+If there are problems, the diagnostic message will give more information on the
+nature of the problem.  After the basic tests have completed, mksfs will check
+to see whether any sort of enhanced drive access is possible for the particular
+drive on which the SFS volume is to be created.  The use of enhanced drive
+handling can speed up access to the drive, or may be necessary for drives which
+aren't directly accessible to the system.
+
+First, mksfs will check whether the system supports any of the enhanced IDE
+(EIDE) access modes, and whether any of these modes are currently in use for
+the drive being checked.  If the system supports enhanced IDE access but isn't
+using it for the drive, mksfs will display:
+
+  The system supports enhanced IDE (EIDE) drive handling, but this drive isn't
+  being used in any of the EIDE modes.
+
+and continue with checking for other enhanced access modes.  This may happen if
+you are using an older IDE drive which doesn't support the new access modes in
+a newer system.  If the drive is being used by the system in an enhanced mode,
+mksfs will display information on the current drive access mode, for example:
+
+  This drive is a fixed disk EIDE drive running in PIO mode 3 with 16-sector
+  block transfers with LBA (logical block addressing) enabled.  SFS will use
+  this enhanced access mode for all disk accesses.
+
+and then perform a series of extended tests to see whether LBA (logical block
+adressing) access to the drive is possible.  This access mode is faster than
+the standard access mode and allows for special capabilities such as the
+ability to access drives of up to 8GB, and handling for removable-media drives.
+The extended tests are similar to the previous tests, and display the same
+messages if problems are found.  If problems are detected, mksfs will display:
+
+  This drive does not appear to support the LBA access mode used by SFS.  The
+  default slower access mode will be used.
+
+Otherwise, the message:
+
+  This drive supports the LBA access mode used by SFS.  You can enable use of
+  this mode by specifying the `access=lba' option when you run mksfs, or enable
+  it at a later date using the `newaccess=lba' option in chsfs.
+
+will be displayed.
+
+If no EIDE access modes are possible, mksfs will check for older IDE drives
+and, if it finds one, will display specific information about it and ask
+whether additional tests should be made to determine whether use of any of the
+alternative access modes supported by the SFS driver is possible.  If the drive
+is an EIDE drive but the system doesn't appear to support EIDE handling, mksfs
+will display a message to say that the default slower access mode will be used,
+typically:
+
+  This drive is a Seagate HD2770 with a 96K buffer, and appears to support the
+  high-speed IDE access mode which SFS is capable of.  However, the drive
+  parameters indicate that it is being used in an enhanced mode of operation
+  which is incompatible with the SFS high-speed IDE access.  The default slower
+  access mode will be used
+
+This message will only occur in very rare circumstances, more usually it will
+be something like:
+
+  This drive is a WDC AC2420 with a multi-sector 256K buffer, and appears to
+  support the high-speed IDE access mode which SFS is capable of.  mksfs will
+  now test whether this is indeed true.  Are you sure you want to perform the
+  test [y/n]
+
+with the exact text depending on the drive type.  At this point you can enter
+'Y' to run the extended tests or 'N' to exit the program.  The extended tests
+are similar to the previous tests, and display the same messages if problems
+are found.  If problems are detected, mksfs will display:
+
+  This drive does not appear to support the high-speed IDE access mode used by
+  SFS.  The default slower access mode will be used.
+
+Otherwise, the message:
+
+  This drive supports the high-speed IDE access mode used by SFS.  You can
+  enable use of this mode by specifying the `access=ide' option when you run
+  mksfs, or enable it at a later date using the `newaccess=ide' option in
+  chsfs.
+
+will be displayed.
+
+If the drive is a SCSI device which needs a device driver to work with DOS, SFS
+will access it directly as a SCSI device rather than simply a standard disk
+drive.  SFS will work with drives accessed through ASPI (Adaptec SCSI
+Programming Interface) and CAM (Common Access Method) drivers.  ASPI drivers
+come with most SCSI drive controllers or can be purchased seperately.  The CAM
+driver ASPICAM.SYS is available from NCR[1].  If the drive is available for
+access both through the drive controller BIOS and an ASPI driver (which can
+happen in some unusual situations), SFS will use the first access method which
+works, which is almost always the BIOS one.
+
+If direct SCSI access is possible, mksfs will display additional information on
+the drive, typically:
+
+  This drive is a MAXTOR XT-8760S SCSI drive attached to an ADAPTEC AHA-1x4x
+  host with host ID 0, target ID 2, logical unit number 0.  SFS will access it
+  as a SCSI device rather than a normal hard drive.
+
+and then perform a series of extended tests to see whether SCSI device access
+to the drive is possible.  The extended tests are similar to the previous
+tests, and display the same messages if problems are found.  If problems are
+detected, mksfs will display:
+
+  This device does not appear to support the SCSI access mode used by SFS.  The
+  default slower access mode will be used.
+
+Otherwise, the message:
+
+  This drive supports the SCSI access mode used by SFS.  mksfs will
+  automatically enable this mode when creating the SFS volume.
+
+will be displayed.  If mksfs is used to create an encrypted volume on this
+drive, it will automatically access it with a SCSI access mode (equivalent to
+`access=scsi') without having to be told about it.  There are programs
+available to diagnose SCSI access through ASPI drivers if SFS has trouble
+working with the drive[2].
+
+Once all tests have finished, mksfs will display the message:
+
+  Confidence test successfully concluded
+
+or an error count if errors occurred.  In either case, mksfs will exit after
+the tests have concluded without creating the encrypted volume.  If used with
+the `-c' option, mksfs will never modify any information on any disk, whether
+the tests are successful or not.  This is important, as it allows you to
+perform a confidence test before you create an encrypted volume.
+
+
+Problems with Other Software
+
+A few pieces of software have been identified which have problems working with
+SFS.  These are listed below, along with possible workarounds and solutions to
+problems.
+
+ Always Technology's ASPI SCSI manager:
+
+  The Always Technology SCSI manager has a bug which makes use of SCSI devices
+  with logical unit numbers (LUN's) other than the default value of 0
+  impossible.  The SFS programs will detect this SCSI manager and avoid using
+  devices with LUN's other than 0.  In practice this will not be a problem
+  since SCSI devices normally have the LUN set to 0.
+
+ Borland's Integrated Development Environment:
+
+  Some older versions of the Borland software development tools don't handle
+  DOS critical errors very well (they hang either when the error occurs or soon
+  afterwards).  Since trying to access a non-mounted volume is treated by DOS
+  as an error, it may cause programs like the IDE (Integrated Development
+  Environment) and the debugger to hang[3].  Trying to read a floppy drive
+  without a disk in the drive, and any other action which causes a DOS critical
+  error, can have the same effect.
+
+ CDROM drivers:
+
+  The Mitsumi CDROM device driver, if installed before another block driver
+  like SFS, will mistakenly try to use the drive letter allocated to the other
+  driver as its own one.  There have been reports of other CDROM drivers (in
+  particular the Sony one) which display similar traits (CDROM drivers are
+  strange beasts which have rather special requirements).  The DTC SCSI driver
+  has a similar problem in that it grabs more drive letters than DOS allocates
+  to it, which means that any block drivers loaded after it will be allocated
+  drive letters by DOS which are already being used by the SCSI driver.  The
+  solution to this problem is to make sure that the SFS driver is loaded before
+  any problematic CDROM or SCSI drivers by placing the DEVICE=SFS.SYS line
+  before the one which loads the CDROM or SCSI driver in the CONFIG.SYS file,
+  or to use the JDRIVE utility to relocate the drive letter or letters used by
+  SFS, as explained in the section "Advanced SFS Driver Options" above.
+
+ DRDOS 6.0 KEYB keyboard driver:
+
+  The DRDOS 6.0 KEYB driver incorrectly handles the keyboard interrupt and
+  swallows all keypress codes, only passing the break codes on to SFS and other
+  software.  This means that any unmount hotkey involving an alphanumeric key
+  won't work, as SFS never gets to see the keypress[4].  A solution to this
+  problem is to use a different keyboard driver such as the MSDOS one or a
+  third-party driver.
+
+  In addition, SFS always acts as though the keyboard being used has the
+  default US-style layout, since the SFS software communicates directly with
+  the keyboard rather then working through driver software (which hasn't been
+  loaded yet when SFS is activated).  However since all SFS software performs
+  the same keyboard handling, this will only be noticed by SFS and should be
+  transparent to the end user.
+
+ Lantastic server software version 6.0:
+
+  The Lantastic server software, version 6.0, can cause problems with mksfs.
+  If running "mksfs -c" reports errors then you should unload the server.exe
+  program before using mksfs to encrypt a DOS volume, and also before you use
+  chsfs with the `convert' option.
+
+ Misbehaved 32-bit TSR's and device drivers:
+
+  Some (now very rare) device drivers and TSR's will destroy the contents of
+  32-bit registers when they are activated, which means that the data in the
+  SFS driver will become invalid from one machine instruction to the next.
+  There have been reports of older versions of the PC-Kwik cache and Novell's
+  non-dedicated file server version 2.2 doing this.  A program to detect and
+  possibly fix this problem is available from garbo.uwasa.fi as
+  /pc/turbopas/trash.zip.
+
+ S&H Computer System's TSX environment:
+
+  SFS will not work with S&H Computer Systems' TSX multi-tasking operating
+  system, which doesn't support some disk utilities, DOS device drivers, and
+  programs which directly access hardware devices (which pretty well covers all
+  of what SFS does).
+
+ VGADISK RAM drive:
+
+  Tommy Frandsen's VGADISK program, which creates a RAM drive in VGA video
+  memory, has a bug in which the same code is used for driver IOCTL reads and
+  standard device reads.  Since the driver IOCTL read count is given in bytes
+  and the standard device read count is given in sectors, any IOCTL read to the
+  VGADISK device returns 512 times as much data as is requested.  As a result,
+  it will crash most of the SFS software (since it returns around 25K of data
+  when 45 bytes are requested), as well as a number of other disk-related
+  utilities such as the DOS 6 scandisk.
+
+
+Problems with hardware
+
+A few pieces of hardware have been identified which have problems working with
+SFS.  These are listed below, along with possible workarounds and solutions to
+problems.
+
+ Bernoulli Drives
+
+  SFS currently does not work with Iomega's Bernoulli drives because the
+  Bernoulli needs a special OAD (Closed Architecture Driver) to allow access to
+  the drive, and Iomega won't tell anyone what this driver does or what's
+  needed to talk to a Bernoulli drive.  If large-capacity removable-media
+  encryption is required, it is recommended that a removable SCSI or IDE drive
+  (there are many brands available) be used instead of an Iomega product.
+
+ Phoenix BIOS and 3.5" Floppies
+
+  Some versions of the Phoenix BIOS give a multitude of disk errors when
+  encrypting a disk using mksfs.  The exact error type is uncertain since the
+  error code returned when the disk access fails is an undefined value.  This
+  only happens on a very small number of systems using the Phoenix BIOS, for
+  example a 1988 NEC machine with BIOS version 1.10 and a 1994 DEC machine with
+  BIOS version 1.03 don't exhibit the problem, but 1993 Zenith machines with
+  BIOS versions 1.01 and 1.03 do.  The problem appears to be specific to the
+  disk drive or controller hardware, and only crops up in a small minority of
+  machines using the Phoenix BIOS.
+
+  There are two possible workarounds to the problem.  The first is to run mksfs
+  from a DOS box under Windows.  Windows bypasses the BIOS disk access routines
+  with its own routines which don't exhibit the problem, and the disk
+  encryption can be carried out without any problems.  The second workaround is
+  to encrypt the disk on a machine with a different BIOS.
+
+  This bug only affects the operation of mksfs on 3.5" drives.  mountsfs,
+  chsfs, sfscard, the SFS driver, and mksfs on anything but a 3.5" drive are
+  unaffected by this BIOS problem.
+
+It has been reported that the Award 3.03 BIOS when used with some floppy drives
+also causes problems, especially with newer versions of DOS (version 6.0 and
+up), which may have great trouble reliably writing disks.  Microsoft's
+suggested solution to the problem is a BIOS upgrade, there have been no
+problems reported with SFS itself when used with this BIOS.
+
+Footnote [1]: It is also available from the NCR FTP site ftp.ncr.com as part of
+              the archive /pub/ncrchips/scsi/drivers/dos_win/dos_drv.zip.
+
+Footnote [2]: One such program is ASPI-ID, available for FTP from Simtel (via
+              its primary mirror site oak.oakland.edu, and all other Simtel
+              mirrors) as /simtel/msdos/diskutil/aspiid10.zip.  This program
+              will report information based on the SCSI Inquiry and Mode Sense
+              command, and can optionally save Mode Sense data to a file for
+              later reference.
+
+Footnote [3]: This is the famous recursive footnote[3].
+
+Footnote [4]: The KEYB driver provides a complete replacement for the BIOS int
+              9h keyboard driver.  KEYB is somewhat peculiar in its keyboard
+              handling, and doesn't coexist well with other keyboard handlers.
+              It also disables interrupts for lengthy periods of time while
+              processing keyboard scan codes.
+
+
+Authentication of SFS Software
+------------------------------
+
+There have been several occasions in the past when fake versions of software
+have been distributed.  Sometimes these fake releases are even wrapped up in a
+nice-looking "security envelope" guaranteeing their authenticity.  With
+encryption software like SFS it is all too tempting for an opponent to simply
+create and distribute a compromised version of SFS rather than try to break the
+SFS encryption itself.  In order to avoid any problems of this sort, the
+distributed SFS driver and executables are accompanied by a digital signature
+which can be used to verify that it is indeed an official version.
+
+In order to check the authenticity of the particular version of SFS, you will
+need the PGP encryption package, and my public key, which is included in the
+standard PGP distribution.  My key is signed by Philip Zimmermann, the original
+author of PGP, and several members of the PGP development team.
+
+First, you should check my key for authenticity with the command:
+
+  pgp -kc "Peter Gutmann"
+
+When it performs the key check, PGP should display the following signatures:
+
+  Type bits/keyID     Date    User ID
+  pub  1024/997D47 1992/08/02 Peter Gutmann <pgut1@cs.aukuni.ac.nz>
+  sig!      E722D9 1992/11/26   Branko Lankester <lankeste@fwi.uva.nl>
+  sig!      997D47 1992/10/11   Peter Gutmann <pgut1@cs.aukuni.ac.nz>
+  sig!      7C02F9 1992/09/07   Felipe Rodriquez <nonsenso@utopia.hacktic.nl>
+  sig!      1336F5 1992/09/05   Harry Bush <Harry@castle.riga.lv>
+  sig!      67F70B 1992/09/02   Philip R. Zimmermann <prz@sage.cgd.ucar.edu>
+
+There may be other signatures present as well, but those shown about are the
+ones from the PGP development team and are the most important ones.  Version
+2.1 and above of PGP can, in addition, generate a key fingerprint for a key.
+This can be calculated with the command:
+
+  pgp -kvc "Peter Gutmann"
+
+PGP should display the following:
+
+  pub  1024/997D47 1992/08/02 Peter Gutmann <pgut1@cs.aukuni.ac.nz>
+            Key fingerprint = 7C 6D 81 DF F2 62 0F 4A  67 0E 86 50 99 7E A6 B1
+
+If the keyID or key fingerprint for my key differ from the ones shown above or
+the signatures don't check out, then the key is a probably a fake and shouldn't
+be trusted.  Assuming the key is in order, you can check the authenticity of
+the device driver and the support software with:
+
+  pgp sfs.sig sfs.sys
+  pgp <program>.sig <program>.exe
+
+where sfs.sig and <program>.sig are the digital signatures included with SFS as
+distributed.  For example to check the authenticity of the mksfs program type:
+
+ pgp mksfs.sig mksfs.exe
+
+When it performs the check, PGP should display:
+
+  Good signature from user Peter Gutmann <pgut1@cs.aukuni.ac.nz> .
+  Signature made <date of signature>
+
+If PGP reports a bad signature then you shouldn't trust the executable.  You
+can obtain a new, hopefully untouched, version from any archive site, BBS, or
+system which carries the standard SFS distribution, or get it directly from the
+author.
+
+
+Applications
+------------
+
+Apart from the simple use of SFS for personal and business data privacy, there
+are a number of other possible applications for which it can be used.  Some of
+these are listed below.
+
+
+Secure Information Exchange
+
+If a communications channel is available between two systems which use SFS,
+confidential data can be transferred from one encrypted SFS volume to the other
+by using encryption on the communications channel.  For example a businessman
+whose work involves a lot of travel could read data off the SFS volume on his
+portable computer and encrypt it as it is sent via modem to his place of work.
+At work the data could be decrypted and written to another SFS volume.  The
+only time the data is available in an unencrypted form is while it is being
+read off the SFS volume and re-encrypted for transmission, which represents a
+minimal risk as interrupting the transmission will involve stopping the program
+which will (presumably) contain error handlers which erase any sensitive
+information from memory.
+
+Using a package like PGP (Pretty Good Privacy) or a PEM (Privacy-Enhanced Mail)
+implementation in conjunction with SFS allows the secure distribution of
+information through an online service like a computer bulletin board.  The
+online system can retrieve the public key of the person requesting the
+information, read the required data off the SFS volume into the encryption
+program where it is encrypted with the recipients public key, and transmit it.
+At the other end the recipient will decrypt the data with their private key and
+write it straight onto their own SFS volume.  Again, the amount of time in
+which unencrypted data is available is minimal, and properly implemented
+software will destroy any sensitive information if interrupted in any way.
+
+
+Defence in Depth
+
+With the increasing strength of cryptographic software which is becoming
+available to the public, means of compromising encryption security which don't
+involve breaking the encryption itself are becoming more and more desirable.
+This may involve things like creating fake versions of the encryption software
+which have trapdoors in them and planting them in a victim's system, planting
+versions which save the entered password somewhere and then restore the
+original unaltered copies, or similar tricks.  This means that for maximum
+security it is necessry to not only protect the password, but also to protect
+the encryption software itself, and any software which interacts with it, and
+anything which interacts with that, ad nauseum.  If several encryption and
+security packages are used, every one of these must be protected separately.
+
+By using SFS, some degree of protection is offered against malicious
+manipulation, since an attacker must first get to the software stored on an SFS
+volume in order to compromise it.  Storing other security-related software on
+an encryption volume takes it out of the reach of any attack, but makes the SFS
+software itself more of a target for an attack.  Eventually this problem can be
+reduced somewhat through the use of SFS encryption hardware, which is currently
+under (very gradual) development.  Another possibility is to store duplicate
+copies of the SFS software on an encrypted volume which is initially mounted
+read-only using the unencrypted, untrusted copies.  The trusted versions on the
+SFS volume can be compared (using software also stored on the SFS volume) with
+the untrusted versions, and if they are identical to the trusted reference
+versions, write access to the volume can be enabled and the volume used as
+normal.  Another possibility is to simply store checksums or digital signatures
+for the SFS programs on the encrypted volume, and only write-enable it if the
+checksums or signatures check out.
+
+Booting into an encrypted partition, as described in the section "Advanced SFS
+Driver Options" above, which contains "clean" copies of the SFS software, and
+comparing the clean driver or checksum with the one used to boot into the
+encrypted partition, will reduce the risk of malicious manipulation of the SFS
+software even further.
+
+
+Using SFS for Virus Protection
+
+SFS can be used as a form of virus protection for large collections of
+computers by using it to create a centralised entry point for all data to the
+system.  Consider a company operating 1,000 separate machines.  Normally this
+would require 1,000 copies of a virus scanner to be installed and updated every
+few months as new viruses appear.  In addition, use of the scanner on every one
+of the 1,000 machines would have to be enforced rigorously.
+
+An alternative is to install SFS on each of the machines, and make a policy
+that only SFS-encrypted disks will be used within the company.  Then a single
+scanner can be installed on a single machine, and all disks brough in from the
+outside scanned and encrypted on that machine.
+
+If every computer is initially virus-free, and all disks are SFS-encrypted,
+then there are two possible means of attack for a virus.  The first is to
+infect a file or disk when it is outside the company.  However as disks
+originating from within the company are encrypted, no files (or, indeed,
+anything) are visible on them, so there is nothing for a virus to infect (in
+fact, DOS won't even recognise the disks as being formatted).  All disks
+originating from outside the company have to be processed by the single
+controlled computer before they can be used (or SFS will refuse to mount them),
+meaning that any known virus on a non-company disk should be picked up before
+the disk is encrypted.
+
+Alternatively, a boot sector virus could infect an SFS-encrypted disk[1].
+However, if an attempt is made to use the infected disk (which involves
+mounting it), the mount will fail as the boot sector will contain the virus
+rather than the SFS volume header.  The person who tried to mount the volume
+will assume the disk has not been "converted" yet, and will bring it to the
+machine used for processing the disks.  At this point the virus can be found by
+the scanner.  Although in theory an SFS disk whose volume header is overwritten
+by a virus would be damaged beyond repair, in practice it can often be
+recovered[2].
+
+This procedure isn't totally error free.  For example, it won't work if there
+are already viruses present on one or more of the machines before SFS is
+installed. However it does provide a reasonable amount of protection, and has
+the pleasant side effect of keeping all the company records secure against
+unauthorized access attempts.
+
+Footnote [1]: Boot sector viruses aren't terribly concerned about the exact
+              operating system or disk format of a disk they infect.  Most of
+              them use the "blind write" technique which involves hooking the
+              BIOS disk I/O interrupt and waiting for a read call to the boot
+              sector.  Once this call is detected, they either issue their own
+              reads to detect whether the disk is already infected, or wait for
+              the call to return from the BIOS read and look at the I/O buffer
+              to check for the infection.  In either case if the disk is not
+              infected, they infect it then and there.  Since DOS always tries
+              to read the boot sector when it notices a disk has been changed,
+              this type of virus gets to infect any disk (even non-DOS formats
+              such as the ones used by some PC Unixen, assuming the BIOS
+              routines are capable of reading/writing them).
+
+Footnote [2]: In fact, most boot sector viruses retain a hidden copy of the
+              original boot sector in various hiding places (at the end of the
+              root directory, on the last physical sector on the disk, in a
+              sector on a specially-formatted extra track, or in a "bad"
+              sectors), so that a copy of the SFS volume header is probably at
+              hand.  Only a relatively small number of viruses (for example
+              AntiCMOS, which includes a stripped-down and vaguely
+              MSDOS-compatible boot loader as part of its code, and WET, which
+              includes a trivial boot loader which just prints a "Not bootable"
+              message and loads the virus) actually overwrite the boot sector
+              on a floppy disk without making a backup.  In addition, since
+              some viruses make even a regular disk inaccessible to DOS after
+              an infection (an example being the Stoned virus, which writes a
+              parameter block for a 360KB disk onto any disk it infects), many
+              anti-virus programs will perform boot virus removal in "physical
+              mode" where access to the DOS logical volume usually associated
+              with the physical drive is unimportant.  Such software will fix
+              up infected SFS-encrypted floppies without complaint, assming the
+              virus keeps the old boot sector somewhere, and that if the virus
+              saves the boot sector in a scrambled form that the anti-virus
+              software is aware of the need to unscramble it during the
+              recovery process (for example, when the Stoned.Empire.Monkey.*
+              viruses infect the hard disk, they save the master boot record in
+              scrambled form which first needs to be unscrambled by the
+              virus-removal software).
+
+              Some anti-virus programs offer a "generic" technique for removing
+              boot-sector viruses which consists of overwriting the existing
+              boot sector with some form of BIOS-compatible (though usually
+              non-bootable) boot sector, which wouldn't fix an infected SFS
+              disk.  In this case a knowledgeable user could search the disk
+              for the original SFS boot sector and write it back into its
+              proper place.
+
+              One possible problem is that if a user inserts an infected disk
+              (which SFS can't recognise) and attempts to reboot the machine,
+              booting off the infected floppy, the virus is immediately
+              activated and the user's hard drive is infected.  If the virus is
+              a stealth virus (for example Exebug), then the infected disk
+              which was previously unrecognisable to SFS is suddenly "fixed"
+              because the virus substitutes the original SFS boot sector which
+              has been hidden elsewhere on the disk for the virus-infected boot
+              sector.  A simple solution to the problem of a panic reboot by a
+              user causing an infection is to force the machine to boot from
+              the C: drive rather than the A: drive.  Since SFS only runs on
+              386+ machines, it is very likely that the selectable boot
+              sequence feature is present in the BIOS.

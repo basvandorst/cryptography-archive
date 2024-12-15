@@ -1,0 +1,80 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!ames!sgi!wdl1!nebula!koontzd
+From: koontzd@nebula.lrmsc.loral.com (David Koontz )
+Subject: Re: Product cyphers, cypher block chaining and pipelining
+Message-ID: <1993Jul8.222703.7850@wdl.loral.com>
+Sender: news@wdl.loral.com
+Organization: Loral Rolm Computer Systems  
+References: <C9G47A.3LI@dcs.ed.ac.uk> <1993Jul1.104944.7779@infodev.cam.ac.uk> <C9v20w.A37@news.cso.uiuc.edu>
+Distribution: usa
+Date: Thu, 8 Jul 1993 22:27:03 GMT
+Lines: 68
+
+>From: mitchell@mehlville.ncsa.uiuc.edu (myself)
+>
+>One of the questions asked in the original posting related to the purpose
+>of the IP transformation.  While I don't know why it does what it
+>does, I can show you what it does.  What follows is ASCII text, expanded
+>out to binary.  The text is show both before and after the IP.
+>The notation to the left is used to index a specific 64-bit block.
+
+The DES standard as found in FIPSPUB46(-1) is a description of a hardware
+implementation of an algorithm.  The initial permutation (IP) is a
+description of where bits from a byte wide interface end up when collected
+together into a 64 bit block (LR).  The implication is that this is done
+using serial inputs into octal registers which are read in parallel and 
+loaded in parallel during round iteration.
+
+BYTE PORT	Initial Permutation		Left/Right Block
+   BIT		 Input Block
+					     L
+    1		57 49 41 33 25 17  9  1		 1  2  3  4  5  6  7  8
+    3		59 51 43 35 27 19 11  3		 9 10 11 12 13 14 15 16
+    5		61 53 45 37 29 21 13  5		17 18 19 20 21 22 23 24
+    7		63 55 47 39 31 23 15  7         25 26 27 28 29 30 31 32
+    					     R
+    0		56 48 40 32 24 16  8  0		 1  2  3  4  5  6  7  8
+    2		58 50 42 34 26 18 10  2		 9 10 11 12 13 14 15 16
+    4		60 52 44 36 28 20 12  4		17 18 19 20 21 22 23 24
+    6		62 64 46 38 30 22 14  6         25 26 27 28 29 30 31 32
+    
+The odd bits from 8 succesive input bytes are placed in the Left Block.
+The even bits go to the Right Block.  The bit-in-byte ordering is 
+little-endian.  The Inverse Initial Permutation maps the inverse, with
+respect to an implied output register following round 16 (the output
+block is R16L16 to allow decryption).
+
+What you were seeing is diffusion of the input, a result of this odd/even 
+selection.  Possibly the odd/even permutation was selected to provide
+better diffusion of a particular data input format (say 7 bit ascii),
+avoiding evenly spaced known values in the E permutation (the 8th bit).
+
+Something similar occurs for PC1 on the key port, with bit 0 being the
+parity bit.  56 bits of key and 8 bits of parity (which is usually
+simply discarded) are input to a byte wide port.  The C and D registers
+are only 28 bits each.  C and D registers each take 4 bits from input
+byte bit 4.  Thus C and D registers can be comprised of 3 octal and 1
+quad register.  
+
+BYTE PORT	Permuted Choice 1		C/D Block
+   BIT		 Input Block
+					     C
+    1		57 49 41 33 25 17  9  1		 1  2  3  4  5  6  7  8
+    2		58 50 42 34 26 18 10  2		 9 10 11 12 13 14 15 16
+    3		59 51 43 35 27 19 11  3		17 18 19 20 21 22 23 24
+    4		60 52 44 36 			25 26 27 28
+    					     D
+    7		63 55 47 39 31 23 15  7		 1  2  3  4  5  6  7  8
+    6		62 64 46 38 30 22 14  6		 9 10 11 12 13 14 15 16
+    5		61 53 45 37 29 21 13  5		17 18 19 20 21 22 23 24
+    4			    28 20 12  4		            25 26 27 28
+
+    0		56 48 40 32 24 16  8  0	    	parity (discarded)
+    
+24 bits are used from each of C and D according to PC2 to select 48 bits
+of key used in each round.  The values of C and D are right or left
+or right shifted one or two bits each round according to encryption/decryption
+and the key schedule. 
+
+These can easily be generalized for different size buses or translated
+for big-endian bit-in-byte order.  The scheduled key can likewise be done

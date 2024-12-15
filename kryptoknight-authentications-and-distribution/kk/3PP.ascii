@@ -1,0 +1,1368 @@
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ A MODULAR FAMILY OF SECURE PROTOCOLS FOR AUTHENTICATION AND KEY DISTRIBUTION
+ ____________________________________________________________________________
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+    R. Bird(1), I. Gopal(2), A. Herzberg(2), P. Janson(3), S. Kutten(2), 
+    R. Molva(4), M. Yung(2)
+ 
+ 
+ 
+ABSTRACT
+________
+ 
+One essential function for achieving security in computer networks is reli-
+able authentication of communicating parties and network components.  State-
+of-the-art implementations of this function typically rely on exchanges of
+cryptographic messages between the entities to be authenticated.  Such
+exchanges in turn require that the involved parties be able to acquire shared
+secret keys or certified public keys.  The issues of authentication and key
+distribution in the context of distributed applications have already been
+largely addressed by designs such as Kerberos and X.509.  However, providing
+such functions in the more primitive contexts of lower-layer network mech-
+anisms presents challenges in terms of system management, ease of use, effi-
+ciency, and flexibility.
+ 
+This paper presents a modular family of protocols suitable for meeting the
+basic requirements of network security:  authentication, key distribution and
+network sign-on.  It argues that key distribution may require substantially
+different approaches in different network environments and shows that the
+proposed family of protocols offers a flexible palette of compatible sol-
+s addressing many different key distribution scenarios.  Similarly, the
+paper explains that network sign-on may also require different approaches
+depending on the technology users can afford, and it proceeds to show that
+the proposed protocol family covers many possible sign-on scenarios.  All
+protocols use concepts of a common basic authentication protocol that has
+been tested for security against a wide set of attacks, called interleaving
+attacks.
+ 
+ 
+ 
+ 
+ 
+___________________________________________________________________________
+(1) IBM Corp., Research Triangle Park, N.C. 27709
+(2) IBM T. J. Watson Research Center, N.Y. 10598
+(3) IBM Zurich Research Laboratory, 8803 Ruschlikon, Switzerland.
+(4) Eurecom/CICA, Sophia-Antipolis, 06560 Valbonne, France
+ 
+ 
+1                
+ 
+ 
+ 
+1. INTRODUCTION
+_______________
+ 
+The steadily growing use of computer networks is fostering increasing con-
+cerns about network security.  One of the main issues is effective control of
+access to network components and resources by expanding populations of users,
+some of which cannot always be trusted to use the network properly.  An
+essential requirement for implementing suitable access controls is a mech-
+anism for reliable AUTHENTICATION  of communicating entities and network
+users.
+ 
+State-of-the-art authentication protocols typically rely on exchanges of
+cryptographic messages between entities wanting to authenticate one another
+prior to or during actual communication.  Such exchanges in turn demand that
+the communicating parties be able to ACQUIRE CRYPTOGRAPHIC KEYS  for per-
+forming the necessary authentication exchanges - such keys may be secret keys
+shared by the parties if symmetric cryptography is used, or public keys cer-
+tified by a trusted authority if asymmetric cryptography is used.  The issues
+of authentication and key distribution in the context of distributed applica-
+tions have already been largely addressed by designs such as Kerberos and
+X.509.  However, providing such functions in the more primitive environments
+of low-level networking mechanisms presents challenges in terms of system
+management, ease of use, efficiency, and flexibility.
+ 
+In turn, state-of-the-art key distribution techniques typically require that
+network parties possess some initial secret to prove their identity and
+acquire the necessary keys to communicate with one another.  This poses
+little difficulty to hardware or software entities attached to the network,
+as they can maintain secret information safely on some storage device.
+However, human beings need to access networks over time from different work-
+stations located in various places, so they need to carry their secret
+around.  Unfortunately, humans are not good at memorizing cryptographic keys
+because these are just meaningless bit strings to them.  At best they can
+remember alphanumeric passwords.  However, passwords are poor secrets to use
+in a cryptographic environment.  To bridge the gap between the poor proper-
+ties of passwords and the strong properties of cryptograhic secrets, users
+require a SIGN-ON mechanism to acquire strong cryptographic secrets given a
+mere password.
+ 
+This paper presents a modular family of protocols for providing
+authentication, key distribution, and sign-on functions in network environ-
+ments.  It explains why existing designs aimed at distributed application
+environments are not suited to lower-layer network mechanisms.  It argues
+that key distribution may require substantially different approaches in dif-
+ferent network environments and it shows that the proposed family of proto-
+cols offers a flexible palette of compatible solutions addressing many
+possible cases.  Similarly, the paper explains that network sign-on also may
+require different approaches depending on the technology users can afford,
+and it proceeds to show that the proposed protocol family covers all these
+requirements as well.  A common basic authentication protocol that has been
+tested against a wide range of attacks, called interleaving attacks, serves
+as the foundation for the entire family of protocols.  It is described in the
+following section.
+ 
+ 
+ 
+2  
+
+ 
+ 
+2. TWO-WAY AUTHENTICATION - BASIC PROTOCOL
+__________________________________________
+ 
+As suggested in the introduction, one of the most basic functions required to
+enforce any network security is the ability for communicating parties to
+prove their identities to one another.  State-of-the-art techniques for pro-
+viding such authentication rely on exchanges of cryptographic messages.  Many
+such protocols have been designed, some have been standardized, e.g.  X.509
+[ISO9594-8], or are in common use, e.g.  as part of the Kerberos system
+[Steiner88].  In all these designs, each party proves its identity to the
+other by demonstrating knowledge of a secret, typically a cryptographic key,
+through encryption of a challenge (time-stamp, counter, or one-time random
+number) that changes with every execution of the protocol.  However these
+designs have been targeted at distributed application environments.  They
+present a number of features that make their use cumbersome or undesirable in
+the more primitive environments of link, network, or transport protocols
+below the application layer.  Specifically they exhibit exchanges of rela-
+tively large cryptographic messages that require relatively heavy computa-
+tions.  Simpler protocols can and indeed have been designed.  However, the
+simpler they get, the harder it becomes to design them right from the secu-
+rity point of view.  In [Bird91, Bird92], we introduced a family of
+authentication protocols that are at the same time efficient in message size
+and computation overhead, and resistant to a wide set of attacks known as
+interleaving attacks.
+ 
+ 
+-----------------------------------------------------------------------------
+ 
+                A                       B
+ 
+                         A, Na
+(1)              ----------------------->
+ 
+                B, Nb, MACb(Na, Nb, Na+B)
+(2)             <-----------------------
+ 
+                       MACa(Na, Nb)
+(3)              ----------------------->
+ 
+-----------------------------------------------------------------------------
+Figure 1. Secure two-way authentication protocol
+ 
+One of the protocols derived from that work is represented in Figure 1.  In
+this figure, the letters A and B stand for the identifiers of two network
+entities performing mutual authentication.  The variables N1 and N2 are one-
+time random numbers (called nonces) used by each party to challenge the other
+to prove its identity.  The notations MACb and MACa denote cryptographic
+one-way hash functions, called Message Authentication Codes, computed with
+keys Kb and Ka respectively, and used to guarantee the authenticity of mes-
+sages from B to A and from A to B respectively.  The commas inside the MAC
+parantheses indicate plain concatenation of the variables composing the mes-
+sages.  The '+' sign indicates an exclusive-or operation).  With an asym-
+metric cryptographic system such as RSA [RSA83], Kb would be a key private to
+B while Ka would be a key private to A, each party having to know the other
+party's matching public key to verify the cryptographic MAC.  With a sym-
+ 
+ 
+3              
+ 
+ 
+metric cryptographic system such as DES [DES77], Ka and Kb are (typically
+equal) secrets shared by A and B.  A simpler technique using Ka and Kb as
+shared secret keys consists simply of applying a suitable one-way hash func-
+tion (e.g.  the MD5 algorithm [Rivest91]) to the authenticated message con-
+catenated with the secret key [Tsudik92].  Using such a true one-way hash
+function instead of a cryptographic algorithm has the added advantage that
+the resulting implementation is not subject to the export controls applicable
+to cryptographic technology in many countries.
+ 
+In addition to being exportable and aside from having been tested for secu-
+rity against interleaving attacks, the above protocol presents an important
+advantage for low-layer networking environments as it requires a minimal
+amount of computation and minimal-size messages.  The protocol is partic-
+ularly well-adapted to secure such primitive network functions as remote
+booting, etc.  Indeed, the longest message (on flow (2)) requires only three
+variables:  the cleartext identifier B of the sending party (which would typ-
+ically already be included in the message header), the cleartext nonce N2,
+and the result of the cryptographic MAC computation, which could be as short
+as 128, 64, or even 32 bits, depending on the function used for the MAC com-
+putation.  For further details on the protocol or the theory behind it, the
+reader is referred to [Bird91 and Bird92].  This protocol is the basis for
+the entire family of protocols to be discussed in this paper.
+ 
+ 
+ 
+3. KEY DISTRIBUTION - EXISTING DESIGNS AND LIMITATIONS
+______________________________________________________
+ 
+The above protocol, like any cryptographic two-way authentication protocol,
+requires that parties A and B know the keys Ka and Kb required to carry out
+the MAC computations.  With the MD5 algorithm or with a symmetric
+cryptographic system such as DES, this implies that the two parties must have
+acquired Ka and Kb in the past over a secret channel.  With an asymmetric
+cryptographic system such as RSA, this implies that each party must have
+acquired the other party's public key in the past over a trusted channel.
+Since the other party's key is not secret, the channel need not provide
+secrecy, but it must be trusted (authenticated and tamper-proof) to guarantee
+to each party that the public key it receives over that channel pertains to
+the claimed other party.  Without such trust, an intruder could inject in the
+channel to A its own public key, claiming it was B's so it could later
+impersonate B in the eyes of A.
+ 
+In a large network with tens, hundreds, or even thousands of switching nodes
+and server computers, and several orders of magnitude more client work-
+stations and users, the problem of the distribution and safe-keeping of
+shared secret keys or trusted public keys is not trivial.  It is complex
+enough that one must abandon right away the idea of casual (manual) distrib-
+ procedures outside the system.  Automated techniques based on elec-
+tronic exchanges over the network are required.
+ 
+Several schemes have been designed for automating key distribution services
+in distributed systems [e.g.  Needham78, Denning81, Bauer83, Needham87,
+Otway87, Kehne92].  Some of these have lead to notable implementations or
+standards, e.g.  the Kerberos [Steiner88] and ANSI X9.17 [ISO8732] schemes,
+ 
+ 
+4  
+ 
+ 
+ 
+which use DES technology, or the ISO-CCITT X.509 Directory Authentication
+scheme [ISO9594-8], which assumes public key technology.  These schemes vary
+in popularity.  Kerberos is the basis for the security component offered by
+the Open Software Foundation (OSF (TM)) as part of its Distributed Computing
+Environment (DCE) product.  However, just as with authentication protocols,
+the key distribution protocols defined by these designs are targeted at dis-
+tributed application environments, and thus present a number of features that
+make their use cumbersome or undesirable in more primitive environments such
+as low-function link, network, or transport protocols, or remote booting pro-
+tocols.
+ 
+ 
+ 
+3.1. USE OF LARGE NETWORK MESSAGES
+ 
+One aspect of many existing key distribution designs that is ill-suited for
+low-end networking environments is the use of relatively large messages,
+often referred to as tickets or certificates, to transport keys around the
+network.  Large messages do not represent a particular problem in application
+environments for which these existing designs were conceived.  However, in
+scenarios involving primitive entities at lower layers of the network archi-
+tecture, the formats of typical link, network, or transport-layer protocol
+data units usually do not accomodate long fields easily.  Economy of space is
+in order.  The authentication protocol we discussed above already addressed
+this issue.  The key distribution protocols discussed hereafter were designed
+in the same spirit.
+ 
+The use of long cryptographic messages also implies a relatively generous use
+of cryptographic operations in the encryption and decryption of those mes-
+sages.  Such operations are intensive in terms of computation.  Where
+cryptographic hardware support is available, this poses no problem.  Even
+software implementations are acceptable where relatively simple cryptographic
+algorithms are used (e.g.  Kerberos uses a software implementation of DES).
+However, in primitive networking mechanisms, one cannot make the assumption
+that sufficient cryptographic hardware or software processing capacity is
+available and affordable.  In those cases, an economy of cryptographic oper-
+ations is useful.  Like the authentication protocol discussed above, the key
+distribution protocols to be introduced address this economy of mechanism
+aspect.
+ 
+ 
+ 
+3.2. EXPOSURE TO EXPORT RESTRICTIONS
+ 
+An unfortunate and sometimes surprising consequence of using cryptographic
+messages, especially large ones, in authentication and key distribution pro-
+tocols is that they become subject to various administrative controls in
+several countries that have restrictions on the export, import, and sometimes
+even usage of cryptographic devices.  However, in many countries (e.g.  the
+USA) restrictions apply to the use of such devices for bulk data encryption
+and decryption.  When the devices are designed (tailored) so that they can be
+used only for computing and verifying the integrity of messages through short
+(typically less than 128-bit) MACs, using one-way hash functions rather than
+encryption and decryption functions, their distribution and use poses no
+ 
+ 
+5 
+ 
+ 
+problem.  Like the previously discussed authentication protocol, the key dis-
+tribution protocols discussed hereafter avoid such problems by using only MAC
+computations instead of encryption and decryption of messages, as do Kerberos
+and X.509, for instance.
+ 
+ 
+ 
+3.3. REQUIREMENTS ON NETWORK CONNECTIVITY
+ 
+Most of the existing key distribution methods have been tailored to the rela-
+tively narrow operational scenarios of specific distributed applications.
+Such operational assumptions cannot be realistically accomodated in certain
+primitive networking environments.
+ 
+For instance, any scheme relying on time-stamps favors Local Area Network
+(LAN) environments, where all network users have easy access to a common
+trusted time server.  While requiring synchronized clocks in a Wide Area
+Network (WAN) is conceivable, it certainly confers another dimension to the
+challenge, especially if real-time clock synchronization must be acquired by
+primitive network components such as link adapters.
+ 
+More importantly, existing schemes make specific assumptions about network
+configuration and connectivity models.  They typically assume that keys can
+be acquired either from a directory (e.g.  certified public keys from the
+X.500 directory) or from some key distribution center (KDC) or authentication
+server (e.g.  X9.17 or Kerberos).  Either assumption requires that the enti-
+ties seeking to acquire keys know how to reach the necessary directory or KDC
+and have connectivity to it.  Existing designs typically dictate a specific
+communication paradigm for contacting the directory or KDC.  For instance,
+when a client A wants to communicate with a server B, Kerberos specifies that
+A must obtain the necessary keys from the KDC prior to communicating with B,
+which is sometimes called the PUSH MODEL.  By contrast X9.17 specifies that A
+must contact B first, and let B get the necessary keys from the KDC, which is
+sometimes referred to as the PULL MODEL.
+ 
+Both models are justified in their own environments.  In the LAN environments
+for which Kerberos was initially designed, requiring the clients rather than
+the servers to get the keys makes sense because it distributes the burden of
+getting keys over individual clients, thus alleviating the task of shared
+servers.  In the WAN environments for which X9.17 was designed, the opposite
+approach is justified because there are typically many more clients than
+servers and KDCs are typically located closer to servers than to clients.
+Under such circumstances, the amount of system definition (configuration) and
+the cost of client-KDC connections required by the Kerberos approach could
+become prohibitively high in a WAN context.
+ 
+Dictating a fixed connectivity pattern is possible in well-defined applica-
+tion environments where operating assumptions are clear.  However this is
+unreasonable in generic network environments, where the context may rule out
+certain possibilities.
+ 
+Consider for example a situation where a mobile or otherwise unidentified
+station dials into a network, and must be authenticated by the nearest
+ 
+ 
+6  
+ 
+ 
+ 
+switching node (Intermediate System) before being allowed to contact any
+station across the network.  This scenario clearly rules out the Kerberos-
+like push model, where the newcomer should contact the KDC before talking to
+the switching node.  By contrast, consider a situation where two switching
+nodes of a partitioned network re-establish contact and need to authenticate
+one another.  In this case, which of the two nodes should contact the KDC may
+depend on which network partition the KDC is in.  Even in cases where phys-
+ical connectivity exists, it may be impossible (for route configuration
+reasons) or undesirable (for security reasons) to provide some logical
+connectivity.  The family of protocols described hereafter offers the flexi-
+bility of negotiating connectivity patterns at run-time to communicate with a
+KDC or directory.
+ 
+ 
+ 
+4. KEY DISTRIBUTION FOR NETWORK ENVIRONMENTS
+____________________________________________
+ 
+Used with MD5 hashing, DES MAC, or any other shared-key one-way function, the
+authentication protocol described earlier presents the advantages of
+requiring only short messages and having been tested against interleaving
+attacks.  In addition, with DES or other encryption functions used as one-way
+functions, the object code of an implementation may be exported as long as it
+does not offer any handle for decryption.  With MD5, even the source code of
+an implementation may be exported since it need not embody any reversible
+encryption function, such as DES for instance.  However MD5 (or DES) requires
+that pair-wise shared secret keys be distributed to any two parties wishing
+to authenticate one another.  This section will describe a suitable key dis-
+tribution protocol for this purpose.  It builds on the basic two-way
+authentication protocol, thus inheriting many of its properties, and it is
+flexible and non-prescriptive as far as network configuration and
+connectivity are concerned, thus supporting both the push and pull models of
+key distribution.
+ 
+ 
+ 
+4.1. CERTIFICATES AND TICKETS
+ 
+The distribution of secret keys from the KDC to its network parties requires
+that secret channels be used.  In a symmetric cryptography context, it is
+natural to envision securing such channels through symmetric encryption.
+This in turn requires that each party in the network share with the KDC at
+least one secret key, which it can use to secure the channel to the KDC.  We
+call this secret key shared with the KDC the party's main KEY-ENCRYPTION KEY
+(KEK)
+ 
+The nature of the messages exchanged between a KDC and its clients over the
+secret channel they share is actually reminiscent of public key certificates:
+a key distribution message issued by the KDC to one of its clients, also
+referred to as a ticket, must by definition include the distributed key; it
+must also include a key stamp (e.g.  some combination of key version number,
+time-stamp, and/or lifetime interval) indicating that the key is fresh and
+valid; it must finally include the identifier of the party with which the key
+is intended to be used.  (If it did not include that identifier, an intruder
+X could substitute one certificate for another, thus tricking a party A into
+ 
+ 
+7  
+ 
+ 
+accepting as the key meant to authenticate B some other key that X happens to
+know, which in turn would allow X to impersonate B.) Thus, secret key tickets
+contain essentially the same sort of information as public key certificates,
+the main differences being the size and secrecy of the distributed key.
+ 
+In the ensuing discussion, we adopt the following notation:
+ 
+                Kx              Party X's KEK
+                Kxy             Secret key shared by X and Y
+                Ex(M)           Encryption of M under key Kx
+                Exy(M)          Encryption of M under key Kxy
+                MACxy(M)        Message Authentication Code
+                                for message M under key Kxy
+ 
+A ticket for giving A a shared secret key Kab to communicate with B in
+general must have the generic form:
+ 
+  Tab = Ea(Kab, B, stamp, other key attributes).
+ 
+This indeed resembles very much the syntax of tickets used in Kerberos.  If
+party names such as B (or addresses or other identifiers), key stamp, and
+other attributes are long, expressions such as this one result in long
+cryptographic messages, which lead to the packet size and export problems
+explained earlier.
+ 
+However, in primitive network environments, hardly any key attribute is nec-
+essary beyond the identifier of the party with which the key is associated
+and the key stamp.  Furthermore, as observed by the X9.17 designers, the only
+thing that really needs to be kept secret in a ticket is the key itself.  The
+party identifier and key stamp may but need not be kept secret in principle.
+Thus a ticket syntax similar to the one used in X9.17 is sufficient:
+ 
+(a) Tab = {Ea(Kab), B, stamp}, MACa(previous 3 fields),
+ 
+where the party identifier and key stamp are transmitted in cleartext but are
+tied to the key by the appended MAC vector.  This format solves the export
+problem because MAC implementations are exportable, and the only usage of
+full encryption is on the key itself, which is short and somewhat more
+acceptable under export controls.  It helps the message size problem in the
+sense that key attributes are kept to a minimum, although a MAC field is
+added to tie them back to the key.
+ 
+However, for certain tickets, X9.17 also uses an even better (shorter) form
+of ticket, which it calls a notarized key.  This notarization method consists
+of folding the key attributes - in the X9.17 case, the party names and a
+unique key stamp derived from a counter - into the KEK that is used to enci-
+pher Kab.  The resulting ticket format becomes simply
+ 
+                Tab = Ea*(Kab),
+ 
+where the notarization key Ka* is a function of Ka, the party identifiers and
+the unique key stamp.  X9.17 happens to use a rather complicated function for
+combining the party names and key stamp into Ka*.  However, looking at
+ 
+ 
+8  
+ 
+ 
+ 
+expression (a) above, one can observe that a simple yet secure way to hash
+these variables into Ka* is to define
+ 
+(b)             Ka* = MACa(B, stamp),
+ 
+where the key stamp proving the freshness and validity of the key may include
+a creation and/or expiration time-stamp, a key version number, and/or a one-
+time random number (nonce) issued by the party who requested the key.  The
+resulting key Ka* is thus computable only by the KDC and by A, who are the
+only ones to know Ka, and can be used to encipher Kab.  Thus, the party iden-
+tifier and key stamp can be transmitted fully in the clear, because their MAC
+integrity vector under key Ka is tied to Kab as part of the encrypted ticket
+used to transmit Kab.
+ 
+This is one of the ideas behind the ticket syntax used in the family of
+server-based protocols to be described in the following section.  Another
+idea is that encryption of Kab under Ka* may be done using any algorithm.
+DES would be fine if it is the local standard, but anything else will do as
+long as it is secure.  One simple choice is to use Ka* simply as a one-time
+pad, i.e.  to compute its exclusive-or with Kab.  This is less complex than
+DES, not to mention the fact that the XOR operation is available on any com-
+puter and not subject to export controls.  Under this assumption, tickets are
+simply of the form
+ 
+                Tab = B, stamp, (Ka* XOR Kab),
+ 
+where Ka* is computed according to expression (b) above, using any suitable
+MAC algorithm, such as MD5 with Ka as a secret prefix for example [Rivest91].
+A corresponding ticket for the distribution of the same key to B would be
+ 
+                Tba = A, stamp', (Kb* XOR Kab),
+ 
+with Kb* = MACb(A, stamp') and stamp', depending on the nature of key stamps,
+may or may not be different from the stamp used in Tab.  However, when
+XOR-based notarization is used, it is essential that each key stamp be
+unique, otherwise an intruder, having managed to obtain one key Kab, could
+derive Ka* and Kb*, and thus obtain subsequent keys shared by A and B, using
+the fact that Ka* and Kb* may not change for every Kab issued.
+ 
+The resulting ticket syntax is thus exportable and leads to short messages,
+especially since the identifiers of the involved parties are often already
+included in the various network messages and need not be repeated.  In some
+specific scenarios where the key stamp is just a counter value or a nonce
+known from the context, it is not even necessary to transport it across the
+network.  In such cases, a ticket boils down to just the notarized key
+itself, nothing else, thereby allowing minimal-size messages.
+ 
+With the foregoing discussion on the content and syntax of tickets behind us,
+we are in a position to describe a family of flexible KDC-based protocols
+that avoid as much as possible all the limitations of existing application-
+layer designs mentioned earlier.
+ 
+ 
+ 
+ 
+ 
+9  
+ 
+ 
+4.2. SCENARIOS AND PROTOCOLS
+ 
+A guiding concept behind our family of KDC protocols is its flexibility and
+adaptability to all possible network configurations and connectivity pat-
+terns.  The KDC is meant to distribute secret keys to network entitites at
+any layer of any network architecture, and can do so according to any of the
+scenarios described hereafter, all the while reducing message size, computa-
+tional load, system definition, and export control issues.  In all coming
+scenarios, two entities A and B want to authenticate one another but have no
+key Kab initially.  At the issue of the scenario, the two entities have
+obtained a copy of the same shared secret key Kab and authenticated one
+another.  (Any message they exchange subsequently can also be authenticated
+in the same way using the same key Kab.)
+ 
+ 
+ 
+A-B-K Pull Scenario
+ 
+ 
+-----------------------------------------------------------------------------
+ 
+        A                       B                      KDC
+ 
+                  A, Na
+(1)      ----------------------->
+ 
+                                      Na, Nb, A, B
+(1')                             ----------------------->
+ 
+                                      Nk, Tab, Tba
+(2')                            <-----------------------
+         Nk, Tab, Tba
+         Nb, MACab(Na, Nb, Na+B)
+(2)     <-----------------------
+              MACa(Na, Nk)
+              MACab(Na, Nb)
+(3)      ----------------------->
+                                        MACa(Na, Nk)
+                                        MACb(Nb, Nk)
+(3')                             - - - - - - - - - - - ->
+ 
+-----------------------------------------------------------------------------
+Figure 2. A-B-K ticket distribution protocol
+ 
+Of all the scenarios and corresponding protocols to be described, the most
+easily understood one is called A-B-K (pull model) and resembles the X9.17
+scenario in that the KDC is contacted by B.  It is represented in Figure 2.
+ 
+In the A-B-K scenario, it is assumed that A either is unable,
+unauthauthorized, or unwilling to contact the KDC or it is willing to let B
+choose whether or not to contact the KDC.  Thus, according to the two-way
+authentication protocol suggested earlier, A contacts B in flow (1), chal-
+lenging it to encipher a nonce Na.  B then contacts the KDC in flow (1'),
+ 
+ 
+10  
+ 
+ 
+ 
+passing along A's identifier, A's nonce Na and its own identifier and nonce
+Nb.  The KDC replies in flow (2') by sending two tickets including a fresh
+key Kab.  The tickets follow the syntax suggested in the previous section,
+i.e.  for Tab
+ 
+                Tab = B, stamp, (Ka* XOR Kab),
+ 
+where the stamp proving the freshness of the key may be a simple but unique
+time-stamp (as in Kerberos), a counter value (as in X9.17) or a nonce associ-
+ated with the key.  The advantage of using a counter or a nonce is that these
+may not need to be transmitted in cleartext with the notarized key because
+they may already be known to the recipient from the context.  The additional
+advantage of nonces is that they do not require the maintenance of any syn-
+chronized clocks or counters.  In addition to the two tickets, the KDC issues
+a nonce of its own, Nk, whose role will soon become clear.
+ 
+Upon reception of the tickets, B may or may not cache them for reuse in later
+communication with A.  In any case it computes
+ 
+                Kb* = MACb(A, stamp'),
+ 
+which it uses immediately to decipher Tba and retrieve Kab.  In flow (2), B
+proceeds to compute and send to A its own nonce Nb and the expected
+authenticating expression
+ 
+                MACab(Na, Nb, Na+B).
+ 
+B piggy-backs on the same message the values of Nk, Tab, and Tba that it
+received from the KDC.  Tba is meaningless to A, since it is enciphered using
+B's KEK.  However A can cache both tickets in case it wants to talk to B
+again later and spare the overhead of getting new tickets from the KDC every
+time.  In any case, upon reception of Tab, A computes
+ 
+                Ka* = MACa(B, stamp)
+ 
+and uses it to decipher and extract Kab from Tab.  A then proceeds to reply
+to B with the expected authentication expression MACab(Na, Nb) in flow (3).
+For reasons explained below, A may also piggy-back on that flow a similar
+expression, but computed using Nk instead of Nb and enciphered under Ka
+instead of Kab.
+ 
+Upon reception of these messages, B has the option of computing a similar MAC
+expression but with Nb instead of Na and enciphered under Kb, and forwarding
+both MAC expressions to the KDC in an optional flow (3').  The result of that
+optional flow would be to acknowledge to the KDC that A and B are who they
+claim to be, received the intended key Kab and successfully authenticated one
+another.  Such information may be useful to log for later auditing purposes.
+It is one of the reasons for introducing Nk in flow (2').  Of course this
+assumes that the KDC maintains state information associating Nk to A, B, and
+the newly distributed Kab.
+ 
+Notice that at the end of the whole exchange, A and B have acquired the same
+secret key Kab and authenticated one another.  Furthermore, both A and B
+implicitly authenticated the KDC, and the KDC authenticated them both as an
+ 
+ 
+11  
+ 
+ 
+indirect by-product of the key distribution.  Indeed, the tickets Tab and Tba
+are enciphered respectively under keys Ka* and Kb*, which are MAC expressions
+computed under the main KEKs Ka and Kb of A and B respectively.  These MAC
+expressions do not per se allow A and B to authenticate the KDC since they
+are XORed with Kab.  However, the fact that Kab led to mutual authentication
+of A and B implies indirectly that the two MAC expressions did "check" all
+right, i.e.  that they came from a party who knew how to compute them, namely
+the KDC.  In essence, the keys Ka* and Kb* not only serve to decipher Kab and
+tie it to key stamps and party identifiers, but they can also play indirectly
+the role of MAC authenticators as in the basic two-way authentication pro-
+tocol.  In fact the exact syntax of Ka* and Kb* in our protocols is defined
+as
+ 
+        (c1)    Ka* = MACa(Na+B, Nk, Na+KDC, expiration), and
+        (c2)    Kb* = MACb(Nb+A, Nk, Nb+KDC, expiration).
+ 
+which makes them valid authenticators according to flow (2) of the basic
+two-way authentication protocol.  At the same time they are richer than the
+basic authenticator in that they include additional party identifiers to
+permit key distribution.  Na and Nb in the tickets are factored into the key
+stamps to prove the freshness of the key to the respective recipients.  As
+long as they are guaranteed to be uique, they may be derived from good random
+number generators or from the local clocks of the respective parties (without
+requiring any synchronization assumption).  The inclusion of Nk in the key
+stamp has the advantage of tying each Kab that is issued to a unique one-time
+stamp randomized by the KDC, thus guaranteeing that Ka* and Kb* are different
+for each Kab issued.  Nk may be implemented as a fine-grained creation time-
+stamp for the key.  The expiration time-stamp guarantees that stale tickets
+cannot be used beyond their defined lifetime.  Most of these parameters
+(nonces, KDC and party identifiers) are already contained in packet headers
+or known from the context so they do not even need to be transmitted in
+cleartext in every flow.
+ 
+Thus, in summary, the A-B-K scenario seen above amounts to nothing more than
+carrying out three instances of the basic two-way authentication protocol
+discussed earlier, one between A and B, one between B and the KDC, and one
+between A and the KDC (via B), where the latter two are slightly enhanced
+versions of the basic protocol to cater for key distribution.  The resulting
+three-way protocol exhibits security, exportability, and minimal message
+overhead.  The other scenarios in the remainder of this section are essen-
+tially only variations of this first one.  They merely show how the KDC oper-
+ation can dynamically adapt itself to various network configurations or
+connectivity patterns.
+ 
+ 
+ 
+K-A-B Push Scenario
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+12  
+ 
+ 
+ 
+-----------------------------------------------------------------------------
+ 
+       KDC                      A                       B
+ 
+                                          A, Na
+(1)                              ----------------------->
+ 
+                                B, Nb, MACb(Na, Nb, Na+B)
+(2)                             <-----------------------
+ 
+    Na, Nb, A, B, MACb(Na, Nb, Na+B)
+(1')    <-----------------------
+ 
+    Nk, Tab, Tba, MACab(Na, Nb, Na+B)
+(2')     ----------------------->
+ 
+                                Nk, Tab, Tba, MACab(Na, Nb)
+(3)                              ----------------------->
+ 
+-----------------------------------------------------------------------------
+Figure 3. K-A-B ticket distribution protocol
+ 
+In this second scenario, called K-A-B (push model), the KDC is contacted by A
+instead of B.  A contacts the KDC because B is either unable, not allowed or
+unwilling to do so.
+ 
+The scenario starts with the same flow (1) in which A challenges B to enci-
+pher some nonce Na.  Since B, for whatever reason, does not contact the KDC
+as in the previous scenario, it does not have a key Kab to authenticate
+itself to A.  Thus it uses its main KEK Kb instead, and omits in flow (2) to
+return any tickets to A as it would have done in the A-B-K scenario.
+ 
+Not seeing any tickets in (2), A deduces that B did not contact the KDC and
+thus (unless it has cached tickets from a previous interaction with B) pro-
+ceeds to contact the KDC in step (1').  There, it passes to the KDC its own
+nonce as well as B's identifier and B's nonce Nb.  It also appends B's
+authenticator
+ 
+                MACb(Na, Nb, Na+B)
+ 
+since it does not know Kb and thus cannot check that authenticator.
+ 
+In flow (2'), the KDC recognizes a K-A-B scenario and thus checks B's
+authenticator for A, replies with Tab and Tba as usual, and appends B's
+authenticator translated from key Kb to the new key Kab to inform A that B's
+original authenticator did "check" all right (under the assumption that Na is
+fresh, which A knows is true).
+ 
+At that point, A may or may not cache the tickets for later use, and computes
+Ka* to decipher and extract Kab from Tab.  It then passes Tab and Tba and the
+usual authenticator MACab(Na, Nb) to B in flow (3) to complete the two-way
+authentication.  B may or may not cache the tickets, computes Kb* to decipher
+and extract Kab from Tba, and verifies A's authenticator.
+ 
+ 
+ 
+13  
+ 
+ 
+Notice that this scenario as it stands does not allow A and B to complete a
+two-way authentication protocol with the KDC.  They implicitly authenticated
+the KDC but the KDC could not authenticate them without a couple of extra
+flows, which would be substantially more costly and harder to map on typical
+connection set-up protocols.
+ 
+ 
+ 
+K-A-B(t) Push Scenario
+ 
+ 
+-----------------------------------------------------------------------------
+ 
+       KDC                      A                       B
+ 
+              Na, 0, A, B
+(1')    <-----------------------
+ 
+              Nk, Tab, Tba
+(2')     ----------------------->
+ 
+                                    A, Na, Tab, Tba, Nk
+(1)                              ----------------------->
+                                      MACb(Nb, Nk)
+                               B, Nb, MACab(Na, Nb, Na+B)
+(2)                             <-----------------------
+ 
+                                      MACab(Na, Nb)
+(3)                              ----------------------->
+              MACa(Na, Nk)
+              MACb(Nb, Nk)
+(3')    <- - - - - - - - - - - -
+ 
+-----------------------------------------------------------------------------
+Figure 4. K-A-B(t) ticket distribution protocol
+ 
+Another push scenario, referred to as K-A-B(t) and represented in Figure 4,
+allows forcing A to get the tickets before communicating with B, or pre-
+venting B from contacting the KDC.  This corresponds to Kerberos-like sce-
+narios or scenarios where Mandatory Access Controls prevent A from contacting
+B until it has a key Kab.
+ 
+In such a scenario, A contacts the KDC directly with its nonce Na and B's
+identifier in flow (1').  Notice that A cannot provide the KDC with a nonce
+for B since it has not yet communicated with B.  Seeing that Nb is absent
+(e.g.  null), the KDC infers a K-A-B(t) scenario.  In this case, it replies
+in flow (2') with the usual Nk, Tab and Tba.  However, since Nb was absent,
+it cannot be used as freshness stamp in Tba.  Instead a time-stamp MUST  be
+used in lieu of Nb in this case.  Notice that the use of such a time-stamp
+does not require that all parties keep clocks synchronized as tightly as in
+Kerberos if that time-stamp is used only to prove the freshness of the key
+and not to authenticate the KDC to B.  A fairly approximate time-stamp will
+do in the present case.
+ 
+ 
+14  
+ 
+ 
+ 
+ 
+Upon receiving the tickets, A may cache them, derives Kab as usual, and pro-
+ceeds to send its nonce Na, together with Tab and Tba to B in flow (1).
+Seeing two tickets coming in on the first message, B deduces a K-A-B(t) sce-
+nario.  It may cache the tickets, derives Kab from Tba, and replies in flow
+(2) with the usual MACab authenticator for A.  It may optionally add a
+MACb(Nb, Nk) authenticator for the KDC.
+ 
+A receives and checks the MACab authenticator from B, replies with its own
+authenticator on flow(3), and then may forward the optional MACb
+authenticator to the KDC, together with its own MACa to complete the scenario
+with the optional flow (3') and allow the KDC to authenticate A and B and log
+that they successfully authenticated to one another.
+ 
+ 
+ 
+KDC Protocols Summary
+ 
+The three KDC protocols presented above form a consistent family of protocols
+that can all coexist and be supported simultaneously by the KDC.  The KDC and
+each party can easily discover dynamically, at run-time what scenario to play
+based on the other parties' behavior.  The existence of so many different
+scenarios makes it conceivable that two parties A and B could start behaving
+in incompatible ways, e.g.  both insisting that they should contact the KDC
+or both declaring that they cannot do so.  The resolution of such deadlock
+situations calls for architectural rules specifying either that one of the
+scenarios is a default that all implementations must agree to support as a
+minimum option, or alternatively that some implementations may not be able to
+inter-operate because of incompatible assumptions or operational conditions.
+The KDC of course supports all options.
+ 
+All protocols together avoid the limitations of existing designs in that they
+allow any scenario, and the ticket format they use minimizes reliance on syn-
+chronized clocks or counters, minimizes message sizes, minimizes
+cryptographic operations, and stays clear of export restrictions through use
+of plain MAC operations, except for the key encryption operation itself,
+whose XOR-based concept is however exportable de facto if not de jure.
+ 
+ 
+ 
+5. SINGLE SIGN-ON
+_________________
+ 
+We now leave the topic of key distribution and move on to that of network
+sign-on.
+ 
+All key distribution methods of the proposed protocol family require that
+network parties such as A and B possess some initial KEK that they share with
+the KDC.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+15  
+ 
+ 
+5.1. WITH SECURED WORKSTATIONS
+ 
+For network entities located in stations equiped with secure storage devices,
+the safe-keeping of secret KEKs does not pose any problem, so they can use
+that KEK to access the KDC and authenticate themselves to any other network
+entity thereafter.
+ 
+However many existing hardware components (network adapters, low-end work-
+stations, nodes, etc.) do not come equiped with built-in secure storage; some
+have built-in storage but it is not secure; most may not even have any long-
+term storage device at all.  Having no secure KEK storage, such devices in
+effect cannot claim any identity; they are anonymous.  When such a device
+joins a network, it is thus impossible to authenticate it.  Of necessity one
+can at best validate the identity and authorization of the user or operator
+activating the device.
+ 
+Note that we are not talking about end-to-end authentication of a user to
+some application, an issue adequately addressed by existing designs such as
+Kerberos and its derivatives [Steiner88].  What we are talking about is
+authentication of a device to the network it is trying to join on behalf of
+its user or operator (since the device itself is anonymous).  The distinction
+is apparent, for instance, in a mobile communication scenario where
+authentication by the network of a station that dials INTO  it is very dif-
+ferent from authentication by an end-application of the user who dials
+THROUGH  the network.  The two functions involve very different layers of the
+communication architecture, and thus put different - though related - con-
+straints on the necessary underlying technology.
+ 
+ 
+ 
+5.2. WITH SMART CARDS
+ 
+The problem of relying on a human user to authenticate an anonymous device to
+a network is that human users are not good at safe-keeping meaningless bit
+strings such as KEKs.  They may store them electronically, e.g.  in a smart
+card.  However, when a user's secret is stored on such a card, that card must
+be protected to prevent other users acquiring it accidentally or maliciously
+from being able to impersonate the legitimate user.  This is done typically
+by asking the user trying to activate the smart card to prove that it is the
+authorized card owner by demonstrating possession or knowledge of some infor-
+mation, such as a finger print or a password stored in the card.  This
+process of asking the user to provide some personal information before acti-
+vating the card KEK is called the sign-on process.  Because users don't like
+to be prompted for their password every 5 minutes, the practice is to prompt
+them once when they connect to the network, and then to delegate the identity
+stored in the user's card (i.e.  a work session KEK provided by it) to the
+connected device, which can then use it to communicate with the KDC until it
+is disconnected from the network.  Thus the sign-on process is often referred
+to as SINGLE  sign-on because the password is supplied only once.  To this
+extent, the sign-on of a user to a network and to applications on that
+network are related because, unless high security requires it, the user
+should not be asked to sign on with a password more than once, first to the
+network and then to individual applications on it.
+ 
+ 
+16  
+ 
+ 
+ 
+ 
+ 
+ 
+5.3. WITHOUT ANY SUPPORT
+ 
+In environments where security requirements are low and do not justify large
+investments in secured workstations or smart cards, a sign-on procedure
+involving a central sign-on server can be envisioned.  This is the approach
+taken by the Kerberos design.  In such a design, workstations are anonymous
+and users mobile, though they do not have smart cards.  Not having any KEK
+storage on smart cards or on the workstations themselves, users are required
+to sign-on to a central authentication server (AS) to obtain from it KEKs
+that they can then use to communicate with KDCs.  (Kerberos calls such KEKs
+Tickets Granting Tickets (TGTs).)
+ 
+In order that sign-on passwords not be sent over the network in cleartext
+that would be easy to tap, especially on a LAN, Kerberos passwords are con-
+verted into cryptographic keys used to encipher and decipher the KEK TGTs
+over the network.
+ 
+A first security exposure with this sort of scheme is that it is hard to
+control the software content of a public workstation if it has a local disk
+or diskette drive.  Thus it is hard to guarantee that a password that is
+typed into a workstation is not stolen by malicious software in that station,
+and perhaps sent over the network in cleartext by a Trojan horse
+[Bellovin90].
+ 
+A second security weakness of this approach results from the fact that users
+tend to select passwords from limited vocabularies (typically six-letter
+words with some mnemonic meaning, built from an alphabet of 36 alphanumeric
+characters).  Thus the password space is MUCH smaller than the key space of a
+cryptographic algorithm such as DES, making exhaustive analysis of messages
+enciphered with passwords, so-called dictionary attacks, a relatively easy
+game [Morris79, Bellovin90].  This is an inherent exposure of sign-on designs
+that do not use secured hardware or smart card support [Lomas89].
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+17  
+ 
+ 
+-----------------------------------------------------------------------------
+ 
+        A                              AS
+                Na, Na'= MACpwa(Na)
+(1)      ------------------------------>
+ 
+                Tpwa, Tka, Nk              key distribution
+          MACa(Na', Nk', Na'+ AS), Nk'     key validation
+(2)     <------------------------------
+ 
+ 
+                  MACa(Na', Nk')
+(3)      ------------------------------>
+ 
+where Kpwa = MACpw(Na)      without any local storage
+   or Kpwa = MACpw(readout) with one-time PIN generator
+ 
+-----------------------------------------------------------------------------
+Figure 5. Server-based sign-on protocol
+ 
+In spite of the weaknesses inherent to such designs, they represent an impor-
+tant design-point for low-security environments.  To enhance our family of
+protocols and address this requirement as well, we developed a server-based
+sign-on protocol that uses concepts from the two-way authentication and
+KDC-based protocols defined earlier to minimize exposures to the password.
+Figure 5  represents the protocol in a scenario where a user A at some public
+workstation is signing on to the AS to obtain a good cryptographic KEK, Ka,
+for use in future KDC operations.
+ 
+The proposed sign-on protocol borrows from the KDC protocols the format of
+tickets.  In effect, from the packet format point of view, this protocol is
+analogous to a plain KDC-based key distribution protocol.  The differences
+are that the AS plays both the KDC role and B's role in the flows and some of
+the cryptographic exchanges use a key derived from the password instead of a
+real cryptographic key.
+ 
+In flow (1), the user workstation sends to the AS two nonces Na and Na'.  Na
+will be used for the KEK distribution operation while Na' will be used for
+authentication.  Given Na, both A and the AS derive a weak cryptographic key
+from the password:  they first convert the password into a bit string that
+they use as a key to compute a MAC vector over Na.  The result is then used
+as a one-time password-based key called Kpwa.  Then, the AS replies in flow
+(2) by sending a nonce Nk and two tickets for a good KEK Ka.  One of these
+tickets, Tka, is not intelligible by A but meant to be cached by A for later
+interactions with the KDC.  It is sealed with a notarization key derived from
+Kk, a KEK shared between the AS and the KDC:
+ 
+        Kk* = MACk(Nk+A, Na, Nk+AS, expiration).
+ 
+The other ticket, Tpwa, is destined to A and enciphered (through XORing) with
+a notarization key derived from Kpwa:
+ 
+        Kpwa* = MACpwa(Na+KDC, Nk, Na+AS, expiration).
+ 
+ 
+18  
+ 
+ 
+ 
+ 
+The AS also sends a second nonce Nk' and a corresponding authenticator
+ 
+                MACa(Na', Nk', Na'+ AS)
+ 
+computed under the strong KEK Ka.  User A then computes Kpwa* and uses it to
+extract Ka from the Tpwa ticket.  Since it has no proof that Ka is good and
+actually came from the AS, it validates Ka by using it immediately to verify
+the authenticator.  Successful authentication indicates that the ticket and
+the authenticator are legitimate and came from the AS.  User A can then
+confirm success by authenticating itself to the AS using the usual MACa
+expression in flow (3).
+ 
+Notice that since Tpwa is enciphered using the user's password, it is subject
+to dictionary attacks.  To prevent the first come intruder from posing as A
+and sending in two nonces to see what Tpwa comes back, our sign-on protocol
+offers the added protection that Na' is actually related to Na through A's
+password, in a way that the AS can verify before accepting to send back Tpwa:
+ 
+        Na' = MACpwa(Na)
+ 
+Compared to the equivalent Kerberos protocol, this protocol exhibits the
+usual features of exportability and minimal overhead, making it more suitable
+for low-end environments where the amount of computation and the size of mes-
+sages involved should remain minimal.  If DES is used for the MAC computa-
+tions, all cryptographic messages are 64-bit long, thus fitting comfortably
+in low-layer packet headers or in password fields of existing password-based
+protocols.  Furthermore, thanks to the cryptographic relationship between Na
+and Na', an intruder wanting to try a dictionary attack on Tpwa must tap the
+network lines to catch a complete sign-on exchange rather than simply sending
+in two nonces to trick the AS into issuing a Tpwa.
+ 
+ 
+ 
+5.4. WITH ONE-TIME PIN GENERATORS
+ 
+Finally, a technology that offers better security than in the previous sce-
+nario but at a lower cost than smart cards or secured workstations is
+LCD-based, one-time-PIN generator cards.
+ 
+Such devices have been on the market for several years now and are relatively
+popular.  They are essentially like smart cards but require no electronic
+interface and card readers, which results in a cost advantage over real smart
+cards.  The interface between such devices and the workstation is provided by
+the user, who is involved in transferring information between the card and
+the workstation.  This is of course a drawback from the ease-of-use point of
+view.
+ 
+Such a device consists of a cryptographic circuit with a built-in secret key
+(different for each card) that takes its input from a clock ticking in
+minutes, from a small on-card key-pad, or sometimes directly off the work-
+station screen (with an OCR interface), and displays its output on a small
+built-in LCD window.  The device is powered for at least a year, a period
+during which clock drift can be kept within reasonable limits.
+ 
+ 
+19  
+ 
+ 
+ 
+Today, such devices are used mostly for signing on to computers:  when
+logging on, the user is asked to type in name, password and the value dis-
+played by the device, which is the enciphered value of either the internal
+clock or a nonce displayed on the workstation screen and transferred to the
+card via its key-pad or OCR interface.  Knowing the nonce or the sign-on time
+(a tolerance window of ñ  a minute is assumed), the user name, and the secret
+key imbedded in the card, the authenticating computer can verify the returned
+enciphered value.  The password is used simply to protect the card against
+loss or theft.
+ 
+Such devices can be used in combination with the sign-on protocol described
+in the above section to realize a fairly secure and relatively inexpensive
+sign-on procedure that allows users to be mobile and use any public work-
+station.  This is achieved by carrying out with the KDC the same sign-on pro-
+tocol as in Figure 5 on page 18.  However, instead of deriving Kpwa by
+computing a MAC vector of Na under the password, Kpwa is derived by computing
+a MAC vector of the number displayed in the LCD window under the password.
+This has two major advantages.  Malicious software in the public workstation
+cannot steal and reuse the password since the LCD readout is also necessary
+and changes every time.  Second, an intruder tapping the network lines cannot
+discover the password by exhaustive analysis since Kpwa depends also on the
+LCD readout, which is never transmitted over the network.  To get the pass-
+word, the intruder would have to simultaneously obtain the enciphered flows
+AND  the LCD readout, e.g.  by planting a Trojan horse in the workstation.
+Then, to later impersonate the user, the intruder would still have to steal
+the card anyway, a most unlikely scenario!
+ 
+ 
+ 
+6. CONCLUSION
+_____________
+ 
+Future computer networks will require comprehensive security architectures
+providing a flexible set of solutions to all authentication, key distrib-
+, and sign-on problems.  In this paper, we have described a family of
+protocols including two-way authentication, KDC-based key distribution, and a
+spectrum of sign-on functions of different costs and degrees of security that
+can be used as modular building blocks towards defining a suitable network
+security architecture.  All the proposed mechanisms use concepts from the
+same basic two-way authentication protocol and extend them to the distrib-
+ of tickets and the support of various sign-on scenarios.
+ 
+The resulting family of protocols differs from previous designs in that it is
+specifically tailored towards low-function networking environments, where
+good security is required but must be provided with minimal overhead, must
+cater to various restrictive network configurations and connectivity pat-
+terns, and must be exportable, which is achieved by relying solely on the use
+of one-way hash functions for all authentication-related protocols [Gong89].
+ 
+All the protocols alluded to in this paper have now been implemented as part
+of a comprehensive security subsystem prototype called KryptoKnight, which is
+discussed in [Molva92].
+ 
+ 
+ 
+20  
+ 
+ 
+ 
+ACKNOWLEDGEMENTS
+________________
+ 
+The authors wish to thank Liba Svobodova and Gene Tsudik for their comments
+on drafts of this paper, which helped focus the discussion, clarify explana-
+tions and improve the style.
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+21  
+ 
+ 
+ 
+BIBLIOGRAPHY
+____________
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+BAUER83   R. K. Bauer, T. A. Berson,      DES77     "Data Encryption
+          R. J. Feiertag, "A key                    Standard", FIPS 46, NBS
+          distribution protocol                     (Jan.77).
+          using event markers," ACM
+          TOCS 1 3 (1983) 249-255.
+                                          GONG89    L.Gong, "Using one-way
+                                                    functions for
+BELLOVIN90 S.M.Bellovin, M.Merritt,                 authentication", ACM CCR
+          "Limitations of the                       19 5 (Oct.89) 8-11.
+          Kerberos authentication
+          system", ACM CCR 20 5
+          (Oct.90) 119-132.               ISO8732   "Banking - Key management
+                                                    (wholesale)" ISO 8732,
+                                                    Geneva (1988).
+BIRD91    R. Bird, I. Gopal, A.
+          Herzberg, P. Janson, S.
+          Kutten, R. Molva, M. Yung,      ISO9594-8 "OSI Directory - Part 8:
+          "Systematic design of two-                Authentication Framework",
+          party authentication pro-                 ISO 9594-8, Geneva (1988).
+          tocols," Proc.  Crypto 91,
+          Santa Barbara, CA (Aug.91)
+          44-61, available as             KEHNE92   A.Kehne, J.Schoenwaelder,
+          "Advances in Cryptology",                 H.Langendoerfer, "A nonce-
+          J.  Feigenbaum (Ed.),                     based protocol for mul-
+          Lecture Notes in Comp.                    tiple authentications",
+          Sc.  576, Springer Verlag                 ACM OSR 26 4 (Oct.92)
+          (1991).                                   84-89.
+ 
+ 
+BIRD92    R. Bird, I. Gopal, A.           LOMAS89   T. Lomas, L. Gong, J.
+          Herzberg, P. Janson, S.                   Saltzer, R. Needham,
+          Kutten, R. Molva, M. Yung,                "Reducing risks from
+          "Systematic design of a                   poorly chosen keys", Proc.
+          family of attack-resistant                12th ACM SOSP, ACM OSR 23
+          authentication protocols,"                5 (Dec.89) 14-18.
+          to appear in IEEE JSAC
+          special issue on secure
+          communications (1992).          MOLVA92   R. Molva, G. Tsudik, E.
+                                                    Van Herreweghen, S. Zatti,
+                                                    "KryptoKnight
+DENNING81 D. E. Denning, G. M.                      authentication and key
+          Sacco, "Timestamps in key                 distribution system," sub-
+          distribution systems",                    mitted to ESORICS 92,
+          CACM 24 8 (Aug.81)                        Toulouse, France (23-25
+          533-536.                                  Nov.92).
+ 
+ 
+ 
+22  
+ 
+ 
+MORRIS79  R.Morris, K.Thompson,                     tures and public-key
+          "Password security: a case                crypto-systems," CACM 21 2
+          history," CACM 22 11                      (1978) 120-126 & CACM 26 1
+          (1979) 594-597.                           (1983) 96-99.
+ 
+ 
+NEEDHAM78 R. M. Needham, M. D.            RIVEST91  R.  Rivest, "The MD5
+          Schroeder, "Using                         Message Digest Algorithm",
+          encryption for                            Internet draft, RSA Co.
+          authentication in large                   (Jul.91).
+          networks of computers,"
+          CACM 21 12 (1978) 993-998.
+                                          STEINER88 J. G. Steiner, C. Neuman,
+                                                    J. I. Schiller, "Kerberos:
+NEEDHAM87 R. M. Needham, M. D.                      an authentication server
+          Schroeder, "Authentication                for open network systems",
+          revisited", ACM OSR 21 1                  Proc.  Usenix Conf.
+          (Jan.87) 7.                               (Winter 88).
+ 
+ 
+OTWAY87   D. Otway, O. Rees, "Effi-       TSUDIK92  G. Tsudik, "Message
+          cient and timely mutual                   authentication with
+          authentication", ACM OSR                  one-way hash functions,"
+          21 1 (Jan.87) 8-10.                       Proc. IEEE Infocom 92,
+                                                    Florence, Italy (May 92)
+ 
+RSA83     R. L. Rivest, A. Shamir,
+          L. Adleman, "A method for
+          obtaining digital signa-
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+24 

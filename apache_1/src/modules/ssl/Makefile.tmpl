@@ -1,0 +1,91 @@
+
+LIB=libssl.$(LIBEXT)
+
+OBJS=\
+     apache_ssl.o gcacheclient.o gcachecommon.o
+OBJS_PIC=\
+     apache_ssl.lo gcacheclient.lo gcachecommon.lo
+
+all: lib
+
+lib: $(LIB) gcache
+
+libssl.a: $(OBJS)
+	rm -f $@
+	ar cr $@ $(OBJS)
+	$(RANLIB) $@
+
+libssl.so: $(OBJS_PIC)
+	rm -f $@
+	$(LD_SHLIB) $(LDFLAGS_SHLIB) -o $@ $(OBJS_PIC)
+
+gcache: gcache.o gcachecommon.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o gcache gcache.o gcachecommon.o $(LIBS)
+
+.SUFFIXES: .o .lo
+
+.c.o:
+	$(CC) -c $(INCLUDES) $(CFLAGS) $<
+
+.c.lo:
+	$(CC) -c $(INCLUDES) $(CFLAGS) $(CFLAGS_SHLIB) $< && mv $*.o $*.lo
+
+clean:
+	rm -f $(OBJS) $(OBJS_PIC) $(LIB) gcache
+
+distclean: clean
+	-rm -f Makefile
+
+# We really don't expect end users to use this rule.  It works only with
+# gcc, and rebuilds Makefile.tmpl.  You have to re-run Configure after
+# using it.
+depend:
+	cp Makefile.tmpl Makefile.tmpl.bak \
+	    && sed -ne '1,/^# DO NOT REMOVE/p' Makefile.tmpl > Makefile.new \
+	    && gcc -MM $(INCLUDES) $(CFLAGS) *.c >> Makefile.new \
+	    && sed -e '1,$$s: $(INCDIR)/: $$(INCDIR)/:g' \
+	           -e '1,$$s: $(OSDIR)/: $$(OSDIR)/:g' Makefile.new \
+		> Makefile.tmpl \
+	    && rm Makefile.new
+
+# Version for Ben - the above may or may not work, I haven't tested it.
+xdepend:
+	cp Makefile.tmpl Makefile.tmpl.bak \
+	&& cp Makefile.tmpl Makefile.new \
+	&& makedepend -DAPACHE_SSL -I../../include -I../../../../SSLeay-0.9.0-ben/include -I../../os/unix -f Makefile.new *.c \
+	&& sed -e '/^# DO NOT REMOVE/,$$s: ../../../../SSLeay-0.9.0-ben/include/[^ ]*::g' \
+		-e '/^# DO NOT REMOVE/,$$s: /usr/include/[^ ]*::g' \
+		-e '/^# DO NOT REMOVE/,$$s/[^:]*:$$//' \
+		-e '/^# DO NOT REMOVE/,$$s:../../include:$$(INCDIR):g' \
+		-e '/^# DO NOT REMOVE/,$$s:../../os/unix:$$(OSDIR):g' \
+		Makefile.new \
+	| sed -e '1,/^# DO NOT REMOVE/b xx' -e '/^$$/d' -e ':xx' > Makefile.tmpl \
+	&& rm Makefile.new
+
+#Dependencies
+
+$(OBJS) $(OBJS_PIC): Makefile
+
+# DO NOT REMOVE
+# DO NOT DELETE THIS LINE -- make depend depends on it.
+apache_ssl.o: $(INCDIR)/httpd.h $(INCDIR)/ap_config.h
+apache_ssl.o: $(INCDIR)/ap_config_auto.h
+apache_ssl.o: $(OSDIR)/os.h
+apache_ssl.o: $(INCDIR)/ap_ctype.h
+apache_ssl.o: $(INCDIR)/hsregex.h
+apache_ssl.o: $(INCDIR)/alloc.h
+apache_ssl.o: $(INCDIR)/buff.h $(INCDIR)/ap.h
+apache_ssl.o: $(INCDIR)/util_uri.h $(INCDIR)/http_config.h
+apache_ssl.o: $(INCDIR)/http_log.h
+apache_ssl.o: $(INCDIR)/gcache.h
+gcache.o: $(INCDIR)/gcache.h $(INCDIR)/httpd.h
+gcache.o: $(INCDIR)/ap_config.h $(INCDIR)/ap_config_auto.h
+gcache.o: $(OSDIR)/os.h
+gcache.o: $(INCDIR)/ap_ctype.h
+gcache.o: $(INCDIR)/hsregex.h
+gcache.o: $(INCDIR)/alloc.h
+gcache.o: $(INCDIR)/buff.h
+gcache.o: $(INCDIR)/ap.h
+gcache.o: $(INCDIR)/util_uri.h
+gcacheclient.o: $(INCDIR)/gcache.h
+gcachecommon.o: $(INCDIR)/gcache.h

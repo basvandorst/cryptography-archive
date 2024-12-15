@@ -1,0 +1,414 @@
+
+                         -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  Ver:0.78a0             HPACK - Extended Documentation            1 Sept 1992
+                         -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+
+   The following represents the extended documentation for the HPACK archiver.
+ It  contains  information not generally needed in the day-to-day use of HPACK
+ and is intended mainly for the more experienced user,  covering  among  other
+ things  HPACK  return  codes,  more  details on the encryption system used in
+ HPACK, and details on the availability of HPACK for other systems.
+
+
+More on Archive Comments:
+-------------------------
+
+   To make plain text archive  comments  portable  across  multiple  operating
+ systems  it  is  recommended that they not be hardcoded for some fixed screen
+ size (such as 80 x 24) but instead use HPACK's built-in  formatting  commands
+ as  part  of  the  text.   HPACK  will  then  format  the text of the comment
+ according to these commands when  displaying  it.   The  formatting  commands
+ available are:
+
+ Text type control:
+
+ .no = normal text                      .iv = inverse text
+ .ul = underline text                   .fl = flashing text
+ .bo = boldface text                    .it = italics
+
+ Text display control:
+
+ .ce = center following text            .fi = justify following text
+ .nf = stop justifying text
+
+ Miscellaneous control options:
+
+ .bp = page break (new page)            .br = line break
+ .in xx = left margin at xx             .rm xx = right margin at ( max - xx )
+ .ti = temporary indent                 .ew = end woof
+
+ Note  that  some  of the text types may not be available on some systems.  By
+ default HPACK will wrap words at the end of the screen.  Justification of the
+ output text (the right margins of the text being made even) can be turned  on
+ with  the  .fi  command  and off with the .nf command.  When a .nf command is
+ encountered, the current text is printed before the .nf command takes effect.
+ This is known as a break, and can be explicitly forced using the .br command.
+ Page breaks can be forced with the .bp command.  The left and  right  margins
+ are controlled by the .in and .rm commands respectively.  The .ti command can
+ be  used to produce a temporary indent which sets the indent position for one
+ line only.  This can be used to produce hanging indents:
+
+ .in 5
+ .ti -5
+
+ will produce output of the form:
+
+ The  .in,  .rm,  and  .ti  commands  can also take relative values instead of
+      absolute ones; thus they can be used to specify a change in the  current
+      value.   This is illustrated in the above example, where the left margin
+      is set to 5, and a temporary indent of 5  places  to  the  left  of  the
+      margin is set for the next line.  If the value is given merely as is, it
+      is  treated  as an absolute value; if it is given as +value or -value it
+      is treated as a change in the existing  value  instead  of  an  absolute
+      setting.
+
+ An example of text with format control codes is:
+
+ .ce
+ This is a sample of formatted text
+ .br
+ .in 5
+ .rm 5
+ .fi
+ .ti 2
+   This sample of text shows how to use HPACK's build-in formatting
+ commands.  Since the text is not preformatted but is reformatted by HPACK
+ according to the width of the screen the text is being displayed
+ on, there are no problems with lines going off the screen, text only
+ covering half the screen, or the system being unable to display
+ half the character set in use.
+ .br
+ .br
+ .ce
+ --------
+
+ After formatting for an 80-column screen this comes out as:
+
+                      This is a sample of formatted text
+
+      This  sample  of  text  shows  how to use HPACK's build-in formatting
+    commands.  Since the text is not preformatted  but  is  reformatted  by
+    HPACK  according to the width of the screen the text is being displayed
+    on,  there  are  no problems with lines going off the screen, text only
+    covering half the screen, or the system being unable  to  display  half
+    the character set in use.
+
+                                   --------
+
+ After formatting for a 40-column screen this comes out as:
+
+     This is a sample of formatted
+                 text
+
+      This  sample  of  text  shows
+    how  to  use  HPACK's  build-in
+    formatting commands.  Since the
+    text is  not  preformatted  but
+    is    reformatted    by   HPACK
+    according to the width  of  the
+    screen   the   text   is  being
+    displayed  on,  there  are   no
+    problems  with  lines going off
+    the screen, text only  covering
+    half  the screen, or the system
+    being unable  to  display  half
+    the character set in use.
+
+               --------
+
+
+HPACK Return Codes:
+-------------------
+
+   If an error occurs during archive processing, HPACK will return one of four
+ sets of return values.  These are:
+
+   0         No error
+   001-099   Severe error
+   100-199   Error
+   201-255   Warning
+
+ The error types can thus be quickly grouped into one  of  three  classes  and
+ handled appropriately.  The actual values of these error return values are:
+
+     Type:             Value:      Description:
+     -----             ------      ------------
+
+   EXIT_OK               0         No error
+
+   EXIT_INT_ERR          1         Internal error
+   EXIT_NO_MEM           2         Out of memory
+   EXIT_NO_DISK          3         Out of disk space
+   EXIT_NO_ARCH          4         Can't open archive file
+   EXIT_NO_SCRIPT        5         Can't open script file
+   EXIT_NO_PATH          6         Can't find path
+   EXIT_NO_BASE          7         Can't access base directory
+   EXIT_NO_MKDIR         8         Can't create directory
+   EXIT_BREAK            9         User interrupt
+   EXIT_FILE_ERR        10         Unknown file error
+   EXIT_DIR_CORRUPT     11         Archive directory corrupted
+
+   EXIT_LONG_PATH      100         Path too long
+   EXIT_NO_OVERRIDE    101         Can't override base path
+   EXIT_NEST           102         Directories nested too deeply
+   EXIT_SCRIPT_ERR     103         Error(s) in script file
+   EXIT_NOT_ARCH       104         Not an HPACK archive
+   EXIT_BAD_KEYFILE    105         Bad keyfile
+   EXIT_NOTHING        106         Nothing to do
+   EXIT_COMMAND        107         Unknown command
+   EXIT_OPTION         108         Unknown option
+
+   EXIT_PASS           200         Differing or incorrect password(s)
+   EXIT_CHANGE         201         Bad attempt to change archive (eg attempt
+                                    to change a block-encrypted archive)
+   EXIT_NOLONG         202         Long arg.format not supported
+   EXIT_BADWILD        203         Bad wildcard format or inappropriate use of
+                                    wildcards
+   EXIT_SECURITY       204         General security/encryption error
+   EXIT_NOCRYPT        205         Cannot process encrypted archive
+
+ Under  VMS  return  values are handled in a somewhat different manner.  HPACK
+ will return the error code as above in the facility number field, as well  as
+ a  status  of  success,  warning, error, or severe error corresponding to the
+ above categories of error.
+
+ For  more  details on the error types, see the section "HPACK Error Messages"
+ in the main HPACK documentation HPACK.DOC.
+
+
+General Archive Information:
+----------------------------
+
+   HPACK uses a central directory  structure  contained  at  the  end  of  the
+ archive, with the option of including directory information headers with each
+ archived file for improved error recovery.  All data stored in HPACK archives
+ is  left  unchanged  -  there  is  no  need  for any truncation of filenames,
+ translation of file attributes, or omission of OS-dependant information  from
+ a  file  in  order  to  archive  it.   All  information about a file (such as
+ attributes, file datestamps, attached comments, icons, graphics  information,
+ security  information,  user-defined  file  attributes, and so on), is stored
+ with the file and is translated on extraction if necessary.  HPACK includes a
+ fairly complete set of internal filesystem management routines  which  handle
+ operations  such  as  creating directories, adding and deleting files to/from
+ directories, and so on.  Filenames and directory  names  of  any  length  and
+ containing   any   characters   are   supported,  as  are  special  operating
+ system-dependant files such as links, volume labels/ID's,  and  so  on.   All
+ versions of HPACK will handle all the extra information which can be added to
+ a  file, but due to differences between various operating systems some of the
+ information may not be used on some systems (for example  MSDOS,  a  somewhat
+ complex  bootstrap loader used on many 80x86 systems, will ignore most of the
+ extra information it finds in an archive).
+
+
+HPACK Data Authentication/Encryption:
+-------------------------------------
+
+   HPACK  allows  files  to  be  encrypted using a variety of either public or
+ conventional-key cryptosystems.   At  the  moment  only  the  RSA  public-key
+ cryptosystem  is  used  for data authentication, and the MDC conventional-key
+ and RSA public-key cryptosystems are used for file or archive encryption. The
+ RSA key format used in HPACK is compatible with  version  2.0  or  higher  of
+ Philip Zimmermann's excellent PGP encryption package.
+
+   In public-key encryption, each user choses a pair of  keys,  a  public  key
+ (which  as  the  name suggests is made available publicly), and a private key
+ which only the user knows.  This allows a complete stranger to use the public
+ key  to encrypt a message to the user which only the user can decrypt, unlike
+ conventional-key encryption which requires that the encryption key  be  first
+ somehow communicated to the user.
+
+   HPACK  uses  the  RSA  Data  Security Inc.  MD5 message digest algorithm to
+ generate a unique 'fingerprint'  of  the  data  to  be  authenticated.   This
+ fingerprint consists of a cryptographically strong 128-bit one-way hash value
+ which  it is computationally infeasible to invert.  This is a bit like a CRC,
+ but unlike a CRC it is *very* difficult for an attacker to bypass:  Not  only
+ is  the  MD5  function  specifically designed for this purpose (which the CRC
+ function is not), but it is also generally agreed that a  message  digest  of
+ this sort should be a minimum of 128 bits long: A 32-bit CRC will take around
+ 65,000  attempts  to  defeat  using  a so-called 'birthday attack', a 128-bit
+ message digest will take in the order of 20,000,000,000,000,000,000  attempts
+ to  break  (in  fact CRC's are even easier to defeat than that - it is a very
+ simple matter to generate a message with an arbitrary CRC value, making CRC's
+ worthless for detecting deliberate manipulation of data).   MD5  has  so  far
+ resisted  attack, although a much-reduced form of MD5 was broken at Eurocrypt
+ '92 in 2^13 attempts  with  a  chosen  plaintext  attack  using  differential
+ cryptanalysis.
+
+   This message digest is then signed  using  the  RSA  public-key  encryption
+ algorithm,  with  the  option  of  using  a commercial-grade (512 bits or 155
+ digits) or military-grade (1024 bits or 310 digits) key (HPACK will  in  fact
+ use  keys  of  any length up to 1200 bits or 360 digits, the two values given
+ above are simply the default key lengths used by PGP 2.0).  The exact size of
+ the key to use depends on how long the secret must be kept  secure,  and  how
+ large  an amount of resources your opponent is prepared to commit to breaking
+ (factoring) the key.  In "Public-Key  Cryptography,  State  of  the  Art  and
+ Future  Directions",  a  report from a workshop involving the world's leading
+ experts in the field, the authors state:
+
+ "For most applications a modulus size of 1024 bits for RSA should  achieve  a
+  sufficient  level of security for 'tactical' secrets for the next ten years.
+  This is for long term secrecy purposes, for short term authenticity purposes
+  512 bits might suffice in this century".
+
+ RSA Data Security's frequently-asked-question list contains the statement:
+
+ "Rivest  estimates  that a 512-bit modulus, currently the most common modulus
+  length,  can  be  factored  with  an  $8.2 million effort today, less in the
+  future.   Those with extremely valuable data (or large potential damage from
+  digital forgery) should use a modulus of, say 700 or 800 bits in length.   A
+  certifying authority should use a modulus of 1000 bits or more, because  the
+  validity  of  many  other  key  pairs depends on the security of one central
+  key."
+
+ The $8.2 million figure is actually somewhat optimistic, in reality it should
+ be somewhat more difficult than that.  For an example from real life, in 1977
+ RSA Data Security published a  129-digit  (or  430-bit)  number  which  is  a
+ product of two primes, and offered a $100 prize to the first person to factor
+ it.  In spite of fifteen years of work on it, noone has done so (at least not
+ publicly).
+
+ Finally, the US government allows export of RSA encryption code provided  the
+ key  size  is  limited  to less than 512 bits.  You are left to draw your own
+ conclusions from this fact.
+
+   The encryption routine used by HPACK  employs  the  MDC  algorithm  run  in
+ cipher  feedback  mode,  a  128-bit block cipher derived from the MD5 message
+ digest algorithm with a key size of up to 2048 bits (though HPACK limits this
+ to 80 ASCII characters or around 560 bits of effective key information). This
+ algorithm  has  been  designed  to  make  encryption  relatively   fast   and
+ brute-force  attacks  slow and painful.  Once the initial password management
+ is done, en/decryption proceeds at  a  fairly  rapid  pace,  however  if  the
+ password  is  changed  constantly (as it would be for a brute-force attack) a
+ lot of time is spent in password management after each change.   MDC  has  so
+ far  not been seriouly attacked, and it is not known whether generalizing the
+ MD5 attack to MDC is possible.
+
+   Due to the layout of an HPACK archive all encrypted data blocks begin  with
+ raw  compressed  data,  greatly  reducing  the  chances  of a so-called known
+ plaintext attack (in which the attacker knows, or  can  guess,  some  of  the
+ unencrypted  data).   HPACK  overwrites any sensitive data in memory once the
+ encryption/decryption/authentication  process  has  completed,  and  contains
+ extensive  error trapping and handling to ensure that even if a serious error
+ were to occur, the program stack and data areas would be wiped on exit.
+
+   The  code  for  the encryption and authentication routines used in HPACK is
+ freely available in source form  (see  the  next  section,  "Verification  of
+ HPACK's  Encryption/Authentication").   In this way it is possible to compile
+ the code and independantly verify that HPACK  is  indeed  using  the  correct
+ algorithms  and  encryption/authentication techniques, and thus eliminate any
+ fears of trapdoors hidden in the code/encrypted data.
+
+
+Verification of HPACK's Encryption/Authentication:
+--------------------------------------------------
+
+   The encryption and authentication code used by HPACK can be freely examined
+ by anyone wishing to reassure themselves of its security.   The  MD5  message
+ digest algorithm is described in the following source:
+
+   Internet  RFC 1321, "The MD5 Message-Digest Algorithm", Internet Activities
+     Board, 1992.  Obtainable from ftp.nisc.sri.com in the rfc directory.
+
+ The mode of operation of the MDC cipher is described in the following federal
+ and international standards:
+
+   National Bureau of Standards FIPS publication 81: "DES Modes of Operation",
+     December 1980.
+
+   ISO/IEC 10116:1991 "Information technology - Modes  of  operations  for  an
+     n-bit block cipher algorithm", 1991.
+
+   ISO 10126-2:1991 "Banking - Procedures for message encipherment (wholesale)
+     - Part 2", 1991
+
+ The RSA algorithm is described in many texts, among them:
+
+   Brassard,  G.  "Modern  Cryptology",  Lecture  Notes  in  Computer  Science
+     vol.325, 1988.
+
+   Rivest,  R.,  Shamir,  A.,  and Adleman, L. "A method for obtaining digital
+     signatures and public-key cryptosystems", CACM vol.21, no.2, Feb.1978
+
+   RSA Data Security Inc. "PKCS  #1:  RSA  Encryption  Standard",  June  1991,
+     Version 1.4.
+
+ It is also a part of the following standards:
+
+   AS 2805.6.5.3 "Electronic Funds Transfer - Key Management", 1990.
+
+   ISO  9796:1988  "Information  technology,  security  techniques  -  Digital
+     signature scheme giving message recovery", 1988
+
+   RSA Data Security Inc. "PKCS  #1:  RSA  Encryption  Standard",  June  1991,
+     Version 1.4.
+
+ In all cases the above algorithms can be derived from the relevant standards,
+ and all code used in  HPACK  checked  against  official  implementations  for
+ accuracy.
+
+
+An Analysis of HPACK Encryption Security:
+-----------------------------------------
+
+   Much has been made recently of the dangerously insecure encryption  methods
+ used by some archivers.  HPACK goes to great lengths to try and make breaking
+ of  its  encryption system as difficult as possible.  An analysis of possible
+ weak points in the encryption is given below:
+
+ Encryption of individual files:
+   Slow  and  reasonably safe.  Since a different 64-bit initialization vector
+   is used to rekey the MDC algorithm for each file, performing a  brute-force
+   attack  on  a  collection of files would involve rekeying the algorithm for
+   each file being attacked.  Very difficult to attack unless the plaintext is
+   known.
+
+ Encryption of the entire archive:
+   Faster  than  encrypting  individual  files,  and  more secure for the data
+   portion of the archive since only the start of the first file is  available
+   to  be  attacked.   However  the  encryption  of  the directory information
+   provides partially-known plaintext in the form of  the  directory  headers.
+   The  information content is probably enough to allow at least a preliminary
+   form of automatic checking.
+
+ Encryption of the entire archive with a secondary password:
+   About the same speed as encrypting the entire archive, and the most  secure
+   of  the  encryption  schemes.   Even if the encryption for the directory is
+   broken, the main data is still protected by a second  password,  and  again
+   only the start of the first file is available to be attacked.
+
+ There  are two possible methods of attack, either a known-plaintext attack on
+ the archive data, or a partially-known-plaintext attack on the directory data.
+ If  the  uncompressed,  unencrypted  contents of the archive are known, HPACK
+ can be used to compress them without encryption and provide  plaintext  which
+ can  be  used  in  a  brute-force  or dictionary-based attack.  Similary, the
+ archive directory contains a relatively fixed format which can be  parsed  as
+ part of a brute-force attack to narrow down the search range considerably.
+
+ Using  public-key  encryption  offers  more security against dictionary-based
+ cracking programs since the hybrid method employed by HPACK  uses  a  128-bit
+ binary  MDC key encrypted with an RSA public key.  Breaking this system would
+ entail a brute-force search on the entire 128-bit key space, a total of 1.7 x
+ 10^38 keys assuming a match is found after half the keys have been scanned.
+
+
+Availability of HPACK for Other Systems:
+----------------------------------------
+
+   HPACK  is  currently  available in Amiga, Archimedes, Atari ST, MSDOS, OS/2
+ (16 and 32 bit), Unix,  and  Windows  versions,  with  other  ports  becoming
+ available as access to the relevant hardware and software permits.  If anyone
+ wants  a version for their particular system, they are welcome to try to port
+ it across.  The code consists of around 500K of mostly ANSI C code with  some
+ low-level  system  I/O  thrown in, and a knowledge of assembly language being
+ useful  on  low-end  systems  to  speed  up a few of the core compression and
+ encryption  routines.   Anyone  interested  in porting HPACK to any system is
+ urged to contact the author...
+
+ All  code  contained  in  HPACK,  with  the  exception of the RSA encryption/
+ decryption routines and the MD5 message  digest  routines,  is  entirely  the
+ result  of original research and is not patented, nor do I have any intention
+ of ever patenting it.  The only code in HPACK which falls under any  sort  of
+ restrictions  is  the  RSA code.  MD5 has been placed in the public domain by
+ its  authors.   Since  HPACK originates from outside the US and since I don't
+ believe in crippleware, there is no "restricted" or "crippled" version - full
+ encryption and authentication capabilities are available to everyone.

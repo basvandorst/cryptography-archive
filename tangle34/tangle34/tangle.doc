@@ -1,0 +1,163 @@
+			 User manual for Tangle 3.4
+			 --------------------------
+
+This program supercedes Crypt 2.0, a name change has  been  adopted  to  avoid
+confusion with the Unix password encryption function (one way trapdoor).  This
+program does not support the encryption algorithm of  Crypt  2.0  however  the
+name  change should make it somewhat easier to introduce version 3 without too
+much confusion and gradually convert the encrypted files.
+
+The source code "tangle.c" can be  used  to  produce  two   executable	 files
+which  are   assumed   to  be  called  "tangle"  and "untangle" by the program
+itself.  The source is in Turbo C (Trademark) and can be  compiled  with   the
+tiny   memory model.   Since  use  is  made  of system dependent functions for
+obtaining the input file size for tangle, the program is not portable as is.
+
+To use tangle and untangle simply type the command name followed by the source
+and  destination  file	names.	You will be prompted for a password and status
+information is produced.  The password is  echoed  since  for  the  length  of
+password  intended it would be too easy to mess it up.	The password should be
+a long sequence of characters such as a sentence with some  strange  words  or
+characters  in	it.  The maximum length is the same as the maximum block array
+width (100 as supplied).  The password is scrolled off the  screen  after  the
+line  is  terminated  and  an  error  checking	code  is displayed.  The error
+checking code number reveals some  information	about  the  password  but  not
+enough to worry about.	The purpose of the error checking code is to alert the
+user to an incorrectly typed password, since it is a function of the  password
+it should always be the same when the same password is used.
+
+The algorithm used was inspired by the Rubik's cube.  The core algorithm works
+as follows:
+
+   First a fixed block size is determined which is the product of two numbers
+   "wide" and "high".  The data is processed in a two dimensional array with
+   these dimensions one block at a time.  If the last block cannot be entirely
+   filled it is padded with junk characters.  The password is used to
+   determine a key on a column per character basis.  The key value for each
+   column (modulo the height) is the amount this column is shifted down.  The
+   part which emerges from the bottom is inserted into the top (i.e. a cyclic
+   shift).  The rows are similarly shifted but using the values 1,2,3,...,etc.
+   This two stage process which is called a shuffle is repeated a fixed number
+   of times.  The result is a permutation of the array determined by the
+   password alone.
+
+This algorithm produces a pure permutation of the data which has the advantage
+of  not  changing  the character set but weaknesses that cannot be ignored for
+any serious use.  A number of modifications to the algorithm produce one which
+in  the  author's opinion is secure against a chosen plaintext attack and if a
+large enough good password is used then immune to brute force attack  for  the
+conceivable future.
+The first modification is to change the nature of the algorithm so that it  is
+no  longer  a pure permutation.  The strategy adopted is to include a phase in
+each shuffle which replaces each second line by the  bitwise  exclusive-or  of
+itself	and  the  line	before.  This means that the history of the encryption
+process, which characters happen to  be  located  above  each  other  in  each
+shuffle, affects the final outcome.  An analogy is that of shuffling a pack of
+cards on which the ink is still wet as compared to  a  normal  shuffle.   With
+this  modification  the  algorithm  is	strong against known plaintext attack.
+Secure that is provided the known text is not a simple pattern (e.g. all space
+characters).   To secure against simple patterned source a simple substitution
+of the block is performed after the first  shuffle.   This  eliminates	simple
+patterns  and  also  prevents  a  simple  chosen plaintext attack strategy the
+author discovered which applies to Crypt 2.0 (Tangle's predecessor).
+
+If the input file is smaller than 450 bytes it is padded to  this  size.   The
+block  size  is  determined  according	to  the size of the input file and the
+minimum size.  For files smaller than 10 Kbyte there will be only  one	block.
+Each  block  has two dimensions - wide and high.  The last block usually needs
+some padding which is chosen from whatever happens to be in the array already.
+The  junk  is  selected  randomly  though the random number generator has only
+about 30,000 possible seeds. The password or key is a string supplied  by  the
+user,  this  is extended to the maximum length (100) by repetition however the
+repeated strings are modified  by  exclusive-or  '152'	to  help  extract  the
+maximum  information  from the supplied string (since later only the remainder
+mod high will be utilised).
+
+The security of the system is highly dependent on the choice of  password  and
+particularly  its  length.   Passwords	which  are  too  short	are  rejected.
+Naturally  the	password  is  not   recorded  permanently   anywhere   by  the
+encryption  program  and  version  3.0	erases the password from memory before
+exit.  The easiest way to choose a good password is to use  a  whole  sentence
+(spaces and punctuation are  allowed) with  some  strange  characters  in  it.
+It is relatively easy for a cryptanalyst to try out all short  sentences  with
+words  from  a	standard  dictionary.  Brute  force  cracking of an  encrypted
+file with  n blocks of block size b, a password of p units chosen from	a  set
+of  q  values  and  with  s  shuffles  per  block  requires  O(s  * b * (q^p))
+operations.  Obviously increasing q and/or p pays great dividends.  For a pure
+permutation  it  would be possible to try all b!  rearrangements of  a	block.
+This  is ruled out by the minimum block size being 450.  To check all possible
+keys  with  the  minimum block dimensions of 32*15 (width*height) and with the
+minimum password length of 10 characters we need to  consider  15^10  possible
+keys.	15^10  possibilities would take a week to check at the rate of one per
+microsecond.  Actually the number of keys is greater than this (note  how  the
+password  is extended above) so it would take longer.  Using a password length
+of 15 characters the time would be  increased  to  over  ten  thousand	years.
+Longer	passwords are supported by the program since these calculations assume
+an unpredictable password is used.  Even if the  password  is  chosen  from  a
+dictionary of 1000 four letter words the program would allow 6 such words with
+the minimum block size corresponding to 1000^6	keys  which  is  approximately
+15^15.	 It  is  clear that increasing s is not an effective way of  improving
+security against brute force attack.  The time taken by the algorithm is O(s *
+b  *  n).   Since  (b*n)  cannot  be changed s should be chosen as small as is
+considered safe.  Note that s is  a  compile  time  constant  for  the	Tangle
+program and may be changed (it is called SECURE).
+
+There is another security issue to consider.  Even when a cyphertext cannot be
+deciphered  it	may  reveal  information  about  a  sequence  of  cyphertexts.
+Consider the encryption of two files differing by  only  one  character.   The
+difference  in	the  input files causes a cascade of differences in the output
+files due to the exclusive-or in  the  shuffle	operation.   This  cascade  is
+approximately  1.5 to the power of the number of shuffles when the differences
+are sparse hence ideally the value chosen for SECURE should be	at  least  the
+logarithm base 1.5 of the block size.  The block size varies from 450 to 10000.
+Hence a conservative choice for SECURE would be 2*LOG(100)/LOG(1.5)=23.  Using
+the minimum block size of 450, SECURE=15 would be sufficient.  This should not
+be taken too seriously however since if the files require more than one  block
+then  the identical input blocks (except most likely the last block due to the
+padding) will be encrypted identically.  The value chosen for SECURE in Tangle
+is  10	which  is  a  compromise.
+
+The security of the above algorithm to detection of similar  sources  is  also
+compromised  by  the  fact  that  so far the algorithm encrypts each bit plane
+(corresponding to the 8 bits in a byte) independently.	This is a weakness  of
+version  2  which  has	been  corrected  in  version  3.0.   A	one  character
+difference will be a one bit difference in some planes but not very likely for
+all  planes.  To fix this the exclusive-or phase of the shuffle is modified in
+version 3 to add 1 mod 256 to the byte.  This means  the  bit  planes  are  no
+longer independent and each entire block is mixed together.  It would have been
+preferable to use a cyclic shift instead of adding 1 mod 256 but the C language
+does not have this operation.  Because a carry into the 8th bit position will
+only occur on average one time in 128, SECURE must be chosen large enough to
+cause a cascade of changes in the 8th plane.
+
+If similar source produces similar output then it seems likely a chosen
+plaintext attack could be mounted.  Hence for systems requiring this security
+SECURE should be chosen as large as the conservative estimates above (15 to 23,
+according to the block size).  Since the intended domain of application to
+Tangle is personal computer file security, the more modest default value of
+SECURE=10 should suffice.  Where protection against casual snooping is all that
+is required then SECURE=3 would be sufficient.	In this case it would be a good
+idea to remove the redundant phases of the last shuffle.  Of the three phases
+of a shuffle, only the first depends upon the key.  This means the final two
+phases of the last shuffle are redundant and may be omitted.
+
+
+Version 3 also incorporates a change recommended by Russel Herman that using a
+floating  point  library  for  a  single  use  of the square root function was
+unwarranted.  Version 3 uses a simple linear search  square  root  calculation
+and this cuts the size of the executable code by about 50% - thanks Herman!
+
+Some final operational advice.	Confidential documents should be created using
+a  ram	disk or a floppy which will be destroyed.  Note that deleting and even
+overwriting magnetic media does not prevent the data's	recovery.   Watch  out
+for  editors  which keep temporary copies of files which they are working upon
+in places of their own choice.	A  deleted  temporary  file  is  often	easily
+recovered and you may not even be aware of its existence.
+
+(The algorithm is the same for all versions 3.x)
+
+Version 3.3: The only changes are the removal of a superfluous include and
+	     alterations to comments in the source.
+
+Version 3.4: Some type casting errors fixed and UNIX option provided.
+

@@ -1,0 +1,65 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!wupost!mont!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu (John Kelsey)
+Subject: Re: IDEA operating modes
+Message-ID: <16C2710A4F.C445585@mizzou1.missouri.edu>
+Sender: news@mont.cs.missouri.edu
+Nntp-Posting-Host: mizzou1.missouri.edu
+Organization: University of Missouri
+References: <16C25FDEF.C445585@mizzou1.missouri.edu> <wd6cmuCBK3HL.BFq@netcom.com>
+Date: Wed, 11 Aug 93 18:56:01 CDT
+Lines: 53
+
+In article <wd6cmuCBK3HL.BFq@netcom.com>
+wd6cmu@netcom.com (Eric Williams) writes:
+ 
+>I'll have to see if it's possible
+>to sneak another 128 bits into the file's directory entry to use with
+>the scheme you suggest.
+ 
+   Ideally, you might just prepend that to the file.  Given your application,
+that may or may not be possible.  Thinking about it, it looks to me like the
+strongest way to do it would be to have a "key seed," and a password-generated
+(or hardware-key-supplied) key.  To generate the key for this file, encrypt
+the key seed with the "real" key.  Without knowing the "real" key, no attacker
+has anything better than a 1/2**64 chance of guessing what either half of the
+file key is.
+ 
+>If I use one of the feedback modes, I figured I'd have to re-start from
+>the IV for each file block so that random I/O could still be performed.
+>I was concerned that using the same IV for each block would compromise
+>encryption strength.
+ 
+   How large is each file block?  Ie, how many 64-bit blocks are in each
+file block?
+   If you're needing the ability to add records in the middle of the file,
+or change them, then I suspect you *will* have to do something like that.
+ 
+   Suggestion:
+ 
+   Put an IV field into each file block.  When you're creating the file, or
+doing sequential operations to it, go ahead and copy the last ciphertext
+block from the previous file block into this block's IV field.  Whenever it
+becomes necessary to change or insert a block, don't worry about changing
+already-created IV fields.  Just generate a new IV field by (say) re-
+encrypting the previous file block's last ciphertext block.  This pretty-
+much ensures that you won't have any duplicate IV fields.  (Using the same
+IV field each time would make it easier for highly-patterned input to show
+through.)
+ 
+>The key will be true randomly generated and stored in an EEPROM
+>cartridge that is removable.  (It even *looks* like a key.)  I thought
+>of XORing the key with a key phrase and storing the result in the cartridge
+>so that it would be unusable without the phrase, and visa-versa.
+ 
+   If you're going to have a passphrase, you may as well use it as strongly
+as possible.  Maybe you could generate the MD5 hash of the passphrase, and
+encrypt that with the hardware key, or vice-versa.  Couldn't cost that much
+more than XORing, and it would be enormously stronger.
+ 
+>--
+>Eric Williams      |  Vincent: MC (B+S)t G+Y .10 Y L++ C+ T+ I+++ H+ S++ V+ F++
+>wd6cmu@netcom.com  |  Murphy: DS W+(B+R)t+R Y .11 Y L C+ T- I+++ H+ A+ F+
+>WD6CMU@WD6CMU.#NOCAL.CA.USA.NA
+>
+   --John Kelsey, c445585@mizzou1.missouri.edu

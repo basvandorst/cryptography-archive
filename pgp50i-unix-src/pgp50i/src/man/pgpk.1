@@ -1,0 +1,256 @@
+.\"
+.\" pgpk.1
+.\"
+.\" Copyright (C) 1997 Pretty Good Privacy, Inc.  All rights reserved.
+.\"
+.\" $Id: pgpk.1,v 1.1.2.3.2.5 1997/08/27 03:57:44 quark Exp $
+.\"
+.\" Process this file with
+.\" groff -man -Tascii pgpe.1
+.\"
+.TH PGPK 1 "JULY 1997 (v5.0)" PGP "User Manual"
+.SH NAME
+pgpk \- Public and Private key management for PGP.
+.SH SYNOPSIS
+.B pgpk
+.BI [-a " keyfile ..." " |
+.B -c [userid]] |
+.B -d <userid> | \p
+.B -e <userid> |
+.B -g |
+.B -l[l] [userid] |
+.B --revoke[s]  <userid> |
+.B -r[u|s] <userid> |
+.B -s <userid> [-u <yourid>] | \p
+.B -x <userid>]
+.BI [-o " <outfile>" ]
+.B [-z]
+.br
+
+.SH DESCRIPTION
+.B pgpk
+Manages public and private keys for PGP.  Unlike other PGP
+applications, pgpk is stream based and not file based; if no files are
+specified,
+.I stdin
+and
+.I stdout
+are used.
+.SH OPTIONS
+All configuration options can be controlled from the command line.
+See
+.BR pgp.cfg (5)
+for a complete list and how to specify them.
+
+.IP "-a [keyfile]"
+Adds the contents of
+.I keyfile
+to your keyring.  If
+.I keyfile
+is not specified, input is taken from
+.IR stdin.
+.I Keyfile
+may also be an URL; the supported protocols are
+.B hkp
+(Horowitz Key Protocol),
+.B http
+and
+.BR finger .
+To add
+.BR foo@bar.baz.com 's
+key to your keyring from PGP, Inc's server, for example, enter:
+
+.I pgpk -a hkp://keys.pgp.com/foo@bar.baz.com
+
+If
+.B foo@bar.baz.com
+has his key in his finger information, you could add that with:
+
+.I pgpk -a finger://bar.baz.com/foo
+
+If
+.B foo@bar.baz.com
+has his key on his web page, you could add that with:
+
+.I pgpk -a http://www.baz.com/foo/DSSkey.html
+
+If the
+.I Keyfile
+is not obviously a filename (it doesn't begin with "/" or "./") and it
+doesn't exist as a readable file, an attempt will be made to fetch it
+from your default keyserver using the
+.BR "Horowitz Key Protocol" .  
+(See
+.BR pgp.cfg (5)
+for information on setting your default keyserver).  For example, if
+there is no file named
+.I "foo@bar.baz.com"
+readable in the current directory,
+
+.I pgpk -a foo@bar.baz.com
+
+will extract foo@bar.baz.com's key from your default keyserver.  Some
+people consider this a security risk (as it could potentially leak
+information about the files on your system if you make a typing
+error).  Use the 
+.B
+GetNotFoundKeyFiles
+configuration option to disable this behavior.
+.IP "-c [userid]"
+Checks the signatures of all keys on your public keyring.  If
+.B [userid]
+is specified, only the signatures on that key are checked.  This
+command performs
+.I pgpk -ll
+on all specified keys, then outputs an explicit listing of trust and
+validity for each key.
+.B Trust
+is the amount of trust placed in each key as an introducer.
+.B Validity
+is the certainty that the key and user ID belong together.  Both this
+command and the long listing function output a leading column which
+succinctly describes the condition of the key.
+.br
+
+The possible leading columns can have the following first three
+character values:
+.br
+
+.B pub  
+A public key
+.br
+.B ret  
+A revoked key
+.br
+.B sec
+A secret key
+.br
+.B sub  
+A sub-key (in 5.0, this is always a Diffie-Hellman key)
+.br
+.B SIG  
+A signature issued by a public key to which you have the\c
+corresponding private key (i.e., your key)
+.br
+.B sig  
+A signature issued by a public key to which you do NOT have the
+corresponding private key (i.e., someone else's key)
+.br
+.B uid  
+A user ID
+.br
+
+Following this column is a single character which describes other
+attributes of the object:
+.br
+
+.B %
+The object is not valid (it does not have enough trusted signatures)
+.br
+.B ?
+No information is available about the object (generally because
+it is a signature from a key that is not on your keyring)
+.br
+.B !
+The object has been checked
+.br
+.B *
+The object has been tried
+.br
+.B @
+The object is disabled
+.br
+.B +    
+The object is axiomatically trusted (i.e., it's your key)
+.br
+.IP "-d <userid>"
+Toggles the disablement of
+.BR <userid> 's
+key on your public keyring.
+.IP "-e <userid>"
+Edits
+.BR <userid> 's
+key.  If this is your key, it allows you to edit your userid(s) and
+passphrase.  If it is someone else's key, it allows you to edit the
+trust you have in that person as an introducer.
+.IP -g
+Generate a public/private key pair.
+.IP "-l[l] [userid]"
+Lists information about a key.
+.B -ll
+lists more information about a key.  If
+.B [userid]
+is specified, that key is listed.  Otherwise, all keys are listed.
+See
+.BR -c ,
+above, for more information about the long format.
+.IP "-o outfile"
+Specifies that output should go to
+.IR outfile .
+If not specified, output goes to
+.IR stdout .
+If the output file is from a key extraction (see
+.BR -x ,
+below), you may specify an hkp (Horowitz Key Protocol) URL.  For
+example:
+.I pgpk -x foo@bar.baz.com -o hkp://keys.pgp.com
+would send
+.BR foo@bar.baz.com 's
+key to the PGP, Inc. public key server.
+.IP "--revoke <userid>"
+.B Permanately
+revokes the key specified.  There is no way to undo this, so don't
+play with it if you don't mean it.
+.IP "--revokes <userid>"
+.B Permanently
+revokes your signature (if any) on the key specified.
+.IP "-r <userid>"
+Removes
+.BR <userid> 's
+key from your public keyring, and your private as well, if it's there.
+.IP "-ru <userid>"
+Removes the given userid from your public and private keyrings.
+.IP "-rs <userid>"
+Removes the given signature from your public keyring.
+.IP "-s <userid> [-u <yourid>]"
+Signs
+.BR <userid> 's
+key with your default signing key.  If
+.B -u
+is specified, uses that key, instead.
+.IP "-x <userid>"
+Extracts the specified key in ASCII-armored form.
+.B -x <userid>
+.IP -z
+Batch mode.  See
+.BR pgp-integration (7)
+for a discussion of integrating pgp support into your application.
+.SH EXAMPLE
+.I pgpk -g
+Generates a key.
+.RE
+.SH FILES
+.I ~/.pgp/pgp.cfg
+.RS
+User-specific configuration file.  In previous releases, this file was
+called
+.IR config.txt .
+See
+.BR pgp.cfg (5)
+for further details.
+.RE
+.SH BUGS
+.RS
+See
+.BR pgp (1).
+.BE
+.SH "SEE ALSO"
+.BR pgp (1),
+.BR pgpv (1),
+.BR pgpe (1),
+.BR pgps (1),
+.BR pgp.cfg (5),\p
+.BR pgp-integration (7),
+http://www.pgp.com (US versions)
+and
+http://www.pgpi.com (International versions)

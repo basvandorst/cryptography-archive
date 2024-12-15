@@ -1,0 +1,637 @@
+How to use the Cypherpunks Remailers
+------------------------------------
+by Hal Finney, <74076.1041@compuserve.com>
+First written: January 10, 1993
+Last revised:  May 29, 1993
+
+Several sites are running simple remailers based on Perl scripts
+originally created by Eric Hughes and using the mh utility program
+"slocal".  I wrote a simple slocal replacement in Perl, and added
+PGP decryption.  The code for these remailers is available by
+anonymous ftp from soda.berkeley.edu, in the cypherpunks/remailer
+directory.  The latest version of this document may be found there as
+well, as long as other scripts useful in operating the remailers.
+At the bottom of this document is a list of currently available Cypherpunks
+remailers.
+
+These basic remailers have one main function: they will automatically
+forward a message to any requested destination, removing all incoming
+header fields except "Subject:".  Although this is less power than
+some other remailers provide, the Cypherpunks remailers do not require
+the operator to have root privileges on the machine which runs the
+remailer.  It basically has to be a Unix machine which runs Perl and
+which supports the feature of looking for a ".forward" file in the
+user's home directory to find the name of a program for processing
+incoming mail.  Many Unix systems provide these capabilities.
+
+Basic Remailing Functions
+-------------------------
+
+There are two general ways of specifying the remailing instructions.
+The simplest is to add an extra field to the header of the message.
+All of the Cypherpunks remailers will accept the field name
+"Request-Remailing-To:".  (Several of the remailers also accept shorter
+versions of this name, but there is no standard for the short versions
+accepted.)  Simply put the address that you want the mail to be forwarded
+to after "Request-Remailing-To:" in the message header, and the forwarding
+will be done.  (Case is important in this header field, so be sure to put
+in the capital letters as shown.)
+
+The remailers do not create aliases or allow replies to such anonymously
+forwarded mail.  (But see below for how anonymous replies can be
+done using the encryption enhancements.)
+
+Here is an example:
+
+================================================================
+Date: Tue, 1 Dec 92 22:13:57 -0800
+Message-Id: <9301100613.AA05323@soda.berkeley.edu>
+From: "Sue Jones" <sue@mec.com>
+To: hfinney@shell.portal.com
+Subject: Anonymous mail
+Request-Remailing-To: joe@tap.com
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+This is a message from sue@mec.com to be anonymously forwarded to
+joe@tap.com.  It is directed to the Cypherpunks remailer at address
+hfinney@shell.portal.com.  When Joe receives the message it will look
+something like:
+
+================================================================
+Sender: hfinney@shell.portal.com
+Date: Wed, 2 Dec 92 01:03:31 -0800
+Message-Id: <9301110702.AA15971@shell.portal.com>
+To: joe@tap.com
+From: nobody@shell.portal.com
+Subject: Anonymous mail
+Remailed-By: Hal Finney <hfinney@shell.portal.com>
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+All the identifying information from Sue's message header has been
+replaced, except for the subject line.
+
+Many people have mailers which will not allow them to add fields to the
+headers of the messages they send.  Instead, they can only put material
+into the bodies of the mail.  In order to accomodate such systems, the
+Cypherpunks remailers provide a mechanism for "pasting" the first few
+lines of the message body into the header.  These lines can then contain
+"Request-Remailing-To:" commands.
+
+This is done by having the first non-blank line of your message be the
+special token "::" (two colons).  If the Cypherpunks remailers see this
+as the first non-blank line, all following lines up to a blank one
+will be pasted into your mail header.  Then the message will be processed
+as usual.  Here is how the message above would be prepared if Sue were
+not able to add lines to her outgoing message header.
+
+================================================================
+Date: Tue, 1 Dec 92 22:13:57 -0800
+Message-Id: <9301100613.AA05323@soda.berkeley.edu>
+From: "Sue Jones" <sue@mec.com>
+To: hfinney@shell.portal.com
+Subject: Anonymous mail
+
+::
+Request-Remailing-To: joe@tap.com
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+There are three common mistakes which I have seen in messages using
+these remailers.  The first is to leave the "::" off.  Sometimes people
+are not sure whether the text they write goes into the header or the
+message body.  They may think they are putting it into the header, but
+it is actually in the body.  The "::" is needed if it will be in the
+body.  The second mistake is leaving off the blank line after the
+material to be added to the header.  In that case the whole message gets
+added to the header (up to the first blank in the message), causing
+considerable confusion for the remailer and generally not allowing
+the mail to be forwarded.  The third mistake is to misspell
+"Request-Remailing-To:".
+
+Anonymous Posting
+-----------------
+
+Although the only remailer function is to forward messages to someone,
+they can also be used (indirectly) for anonymous posting.  This can
+be done by mailing to one of the mail-to-news gateways offered at a
+few sites.  These gateway computers will automatically post any message
+they receive with a special address format.  A commonly used format is to
+take the newsgroup name and replace "." with "-", then add the address
+of the gateway after an "@" sign.
+
+These gateways tend not to have a very long lifetime, but at least at
+this writing one operates at cs.utexas.edu.  Another operates at
+ucbvax.berkeley.edu, but that one is only available for mail from
+Berkeley sites.  Fortunately, there are cypherpunks remailers operating
+>from Berkeley sites (see the list below).  By using one of those remailers
+to direct the mail to ucbvax.berkeley.edu, it should be possible to post
+to news.
+
+As an example, to post to sci.crypt, send mail to "sci-crypt@cs.utexas.edu",
+or use one of the Berkeley cypherpunks remailers to send mail to
+"sci-crypt@ucbvax.berkeley.edu".  By using remailers in conjunction with
+mail-to-news gateways, anonymous posting is possible.  Realize, though,
+that people will not be able to respond to you directly (but see below
+for the anonymous address implementation).
+
+(Sometimes people ask how to post to groups with "-" in their names,
+since these gateways turn "-" characters into "."'s.  I don't know the answer
+but if anyone finds out please tell me and I will incorporate it into a
+future version of this document.)
+
+Chaining Remailers
+------------------
+
+Remailers can be chained for somewhat more security.  The simplest way
+to do this is to put multiple blocks starting with :: and ending with
+a blank line at the beginning of the message.  Here is the example above,
+re-done to pass through two remailers, first hh@soda.berkeley.edu, then
+hfinney@shell.portal.com.
+
+================================================================
+Date: Tue, 1 Dec 92 22:13:57 -0800
+Message-Id: <9301100613.AA05323@soda.berkeley.edu>
+From: "Sue Jones" <sue@mec.com>
+To: hh@soda.berkeley.edu
+Subject: Anonymous mail
+
+::
+Request-Remailing-To: hfinney@shell.portal.com
+
+::
+Request-Remailing-To: joe@tap.com
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+This mail is sent to the remailer at hh@soda.berkeley.edu.  It will strip
+off the first "::" and the "Request-Remailing-To: hfinney@shell.portal.com"
+lines, and send it to the "shell.portal.com" remailer.  That remailer will
+then send the message to Joe.  Chains can be made as long as desired by
+extending this scheme.
+
+Chaining does increase the complexity of the path a message takes,
+but the gain in security is limited because the whole path is visible
+in the message when you send it.  Adding encryption to the remailer
+allows more security, especially when combined with chaining.
+
+Encrypting Enhancements
+-----------------------
+
+Encryption/decryption for the Cypherpunks remailers is done using
+Phillip Zimmermann's "underground" public-key encryption program,
+PGP.  Although PGP's legality for use in the U.S. is debatable (and
+often debated), it is widely available at overseas ftp sites and at
+some domestic sites.  Use "archie" or a similar service to find the
+latest version.
+
+The encryption enhancement to the remailers is done in a fairly simple
+way.  Each remailer which supports this enhancement has a PGP public
+key which is made public.  (PGP keys for current Cypherpunks 
+remailers are listed at the bottom of this document.)  Any message
+in the above formats can be encrypted with the PGP key of a remailer,
+and sent to that remailer.  To show that it is a PGP message, the
+mail header must have the line "Encrypted: PGP" added to it.
+
+Upon receipt of a message with such a header line, the remailers will
+attempt to decrypt the incoming message using their PGP secret key.
+The result of the decryption is then subject to the same processing
+steps described above.
+
+Here is an example of the use of this system.  We start with the
+second example above.  I will just show the message body as the
+sender composes it:
+
+================================================================
+::
+Request-Remailing-To: joe@tap.com
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+This is the body of the message which Sue is sending, anonymously,
+to Joe.  It has the "::" and "Request-Remailing-To:" lines, followed
+by a blank, then the text to be sent to Joe.
+
+Sue would then encrypt this file using PGP, with the "-a" switch for
+Ascii output, using the public key of the remailer.  This would
+yield something like:
+
+================================================================
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf4rGrBciM/mJhDRkjvIhOlUaUI2MgW6GNvyxkPVc0FM34RR
+MWTU+TdhGARMWoghyYi96/p0+PrBceLviahMdj/9pgAAAHE/mXUHdmuWjcQeeBuP
+NsbajDo1ygxk/0WM2AEXZzzGSTTP9fW5wVi52QxVv3ok7S3dNlX+kUDiUCxBjSdf
+UfnoHo5/ng0jVdQgNA39toaHOpEMEUc+JCQXuXwTJ+OfuVssCFnUWYX2kYddgNrE
+4qvm3w==
+=xsVd
+-----END PGP MESSAGE-----
+================================================================
+
+This is a typical PGP output file.  Now, this is the file that Sue
+would send to the remailer.  But first she needs to mark it with the
+"Encrypted: PGP" header line.  Using the "::" pasting operator, she
+would edit this output file, adding the required header, to produce:
+
+================================================================
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf4rGrBciM/mJhDRkjvIhOlUaUI2MgW6GNvyxkPVc0FM34RR
+MWTU+TdhGARMWoghyYi96/p0+PrBceLviahMdj/9pgAAAHE/mXUHdmuWjcQeeBuP
+NsbajDo1ygxk/0WM2AEXZzzGSTTP9fW5wVi52QxVv3ok7S3dNlX+kUDiUCxBjSdf
+UfnoHo5/ng0jVdQgNA39toaHOpEMEUc+JCQXuXwTJ+OfuVssCFnUWYX2kYddgNrE
+4qvm3w==
+=xsVd
+-----END PGP MESSAGE-----
+================================================================
+
+This is what she would send to hfinney@shell.portal.com.  Note that
+this file does not reveal the true destination of Sue's message.  Only
+when the remailer decrypts the file will it see to whom to send it.
+
+As with ordinary remailing commands, certain mistakes are more common.
+The most frequent is to forget the "Encrypted: PGP" header line,
+which must be either in the message header itself, or be put there
+with the "::" pasting token as in the example above.  Another common
+mistake is to forget the "::" within the encrypted message itself,
+or to forget the blank line after the "Request-Remailing-To" line
+within the encrypted text.
+
+Chaining Encrypted Messages
+---------------------------
+
+Chaining encrypted messages is basically a matter of repeating the
+encrypting steps.  For example, suppose Sue wanted to chain two remailers,
+first going through elee7h5@rosebud.ee.uh.edu, then through
+hfinney@shell.portal.com.  She has to first encrypt it for the second
+remailer in the chain, then encrypt the resulting output for the
+first remailer.  That way, when she sends the message, each remailer
+will decrypt one "layer" of the message, revealing the hidden message
+for the next one in the chain.
+
+(Think of the "nested envelope" model.  Encrypting a message is like
+putting it into an envelope that only a certain remailer can open.
+Chaining remailers is like sealing one envelope inside another.  To send
+a letter through two remailers, you would first seal it inside the envelope
+of the second remailer, then seal that one inside the envelope of the
+first remailer.)
+
+In this example, Sue would take the output just above, which is the
+message for the hfinney@shell.portal.com remailer, and add remailing
+instructions to get it sent to that remailer:
+
+================================================================
+::
+Request-Remailing-To: hfinney@shell.portal.com
+
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf4rGrBciM/mJhDRkjvIhOlUaUI2MgW6GNvyxkPVc0FM34RR
+MWTU+TdhGARMWoghyYi96/p0+PrBceLviahMdj/9pgAAAHE/mXUHdmuWjcQeeBuP
+NsbajDo1ygxk/0WM2AEXZzzGSTTP9fW5wVi52QxVv3ok7S3dNlX+kUDiUCxBjSdf
+UfnoHo5/ng0jVdQgNA39toaHOpEMEUc+JCQXuXwTJ+OfuVssCFnUWYX2kYddgNrE
+4qvm3w==
+=xsVd
+-----END PGP MESSAGE-----
+================================================================
+
+This is going to be sent to the "rosebud" remailer, so she encrypts this
+file with that remailer's public key.  The result would be like this:
+
+================================================================
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hIwCfbONysWr+7MBA/0S+5s+LVmOFfqfOx93adv30OoNPyjI8/O+8ACaqvjY0v0O
+3dxQqwlSGkgUFDsWwwtrSdtxLa7C0TAH2RPw34KlO0lnTLTpxkNMo8GJUVqALy4f
+BN6QCEYYZIG6utzeZ0vPySMTzFVjJfYKekxrFHy/NgzsF2TP0RN9IJtn2x07waYA
+AAF9Ao9XPDXkqNP22xE1O8v0d0NpYRNbNKpb1Ql4sSAL/d0IL6jbFMkx/Vkty1aA
+sV1p9Yr+/Y+PJVivrkl7E/qG3RB2a0T9Chb0FTZkmYtGiBhAmvpz6VSdjvM5bfLx
+vARFJxuO8Oq75lxh1U6Q6oC6yY+dfc3B8Vavj49kc4NFuSGc9K6oLN3WC6xBBkqB
+NOEa9G7vcJrkuM444noyv34vhmnbo6Z8jwDWKCFByCZ7hqEZh9Bul01qhBwtF9wQ
+d6VEfpaLcd4NTiI8WvRcHT5wqy8bZ7LyyFjHGz5IdBJzXotd6rPTx/ZQ0LEQ1pAc
+Zm83UT+1PKUZQ72n6YW3tG9ZzWlU3XYPL/xznh4g5xdEwPAmAcgx/34X6fVLir2H
+uiDbT4XOXVdyYxPrQCZEg129JwVnAPHlH3nSKZw08dGpb/aTeS7K9L7oFw/7AJm6
+3D4u6IW44+tLhCQ07w/Kkuoaf57PQqbrvFKBclm8JXZQlIVj8As/8Fn1DNTCCHRC
+=rbpv
+-----END PGP MESSAGE-----
+================================================================
+
+Now, she will need to mark this message with the "Encrypted: PGP"
+header:
+
+================================================================
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hIwCfbONysWr+7MBA/0S+5s+LVmOFfqfOx93adv30OoNPyjI8/O+8ACaqvjY0v0O
+3dxQqwlSGkgUFDsWwwtrSdtxLa7C0TAH2RPw34KlO0lnTLTpxkNMo8GJUVqALy4f
+BN6QCEYYZIG6utzeZ0vPySMTzFVjJfYKekxrFHy/NgzsF2TP0RN9IJtn2x07waYA
+AAF9Ao9XPDXkqNP22xE1O8v0d0NpYRNbNKpb1Ql4sSAL/d0IL6jbFMkx/Vkty1aA
+sV1p9Yr+/Y+PJVivrkl7E/qG3RB2a0T9Chb0FTZkmYtGiBhAmvpz6VSdjvM5bfLx
+vARFJxuO8Oq75lxh1U6Q6oC6yY+dfc3B8Vavj49kc4NFuSGc9K6oLN3WC6xBBkqB
+NOEa9G7vcJrkuM444noyv34vhmnbo6Z8jwDWKCFByCZ7hqEZh9Bul01qhBwtF9wQ
+d6VEfpaLcd4NTiI8WvRcHT5wqy8bZ7LyyFjHGz5IdBJzXotd6rPTx/ZQ0LEQ1pAc
+Zm83UT+1PKUZQ72n6YW3tG9ZzWlU3XYPL/xznh4g5xdEwPAmAcgx/34X6fVLir2H
+uiDbT4XOXVdyYxPrQCZEg129JwVnAPHlH3nSKZw08dGpb/aTeS7K9L7oFw/7AJm6
+3D4u6IW44+tLhCQ07w/Kkuoaf57PQqbrvFKBclm8JXZQlIVj8As/8Fn1DNTCCHRC
+=rbpv
+-----END PGP MESSAGE-----
+================================================================
+
+This message is what would actually be sent to elee7h5@rosebud.ee.uh.edu.
+It would decrypt it and send the inner encrypted message on to
+hfinney@shell.portal.com, which would decrypt its input and finally get
+the cleartext message which Sue is sending to Joe.
+
+Using chained encryption conceals the fact that Sue is communicating
+with Joe from all participants (except Sue).  The first remailer
+sees a message from Sue, which it decrypts, but it doesn't know
+who the final recipient is.  The second remailer sees that the message
+is going to Joe, after decrypting it, but it doesn't know who originally
+sent it.  No one is in a position to pair up Sue with Joe.
+
+Creating these chained messages is tedious if done by hand.  There
+have been some Unix shell scripts posted on the Cypherpunks list which
+help automate the process.  These are available by anonymous ftp from
+the Cypherpunks list site, soda.berkeley.edu.  They make it quite easy
+to send chained encrypted messages.
+
+Anonymous Addresses
+-------------------
+
+The encrypted remailers allow an interesting form of an anonymous
+address.  An anonymous address is an address which allows someone to
+send you mail without knowing who you really are or your true email
+address.  Some remailers implement this by creating aliases or
+pseudonyms for each user, and keeping a table which allows them to
+look up a given alias and find out who the user is that it belongs
+to.  The simple Cypherpunks remailers don't keep any kind of table
+information, so it is necessary to embed all of the necessary
+information in the anonymous address itself.
+
+The simplest form of an anonymous address is a "Request-Remailing-To"
+block, encrypted with the PGP key of a remailer.  In the examples
+above, suppose Sue wanted to supply Joe with a way of reaching her,
+without revealing her address.  The first step in creating such an
+anonymous address would be for her to create a file which held:
+
+================================================================
+::
+Request-Remailing-To: sue@mec.com
+
+================================================================
+
+This is just the same as the kind of remailing request blocks which
+would be put at the front of a message for an ordinary use of the
+remailers.  Note the "::" token as the first line, and the blank
+line which comes after the "Request-Remailing-To:".  Sue puts her own
+real email address on the "Request-Remailing-To:" line.
+
+Now, she can't send this to Joe or he'd see her email address.  What
+she does instead is to encrypt it with the public key of the remailer
+she wants to use for the anonymous address forwarding.  Suppose it
+is hfinney@shell.portal.com.  This would produce:
+
+================================================================
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf0R3rsCl1z0K3VI8bGTa0b/4MQdh3VAhNd+PIDkncwcHhk1
+1w4p6FST92QURYxyXXW4FVqSuJL0KepPKgXh+36kpgAAAEyHhcro57nKPUqC9/xn
+TLIoqX5CXBiKPp32fmSUyrgJf+thg9oTviReiMa/vvhtoher4nmBRSgcUBmJPOEX
+/ri9dIm4kMKc95R6p3at
+=0C8o
+-----END PGP MESSAGE-----
+================================================================
+
+Now, to make it so that the remailer will know to process it with PGP,
+Sue must add the "Encrypted: PGP" header line to the beginning using
+the "::" pasting token:
+
+================================================================
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf0R3rsCl1z0K3VI8bGTa0b/4MQdh3VAhNd+PIDkncwcHhk1
+1w4p6FST92QURYxyXXW4FVqSuJL0KepPKgXh+36kpgAAAEyHhcro57nKPUqC9/xn
+TLIoqX5CXBiKPp32fmSUyrgJf+thg9oTviReiMa/vvhtoher4nmBRSgcUBmJPOEX
+/ri9dIm4kMKc95R6p3at
+=0C8o
+-----END PGP MESSAGE-----
+================================================================
+
+The resulting file can be used as Sue's anonymous address.  Here is
+how she would use it.  She would include it in her message to Bob,
+with a comment like:
+
+================================================================
+Bob - If you want to reply to me, just take the block of text below,
+starting at the "::" line, and put it at the front of the message
+you want to send to me.  Then send the whole thing to
+hfinney@shell.portal.com.  That remailer will forward your message to me.
+Here is the block of text to use:
+
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf0R3rsCl1z0K3VI8bGTa0b/4MQdh3VAhNd+PIDkncwcHhk1
+1w4p6FST92QURYxyXXW4FVqSuJL0KepPKgXh+36kpgAAAEyHhcro57nKPUqC9/xn
+TLIoqX5CXBiKPp32fmSUyrgJf+thg9oTviReiMa/vvhtoher4nmBRSgcUBmJPOEX
+/ri9dIm4kMKc95R6p3at
+=0C8o
+-----END PGP MESSAGE-----
+================================================================
+
+Bob, if he follows these directions, will put that block of text at
+the beginning of his message, followed by what he wants to send to
+Sue.  This will produce something like:
+
+================================================================
+::
+Encrypted: PGP
+
+-----BEGIN PGP MESSAGE-----
+Version: 2.2
+
+hEwCG6rHcT8LtDcBAf0R3rsCl1z0K3VI8bGTa0b/4MQdh3VAhNd+PIDkncwcHhk1
+1w4p6FST92QURYxyXXW4FVqSuJL0KepPKgXh+36kpgAAAEyHhcro57nKPUqC9/xn
+TLIoqX5CXBiKPp32fmSUyrgJf+thg9oTviReiMa/vvhtoher4nmBRSgcUBmJPOEX
+/ri9dIm4kMKc95R6p3at
+=0C8o
+-----END PGP MESSAGE-----
+
+Hi - I don't know who you are, but I am interested in hearing more
+about you.  Signed, Bob.
+================================================================
+
+He would send this to hfinney@shell.portal.com.  That remailer would
+see the "Encrypted: PGP" header line after processing the "::" pasting
+token, and decrypt the PGP message.  This would produce:
+
+================================================================
+::
+Request-Remailing-To: sue@mec.com
+
+
+Hi - I don't know who you are, but I am interested in hearing more
+about you.  Signed, Bob.
+================================================================
+
+This would then be operated on in the usual way, causing the message
+to be forwarded to Sue.  This is how Sue's anonymous address could
+allow Bob to send to her without knowing who she is, and without the
+remailer having to keep any lists of aliases or pseudonyms.
+
+An extension of this scheme will allow Sue to create an anonymous
+address which chains through two or more remailers.  She has to
+repeatedly encrypt them, just as when setting up a chained remailing
+sequence.  This procedure can be cumbersome, but scripts should soon
+be available to automate the process.
+
+The anonymous addresses provided by the Cypherpunks remailers are
+not nearly as easy to use as the automatic aliases maintained by
+some of the other remailers.  They do not support the automatic insertion
+of the anonymous address when the recipient uses the "reply" function
+of his mail program.  He has to manually copy this rather large block
+of text to the front of his message.  Perhaps in the future it will
+be possible to embed anonymous addresses of this kind in a specially
+labelled header field, and to teach remailers to use such addresses
+for replying if they exist.
+
+The anonymous addresses are also rather lengthy in this form, so
+again the pseudonym-based addresses may be the more practical way to
+go.  It is interesting, though, to see that very simple remailing
+software can provide rather advanced functionality.
+
+Current Cypherpunks Remailers
+-----------------------------
+
+All of the following remailers accept the basic "Request-Remailing-To"
+remailing request:
+
+	hh@pmantis.berkeley.edu
+	hh@cicada.berkeley.edu
+	hh@soda.berkeley.edu
+
+The following remailers also accept the "Encrypted: PGP" function.
+The public keys for all of the remailers (plus the special one mentioned
+below) are in the keyring file below.  They can all be used for
+anonymous addresses as described above.
+
+	phantom@mead.u.washington.edu
+	hal@alumni.caltech.edu
+	remailer@rebma.mn.org
+	elee7h5@rosebud.ee.uh.edu
+	hfinney@shell.portal.com
+
+The next remailer is a variant on the Cypherpunks remailers.  It will
+work _only_ with encrypted messages, using its public key (in the keyring
+file below).  But it allows a simpler syntax.  It is not necessary to
+put "Encrypted: PGP" into the message header.  In addition, the "::" pasting
+operator is assumed, so you can leave that off.  Also, instead of
+"Request-Remailing-To:" you can say just "To:".  So messages are much
+simpler in format for this remailer.  Using our example above, Sue need
+only encrypt a file consisting of:
+
+================================================================
+To: joe@tap.com
+
+Joe - This is some anonymous mail from me.
+================================================================
+
+She would encrypt this using the public key of the remailer below, and
+send the resulting PGP output directly to that remailer.
+
+Presently, this special remailer does not support anonymous addresses.
+The remailer address is:
+
+	remail@extropia.wimsey.com
+
+Here is a PGP keyring file containing keys for the encryption based
+remailers listed here:
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+Version: 2.2e
+
+mQCNAitcsHIAAAEEAPZ3Ex1rEwKLeANRoaRyTA72htDFGiGPmWkowByZyUtRkTRp
+Vs/WdhgoJ1VLz76Chyb63I+ejpekeJfOud98gMh2HtVoTjNGYAawpCKo15tFyzYn
+BFYVy0NjroyxwM6YnPCsYfYMpvyjEa5mfgrlyzvYBBeTDRD89vYoe7Eue0fDAAUR
+sAEAtDJBbm9ueW1vdXMgUmVtYWlsZXIgPHBoYW50b21AbWVhZC51Lndhc2hpbmd0
+b24uZWR1PrABAIkAlQIFECtcqWpkhnxaNc7AOQEBZ+8EAIOOvsFf/niUrWw0BRvP
+hSEmtzrAkQJt3q7kPXutjj3IsJ1/oR8oGhv4iPQ5BmNvvd5dnsbbCqOurhaftVgz
+lSpyQcYiVryeNVvpdeX1+VTS7N+lAHVAlqnimoaEtUUIftDoDIjNNKRDi+nU4Gbb
+L+1MqveC1LKQMIi1WPjr6WpwsAEAmQBNAisCtU0AAAEB/jNOYzN1B2YzOxlK/Zb6
+axoOaGlPq5I7DV9GH3hcGRN5N6FiT4sRLhi53Sc5rUdYDa8mFQd4tqvFG6rHcT8L
+tDcABRGwAQC0KlJlbWFpbGluZyBTZXJ2aWNlIDxoYWxAYWx1bW5pLmNhbHRlY2gu
+ZWR1PrABAIkAlQIFECsGk/aoEwOvWCFMNwEB24gEAJlpxL88gdKUxdgXCTCeFZ45
+bTbyiS0Mfy86iGthyuLRYjAEjJB5yerRaKDiJNOgCTvnO+I9YyFdXnPEpvBjqVfp
+qHF2WCc4f7BgzBbOKg79EyiOp2/eYIQT1FkkcvisjRGlmHncfGgoq+OhVUw81ime
+SUPbv8vZyqskUU7djZKbsAEAmQCNAisUI2QAAAEEAKgm07Hsje5KpmXYd5azk0R6
+AES+qK7LcofnVGojUs7GBghDWbwrmW8oOEOhRorlShRALKeYspV4xYIw4WDkJcJx
+uf1B254scz1urF/Eem3zPW9byPAx7W/cGwvs6SouZvFcSDq4v1zApvGE9hP4szPz
+HeGmVr0NVNeaDK0guoCpAAURsAEAtCBSZW1haWxlciAocmVtYWlsZXJAcmVibWEu
+bW4ub3JnKbABAJkAjQIrHCjmAAABA/45q2W4ebeR4BBwxhNs8xWcd7CKZRIyBURb
+C6QnyWAXzd+kZrk/FRiMgnFEpgk6hDieRyWRefAlAjrMtwdteabTr22XRoowt0LO
+xW7RhyhgOPatL4AYFSHI48qaUSPWI36pSNoFCgyz3Hgk8NtDgwAO1EymCGtyAUt9
+s43Kxav7swAFEbABALQmcmVtYWlsZXIwMyA8ZWxlZTdoNUByb3NlYnVkLmVlLnVo
+LmVkdT6wAQCJAJUCBRArZJVHg4Ds6kta1jMBAVHQBACKLGjpv/pE7ECOdxgKj169
+PL+QAH8LqeZQ4lGwlqdewrnmB2az+M6JQKkO5Mlq5CHh4CR5F98gemB/40NDHg2R
+EV0uvZKtkhlUEh+opxqBfd1nq3xkaXTjWufeyVXEaZJczFM+m5l54bIhJvytRT/a
+TTmWMkuof94LPdopHs6t17ABAIkAVQIFECscKO/SN178mdtX6QEBtuwCAJO6/KZZ
+I6R9V/bkHLKhao3YybVxphwngHS1e7Yr4h5ZYw3tkajipI3xbELc2VfsowjV6/Do
+VtE4hNCeVqgcBAiwAQCZAE0CKwZ/4gAAAQH+J5Lq2HyEjVAGMamZy1W+wjFkG2an
+KRVdzemyHRdV8fiwQJK6Ci6TbOb88m23n0DYTlI7fGOkON4qWRDvjlYg1QAFEbAB
+ALQsUmVtYWlsaW5nIFNlcnZpY2UgPGhmaW5uZXlAc2hlbGwucG9ydGFsLmNvbT6w
+AQCJAJUCBRArBpKvqBMDr1ghTDcBASTlBACfTqODpVub15MK5A4i6eiqU8MDQGW0
+P0wUovPkNjscH22l0AfRteXEUM+nB+Xwk16RG/GdrG8r9PbWzSCx6nBYb7Fj0nPn
+RPtS/u69THNTF2gU2BD0j2vZF81lEHOYy6Ixao2b6Hxmab2mRta2eTg7CV6XP3eR
+FDPisVqgooAWg7ABAJkAjQIrKwD9AAABBACa9zsCHziDqIfSZ3cMKhYPlclhUwMj
+PEtAe8MhiiPgPbDAAZm0jiFOdhLM7y3WZPDR/Jqzg/ZtxGZbfYFzo5Z/PNUTIpQL
+p583V2ien3wSqjy/pconnwmwqOsEnFTXzEleg4v9hzKBc1arpMEY08fJaireoYMt
+LnnbcHAnprWjLwAFEbABALQlUmVtYWlsZXIgPHJlbWFpbEBleHRyb3BpYS53aW1z
+ZXkuY29tPrABAIkAlQIFECsrBIuTcb7wN+jjQwEBdgAD/iEJUMUPTMbjulg8yD7L
+s08TkuS1a3YdzC1ngJG5PkDd5Ya0bxJ3lC4fNsThL2YPcIWfv1vFmLRQOGvIPx2w
+Ibh4eIKkBxmpK9ElKSmBqZ1FpRAc2YzG/mCjEeFF6brBesrFlA2fn9LQ21A6tLpA
+qEWUavMMiH/Zp3Un2qnLMn8hsAFAiQBFAgUQKysD1EutImLEeA/3AQE1wQF7BanP
+LAqT9IEPChxd5smaxPrO6D9p7vxT9y72RNfrbRdyPXOo53H1j0+nB6b1hKFpsAEA
+=DGUR
+-----END PGP PUBLIC KEY BLOCK-----
+
+
+Summary
+-------
+
+Although these remailers are not as fully featured as some of the
+alias-based anonymous remailers in use, they do provide useful capabilities
+and they are designed to be run by ordinary users on a wide class of
+Unix based computers.  It is hoped that future enhancements to these
+remailers will make it possible for almost everyone to run remailers
+routinely as part of the general culture of email users.  Such a system
+could provide real privacy in the use of electronic mail.
+
+

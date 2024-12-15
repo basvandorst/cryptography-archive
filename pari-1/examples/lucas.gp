@@ -1,0 +1,1 @@
+lucas(p,q,u)=q=2^p-1;u=4;for(k=3,p,u=(u*u-2)%q);u==0

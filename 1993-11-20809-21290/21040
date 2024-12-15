@@ -1,0 +1,158 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!library.ucla.edu!news.mic.ucla.edu!ucla-physics!smolin
+From: smolin@physics.ucla.edu (John Aaron Smolin)
+Subject:  Computer Shopper cipher challenge
+Message-ID: <1993Nov11.213908.7690@physics.ucla.edu>
+Organization: UCLA Department of Physics
+Date: Thu, 11 Nov 93 21:39:08 GMT
+Lines: 149
+
+Apologizes if this appears twice, I'm having trouble with the news server
+at IBM, I'll try it from ucla now......
+
+
+I have written a program with an intentional bug that takes plaintext
+and enciphers it to look like the ciphertext of secrt1 and secrt2.
+I don't know if it is statistically just the same, but it looks the
+same on a plot of the frequencies, at least more or less. 
+
+Here is the program:  The bug has to do with using long ints instead
+of unsigned long ints.  I have tried to write it in a way that will run
+consitantly, no matter what your compiler tries to do with the modulo of
+a negative number.  I don't know if the original author of the challange
+made a bug like this or not, what do you think?  The constants for
+how far to shift things in GetRandomNumber don't quite look like
+the kind of mistakes he would have used.
+
+Hope this helps instead of just getting everyone else off on the same
+wild goose chase as I'm on.
+
+John
+email to smolin@vesta.physics.ucla.edu  (don't believe the header!)
+
+
+---snip snip snip------------------------------------------------------------------
+
+/*  crack.bad.c   by John Smolin  smolin@vesta.physics.ucla.edu
+ *   based on
+ *  CIPHER.C
+ *
+ *  Computer Shopper Magazine.
+ *  "What's the Code" column.
+ *  July 1993
+ *
+ *  David Stafford
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+
+#define MULTIPLIER  0x015A4E35L
+#define INCREMENT   1
+
+long RandomSeed;
+
+int mod(long a,long b)
+{
+return(a%b);
+/*
+if(a>=0) return(a%b);
+else return(- (b -1 - ((-a) % b)));*/
+} 
+
+
+int GetRandomNumber( int Range )
+  {
+  RandomSeed = MULTIPLIER * RandomSeed + INCREMENT;
+  if(  (9+ mod(RandomSeed>>4,11)) < 0) return(0);
+  return( (RandomSeed >> (9+mod(RandomSeed>>4,11)))  & 0xff);
+  }
+
+
+/*
+ *  Does the actual enciphering.
+ *
+ *  In: InFile  Input file
+ *      OutFile Output file
+ *
+ * Out: Nothing
+ */
+
+void Cipher( FILE *InFile, FILE *OutFile )
+  {
+  int Ch,rand;
+  while( (Ch = getc( InFile )) != EOF )
+    {
+    rand=GetRandomNumber(256);
+    fputc( Ch ^ rand, OutFile );
+    }
+  }
+
+
+/*
+ *  Opens the input and output files.
+ *
+ *  In: Key         The key used to encrypt/decrypt the file
+ *      InFileName  Input file name
+ *      OutFileName Output file name
+ *
+ * Out: Nothing
+ */
+
+void Supervisor(long Key, char *InFileName, char *OutFileName )
+  {
+  FILE *InFile, *OutFile;
+
+  if( (InFile = fopen( InFileName, "rb" )) != NULL )
+    {
+    if( (OutFile = fopen( OutFileName, "wb" )) != NULL )
+      {
+      RandomSeed = Key;
+/*      RandomSeed=0x80000000;*/
+/*      RandomSeed=0x80000000 | Key;*/
+      Cipher( InFile, OutFile );
+
+      fclose( OutFile );
+      }
+    else
+      {
+      printf( "Can't open output file %s\n", OutFileName );
+      }
+
+    fclose( InFile );
+    }
+  else
+    {
+    printf( "Can't open input file %s\n", InFileName );
+    }
+  }
+
+
+/*
+ *  Entry point.  Gets the command line args.
+ *  Provides usage information.
+ *
+ *  In: Argc  Count of command line arguments
+ *      Argv  Strings (commands)
+ *
+ * Out: Nothing
+ */
+
+void main( int Argc, char *Argv[] )
+  {
+  if( Argc == 4 )
+    {
+    Supervisor( atol( Argv[ 1 ] ), Argv[ 2 ], Argv[ 3 ] );
+    }
+  else
+    {
+    puts( "Cipher - File encryption/decryption\n" );
+    puts( "Usage: cipher_key input_file output_file" );
+    puts( "       cipher_key is an integer" );
+    puts( "       input_file & output_file are the file names\n" );
+    }
+  }
+
+
+

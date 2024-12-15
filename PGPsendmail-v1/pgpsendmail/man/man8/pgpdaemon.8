@@ -1,0 +1,219 @@
+.\" Copyright (C) 1994-1997  Richard Gooch
+.\"
+.\" This program is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation; either version 2 of the License, or
+.\" (at your option) any later version.
+
+.\" This program is distributed in the hope that it will be useful,
+.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+.\" GNU General Public License for more details.
+.\"
+.\" You should have received a copy of the GNU General Public License
+.\" along with this program; if not, write to the Free Software
+.\" Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+.\"
+.\" Richard Gooch may be reached by email at  rgooch@atnf.csiro.au
+.\" The postal address is:
+.\"   Richard Gooch, c/o ATNF, P. O. Box 76, Epping, N.S.W., 2121, Australia.
+.\"
+.\"	pgpdaemon.8		Richard Gooch	9-SEP-1997
+.\"
+.TH PGPDAEMON 8 "9 Oct 1997" "PGPsendmail/Unix Suite"
+.SH NAME
+PGPdaemon \- daemon for automatic signing and decryption with PGP
+.SH SYNOPSIS
+.B pgpdaemon
+[
+.B -mailwait
+]
+[
+.B -detach
+]
+[
+.B -nomail
+]
+[
+.B -no_filelocking
+]
+[
+.B -pgppath <path>
+]
+[
+.B -uid <uid>
+]
+.SH DESCRIPTION
+The \fIpgpdaemon\fP programme is a daemon, run by the user, which can
+automatically sign or decrypt PGP messages. PGPdaemon is part of the
+PGPsendmail/Unix Suite.
+.PP
+PGPdaemon will periodically read the users' incoming mail spool
+directory and will move the contents to another spool file, decrypting
+any messages that it can.
+.SH OPTIONS
+.TP
+.B \-mailwait
+This option will prevent PGPdaemon from processing any incoming mail
+until it has received a passphrase from \fIsendpgppass\fP. If this
+option is not specified, upon startup PGPdaemon will process any mail
+in the users' spoolfile and will not decrypt any messages. This can be
+annoying.
+.TP
+.B \-detach
+This option will detach PGPdaemon from the parent process. PGPdaemon
+will run until signalled with SIGTERM or SIGKILL. Note that PGPdaemon
+does not put itself in the background.
+.TP
+.B \-nomail
+This option disables processing of the incoming mail spool area by
+PGPdaemon.
+.TP
+.B \-no_filelocking
+This option disables file locking checks on the input and output spool
+files. PGPdaemon will only use lockfiles with this option. This option
+is useful with broken mail readers which lock their input spool (the
+output spool file for PGPdaemon) unecessarily.
+.TP
+.B \-pgppath <path>
+This option sets the PGPPATH environment variable for PGPdaemon and all
+its child processes. This is an alternative to setting the PGPPATH
+environment variable externally. The value of <path> must be a
+directory containing the path specification.
+.TP
+.B \-uid <uid>
+This option sets the real-user-id to \fIuid\fP. This is helpful in
+supporting encrypted mailing lists.
+.SH CONFIGURATION
+The configuration file $PGPPATH/PGPdaemon.config (which must exist)
+configures the \fIpgpdaemon\fP programme. It is a simple ASCII file
+with one configuration option per line. Comment lines must start with
+a leading '#' character. Comment lines and blank lines are
+ignored. Each configuration option is a keyword followed by zero or
+more parameters, depending on the option. The following section
+details the configuration options. Below are the permitted keywords:
+.TP
+.B USERID PGPuserID
+\fIPGPuserID\fP specifies the PGP user ID to use when signing and
+decrypting. This option is mandatory. You may provide \fB$env\fP for
+the \fIPGPuserID\fP, in which case the value of the \fIenv\fP
+environment variable is used. A typical use for this would be
+\fB$LOGNAME\fP which would set the PGP user ID to your username.
+.TP
+.B MAILWAIT
+This option will prevent PGPdaemon from processing any incoming mail
+until it has received a passphrase from \fIsendpgppass\fP. If this
+option is not specified, upon startup PGPdaemon will process any mail
+in the users' spoolfile and will not decrypt any messages. This can be
+annoying.
+.TP
+.B OUT_SPOOL_FILE spoolfile
+Processed mail will be written to the \fIspoolfile\fP. A leading
+"~/" is permitted. If this is not specified, mail is written to
+\fB$HOME/decrypted-mail\fP.
+.TP
+.B IN_SPOOL_DIR spooldir
+Incoming mail is read from \fIspooldir\fP/$LOGNAME. A leading "~/" is
+permitted. If this is not set, the contents of your \fIMAIL\fP
+environment variable, if it exists, is used for the entire file
+name. If neither exist, the default /usr/spool/mail/$LOGNAME is used
+for incoming mail.
+.TP
+.B MAIL_CHECK_INTERVAL interval
+Checks of the incoming spool file are done every \fIinterval\fP
+seconds.
+.TP
+.B LOG_FILE logfile
+Specifies the logfile to write logging output to. \fIlogfile\fP may be
+a plain filename, or a simple shell-like expression, where "~" and
+environment variable expansion is supported. Variable names may be
+enclosed in a matching pair of '{' and '}' braces. If this option is
+not specified, the default is
+\fB$PGPPATH/PGPdaemon.log.<hostname>\fP.
+.SH SIGNALS
+PGPdaemon responds to signals in a variety of ways:
+.TP
+.B SIGINT
+PGPdaemon will exit cleanly.
+.TP
+.B SIGTERM
+PGPdaemon will exit cleanly.
+.TP
+.B SIGPIPE
+PGPdaemon will exit cleanly.
+.TP
+.B SIGHUP
+PGPdaemon will clean up and restart by calling exec(2).
+.TP
+.B SIGTTIN
+Caught and discarded.
+.TP
+.B SIGTTOU
+Caught and discarded.
+.TP
+.B SIGUSR1
+PGPdaemon will write the secret keyring file if it doesn't already
+exist and if PGPdaemon has it stored internally.
+.TP
+.B SIGUSR2
+PGPdaemon will perform an immediate check for incoming mail.
+.TP
+.B SIGIO
+PGPdaemon will read a request from its pipe.
+.TP
+.B SIGSEGV
+PGPdaemon attempts an emergency cleanup, logging the event if
+possible. This is for diagnostic purposes (a segmentation violation
+should never happen).
+.SH FILES
+.PD 0
+.TP 30
+.BI /usr/spool/mail/<user>
+the users' incoming mail spool
+.TP
+.BI $HOME/decrypted-mail
+mail spool after decryption
+.TP
+.BI $PGPPATH/pubring.pgp
+the users' public keyring file
+.TP
+.BI $PGPPATH/randseed.bin
+the seed file for PGP
+.TP
+.BI $PGPPATH/PGPdaemon.config
+the users' configuration file
+.TP
+.BI $PGPPATH/PGPdaemon.log.<hostname>
+log of activity/errors
+.\" .TP
+.\" .BI $PGPPATH/PGPdaemon.log.sig
+.\" signature certificate for logfile
+.TP
+.BI $PGPPATH/PGPsendmail.debug
+enable debugging if exists
+.TP
+.BI /tmp/PGPsendmail.debug.<UID>
+debugging output file
+.TP
+.BI pgpsendmail/doc/README.PGPdaemon
+distribution README (has more info.)
+.PD
+.SH ENVIRONMENT
+The \fIPGPPATH\fP environment variable must be set to the directory
+containing your secret keyring. The \fIMAIL\fP environment variable
+may contain the name of your input mail spool file.
+.SH SEE ALSO
+.BR sendmail (8),
+.BR pgp (1),
+.BR pgpsendmail (1),
+.BR sendpgppass (1),
+.BR pgppipe (1)
+.SH AUTHOR
+Richard Gooch (rgooch@atnf.csiro.au)
+.SH AVAILABILITY
+The PGPsendmail/Unix Suite is available for anonymous ftp from:
+
+ftp.atnf.csiro.au:pub/people/rgooch
+ftp.dhp.com:pub/crypto/pgp/PGPsendmail
+ftp.ox.ac.uk:pub/crypto/pgp/utils
+linux.nrao.edu:pub/src/pgp/PGPsendmail

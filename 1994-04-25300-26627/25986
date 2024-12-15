@@ -1,0 +1,152 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!EU.net!dkuug!uts!news.uni-c.dk!id.dth.dk!id.dth.dk!sv
+From: sv@idfs3.uucp (Stig Valentini)
+Subject: Re: Quick crypt of compressed data
+Message-ID: <sv.766309898@id.dth.dk>
+References: <sv.766048428@id.dth.dk> <Co4I5v.Lvq@ulysses.homer.att.com> <sv.766220553@id.dth.dk>
+Date: Thu, 14 Apr 1994 07:51:38 GMT
+Lines: 143
+
+
+--------------------------------------------------
+Already compressed data allowing faster cryptation
+--------------------------------------------------
+
+  The common goal of compression and cryptation is randomness.
+If the distribution of compressed data isn't close to random, then the
+compression algorithm cannot be considered optimal - because by removing the
+remaining redundance it should be possible to compress the data
+further. If the distribution of encrypted data isn't random, then it would
+in theory be possible to extract information from the data thus possibly
+breaking the encryptation.
+  The two processes basicly differ regarding size and time restrictions.
+Encrypted data is allowed to exceed the original data in size - and time-
+consuming algorithms is prefered in order to prevent encryption brute-force
+attacks. On the other hand, compressed is expected to result in a size
+reduction - and fast algorithms are favored (if the compression time exceeds
+the time saved when transfering the reduced amount of data over a channel -
+then it would be easier just to transmit the uncompressed data).
+  Basicly compression comes in two different forms: dynamic and static.
+  Let us consider static compression:
+
+  Static compression usually results in two parts:
+  (1) a statistical model of the data (a tree in the case of Shannon-Fano or
+      Huffmann-compression - or a probability interval division in the case of
+      arithmic coding) to be used for subsequent de-coding
+  (2) the original data in (compressed) encoded form
+  In case where the compressed data is to be encrypted, then it should only be
+necessary to encrypt the model used for de-compressing (1). It makes no sense
+to also encrypt the compression-encoded data (2). Why?, well...
+  If the compression algorithm is close to optimal, then the distribution of
+the compressed data (2) will be close to random - and the original model (1)
+will be absolutely necessary in order to restore the data to its original form.
+Information theory dictates than ordered information cannot be formed from
+a random distribution. And encrypting a random distribution just doesn't serve
+no purpose (the distribution just stays random).
+  The most widely used compression method - Huffman - is known only to be
+optimal in the case where the symbols in the data has probabilities in the
+order of 2^N. All other cases will present problems in form of non-randomness
+in the compressed data (2). Arithmic compression should on the other hand
+always provide uniform randomness - and thus presents no problems.
+  Decoding Huffman-encoded data without knowledge of the symbol distribution
+isn't easy though. Suppose you knew the number N of used symbols. First
+hurdle would be to to figure out the number M of possible tree distributions:
+
+N=2 gives M=1 possible tree.
+N=3 gives M=2 possible tree configurations (0=left,1=right):
+
+            codes 0        ³ ³       codes 1     ³ ³
+                  10    ³  ÀÂÙ             00    ÀÂÙ  ³
+                  01    ÀÄÂÄÙ              01     ÀÄÂÄÙ
+
+N=4:
+        ³ ³      ³ ³          ³ ³       ³ ³
+     ³  ÀÂÙ      ÀÂÙ  ³    ³  ÀÂÙ       ÀÂÙ  ³
+ ³   ÀÄÂÄÙ    ³   ÀÄÂÄÙ    ÀÄÂÄÙ   ³     ÀÄÂÄÙ   ³    2^(N-3)
+ ÀÄÄÂÄÄÙ      ÀÄÄÂÄÄÙ        ÀÄÄÂÄÄÙ       ÀÄÄÂÄÄÙ    configurations
+                                                      with max codelenght
+    0            0              1             1
+    10           11             00            01
+    110          100            010           000
+    111          101            011           001
+
+   ³ ³ ³ ³
+   ÀÂÙ ÀÂÙ
+    ÀÄÂÄÙ    2^(N-4)
+             configurations
+      00     with two codes
+      01     starting with 0
+      10
+      11
+
+thus M=5
+
+N=5:
+
+0     0     0     0     1     1     1     1        2^(N-3)
+10    10    11    11    00    00    01    01       configurations
+110   111   100   101   010   011   000   001      with max codelenght
+1110  1100  1010  1000  0110  0100  0010  0000
+1111  1101  1011  1001  0111  0101  0011  0001
+
+00    00                                           2^(N-4)
+01    01                                           configurations
+10    11                                           with two codes
+110   100                                          starting with 0
+111   101
+
+00                                                 2^(N-5)
+010                                                configurations
+011                                                with 3 codes
+100                                                starting with 0
+101
+
+Please notice that 4 codes starting with 0 would bring us back to the first
+case. Thus M=2^(N-3)+2^(N-4)+2^(N-5)=8+2+1=11
+
+Arbitrary N:
+
+M=2^(N-3)+2^(N-4)+..+1
+
+  And in each tree it's possible to re-arrange the symbols in N! (faculty)
+ways (N places to put the first symbol, N-1 to put the next,...).
+This gives totally N!*(2^(N-3)+2^(N-4)+..+1) possibly trees.
+  In most cases only the interval in which N lies will be known - not(!) the
+exact value of N. So most probably it will be necessary to try several
+different values of N. Imagine the common case of N=256 (Huffman-tree of
+extended ASCII-set). And after you've tried 256!*(2^253+..) trees,
+it's on to N=255 ...
+  This has been a discussion of the worst possible cases. In most Huffman-
+implementations all Huffman-tree configurations will not be possible. For
+example may a single-bit code always be chosen to 0 (and not vary
+arbitrarily between 0 and 1 each time you run the program). Still with N
+symbols in a tree, it could reduce the number of possibilities to:
+             M=(N-3)+(N-4)+..+1=(N-3)*(N-3+1)/2=(N-3)*(N-2)/2
+But this won't change the factor of N!.
+  By using heuristic knowledge that 'e' may be more common than 'z' in a text
+- and that 'e' thus may be on a lower level than 'z' in the tree - then it's
+possible to reduce the factor N!. But N! is a big number - so you'll
+need lots(!) of heuristic knowledge to get down on a plane where you may handle
+the problem (in other words: you actually have to know a lot about the
+compressed data). But then you'll probably be able to hack almost any other
+cryptation algorithm anyway.
+  Time to get down to a conclusion:
+  In the case of the Huffman tree, then it's actually quite difficult to
+decode Huffman-encoded data without information contained in the de-coding tree.
+And it's probably close to impossible to decode arithmic compressed data
+without the original 'model'. So for most purposes it's sufficient only to
+compress the compression 'model' and not the actual compression-encoded data.
+This will result in saved time (less actual data to encrypt) compared to most
+normal cases where all the data (either original or compressed) would have
+been encrypted - and still aproximately maintain the same level of security.
+And if the saved time was invested in a more complex encryption algorithm,
+then it would actually result in better security than before (while not using
+more time). - And if you absolutely want to encrypt the compression-encoded
+data - you could just stick to a simple (fast) algorithm - and use a long
+random password (possibly created internally in the program), which is
+encrypted together with the compression 'model'.
+
+   Dynamic compression presents slightly greater problems - but the
+fundamental approach is the same. 
+
+

@@ -1,0 +1,124 @@
+#! /bin/sh
+#
+# Script to set up paths for Apache-SSL and apply the SSLpatch
+# Fixes up the paths to the SSLeay libraries and include files.
+#
+# Written by Andrew Ford 
+#            <A.Ford@ford-mason.co.uk>
+#            http://www.ford-mason.co.uk/
+# No copyright -- this file is placed in the public domain.
+# No warranty  -- use at your own risk.
+
+# Default paths
+
+SSL_REL_PATHS="../openssl-*";
+SSL_ABS_PATHS="/usr/local/*/openssl-* /usr/local/*/*/openssl-*
+/opt/*/openssl-* /opt/*/*/openssl-*";
+# include $PREFIX here so we work nicely as a port.
+SSL_INST_DIR="/usr/local/ssl $PREFIX"
+
+# Sort the paths
+RELDIRS=`echo $SSL_REL_PATHS | xargs -n 1 echo | sort -r`
+ABSDIRS=`echo $SSL_ABS_PATHS | xargs -n 1 echo | sort -r`
+
+if [ $# = 0 ]; then
+    DIRS="$RELDIRS $ABSDIRS $SSL_INST_DIR";
+elif [ $# = 1 ]; then
+    DIRS=$1
+else
+    echo usage: $0 [ssl-dir]
+    exit;
+fi
+
+
+# Initialize variables
+
+SSL_BASE=
+SSL_BASE_DIR=
+
+# Look for the first match in the list of directories
+
+echo "Searching for a usable OpenSSL installation or source directory"
+for dir in $DIRS; do
+    if [ -d $dir -a -d $dir/include/openssl ]; then 
+        absdir=`cd $dir; pwd`
+        if [ -z "$SSL_BASE" -o $absdir != "$SSL_BASE" ]; then
+            if [ -d $dir/lib ]; then
+               INSTALLED_IN="$INSTALLED_IN $absdir"
+            else
+               SOURCE_IN="$SOURCE_IN $absdir"
+            fi
+        fi
+        if [ -z "$SSL_BASE" ]; then
+           SSL_BASE=$absdir
+           if [ -d $dir/lib ]; then SSL_LIB_DIR=`cd $SSL_BASE/lib; pwd`; fi
+        fi;
+    fi
+done
+
+if [ -z "$SSL_BASE" ]; then
+    echo "I couldn't find OpenSSL in $DIRS";
+    echo "If you have installed it you will have to tell me where it is."
+    echo "by running the script as: $0 ssl-dir"
+    echo "Note that this version of Apache-SSL requires OpenSSL 0.9.3 or later"
+    exit
+fi
+
+SSL_APP_DIR=$SSL_BASE/apps
+
+# If there is a lib directory then this is probably the installed
+# version of SSLeay.  The application binaries will be in the bin subdirectory
+
+if [ ! -z "$SSL_LIB_DIR" ]; then
+   ARG2='-e s!+SSL_LIB_DIR=.*!+SSL_LIB_DIR='$SSL_BASE/lib'!';
+   ARG3='-e s!+SSL_APP_DIR=.*!+SSL_APP_DIR='$SSL_BASE/bin'!';
+   SSL_APP_DIR=$SSL_BASE/bin
+fi
+
+# Check whethere we are using OpenSSL
+
+if [ -x "$SSL_APP_DIR/openssl" ]; then
+    echo "Looks like you are using OpenSSL, adjusting app name"
+    ARG4='-e s!+SSL_APP=.*!+SSL_APP='$SSL_APP_DIR/openssl'!';
+fi
+
+# Edit the SSLpatch
+
+sed -e 's!^+SSL_BASE=.*!+SSL_BASE='$SSL_BASE'!' $ARG2 $ARG3 $ARG4 <SSLpatch >SSLpatch.fixed-up
+
+
+# Tell them where SSLeay was found and ask whether the fixed-up patch
+# should be applied.
+
+if [ ! -z "$SOURCE_IN" ]; then
+   echo "SSLeay sources were found in:$SOURCE_IN"
+fi
+if [ ! -z "$INSTALLED_IN" ]; then
+   echo "SSLeay installation found in:$INSTALLED_IN"
+fi
+
+if [ ! -z "$SSL_LIB_DIR" ]; then
+   echo "Using the installed version of SSLeay found in $SSL_BASE"
+else
+   echo "Using the source version of SSLeay found in $SSL_BASE"
+fi;
+echo "If this is not what you want stop now and specify the path to SSLeay
+explicitly."
+echo
+
+if patch -v >/dev/null 2>&1; then
+	echo "Your version of patch is OK."
+else
+	echo "Your version of patch is out-of-date. You need patch 2.1 or 2.5."
+fi
+
+echo -n "Do you want me to apply the fixed-up Apache-SSL patch for you? [n] "
+read ans
+echo $ans | grep -i "^[ \t]*y" >/dev/null
+if [ $? = 0 ]; then
+    patch -p1 <SSLpatch.fixed-up
+else
+    echo "OK, I won't apply the fixed-up patch.  I've left it in SSLpatch.fixed-up";
+fi
+
+exit

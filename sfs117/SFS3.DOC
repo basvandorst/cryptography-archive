@@ -1,0 +1,1205 @@
+Advanced SFS Driver Options
+---------------------------
+
+The SFS driver supports several advanced options which can be used to customize
+the operation of SFS.  These include the ability to mount SFS volumes
+automatically when the driver is loaded, the ability to echo passwords to the
+screen as they are entered, and the ability to change the read/write status,
+disk access mode, auto-unmount timeout of mounted volumes, quick-unmount
+hotkey, and the password prompt used when mounting volumes.
+
+
+Mounting SFS Volumes at System Startup
+
+You can mount SFS volumes automatically when the system is started up rather
+than having to use the mountsfs program or SFS Control Panel item by using the
+`MOUNT=<identification number>' option when the SFS driver is loaded.  The
+<identification number> is the 8- or 14-digit volume identification number
+displayed by mksfs when the encrypted volume is created or shown when you use
+the `mountsfs information' command.  The volume identifier is used to tell the
+SFS driver which volume to load.
+
+If the volume allows multiuser access, only the volume administrator can mount
+it.  Normal volume users must follow the standard volume mount procedure using
+mountsfs.  The operation of shared SFS volumes is explained in more detail in
+the section "Sharing SFS Volumes Between Multiple Users" below.
+
+If access to the volume is controlled with a smart card key then you must mount
+it using mountsfs, as the SFS driver does not have enough information available
+to it to allow a mount using a smart card.  If you try to mount a volume which
+uses a smart card key, the driver will display:
+
+  Error: Volume uses a smart card key, use mountsfs to mount it
+
+and skip the mount procedure.
+
+When you mount a volume at the time the SFS driver is loaded you can use the
+shorter 8-digit volume identifier in most cases, but may need to use the longer
+12-digit form for volumes with more complex access procedures such as ones on
+SCSI drives.  mksfs and mountsfs will always print the correct type of
+identifier for the volume in question, and this is the one which you should use
+after the `MOUNT=' option.
+
+For example if mksfs displays the 8-digit volume identifier `530A17FD' for a
+particular volume then the command to mount this volume would be:
+
+  DEVICE=SFS.SYS MOUNT=530A17FD
+
+If it displays a 14-digit volume identifier `C02100142DE0FC' then the command
+to mount the volume would be:
+
+  DEVICE=SFS.SYS MOUNT=C02100142DE0FC
+
+If you supply an incorrect volume identifier, the driver will display
+
+  Error: Invalid mount ID, skipping mount
+
+and skip the mount procedure.  If the volume identifier is correct, the driver
+will locate the required volume on the disk and try to read in the information
+needed to process it.  If this information cannot be read or is incorrect, the
+driver will display:
+
+  Error: Invalid SFS volume information, skipping mount
+
+and skip the mount procedure.  If the volume is located on a SCSI drive and the
+SCSI manager software needed to access the drive is not present, the driver
+will display:
+
+  Error: SCSI manager not found, cannot mount SCSI drive
+
+and skip the mount procedure.  If all is correct the driver will ask for the
+password exactly as mountsfs would:
+
+  Please enter password (10...100 characters), [ESC] to quit:
+
+You can now enter the password, which for security reasons is not echoed to the
+screen.  You can correct any typing errors with the backspace key, and use the
+Esc key to quit.  The software will check for a password longer than the
+maximum of 100 characters or an attempt to backspace past the start of the
+password, and beep a warning when either of these conditions occur.  You are
+allowed up to three attempts at entering the correct password before the mount
+is skipped.  If you use the Esc key to skip the password entry, the SFS driver
+will print:
+
+  Mount operation skipped at user request
+
+and skip the mount procedure.  Otherwise, once you have entered the password,
+the SFS driver will process it and, if an incorrect password is detected, will
+print:
+
+  Error: Incorrect password, skipping mount
+
+and skip the mount procedure.  Otherwise, the driver will perform a quick disk
+read test to make sure everything is working correctly.  If this fails, the
+driver will display:
+
+  Error: Disk read test failed, skipping mount
+
+and skip the mount procedure.  If the disk read test is successful, the
+encrypted volume will be mounted ready for use, with the drive letter being the
+next available DOS drive.  In general the mount procedure is the same as the
+one which mountsfs uses, except that the full functionality of mountsfs is not
+available during the mount.  In all cases if the mount procedure is skipped the
+driver will still be loaded so that you can mount volumes at a later time with
+mountsfs or the SFS Control Panel item if required.
+
+The mount procedure has a built-in timer which expires if no key is hit for
+more than 1 minute.  This is to allow unattended machines to automatically
+reboot in case of a power failure without waiting forever for a mount password.
+If no key is pressed for more than 1 minute, the SFS driver will print:
+
+  Password entry timed out, skipping mount
+
+and skip the mount procedure.  Again, the driver will still be loaded to allow
+you to mount volumes at a later time.
+
+Once the volume has been mounted and after the usual SFS installation message
+has been displayed, the driver will display the DOS drive on which the
+encrypted volume is mounted.  For example if the volume was available as drive
+G: the message would be:
+
+  Encrypted volume is now mounted as drive G:
+
+If necessary you can swap the drive letter which SFS uses with the JSWAP
+utility which comes as part of the JAM disk compression software.  The use of
+JSWAP rather than the DOS commands ASSIGN, SUBST, and JOIN, or other
+third-party utilities such as the one provided with Stacker are recommended, as
+JSWAP provides the safest means of swapping drive letters.  In particular,
+JSWAP won't swap any non-physical drives, it won't reassign physical drives to
+leave a hole in series of block devices (as opposed to the way DoubleSpace does
+things), and it tries to ensure that the occasional program which doesn't
+normally handle drive swapping too well should still work.
+
+You can also use the JDRIVE utility to force SFS to use a given drive or drives
+to mount volumes on, instead of simply using the next drive letter provided by
+DOS.  For example, to force the SFS to use the M: drive to mount the volume in
+the previous example, the command would be:
+
+  DEVICE=JDRIVE.COM M:
+  DEVICE=SFS.SYS MOUNT=530A17FD
+
+More information on the JAM utilities is given in the section "Creating
+Compressed SFS Volumes" below.
+
+To mount multiple volumes, you should specify the mount identifiers in the
+order in which the volumes are to be mounted.  For example if you wanted to
+mount a second SFS volume with the volume identifier `4850414B' then the
+previous example would change to:
+
+  DEVICE=SFS.SYS MOUNT=530A17FD MOUNT=4850414B
+
+As more volumes are mounted, the driver will automatically increase the mount
+point allocation until the maximum number of 5 mount points has been reached,
+making use of the `UNITS=n' option unnecessary.  If you try to mount more than
+5 volumes, the driver will print:
+
+  Error: No more disk units available for mount
+
+and skip the mount procedure.
+
+You can create an almost completely encrypted SFS system by using the JCHAIN
+utility which is part of the JAM disk compression software to allow a boot into
+an encrypted SFS volume.  To do this, create a small (say 1MB) bootable
+partition which contains the DOS system files IO.SYS and MSDOS.SYS, the drivers
+SFS.SYS and JCHAIN.SYS files, and the following CONFIG.SYS:
+
+  DEVICE=SFS.SYS MOUNT=<identification number>
+  DEVICE=JCHAIN.SYS D:\CONFIG.SYS
+
+You can install the system files onto the newly-created partition by formatting
+it with:
+
+  FORMAT /S
+
+and then deleting the COMMAND.COM file which format copies onto the partition.
+
+This setup will load the SFS driver from the small partition, mount the
+encrypted volume (in this case as drive D:), and then continue the boot process
+from the encrypted volume.
+
+If you want to load the SFS driver into high memory, you will need to add
+memory managers such as HIMEM.SYS and EMM386.EXE to the files on the small
+bootable partition, and change the CONFIG.SYS file to:
+
+  DEVICE=HIMEM.SYS
+  DEVICE=EMM386.EXE
+  DEVICEHIGH=SFS.SYS MOUNT=<identification number>
+  DEVICE=JCHAIN.SYS D:\CONFIG.SYS
+
+There is no need to load JCHAIN high as this program is only used to chain to
+the CONFIG.SYS file on the encrypted volume and doesn't stay resident in
+memory.
+
+
+Setting the Quick-Unmount Hotkey Value
+
+When a volume is mounted, the quick-unmount hotkey is by default set to a
+combination of the left and right shift keys.  However, like the mountsfs
+`hotkey=' option, the SFS driver supports user-defined hotkeys with the
+`HOTKEY=quick-unmount hotkey' command, as well as allowing the hotkey unmount
+option to be disabled with the `HOTKEY=NONE' command.
+
+You can use the `HOTKEY=quick-unmount hotkey' form of the command to specify
+any combination of the left shift key, right shift key, control key, alt key,
+and a letter key, in the following manner:
+
+    Alt key        = `alt'          Control key     = `ctrl'
+    Left shift key = `leftShift'    Right shift key = `rightShift'
+    Letter key     = `a'...`z'
+
+You should seperate the key combinations with hyphens, `-'.  The key names
+themselves are not case sensitive and can be given in upper or lower case, or a
+mixture of both.  If you use an unknown key name or the key names are not
+separated with hyphens, the SFS driver will complain:
+
+  Error: Bad quick-unmount hotkey format
+
+For example, to specify the use of the left shift and right shift keys as the
+quick-unmount hotkey (the usual default setting), the command used in the
+previous example would be changed to:
+
+  DEVICE=SFS.SYS MOUNT=530A17FD HOTKEY=LEFTSHIFT-RIGHTSHIFT
+
+To use the Control, Alt, and Z keys as the quick-unmount hotkey without
+mounting any volumes the command would be:
+
+  DEVICE=SFS.SYS HOTKEY=CTRL-ALT-Z
+
+To disable hotkey unmounting altogether, and without mounting any volumes, the
+command would be:
+
+  DEVICE=SFS.SYS HOTKEY=NONE
+
+
+Echoing the Mount Password to the Screen
+
+Normally when the mount password is entered, nothing will be echoed to the
+screen.  If you want to have the password echoed to the screen as you type it
+in, you can use the `ECHO' option to turn on the echoing of passwords.  Note
+that the use of this option makes it much easier for someone to eavesdrop on
+the password as you enter it, by simply glancing over your shoulder, by making
+use of monitoring facilities installed for general security purposes, or by
+using more sophisticated techniques such as TEMPEST monitoring (these are
+covered in more detail in the section "Data Security" below).  For these
+reasons, use of the `ECHO' option is not recommended.
+
+
+Changing the Mount Password Prompt
+
+In some environments it may be undesirable to alert others to the fact that
+disk encryption is being used.  Using the `SILENT' option with the driver
+removes most indications of the presence of SFS, but if you mount volumes when
+the system is started up the appearance of the password prompt may still give
+things away.  To correct this problem, the SFS driver supports user-definable
+prompts with the `PROMPT=user-prompt' command.  You can use this to specify any
+single-word prompt, or, if the prompt is surrounded by quotation marks `"', any
+combination of characters until another `"' is encountered.  For example to
+make the SFS mount procedure appear like a network login, the previous mount
+example might be changed to:
+
+  DEVICE=SFS.SYS SILENT PROMPT=Login: MOUNT=530A17FD
+
+Instead of the usual password prompt, the driver will now display:
+
+  Login:
+
+when it asks for the password.
+
+If you prefer a prompt containing multiple words, you should surround the
+prompt itself with quotation marks:
+
+  DEVICE=SFS.SYS SILENT PROMPT="Please log on:" MOUNT=530A17FD
+
+Unfortunately some versions of DOS convert all characters to uppercase before
+passing them to SFS.SYS.  In order to allow lowercase characters to be used in
+prompts, the `PROMPT=' option recognises the escape sequence `\s' to mean
+"shift to lowercase", so that all subsequent characters will be converted to
+lowercase before being displayed.  Subsequent uses of `\s' will toggle the
+current shift state, shifting characters back to uppercase or to lowercase
+depending on the current shift state.  For example to have the previous
+mount example display the prompt "Enter Code:", the command would be:
+
+  DEVICE=SFS.SYS SILENT PROMPT="E\sNTER \sC\sODE:" MOUNT=530A17FD
+
+The initial "E" is displayed in uppercase, then the first `\s' shifts the
+"NTER" to lowercase, the second `\s' shifts the "C" back to uppercase, and the
+final `\s' shifts the remaining "ODE:" to lowercase.
+
+The `PROMPT=' option also recognises a number of other escape codes which you
+can use to specify characters which cannot be directly entered into the
+CONFIG.SYS file such as quote marks, tabs, and line breaks.  These are based on
+the ones used in the C programming language, and are as follows:
+
+    Newline     = \n        Quote mark  = \"        Bell    = \a
+    Tab         = \t        Backspace   = \b        Escape  = \e
+
+For example to print a line break as part of a prompt, you can use the escape
+code '\n', allowing prompts to be split over multiple lines, or simply to have
+blank lines as part of the prompt.  An extended form of the above prompt (split
+over two lines for clarity) could be given as:
+
+  DEVICE=SFS.SYS SILENT PROMPT="Network logon\nPlease enter password:"
+                        MOUNT=530A17FD
+
+which would be printed as:
+
+  Network logon
+  Please enter password:
+
+You can use the `\e' escape code in combination with an ANSI driver to allow
+special actions such as cursor positioning and colour and text attribute
+control.  Most of the useful escape sequences begin with `\e[', corresponding
+to the "ESC [" combination.  These codes only work if an ANSI driver is loaded
+by specifying
+
+    DEVICE=ANSI.SYS
+
+or some other ANSI-compatible driver in CONFIG.SYS.  Some of the possible codes
+are:
+
+  ANSI sequence     Action                                      Default
+
+  \e[row;columnH    Move the cursor to (row, column)            1, 1
+  \e[row;columnf    Move the cursor to (row, column)            1, 1
+  \e[rowd           Move the cursor to (row)                    1
+  \e[columnG        Move the cursor to (column)                 1
+  \e[countA         Moves the cursor up (count) rows            1
+  \e[countB         Moves the cursor down (count) rows          1
+  \e[countC         Moves the cursor right (count) columns      1
+  \e[countD         Moves the cursor left (count) columns       1
+  \e[2J             Clears the screen and homes the cursor
+  \e[K              Clears from the cursor position to the
+                    end of the current line
+  \e[M              Clears the entire line
+  \e[s              Saves the current cursor position
+  \e[u              Restores the previously saved cursor
+                    position
+  \e[countb         Repeat following character (count) times    1
+  \e[attr;...;attrm Set screen attributes based on (attr).
+                    Possible values for the (attr) settings
+                    are:
+
+                    30 Black foreground   40 Black background
+                    31 Red foreground     41 Red background
+                    32 Green foreground   42 Green background
+                    33 Yellow foreground  43 Yellow background
+                    34 Blue foreground    44 Blue background
+                    35 Magenta foreground 45 Magenta background
+                    36 Cyan foreground    46 Cyan background
+                    37 White foreground   47 White background
+
+For example to clear the screen and home the cursor before printing the
+"Login:" prompt given previously, the command would be:
+
+  DEVICE=SFS.SYS SILENT PROMPT=\e[2JLogin: MOUNT=530A17FD
+
+To print the prompt in black on a blue background, the command would be:
+
+  DEVICE=SFS.SYS SILENT PROMPT=\e[30;44mLogin:\e[37;40m MOUNT=530A17FD
+
+The order in which these arguments are given is important, since an option only
+affects the other options following it.  If you specify the `PROMPT=' option
+after the `MOUNT=' option instead of before it, the driver won't use the new
+prompt until after the mount has taken place.  You can use this to allow
+multiple independant prompts when several volumes are mounted, so that in the
+following example (which is again split over two lines for clarity):
+
+  DEVICE=SFS.SYS SILENT PROMPT="Local server logon: " MOUNT=C0EDBABE
+                        PROMPT="Printer server logon: " MOUNT=2A1102D3
+
+the prompt "Local server logon: " would be used for the first volume to be
+mounted and the prompt "Printer server logon: " would be used for the second
+volume to be mounted.  The `PROMPT=' setting applies for all further mounts
+until another `PROMPT=' option is given.
+
+
+Changing the Mount Read/Write Access Status
+
+You can enable or disable write access to a mounted volume in the same manner
+as is done through the use of the `mountsfs +r' and `mountsfs +rw' options
+(more information on read-only access to SFS volume is given in the section
+"Mounting an SFS Volume" above).  In the case of the SFS driver, the options
+used to control write access are `READONLY' and `READWRITE'.  For example to
+mount the volume used in the previous example read-only the command would be:
+
+  DEVICE=SFS.SYS READONLY MOUNT=530A17FD
+
+Like the other options which affect the mounting of volumes, you must specify
+the `READONLY' or `READWRITE' options before the `MOUNT=' which they are to
+affect.  These options apply for all further mounts until another `READONLY' or
+`READWRITE' option is given.  For example to mount the first volume in the
+previous example read-only and the second one with normal write access the
+command would be:
+
+  DEVICE=SFS.SYS READONLY MOUNT=530A17FD READWRITE MOUNT=4850414B
+
+
+Mounting Volumes as Non-Removable Drives
+
+Since SFS volumes may be unmounted at any point through a hotkey unmount, an
+auto-unmount timeout, a smart card unmount, or through the use of the mountsfs
+program or SFS Control Panel item, the driver reports them to the operating
+system as being removable volumes.  This means that the system won't become
+confused when disk volumes suddenly cease to exist after an unmount.
+
+Unfortunately some software, while handling removable volumes perfectly well,
+prefers to work with non-removable or fixed volumes.  An example of this is
+Windows, which won't display volume labels for removable volumes.  Disk
+buffering and cacheing for fixed volumes is also somewhat better since the
+operating system doesn't have to worry about the volume being unmounted
+suddenly, leaving it with nothing to write buffered data to.
+
+The SFS driver lets you mount volumes as fixed volumes through the use of the
+FIXED keyword.  By default, or if you use the REMOVABLE keyword, they are
+mounted as removable volumes.  You must mount fixed volumes at system startup,
+and they will remain mounted until the system is either restarted or powered
+down.  Hotkey, timed, smart card, mountsfs, and SFS Control Panel unmounts will
+*not* affect volumes mounted in this manner - they will remain mounted at all
+times.  For example to mount the volume used in the previous example as a
+fixed, non-removable volume the command would be:
+
+  DEVICE=SFS.SYS FIXED MOUNT=530A17FD
+
+Like the other options which affect the mounting of volumes, you must specify
+the `FIXED' or `REMOVABLE' options before the `MOUNT=' which they are to
+affect.  These options apply for all further mounts until another `FIXED' or
+`REMOVABLE' option is given.  For example to mount the first volume in the
+previous example as a fixed volume and the second one as a standard removable
+one the command would be:
+
+  DEVICE=SFS.SYS FIXED MOUNT=530A17FD REMOVABLE MOUNT=4850414B
+
+
+Setting the Auto-unmount Timeout value
+
+The auto-unmount timeout value works just like the mountsfs `timeout=' option,
+and is used to tell the SFS driver to unmount a volume automatically if it has
+not been accessed for a certain amount of time.  You can set the time delay
+until the volume is automatically unmounted with the `TIMEOUT=' option, which
+is used to specify the delay in minutes until the unmount takes place.  This
+option can only be used in conjunction with the `MOUNT=' option, and by default
+no auto-unmount timer is set.
+
+The use of this option is only necessary if the volumes to be mounted have no
+timeout values associated with them, either by mksfs when the volume is created
+or by chsfs at a later point in time.  However, you can also use the `TIMEOUT='
+option to override any existing timeout settings for the volume.  In order to
+return to the default timeout settings, you can use the `TIMEOUT=DEFAULT'
+option which sets the timeout of any volumes mounted after this point to either
+the value associated with the volume, or none at all if the volume has no
+timeout setting.  To force the timeout setting to be disabled entirely, use the
+`TIMEOUT=NONE' option to ensure that no timeout is set for any volumes mounted
+after this point.  As before, this option holds until another `TIMEOUT='
+setting is used.
+
+You can display the timeout value associated with a volume with the `mountsfs
+information' command.
+
+Like the other options which affect the mounting of volumes, you must specify
+the `TIMEOUT=' option before the `MOUNT=' which it is to affect.  The
+`TIMEOUT=' option applies for all further mounts until another `TIMEOUT='
+option is given.
+
+Using the previous mount example, but to have a volume automatically unmounted
+after 15 minutes of inactivity, the command would be:
+
+  DEVICE=SFS.SYS TIMEOUT=15 MOUNT=530A17FD
+
+The timeout period must be between 1 and 30,000 minutes (this means the upper
+timeout limit is around three weeks).  If you specify a timeout value of less
+than 1 minute or greater than three weeks, mountsfs will exit with the error
+message:
+
+  Error: Timeout value must be between 1 and 30,000 minutes
+
+If no accesses are made to a volume within the given time period, it will be
+automatically unmounted.  Like the case when a hotkey unmount is made, a single
+beep will sound to indicate that the unmount has taken place.  Each volume has
+its own timer, allowing you to give different volumes different lengths of time
+before they unmount, or to have no auto-unmount time at all.  This is useful
+when, for example, one volume containing highly sensitive information needs to
+have a very short timeout, while another volume containing less secret
+information can have a much longer timeout.  For example the two volumes used
+in the previous example might be mounted as follows:
+
+  DEVICE=SFS.SYS TIMEOUT=10 MOUNT=530A17FD TIMEOUT=30 MOUNT=4850414B
+
+in which the first volume is given a short timeout of only 10 minutes while the
+second volume, which presumably holds less critical information, is given a
+longer timeout of half an hour.  If the volumes have a timeout setting
+associated with them and you have used the `TIMEOUT=' option to override it,
+you can restore the default behaviour of using the setting associated with the
+volume by using the `TIMEOUT=DEFAULT' option.  For example if, in the previous
+example, you wanted to use the default timeout setting for the second volume
+instead of overriding it with a 30-minute timeout, the volumes would be mounted
+as follows:
+
+  DEVICE=SFS.SYS TIMEOUT=10 MOUNT=530A17FD TIMEOUT=DEFAULT MOUNT=4850414B
+
+This would mount the first volume as before, and the second volume with
+whatever timeout was set for it by mksfs or chsfs.  If you wanted to mount the
+second volume with no timeout at all, the volumes would be mounted as follows:
+
+  DEVICE=SFS.SYS TIMEOUT=10 MOUNT=530A17FD TIMEOUT=NONE MOUNT=4850414B
+
+
+Enabling Alternative Disk Access Modes
+
+SFS supports a number of faster disk access modes, which would normally be
+specified when the volume is created with mksfs, or set at a later date with
+the `chsfs newaccess=' command.  However you may want to override these
+settings when volumes are mounted.  You can do this with the `ACCESS=' option,
+which takes as an argument the fast access mode given by the `mksfs -c'
+command, or `bios' to specify the normal, somewhat slower access mode.  You can
+display the access mode currently set for a volume with the `mountsfs
+information' command.
+
+For example if you created the volume in the previous example with no fast
+access mode set, but later discovered that it could be accessed with a fast
+access mode of `ide', the mount command would be:
+
+  DEVICE=SFS.SYS ACCESS=IDE MOUNT=530A17FD
+
+The use of this option is only necessary if the volumes to be mounted have no
+alternative access mode associated with them, either by mksfs when the volume
+is created or by chsfs at a later point in time.  However, if required, you can
+also use the `ACCESS=' option to override any existing access mode settings for
+the volume.  To return to the default access mode settings, use the
+`ACCESS=DEFAULT' option, which sets the access mode of any volumes mounted
+after this point to the mode normally associated with the volume.  For example
+if, in the previous two-volume mount example, you wanted to use the default
+access mode setting for the second volume instead of overriding it with an
+access mode of `ide', the volumes would be mounted as follows:
+
+  DEVICE=SFS.SYS ACCESS=IDE MOUNT=530A17FD ACCESS=DEFAULT MOUNT=4850414B
+
+This would mount the first volume as before, and the second volume with
+whatever access mode was set for it by mksfs or chsfs.
+
+If a certain access mode is required in order to access a volume (for example
+some volumes on SCSI drives can only be accessed via SCSI access methods) then
+SFS will always use the appropriate access mode and ignore the current setting
+of the `ACCESS=' option.
+
+Like the other options which affect the mounting of volumes, you must specify
+the `ACCESS=' option before the `MOUNT=' which it is to affect.  The `ACCESS='
+option applies for all further mounts until another `ACCESS=' option is given.
+
+
+Changing the Characteristics of an SFS Volume
+---------------------------------------------
+
+Once an SFS volume has been created, you can change various characteristics of
+the volume and the entire volume itself by using the chsfs program.  chsfs
+allows you to change the SFS volume password or smart card password, volume
+name, disk access mode, auto-unmount timeout, and card removal action, allows
+SFS volumes to be quickly deleted, and allows the reversion of SFS volumes to
+their original unencrypted form.
+
+The chsfs program is run in the following manner:
+
+  chsfs [newpassword] [newvolume=<new volume name>] [newtimeout=<timeout>]
+        [newaccess=<new access mode>] [newcardcontrol=<action>] [delete]
+        [convert] [volume=<volume name>] [<drive letter>]
+
+Since all arguments are named, you can give them in any order.  The order shown
+here is merely an example.  In addition, you can abbreviate all commands, so
+that for example you can give the `volume=' command as `volume=', `vol=', or
+even just `v='.  The full commands are given in the documentation for
+completeness.
+
+In general you can specify the SFS volume to use by giving the volume's name
+with the `vol=' option.  For example if the name was "Secure disk volume" then
+the command would be:
+
+  chsfs <command> volume=secure
+
+You can give the name in upper or lower case and don't have to specify the full
+name, as chsfs will match whatever part of the name you supply to the names of
+any SFS volumes it finds until it finds a match.  The SFS volumes are checked
+in the same order as they are displayed with the `mountsfs info' or `mountsfs
+information' command.
+
+Alternatively, if the SFS volume to be accessed is on a removable disk, you can
+specify it using its drive letter instead of its volume name.  For example if
+the disk drive was A: then the command would be:
+
+  chsfs <command> a:
+
+To find all available SFS volumes on all disks, you can use the `mountsfs info'
+option as explaind in the section "Mounting an SFS Volume" above.
+
+You can change the basic characteristics of an SFS volume with the
+`newpassword', `newvolume', `newaccess', `newtimeout', and `newcardcontrol'
+commands, which set a new password, new volume name, new disk access mode, new
+auto-unmount timeout, and new card removal action respectively.  These commands
+can be used individually, or you can use several of them together (although
+they can't be used in conjunction with the `delete' or `convert' options).
+Their usage is in general similar to their use with mksfs or sfscard.
+
+  `newpassword' takes no arguments and will prompt for the original password
+    and then the new password, after which it will change either the volume
+    password or the smart card password (depending on how the volume is
+    accessed) from the original to the new one.
+
+  `newvolume' takes as an argument the new volume name.
+
+  `newaccess' takes as an argument the fast disk access mode obtained by
+    running the mksfs program with the `-c' option, with the `bios' mode being
+    the default, slower access mode.
+
+  `newtimeout' takes as an argument the auto-unmount timeout setting in
+    minutes, or `none' to clear the auto-unmount timer setting for this volume.
+
+  `newcardcontrol' takes as an argument the action to be taken for the volume
+    when the smart card it is associated with is removed from the card reader.
+    The card control actions are `none', which does nothing, `readonly', which
+    makes the volume readonly, and `unmount' and `unmountall', which unmount
+    the given volume or all volumes.
+
+Since chsfs makes changes to the header record of an encrypted volume, some
+anti-virus programs may print a warning about the boot sector of the volume
+being changed (despite the fact that the volume is quite clearly not an MSDOS
+filesystem).  This warning can be ignored.
+
+As an example, to change the name of the SFS volume "Personal data" to
+"Letters" and the auto-unmount timer setting to 30 minutes, the command would
+be:
+
+  chsfs volume=personal newvolume=Letters newtimeout=30
+
+If you use the `newpassword' option, chsfs will first ask for the old password:
+
+  Please enter old password (10...100 characters), [ESC] to quit:
+
+or:
+
+  Please enter old smart card password (10...100 characters), [ESC] to quit:
+
+depending on whether access to the volume is controlled by a smart card or not.
+You can now enter the password, which for security reasons is not echoed to the
+screen.  You can correct any typing errors with the backspace key, and use the
+Esc key to quit.  The software will check for a password longer than the
+maximum of 100 characters or an attempt to backspace past the start of the
+password, and beep a warning when either of these conditions occur.
+
+After verifying that the password is correct, chsfs will ask for the new
+password:
+
+  Please enter new password (10...100 characters), [ESC] to quit:
+
+or:
+
+  Please enter new smart card password (10...100 characters), [ESC] to quit:
+
+Like mksfs, chsfs will then ask for this password a second time for safety.
+Before updating the volume information, chsfs will perform the same
+multiple-overwrite operation used by the chsfs `delete' option (see below) to
+erase the original volume header, which is based on the old password.  This
+ensures that no trace of the original disk access information remains before it
+is replaced by the new access information.  This overwrite operation is not
+necessary for smart card keys as the card performs an automatic full erase
+cycle as part of writing the new data to the card.
+
+Once the new volume name, auto-unmount timeout, access mode, password, or card
+control action have been set, chsfs will display a message indicating the
+changes made.  For the above example the message would be:
+
+  Volume characteristics successfully updated.
+
+  The new volume name is `Letters'.
+  The new auto-unmount timeout is set to 30 minutes.
+
+Note that chsfs doesn't perform the checking for duplicate or nonexistant
+volume names and the checking for correct functioning of different disk access
+modes which mksfs does.  This is to allow you to override the safe choices
+forced by mksfs if required[1].
+
+You can make changes to the SFS volume itself using the `convert' and `delete'
+commands.  `convert' converts a volume back to its original unencrypted form,
+and `delete' deletes it entirely, leaving behind what appears to the operating
+system as an unformatted disk filled with random noise.
+
+Since converting or deleting a volume while it is mounted is rather dangerous,
+chsfs checks whether the volume to be converted or deleted is currently
+mounted.  If it is mounted and removable, it will prompt:
+
+  Warning: This volume is currently mounted.  Do you wish to unmount it
+           and continue [y/n]
+
+At this point you can enter 'Y' to continue and 'N' to exit the program.  If
+you enter 'N', you can unmount the volume using mountsfs or the quick-unmount
+hotkey before re-running chsfs.  If the volume has been mounted as a fixed,
+non-removable volume, chsfs will exit with the error message:
+
+  Error: This volume has been mounted as a non-removable volume and cannot be
+         unmounted.  In order for chsfs to be able to work with it, change the
+         CONFIG.SYS entry for the SFS driver and reboot the machine.
+
+The delete option will first print the name and creation date of the SFS volume
+to be deleted.  You should use this information to check the exact name and
+date of the volume to ensure that this is indeed the one to be deleted.  In
+this example the volume information will be displayed as:
+
+  Encrypted volume is `Incriminating evidence', created 04/11/93
+
+If the volume is controlled by a smart card, chsfs will also print:
+
+  Access to this volume is controlled by a smart card key.
+
+chsfs will now prompt for either the volume or smart card password in the usual
+manner.  It uses this to check that access to the volume is legitimate, and is
+needed for chsfs to acquire various pieces of information it needs to perform
+the deletion.  The program will then prompt:
+
+  Warning: The deletion operation will permanently destroy all data on this
+           volume.  Are you sure you want to continue with the deletion [y/n]
+
+At this point you can enter 'Y' to continue and 'N' to exit the program.
+
+If you tell chsfs to continue, it will perform multiple overwrite passes over
+the SFS volume header (which contains all the information needed to access the
+volume), printing a progress report as it performs the overwriting:
+
+  Overwriting: Pass 1
+
+In total chsfs will perform 35 separate overwrite passes which have been
+selected to provide the best possible chances of destroying data for various
+disk encoding schemes (the exact details are given in the section "Deletion of
+SFS Volumes" below).  Once the multiple overwrites have completed, chsfs will
+print an informational message about the deletion operation:
+
+  Encrypted volume `Incriminating evidence' has been destroyed
+
+If the volume is on a fixed disk, you may want to reboot your machine to make
+the newly-deleted volume visible to DOS.  Volumes on floppy disks will
+automatically be visible.  Since the disk volume is now filled with random
+garbage, it will need to be formatted in the same way an unformatted disk would
+be before it can be used by DOS.
+
+The convert option will, like the delete option, first print the name and
+creation date of the SFS volume to be converted.  You should use this
+information to check the exact name and date of the volume to ensure that this
+is indeed the one to be converted.  In this example the volume information will
+be displayed as:
+
+  Encrypted volume is `Disk data', created 07/12/93
+
+If the volume is controlled by a smart card, chsfs will also print:
+
+  Access to this volume is controlled by a smart card key.
+
+chsfs will now ask for the volume or smart card password in the usual manner,
+and will then prompt:
+
+  Warning: You are about to convert this volume from an encrypted SFS one to
+           a normal DOS one.  Are you sure you want to continue with the
+           conversion [y/n]
+
+At this point you can enter 'Y' to continue and 'N' to exit the program.
+
+Like mksfs, chsfs will then begin converting the disk.  As it processes the
+volume, it prints a progress bar going from 0% complete to 100% complete.  The
+conversion process will take a few minutes on most disks, and is somewhat
+slower than a standard disk formatting procedure, since the formatting process
+usually only writes a very small amount of data to the start of the disk and
+scans for bad sectors, whereas chsfs has to read, decrypt, and write the entire
+disk volume.
+
+As the conversion progresses, the progress bar will gradually fill up until it
+shows that the conversion is complete.  Once this has finished, chsfs will
+display the message:
+
+  Encrypted volume `Disk data' has been converted to a normal DOS volume.
+
+The converted volume is now ready to be used as a normal DOS disk again.  If
+the volume is on a fixed disk, DOS will still think it is an encrypted SFS one
+rather than a normal DOS one.  It is recommended that you reboot your machine
+to clear any memories of the old volume from the system, as DOS will not be
+able to see the converted volume until the reboot takes place.  As a reminder,
+chsfs will display:
+
+  You may wish to reboot your machine to update the status of the volume,
+  which will become available as a standard DOS disk.
+
+before exiting.  If the volume is on a removable disk, no reboot is necessary
+and chsfs will simply print:
+
+  The volume is now available as a standard DOS disk.
+
+Footnote [1]: This makes the (possibly incorrect) assumption that the chsfs
+              user knows what they are doing.
+
+
+Sharing SFS Volumes Between Multiple Users
+------------------------------------------
+
+At times it may be necessary to share a single encrypted SFS volume between
+multiple users.  For instance several individuals may require access to a
+volume containing confidential business correspondence as part of their
+day-to-day duties.  Usually this would require using a common password which is
+known to every member of the group of people who require access.  The need to
+share passwords is a serious weakness, as the inability to choose individual,
+unique passwords increases the chances that a simple, easy-to-remember (and
+easy-to-guess) password is chosen, or that at least one person writes it down
+if it is too hard to remember.
+
+SFS solves this problem by allowing each member of the group access to an
+encrypted volume under their own individual password.  The allocation of access
+rights to a volume is controlled by an administrator who can grant or revoke
+access as required.  The administration process is handled by the adminsfs
+program, which is run in the following manner:
+
+  adminsfs [adduser=<user name>] [deluser=<user name>]
+           [chuser=<user name>] [showuser=<user name>] [showall]
+           [validfrom=<DDMMYY>] [validto=<DDMMYY>] [userfile=<user file>]
+
+Since all arguments are named, you can give them in any order.  The order shown
+here is merely an example.
+
+[!!!! That's all there is at the moment.  adminsfs is still being checked
+      out by beta-testers and parts of it are still under review.  If anyone
+      has any suggestions for it, let me know !!!!]
+
+
+Creating Compressed SFS Volumes
+-------------------------------
+
+Creating a compressed drive inside an SFS volume provides, apart from the usual
+benefit of increasing the apparent disk space, some additional security against
+an attack by breaking up the very regular standard filesystem structure
+containing large quantities of known data at known locations into a compressed
+filesystem whose structure and contents are much harder to ascertain.
+This section contains information on using SFS with Stac Electronic's "Stacker"
+and JAM Software's "JAM".
+
+
+SFS and Stacker
+
+The instructions given here are for Stac Electronics "Stacker", although it
+should be possible to do the same thing with other reasonably advanced disk
+compressors.  Stacker allows the compression of an entire DOS drive, or
+compression of any remaining free space on the drive.  To create a compressed
+Stacker volume, you should first mount the SFS volume on which you want to
+install Stacker, either with the system-startup mount option of the SFS driver
+or with the mountsfs utility or SFS Control Panel item.  You can then install
+Stacker in the usual manner onto the mounted volume.  Under Windows, this
+involves chosing the "Compress" option from the "Stacker Toolbox", and under
+DOS it involves running the "stac.exe" program and picking the appropriate
+option, or using the "create.com" program on the drive to be compressed.
+Stacker will then defragment the drive, ask a few questions, and create the
+Stacker volume.  When the Stacker drive has been created, the appropriate
+mounting parameters for the drive will be added to the STACKER.INI file.
+
+Once the installation has completed, the SFS volume will contain the STACKVOL
+file in which Stacker stores the compressed disk data.
+
+You can mount the Stacker drive in two ways, either from CONFIG.SYS onto an SFS
+volume mounted at system startup, or at a later point (which, however, means
+that it loads an extra copy of the environment variables).  It is also possible
+to load the driver without activating a compressed drive by removing the
+specification for the drive to be mounted from the STACKER.INI file (this is
+normally used for floppies, but works for SFS as well since Stacker treats SFS
+volumes as a removable drive).  You can then mount the drive at a later time
+with the "stacker <drive letter>" command, thereby avoiding the need to mount
+an SFS volume at startup.  Under DOS 6, Stacker 4.0 loads using a device
+driver, but hooks into DOS like DoubleSpace/DriveSpace does.  The rest of
+Stacker is then loaded with the STACHIGH.SYS driver.
+
+As SFS uses whatever drive letters DOS allocates to it, the stacked drive will
+take over the drive letter used by the SFS volume rather than swapping drive
+letters for the stacked and normal drive as it usually does.  This shouldn't
+provide any problems when accessing the drive, as the compressed and encrypted
+drive will simply replace the encrypted drive, but it will create problems at a
+later point because Stacker uses the "Mount replaced" option, in which Stacker
+manipulates internal DOS data structures to completely replace the original SFS
+drive.  This means that mountsfs can no longer find the mounted SFS drive for
+the "status", "info", "information", and "unmount" commands, although timed
+unmounts, hotkey unmounts, and smart card unmounts performed by the SFS driver
+itself will still work.
+
+
+SFS and JAM
+
+Using JAM Software's "JAM" compressor with SFS is somewhat simpler than using
+Stacker, and provides the additional benefit of speeding up effective disk
+access times since the high-speed JAM software reduces the amount of data which
+the SFS driver needs to encrypt.  To create a compressed JAM volume, you should
+first mount the SFS volume on which the JAM volume is to be installed, either
+with the system-startup mount option of the SFS driver, with the mountsfs
+utility, or with the SFS Control Panel item.  You can then create the
+compressed volume as described in the JAM documentation with the JCREATE
+utility.
+
+Once you have created the compressed disk volume, you can mount it by loading
+the JAM.SYS driver via the CONFIG.SYS file and then mounting the JAM volume
+with the JMOUNT utility, either onto an SFS volume mounted at system startup by
+running JMOUNT from the CONFIG.SYS file, or at a later point by running JMOUNT
+from the command line.  This avoids the need to mount an SFS volume at startup.
+
+Unlike Stacker, JAM does not mess with DOS drive letters, allowing both the SFS
+volume and the JAM volume it contains to be accessed as normal.  JAM is
+available for FTP from garbo.uwasa.fi and all garbo mirrors as
+/pc/arcers/jam125sw.zip.
+
+
+Emergency Access to Encrypted Information
+-----------------------------------------
+
+It may sometimes be necessary to provide access to encrypted data without the
+use of the passphrase used to encrypt it, perhaps because the passphrase has
+been forgotten or the person who encrypted the data has died or moved on to
+work for another company.  This provides a backup means of access to encrypted
+data in case of an emergency.
+
+The approach taken by the US government, in the form of the Clipper initiative,
+is to have all encryption keys (not just those for which emergency access is
+required) held in escrow by the government.  If disclosure of the information
+is required, the key is retrieved from storage and used to decrypt the
+information.  A side effect of this is that any data which has ever been
+encrypted with the key, and any data which will ever be encrypted in the
+future, has now been rendered unsafe.  This system is best viewed as
+uncontrolled disclosure.  In addition, there is no possibility of ever having
+completely safe data since someone else will always hold a copy of your
+encryption keys.
+
+SFS includes a built-in mechanism for fully controlled access to encrypted data
+so that, if access is ever required without the proper passphrase being known,
+only the information for which access is authorized may be revealed.  All other
+encrypted data remains as secure as it was previously.
+
+This is achieved by encrypting each disk volume with a unique disk key which is
+completely unrelated to the users passphrase, or key.  When the user key is
+entered, it is used to decrypt the disk key, and the disk key is then used to
+decrypt the encrypted volume.  There is no correlation between the user key and
+the disk key, so that revealing the disk key does not reveal the user key.
+This access mechanism looks as follows:
+
+ + User  - - - +            + Encrypted volume  - - - - - - - - - - - - +
+
+ | +--------+  |  decrypt   | +--------+   decrypt    +--------------+  |
+   |User Key|   ----------->  |Disk Key| -----------> |Encrypted Data|
+ | +--------+  |            | +--------+              +--------------+  |
+
+ + - - - - - - +            + - - - - - - - - - - - - - - - - - - - - - +
+
+A simple way to use this keying mechanism for key escrow is to store the disk
+key for the volume in a safe place, and allow it to be entered directly in
+place of the usual user key.  Since the user key is independant of the disk
+key, it can be changed as often as required while still allowing access via the
+escrowed disk key.  The person using the encrypted data can change and modify
+the user key as they please without inadvertently locking out the holder of the
+escrowed disk key.  Therefore there are now two ways to access the encrypted
+volume:
+
+ + User  - - - +            + Encrypted volume  - - - - - - - - - - - - +
+
+ | +--------+  |  decrypt   | +--------+   decrypt    +--------------+  |
+   |User Key|   ----------->  |Disk Key| -----+-----> |Encrypted Data|
+ | +--------+  |            | +--------+      |       +--------------+  |
+                                              |
+ + - - - - - - +            + - - - - - - - - | - - - - - - - - - - - - +
+                                              |
+ + Escrow  - - - - - - - - - +                |
+                                              |
+ | +----------------------+  |                |
+   |Non-encrypted Disk Key|    ---------------+
+ | +----------------------+  |
+
+ + - - - - - - - - - - - - - +
+
+Unfortunately, storing a non-encrypted disk key which allows access to a volume
+is rather dangerous since it creates a convenient point of attack.  Whereas the
+user key is usually stored in a reasonably secure place - human memory - the
+escrowed disk key or keys would typically be recorded in some manner and stored
+in (hopefully) secure location such as a safe.  Anyone who gains access to the
+safe will have access to the encrypted volume.  In addition, the escrowed key
+provides a single point of vulnerability to accidental damage such as
+destruction by fire.
+
+A solution to this problem is to escrow not a single key but multiple key
+fragments.  The established practice of needing multiple keys held by different
+people to open a safe can be used for encryption as well - simply take a single
+key, break it into a number of pieces, and give one piece to each member of a
+group of people.  To access the data, the group combines their partial keys
+into one whole key, and the data is decrypted[1].  For example, if a company
+president who holds the keys to a safe or data dies suddenly, the
+vice-presidents can combine their partial keys to allow access.  The previous
+access diagram now becomes:
+
+ + User  - - - +            + Encrypted volume  - - - - - - - - - - - - +
+
+ | +--------+  |  decrypt   | +--------+   decrypt    +--------------+  |
+   |User Key|   ----------->  |Disk Key| -----+-----> |Encrypted Data|
+ | +--------+  |            | +--------+      |       +--------------+  |
+                                              |
+ + - - - - - - +            + - - - - - - - - | - - - - - - - - - - - - +
+                                              |
+                                              +----------------+
+                                                               |
+ + Escrow  - - - - - - - - - - - - - - - - - - - - - - - - +   |
+                                                               |
+ | +--------------+                                        |   |
+   |Key fragment 1| --+                                        |
+ | |Key fragment 2| --+ combine   +----------------------+ |   |
+   |Key fragment 3| --+---------> |Non-encrypted Disk Key|  ---+
+ | |     ...      |   |           +----------------------+ |
+   |Key fragment n| --+
+ | +--------------+                                        |
+
+ + - - - - - - - - - - - - - - - - - - - - - - - - - - - - +
+
+This method has one serious shortcoming, which is the requirement that all the
+keyholders meet to recreate the original key.  If one keyholder is killed in an
+accident, or loses or forgets their key fragment, or refuses to give it up,
+recreation of the original key becomes impossible.
+
+SFS solves this problem by allowing redundant key fragments to be held in
+escrow, so that only a certain percentage of the total number of fragments need
+to be recombined to recreate the disk key.  For example, a key may be broken
+into 5 fragments of which any 3 can be used to recreate the disk key.  A
+company director might give the 5 fragments to the board of directors so that,
+if anything were to happen to him, any 3 of the 5 could get together and access
+his encrypted data.
+
+The SFS key escrow features are handled by chsfs (to create the key fragments
+for escrow) and mountsfs (to access the encrypted data using the escrowed key
+fragments).  There are two escrow parameters:
+
+  - The total number of fragments to break the key into
+
+  - The quorum, or number of fragments needed to recover the key.  This may be
+    anything up to and including the total number of fragments.
+
+For the best damage resistance, it is recommended that you choose a quorum
+which is somewhat less than the total number of fragments in case one or two of
+the fragments are lost.
+
+Technical details on the secret sharing scheme used by SFS are given in the
+section "Safeguarding Cryptographic Keys" below.
+
+Footnote [1]: The US government's Escrowed Encryption Standard works like this,
+              with partial keys being held by two seperate government
+              organisations.
+
+
+Creating Escrow Keys with chsfs
+
+The creation of key fragments for escrow is handled by the chsfs
+`splitkey=<quorum>/<total>' command, where <quorum> is the number of key
+fragments needed out of the <total> to reconstruct the disk key.  Using the
+previous example in which 3 fragments out of the total of 5 are needed to
+recreate the disk key, the chsfs command would be:
+
+  chsfs splitkey=3/5 volume=data
+
+which would take the disk key for the indicated volume and split it into 5
+fragments.  In its simplest form, `splitkey=1/1' creates just one key fragment
+equivalent to the whole key.
+
+Before it splits the key, chsfs will prompt:
+
+  The distributed key which will be created will contain 5 fragments, of which
+  at least 3 will be needed to allow access to the SFS volume.  This means that
+  up to 40% of the total number of fragments can be lost or destroyed before
+  access to the encrypted volume becomes impossible.  Are you sure you want to
+  use these parameters [y/n]
+
+At this point you can enter 'Y' to continue and 'N' to exit the program without
+creating the key fragments.
+
+chsfs will now ask for the volume or smart card password in the usual manner:
+
+  Please enter new password (10...100 characters), [ESC] to quit:
+
+or:
+
+  Please enter new smart card password (10...100 characters), [ESC] to quit:
+
+You can now enter the password, which for security reasons is not echoed to the
+screen.  You can correct any typing errors with the backspace key, and use the
+Esc key to quit.  The software will check for a password longer than the
+maximum of 100 characters or an attempt to backspace past the start of the
+password, and beep a warning when either of these conditions occur.
+
+After verifying that the entered password is correct, chsfs will break the key
+into the required number of fragments, write them to disk in the current
+directory, and recombine them and compare the recovered key to the original as
+a check to ensure the key can be recovered from the fragments.  Once this
+self-checking process has finished, it will display the message:
+
+  Key fragments successfully written to disk.
+
+The key fragments are stored in files of the format `xxxxxxxx.yyy', where
+`xxxxxxxx' is an 8-digit random value used to identify related files, and `yyy'
+is the number of the key fragment.  These values aren't terribly important or
+critical, but are merely used for bookkeeping purposes.
+
+These key fragments contain critical information used for accessing encrypted
+volumes.  Anyone in posession of enough fragments to recreate the disk key can
+gain access to the encrypted data it protects, so you should try to disperse
+the fragments *immediately*.  Ideally, you should only create the fragments
+when the current directory is on a RAM drive, so that they are never written to
+a hard drive or floppy drive in one group, although writing them to an
+encrypted SFS volume is also a possibility if no RAM drive is available.  You
+can then copy them to seperate floppies, possibly with encryption, and disperse
+them to the people or sites that will act as escrow agents.
+
+The sequence of steps to follow for the best security is therefore:
+
+  1. Change drive and directory to a RAM drive (preferred) or an SFS drive.
+  2. Run chsfs with the splitkey option to create the key fragments.
+  3. Encrypt the fragments if necessary.
+  4. Copy individual fragments to the distribution media, for example floppy
+     disks.
+  5. Overwrite the originals on the RAM drive or SFS drive, or reboot the
+     machine to clear the data if it's on a RAM drive[1].
+
+If writing the fragments to an unencrypted hard drive is unavoidable, you
+should overwrite them with a secure file erasure program as soon as possible.
+The difficulty of truly erasing data on magnetic media is covered in the
+section "Deletion of SFS Volumes" below.
+
+
+Accessing Encrypted Data using Escrowed Key Fragments
+
+The first step in accessing an encrypted volume using escrowed key fragments is
+to recombine enough of the fragments to recreate the key.  You can do this by
+copying the key fragments into one place, if possible a directory on a RAM
+drive, or an SFS drive if one is available, as was used for the key dispersion
+process described above.
+
+To use the key fragments instead of the usual passphrase to mount a volume, run
+mountsfs with the `-c' combine option, which can also be used for any mountsfs
+and chsfs commands which would normally require the passphrase to be entered,
+such as the `chsfs newpassword' or `chsfs convert' commands.  In this case when
+mountsfs is used, the command to mount the disk volume used in the previous key
+dispersion example using the escrowed key fragments would be:
+
+  mountsfs -c volume=data
+
+mountsfs will then scan the current directory looking for key fragments.  If
+it can't find any key fragments for the volume in question, mountsfs will
+exit with the message:
+
+  Error: Couldn't find any of the key fragments needed to recreate the
+         encryption key.
+
+If one or more groups of key fragments are found, but none of the groups
+contain enough fragments to allow the disk key to be recovered, mountsfs will
+display more specific information for each group of shares.  For example,
+assume that three groups of shares are created with the parameters:
+
+  chsfs splitkey=5/8
+  chsfs splitkey=3/5
+  chsfs splitkey=2/3
+
+These are then dispersed to third parties acting as escrow agents.  When access
+to the encrypted volume is required, some of the shares from each of the three
+groups are obtained from the escrow agents, and mountsfs is run on them, with
+the following results:
+
+  Warning: Couldn't find enough key fragments in the first set of shares to
+           recreate the encryption key, since at least 5 fragments are needed,
+           but only 3 were found.
+
+  Warning: Couldn't find enough key fragments in the second set of shares to
+           recreate the encryption key, since at least 3 fragments are needed,
+           but only 2 were found.
+
+  Warning: Couldn't find enough key fragments in the third set of shares to
+           recreate the encryption key, since at least 2 fragments are needed,
+           but only 1 was found.
+
+  Error: Couldn't find any more key fragments to use to try to recreate the
+         encryption key.
+
+In this case there are not enough shares present from any of the three groups
+to allow the disk key to be recovered.  Two more fragments are needed to
+recover the key from the first group, and one more fragment is needed to
+recover the key from the second and third group of shares.
+
+Otherwise, if mountsfs can recover the disk key from the key fragments, it will
+display the message:
+
+  Disk key has been recovered from key fragments
+
+and mount the volume as usual.
+
+Since this method of access is meant for emergencies only, you should assign a
+new passphrase to the volume as soon as possible.  You can do this by running
+chsfs with the `-c' combine option, which works exactly like the mountsfs `-c'
+option.  If run with the `newpassword' command, chsfs will recreate the disk
+key from the key fragments as mountsfs did, and then prompt for and set a new
+user password as it normally would.  You can also use the `-c' option with
+other chsfs commands such as `delete' and `convert'.
+
+As soon as the volume has been mounted or modified as required, you should
+destroy the key fragments on the RAM drive or SFS drive by wiping them with a
+secure file erasure program, or rebooting the machine to clear the data if it
+is stored on a RAM drive[1].
+
+Footnote [1]: In fact, rebooting a PC will not necessarily wipe a RAM disk.
+              Turning the machine off for 5-10 seconds (some DRAM cells can
+              retain data for an amazingly long amount of time, often more than
+              a second) to clear the memory is a better idea.

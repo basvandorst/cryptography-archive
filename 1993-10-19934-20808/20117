@@ -1,0 +1,175 @@
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!wupost!waikato!aukuni.ac.nz!cs18.cs.aukuni.ac.nz!pgut1
+From: pgut1@cs.aukuni.ac.nz (Peter Gutmann)
+Subject: Re: Crack my hash function, win $100
+Keywords: hash, C, prize
+References: <1993Oct3.095437.13819@kth.se>
+Organization: Computer Science Dept. University of Auckland
+Date: Tue, 5 Oct 1993 00:10:56 GMT
+Message-ID: <1993Oct5.001056.25126@cs.aukuni.ac.nz>
+Lines: 164
+
+>I have created a hash function that can be made harder to crack by increasing
+>the buffer size and the number of rounds. As a crack I accept two different
+>strings that produce the same hash code when run through this program.
+ 
+Hmm, something to do during my lunch break... OK, here goes:
+ 
+Unfortunately this is trivial to break (unless I made a slip-up somewhere when
+I reformatted the code).  First, observe that in the main loop
+ 
+  rounds( 64 );
+  for( ;ldbuf(); ) 
+    rounds( 8 );
+  rounds( 64 ); 
+  
+the initial and final calls to rounds() have no effect (they add no information
+to the hash value).  In addition the call to rounds( 8 ) adds no new
+information, as all data are input via ldbuf().  Therefore all we need to do is
+find two outputs of ldbuf() which are identical.  Looking at ldbuf we find:
+ 
+    for( i = BUFSIZE; i--; i-- )
+        for( j = 4; j--; )
+            {
+            c = buffer[ dataIndex++ ];
+            if( dataIndex >= count )
+                {
+                buf[ 0 ] ^= ( i << 2 ) + ( j + 1 );
+                return( 0 );
+                }
+ 
+            /* Initially: i = 1023, j * 8 = 24, buf[ 1023 ] = 0x1E21589C.
+ 
+               Invariant:  1E21589C ^ ( c << 24 )
+ 
+               True for all values of c, c = 8-bit data */
+ 
+            buf[ i ] ^= c << ( j * 8 );
+            }
+ 
+    return( 1 );
+    } 
+ 
+(Note that I've changed the code slightly to read data from a buffer rather
+than stdin). Therefore any single-byte input will have the same hash value.
+For example using 0x01 and 0x02 we have:
+ 
+2aae22c8a9290be04a7168b2823e95d2eea77b667308f01767cfa90e5e49d151
+2aae22c8a9290be04a7168b2823e95d2eea77b667308f01767cfa90e5e49d151
+ 
+The code to produce this is:
+ 
+#include <stdio.h>
+#include <stdlib.h>
+ 
+#define BYTE unsigned char
+ 
+/* Data to hash */
+ 
+BYTE data1[] = "\x01";
+BYTE data2[] = "\x02";
+ 
+/* uint32 must be 32 bits unsigned int */
+ 
+typedef unsigned long uint32;
+ 
+/* BUFSIZE should be a power of 2 */
+ 
+#define BUFSIZE 0x400
+ 
+uint32 buf[ BUFSIZE ];
+ 
+void rounds( int n )
+    {
+    int i;
+    uint32 v, a, b;
+ 
+    v = 0;
+    b = buf[ 0 ] & ( BUFSIZE - 1 );
+ 
+    for( i = 32; i--; )
+        v ^= ( buf[ i ] >> i );
+ 
+    for( ;n--; )                            /* number of rounds */
+        for( i = BUFSIZE; i--; )
+            {
+            a = buf[ i ];
+            a += v;                         /* Diffusion */
+            if( i != b )                    /* usually true */
+                a += buf[ ( int ) b ];      /* Confusion */
+            v = ( v >> 1 );
+            v ^= a;
+            b = a & ( BUFSIZE - 1 );
+            buf[ i ] = a;
+            }
+    }
+ 
+int ldbuf( BYTE *buffer, int count )
+    {
+    int c, i, j;
+    int dataIndex = 0;
+ 
+    for( i = BUFSIZE; i--; i-- )
+        for( j = 4; j--; )
+            {
+            c = buffer[ dataIndex++ ];
+            if( dataIndex >= count )
+                {
+                buf[ 0 ] ^= ( i << 2 ) + ( j + 1 );
+                return( 0 );
+                }
+ 
+            /* Initially: i = 1023, j * 8 = 24, buf[ 1023 ] = 0x1E21589C.
+ 
+               Invariant:  1E21589C ^ ( c << 24 )
+ 
+               True for all values of c */
+ 
+            buf[ i ] ^= c << ( j * 8 );
+            }
+ 
+    return( 1 );
+    }
+ 
+void sthash( void )
+    {
+    int i;
+    for( i = 8; i--; )
+        printf( "%08lx", buf[ i ] );
+    printf( "\n" );
+    }
+ 
+void main( void )
+    {
+    int i;
+ 
+    for( i = BUFSIZE; i--; )
+        buf[ i ] = 0;
+    buf[ 0 ] = 1l << 31;
+ 
+    rounds( 64 );
+    for( ;ldbuf( data1, sizeof( data1 ) ); )
+        rounds( 8 );
+    rounds(64);
+ 
+    sthash();
+ 
+    for( i = BUFSIZE; i--; )
+        buf[ i ] = 0;
+    buf[ 0 ] = 1l << 31;
+ 
+    rounds( 64 );
+    for( ;ldbuf( data2, sizeof( data2 ) ); )
+        rounds( 8 );
+    rounds(64);
+ 
+    sthash();
+ 
+    exit( 0 );
+    }
+ 
+I would recommend using MD5 or SHS, which is both faster and (I'd say) a lot
+more secure...
+ 
+Peter.
+

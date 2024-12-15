@@ -1,0 +1,121 @@
+
+<A NAME="STARTFILE"> &#8; </A>
+<H2>Table of Contents</H2>
+
+<UL>
+<A HREF="#HDR0"> 1.  SRA telnet</A>
+
+<UL>
+<A HREF="#HDR1"> 1.1  libutil/ssl.c</A>
+
+<BR>
+<A HREF="#HDR2"> 1.2  libutil/auth-proto.h</A>
+
+<BR>
+<A HREF="#HDR3"> 1.3  libutil/auth.c</A>
+
+<BR>
+<A HREF="#HDR4"> 1.4  telnet/commands.c</A>
+
+<BR>
+<A HREF="#HDR5"> 1.5  telnet/externs.h</A>
+
+<BR>
+<A HREF="#HDR6"> 1.6  telnet/main.c</A>
+
+<BR>
+<A HREF="#HDR7"> 1.7  telnet/network.c</A>
+
+<BR>
+<A HREF="#HDR8"> 1.8  telnet/sys_bsd.c</A>
+
+<BR>
+<A HREF="#HDR9"> 1.9  telnetd/ext.h</A>
+
+<BR>
+<A HREF="#HDR10"> 1.10  telnetd/telnetd.c</A>
+
+<BR>
+<A HREF="#HDR11"> 1.11  telnetd/utility.c</A>
+</UL>
+
+<A HREF="#HDR12"> 2.  SSLtelnet additions</A>
+</UL>
+
+<HR>
+<!-- This file was created with the fm2html filter.
+The filter is copyright Norwegian Telecom Research and
+was programmed by Jon Stephenson von Tetzchner. -->
+
+<!-- Modifications to fm2html filter to support Mincom
+requirements (file relative tags etc) were programmed by
+Tim Hudson (tjh@mincom.oz.au) -->
+
+
+<A NAME="SRA telnet"> &#8; </A>
+<H2><A NAME="HDR0"> 1.  SRA telnet</A></H2>
+<P>The initial aim was to have a telnet client that would talk to a <I>SSL</I> server (i.e. be able to telnet www.netscape.com https). I also wanted to be able to use it as a replacement for the SRA telnet way of handling authentication.
+<P>When testing you will probably want something like this in your $HOME/.telnetrc file (where "orb" is replaced with the name of the host you are testing against).
+<PRE>
+ # /home/tjh/.telnetrc
+ orb toggle options authdeb
+ orb set autologin
+</PRE>
+<P>The "key" is to have <I>autologin</I> set otherwise none of the "advanced" stuff (including <I>SSL</I>) is activated. Alternatively you can use the <I>-K</I> option to activate this stuff.
+<P>I haven't documented all this stuff yet as I've hacked the SRA stuff for SUNOS 5.x and IRIX 5.x support myself <B>before</B> I started on the <I>SSL</I> stuff. I'll sort it out soonish.
+<P>The rest of this is basically random notes to turn into something more useful later.
+<P>The first thing I did with <I>SRA</I> was to use the Eric Young <I>DES</I> library so a couple of little fiddles were needed to get this working correctly as a few "different" ideas exist in the various <I>DES</I> libraries that are floating around ... perhaps we can convince people to standardise on the <I>Eric Young</I> implementation as we use it quite effectively and it has been plugged back into the <I>Bones</I> version of <I>Kerberos</I> and it is used in <I>SSLREF</I>.
+<A NAME="libutil/ssl.c"> &#8; </A>
+<H3><A NAME="HDR1"> 1.1  libutil/ssl.c</A></H3>
+<P>Add this stuff ... most of the guts of the <I>SSL</I> to telnet/telnetd interface is in here.
+<A NAME="libutil/auth-proto.h"> &#8; </A>
+<H3><A NAME="HDR2"> 1.2  libutil/auth-proto.h</A></H3>
+<P>Add prototypes for the <I>SSL</I> interface in ssl.c
+<A NAME="libutil/auth.c"> &#8; </A>
+<H3><A NAME="HDR3"> 1.3  libutil/auth.c</A></H3>
+<P>Add the ssl stuff into the list of "authenticators".
+<A NAME="telnet/commands.c"> &#8; </A>
+<H3><A NAME="HDR4"> 1.4  telnet/commands.c</A></H3>
+<P>Add in ssl calls after <I>connect()</I>.
+<A NAME="telnet/externs.h"> &#8; </A>
+<H3><A NAME="HDR5"> 1.5  telnet/externs.h</A></H3>
+<P>Declare the ssl vars that I use ...
+<A NAME="telnet/main.c"> &#8; </A>
+<H3><A NAME="HDR6"> 1.6  telnet/main.c</A></H3>
+<P>Add in processing of <I>-z</I> options which add
+<PRE>
+</PRE>
+<TJH2><PRE> -z ssl
+ -z debug
+ -z socks          # might as well!
+ -z verify=INT
+ -z cert=filename
+ -z key=filename
+ -z secure
+</PRE>
+<A NAME="telnet/network.c"> &#8; </A>
+<H3><A NAME="HDR7"> 1.7  telnet/network.c</A></H3>
+<P>Hook netflush to call <I>SSL_write()</I>
+<A NAME="telnet/sys_bsd.c"> &#8; </A>
+<H3><A NAME="HDR8"> 1.8  telnet/sys_bsd.c</A></H3>
+<P>Hook NetClose to call <I>SSL_free()</I>
+<P>Remove ioctl call to <I>FIONBIO</I> (was stuffing things up in SSL version 0.0) so I'll have to rethink this
+<P>Remove all references to <I>OOB</I> data.
+<P>Hook the read calls in process_rings to <I>SSL_read()</I>
+<A NAME="telnetd/ext.h"> &#8; </A>
+<H3><A NAME="HDR9"> 1.9  telnetd/ext.h</A></H3>
+<P>Declare the ssl vars that I use ...
+<A NAME="telnetd/telnetd.c"> &#8; </A>
+<H3><A NAME="HDR10"> 1.10  telnetd/telnetd.c</A></H3>
+<P>Command line arg processing + calls to <I>SSL_read()</I> plus remove any references to <I>FIONBIO</I>.
+<A NAME="telnetd/utility.c"> &#8; </A>
+<H3><A NAME="HDR11"> 1.11  telnetd/utility.c</A></H3>
+<P>Hook ttloop() for <I>SSL_read()</I> Hook netflush() for <I>SSL_write()</I>
+
+<A NAME="SSLtelnet additions"> &#8; </A>
+<HR><H2><A NAME="HDR12"> 2.  SSLtelnet additions</A></H2>
+<P>Added a new option to the command line now that I've enabled <I>SOCKS</I> by default I needed a way to switch it off.
+<PRE>
+ -z !socks
+</PRE>
+

@@ -1,0 +1,77 @@
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Finding large primes efficiently
+Message-ID: <1993Dec13.044706.17030@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx's hardware; my opinions.
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+Date: Mon, 13 Dec 93 04:47:06 GMT
+Lines: 66
+
+I was thinking about how to generate large primes, in particular considering
+the way PGP does it.  This is to pick a random starting value, build a table
+of residues modulo a set of small primes, and then try adding consecutive
+small integers to the residues in the table, looking for an offset
+that leads to all non-zero residues, which means that the base+offset
+is not divisible by any of the numbers in the table.
+
+This is a very efficient way of testing a group of nearby numbers
+for possible primality before going to a more expensive test.
+
+However, one question that arose is how large the table should be.
+I derived the following result.  I would be interested in comments.
+
+Consider adding one more small prime p to the sieve table before
+going to a stronger primality test.  The cost to compute the initial
+residue is amortized over all the tests, so I shall neglect it.
+If we have reached the end of the table, the options are to check
+for divisibility by p (an addition and a word-sized modulo operation),
+or to go to a stronger test.
+
+Call the cost of testing for divisibility by p, c1, and the cost
+of the stronger test c2.
+
+If we do not test for divisibility by p, the cost is simply c2.
+
+If we do test, then 1/p of the time, the candidate large prime will be
+found to be divisible by p, obviating the need for c2.  (1-1/p) of the
+time, it will not be found divisible, necessitating the expenditure of
+c1+c2 work.  The total expected cost is c1 + (1-1/p)*c2.
+
+The second case is more expensive than the first when
+
+	   c1 + (1-1/p)*c2 > c2
+	c1 + c2 - (1/p)*c2 > c2
+	                c1 > (1/p) * c2
+	                 p > c2/c1
+
+Thus, we should do trial division as long as p is less than c2/c1.
+
+To estimate the costs, consider a machine with a 16-bit primitive multiply
+such as an IBM PC, finding a 512-bit prime.  The modulo operation (c1)
+is a few multiples.  If c2 is a Fermat test (which is successful often
+enough that it can be assumed to catch 100% of the composites, even if
+backed up with additional tests), then it is a modular exponentiation
+with a 512-bit exponent.  The modulus is 512 bits, or 32 words, so
+a squaring is basically 1024 16x16 bit multiplications.
+
+A 512-bit exponent involves 512 squarings, for a total of 2^19
+multiplications.  (Obviously, this should be backed up with timings,
+but I haven't done that yet.)
+
+Compare this with 2^2 or so multiplications for a single-precision modulus,
+and the largest prime p in the sieve should be on the order of 2^17, which
+is much larger than the 2^10 (or 2^13) that PGP currently uses.  If we
+assume 32-bit multiplies, that reduces the work by a factor of 4, but
+it's still a fairly large table.
+
+Indeed, it's large enough that it blows the 2^16 limit on 16-bit numbers
+that I was assuming in the first case, but stopping at 2^16 is probably
+acceptable.  (Going past raises c1 dramatically, which implies it
+would be a good place to stop.)
+
+Does this conclusion make sense to others here?  Is this a good speedup
+for finding large primes, do you think?
+-- 
+	-Colin

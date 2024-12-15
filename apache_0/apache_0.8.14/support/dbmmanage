@@ -1,0 +1,62 @@
+#!/usr/local/bin/perl
+#
+# usage: dbmmanage <DBMfile> <command> <key> <value>
+#
+# commands: add, delete, view, adduser
+#
+# no values needed for delete, no keys or values needed for view.
+# to change a value, simply use "add".
+# adduser encrypts the password:
+# dbmmanage <dbm file> adduser <person> <password>
+
+if (scalar(@ARGV) < 2) {
+	print "Too few arguments.\n";
+	exit;
+}
+
+# ugly - this should be changed to be random.
+$salt="XX";
+$file=$ARGV[0];
+$command=$ARGV[1];
+$key=$ARGV[2];
+$value=$ARGV[3];
+
+if ($command eq "add") {
+        dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+        $DB{$key} = $value;
+        dbmclose(%DB);
+	print "Entry $key added with value $value.\n";
+	exit;
+}
+
+if ($command eq "adduser") {
+	$hash = crypt($value, "$salt");
+        dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+        $DB{$key} = $hash;
+        dbmclose(%DB);
+	print "User $key added with password $value, encrypted to $hash\n";
+	exit;
+}
+
+if ($command eq "delete") {
+        dbmopen(%DB, $file, 0664) || die "Error: $!\n";
+        delete($DB{$key});
+        dbmclose(%DB);
+	exit;
+}
+
+if ($command eq "view") {
+        dbmopen(%DB, $file, undef) || die "Error: $!\n";
+        unless ($key) {
+                while (($nkey,$val) = each %DB) {
+                        print "$nkey = $val\n";
+                }
+        } else {
+                print "$key = $DB{$key}\n";
+        } 
+        dbmclose(%DB);
+	exit;
+}
+
+print "Command unrecognized - must be one of: view, add, adduser, delete.\n";
+

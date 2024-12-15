@@ -1,0 +1,147 @@
+Path: msuinfo!uwm.edu!cs.utexas.edu!uunet!olivea!decwrl!decwrl!toad.com!wet!wet.COM
+From: meyer@wet.COM (Peter Meyer)
+Newsgroups: sci.crypt,comp.os.msdos.programmer
+Subject: Re: Encrypt Data within Executable Code
+Message-ID: <5890@wet.UUCP>
+Date: 10 Jan 94 07:13:02 GMT
+Sender: meyer@wet.UUCP
+Followup-To: sci.crypt
+Distribution: usa
+Organization: Wetware Diversions, San Francisco
+Lines: 134
+Xref: msuinfo sci.crypt:22726 comp.os.msdos.programmer:32489
+
+
+ 
+JW1675A@auvm.american.edu (James D. Watson) wrote
+ 
+>Hi folks -- am wondering how to encrypt data with in an executable
+>program.  For example, if you wanted to have an ecryption key in
+>a program but don't want it to be found by running "strings" or
+>"od" or some such... Any hints or places I can look for info?
+>
+>TIA,
+>Jim
+>---
+>Acting Technical Officer, System Programming Shop
+>Defense Intelligence Agency
+ 
+There's a ready-made solution in the form of a function called
+save_values_in_exe(), one of many functions in the Dolphin C Toolkit,
+a general C function library published by Dolphin Software, 48 Shattuck
+Square #147, Berkeley, CA 94704 (510-464-3009).
+ 
+The documentation says this function is for saving variables in an
+MS-DOS executable file; it "allows a user of a program to input values
+which can be saved and maintained from one run to the next."  However,
+it can also be used as part of a process which encrypts a key (or any
+other data), defined in the clear in the program's source code, the
+first time the program is run (using some encryption function linked
+in) and saves it to the executable.  The key can be supplied by the
+user of the program (or if the data is itself an encryption key which
+the program uses then you can hide the key by means of some reversible
+process not requiring a key).  Whenever the program is run thereafter
+the encrypted data is decrypted for use by the program (again using
+some decryption function which is linked in).  After the first run the
+executable file will always contain the data only in encrypted (or at
+least hidden) form.
+ 
+Dolphin Software also publishes another C function library (the
+Dolphin Encryption Library) specifically concerned with encryption.
+The functions in this library could be used to perform the encryption
+and decryption of data in the process described above.  This library
+is $175.00 and the Toolkit is $95.00.
+ 
+Here's a program that illustrates this technique.  When the program is
+compiled the data to be encrypted is present in the executable file in
+the clear.  After the first run (when a key is specified) it is present
+in encrypted form only, and remains that way.  Functions from the two
+Dolphin libraries are marked by /*D*/.
+ 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+ 
+/*  Now two Dolphin header files.  */
+#include <l_file.h>
+#include <l_del.h>
+ 
+/*  Link with Dolphin libraries sauxm5e.lib and sdenm5e.lib.  */
+ 
+/*  Structure for saving modified data.  */
+struct save_t
+    {
+    char id_string[13];     /*  any string of length 12  */
+    int data_encrypted;     /*  initially FALSE  */
+    char the_data[40];      /*  below  */
+    } ;
+ 
+struct save_t save =
+    { "\x23\xB3\x20\x4F\xA1\x39\x10\xC3\x09\x2E\x8A\xC4\x00",
+    0, "This is the data to be encrypted." };
+ 
+unsigned char read_buffer[1024];
+ 
+#define key_input_buffer read_buffer
+ 
+void main(int argc, char *argv[])
+{
+int result;
+unsigned int n = sizeof(save.the_data);
+unsigned char *encryption_buffer;
+ 
+/*  Ask the user for the encryption key  */
+printf("\nInput key: ");
+gets(key_input_buffer);
+if ( !*key_input_buffer )
+    exit(1);
+result = process_input_key(key_input_buffer);   /*D*/
+/*  Returns error code if error.  */
+if ( result <= 0 )
+    {
+    printf("Key input error %d.\n",result);
+    exit(2);
+    }
+ 
+/*  Allocate 2 1K buffers.  */
+result = allocate_buffers(1,1);     /*D*/
+if ( result < 0 )
+    {
+    printf("\nBuffer allocation error %d.\n",result);
+    exit(3);
+    }
+ 
+atexit(deallocate_buffers);     /*D*/
+ 
+/*  Get address of encryption buffer.  */
+encryption_buffer = primary_buffer_address();   /*D*/
+ 
+/*  On the first run encrypt the data.  */
+ 
+if ( !save.data_encrypted )
+    {
+    memcpy(encryption_buffer,save.the_data,n);
+    encrypt_block(0,n,0);       /*D*/
+    memcpy(save.the_data,encryption_buffer,n);
+    save.data_encrypted = 1;
+    result = save_values_in_exe(argv[0],&save,sizeof(save),
+        save.id_string,read_buffer,sizeof(read_buffer));    /*D*/
+    if ( !result )
+        printf("\nData encrypted and saved.\n");
+    else
+        printf("\nError %d when saving data.\n",result);
+    exit(4);
+    }
+ 
+/*  If not the first run then decrypt the data.  */
+ 
+memcpy(encryption_buffer,save.the_data,n);
+decrypt_block(0,n,0);       /*D*/
+memcpy(save.the_data,encryption_buffer,n);
+ 
+/*  Display the data (in a real application it would not be displayed).  */
+printf("\nThe decrypted data is \"%s\"\n",save.the_data);
+exit(5);
+}
+ 
+

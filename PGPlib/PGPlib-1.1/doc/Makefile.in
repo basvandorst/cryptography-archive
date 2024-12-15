@@ -1,0 +1,139 @@
+############################ -*- Mode: Makefile -*- ###########################
+## 
+## Makefile.in -- Makefile-template for the PGPlibrary documentation.
+## 
+## Author          : Magne Rasmussen
+## Created On      : 5-May-1997
+## Last Modified By: Magne Rasmussen
+## Last Modified On: Tue May  6 11:57:53 1997
+## Update Count    : 6
+## Status          : Unknown, Use with caution!
+## 
+## Copyright (C) Magne Rasmussen 1997  Email: <magner@stud.cs.uit.no>
+## 
+###############################################################################
+
+
+SHELL	      =	/bin/sh
+
+PACKAGE	      =	@PACKAGE@
+VERSION	      =	@VERSION@
+
+srcdir	      =	@srcdir@
+top_srcdir    =	@top_srcdir@
+VPATH	      =	@srcdir@
+
+prefix	      =	@prefix@
+exec_prefix   =	@exec_prefix@
+infodir	      =	@infodir@
+
+top_builddir  =	..
+
+subdir	      =	doc
+distdir	      =	$(top_builddir)/$(PACKAGE)-$(VERSION)/$(subdir)
+
+INSTALL		= @INSTALL@
+INSTALL_PROGRAM	= @INSTALL_PROGRAM@
+INSTALL_DATA	= @INSTALL_DATA@
+
+mkinstalldirs = $(top_srcdir)/mkinstalldirs
+
+MAKEINFO      =	makeinfo
+TEXI2DVI      =	texi2dvi
+
+CONFIG_HEADER =	../config.h
+
+TEXINFOS      =	pgplib.texi
+INFOS	      = pgplib.info*
+INFO_DEPS     =	pgplib.info
+DVIS	      = pgplib.dvi
+
+DIST_COMMON   =	Makefile.in texinfo.tex
+
+DISTFILES     =	$(DIST_COMMON) $(TEXINFOS) $(INFOS)
+DEP_DISTFILES =	$(DIST_COMMON) $(TEXINFOS) $(INFO_DEPS)
+
+
+default: all
+
+
+Makefile: $(top_builddir)/config.status Makefile.in
+	cd $(top_builddir) && \
+	CONFIG_FILES=$(subdir)/$@ CONFIG_HEADERS= ./config.status
+
+pgp.info: pgp.texi
+
+%.info: %.texi
+	$(MAKEINFO) -I$(srcdir) $< -o $(srcdir)/$@
+
+%.dvi: %.texi
+	TEXINPUTS=$(srcdir):$$TEXINPUTS $(TEXI2DVI) $<
+
+all: Makefile $(INFO_DEPS)
+
+install: all installdirs
+	for file in $(INFO_DEPS); do		\
+	  for ifile in `cd $(srcdir) && echo $$file*`; do \
+	    $(INSTALL_DATA) $(srcdir)/$$ifile $(infodir)/$$ifile; \
+	  done;					\
+	done
+
+install-strip:
+	$(MAKE) INSTALL_PROGRAM='$(INSTALL_PROGRAM) -s' install
+
+uninstall:
+	cd $(srcdir) && for file in *.info*; do	\
+	  rm -f $(infodir)/$$file; \
+	done
+
+mostlyclean:
+	rm -f pgp.aux pgp.cp pgp.cps pgp.dvi pgp.fn pgp.fns pgp.ky pgp.log \
+	  pgp.pg pgp.toc pgp.tp pgp.vr pgp.op
+	cd $(srcdir) && rm -f *~
+	test -z "$(MOSTLYCLEANFILES)" || rm -f $(MOSTLYCLEANFILES)
+
+clean: mostlyclean 
+	test -z "$(CLEANFILES)" || rm -f $(CLEANFILES)
+
+distclean: clean 
+	rm -f Makefile $(DISTCLEANFILES)
+
+maintainer-clean: distclean 
+	rm -f $(INFOS)
+	test -z "$(MAINTAINERCLEANFILES)" || rm -f $(MAINTAINERCLEANFILES)
+	@echo "This command is intended for maintainers to use;"
+	@echo "it deletes files that may require special tools to rebuild."
+
+tags: TAGS
+
+TAGS:
+
+info: $(INFO_DEPS)
+
+dvi: $(DVIS)
+
+distdir: $(DEP_DISTFILES)
+	@for file in `cd $(srcdir) && echo $(DISTFILES)`; do \
+	  test -f $(distdir)/$$file \
+	  || ln $(srcdir)/$$file $(distdir)/$$file 2> /dev/null \
+	  || cp -p $(srcdir)/$$file $(distdir)/$$file; \
+	done
+
+check: all
+
+installcheck:
+
+installdirs:
+	$(mkinstalldirs) $(infodir)
+
+
+.PHONY: default all install install-strip uninstall \
+clean mostlyclean distclean maintainer-clean \
+info dvi distdir check installcheck installdirs
+
+.SUFFIXES:
+.SUFFIXES: .texi .info .dvi
+
+# Tell versions [3.59,3.63) of GNU make to not export all variables.
+# Otherwise a system limit (for SysV at least) may be exceeded.
+.NOEXPORT:

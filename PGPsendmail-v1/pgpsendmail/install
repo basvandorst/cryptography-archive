@@ -1,0 +1,87 @@
+#! /bin/csh -f
+
+if ("$#argv" != "1") then
+    echo "Usage:	install binary"
+    exit 1
+endif
+
+set binary = $argv[1]
+
+if ("$binary" != "pgpsendmail") then
+    if ("$?USRBINPATH" == "0") then
+	# Where to install?
+	echo "No USRBINPATH environment variable defined."
+	echo "Don't know where to install  $binary"
+	echo "You will have to do it yourself."
+	exit 0
+    endif
+    if ( ! -f $USRBINPATH/$binary ) then
+	cp -p $binary $USRBINPATH
+	exit 0
+    endif
+    mv $USRBINPATH/$binary $USRBINPATH/${binary}.old
+    cp -p $binary $USRBINPATH
+    if ("$status" != "0") then
+	mv $USRBINPATH/${binary}.old $USRBINPATH/$binary
+	exit 1
+    endif
+    rm -f $USRBINPATH/${binary}.old
+    exit 0
+endif
+
+if (-f /usr/lib/sendmail) then
+    set sendmail_dir = /usr/lib
+else
+    if (-f /usr/sbin/sendmail) then
+	set sendmail_dir = /usr/sbin
+    else
+	echo "No  /usr/lib/sendmail  OR  /usr/sbin/sendmail"
+	exit 1
+    endif
+endif
+
+if (-f ${sendmail_dir}/pgpsendmail) then
+    # Existing copy
+    if ("$USER" == "root") then
+	if ("$?PGPPATH" != "0") then
+	    echo "WARNING: Do not restart the  sendmail  daemon while you"
+	    echo "still have a PGPPATH environment variable"
+	endif
+    endif
+    if ( ! -w ${sendmail_dir}/pgpsendmail ) then
+	echo "You cannot over-write  ${sendmail_dir}/pgpsendmail"
+	exit 1
+    endif
+    /bin/rm -f ${sendmail_dir}/pgpsendmail
+    cp -p pgpsendmail ${sendmail_dir}
+    echo "PGPsendmail installed"
+    exit 0
+endif
+
+# New copy
+if ( ! -w ${sendmail_dir} ) then
+    echo "You cannot put files in  ${sendmail_dir}"
+    if ("$?USRBINPATH" != "0") then
+	if (-w $USRBINPATH) then
+	    echo "Writing PGPsendmail as:  $USRBINPATH/pgpsendmail  instead"
+	    cp -p pgpsendmail $USRBINPATH
+	    exit 0
+	endif
+    endif
+    echo "PGPdaemon not installed. Do it yourself."
+    exit 2
+endif
+cp -p pgpsendmail ${sendmail_dir}
+cd ${sendmail_dir}
+mv sendmail sendmail.real
+ln -s pgpsendmail sendmail
+
+echo "PGPsendmail installed"
+if ("$USER" == "root") then
+    if ("$?PGPPATH" != "0") then
+	echo "WARNING: Do not restart the  sendmail  daemon while you"
+	echo "still have a PGPPATH environment variable"
+    endif
+endif
+
+exit 0

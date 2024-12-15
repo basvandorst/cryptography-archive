@@ -1,0 +1,203 @@
+Path: msuinfo!agate!howland.reston.ans.net!xlink.net!math.fu-berlin.de!unidus.rz.uni-duesseldorf.de!lannert.rz.uni-duesseldorf.de!TSOS
+From: TSOS@uni-duesseldorf.de (Detlef Lannert)
+Newsgroups: sci.crypt,alt.security.pgp
+Subject: Short Cryptographic Signatures revisited
+Date: Fri, 9 Jul 1993 19:20:00 GMT
+Organization: Universitaetsrechenzentrum, Heinrich-Heine-Universitaet, Duesseldorf
+Lines: 190
+Message-ID: <TSOS.509.742245599@uni-duesseldorf.de>
+NNTP-Posting-Host: lannert.rz.uni-duesseldorf.de
+Summary: A modest proposal.
+Keywords: signature, hash code, public-key algorithm
+Xref: msuinfo sci.crypt:17878 alt.security.pgp:3606
+
+-----BEGIN PGP SIGNED MESSAGE-----
+
+There have been various threads in these groups (sci.crypt, alt.security.
+pgp) discussing the feasibility of short signature certificates for posted
+articles (and e-mail). Some people would like to sign all their postings
+routinely; others dislike or are even offended by multiline signatures
+that use a considerable amount of disk and screen space.
+
+Signatures could be automatically checked and only the result displayed
+by intelligent newsreaders; that does not, however, solve the problem of
+wasted bandwidth. With 1024-bit RSA keys, ~220 bytes are used for each
+signature (not counting the seperator and version lines); in some cases
+there might even be several signatures on a single article (e.g., the
+moderator of a newsgroup could approve of an article by signing it too).
+Since a data compression cannot reduce a signature by more than 25% (in
+radix-64 format), the bandwidth used for signatures is not quite
+neglectable.
+
+When RSA is used to sign a message, usually a message digest is encrypted
+with the sender's (or another person's) secret key; thus the result is as
+large as this RSA key. If only a hash code of the result were transmitted,
+the recipient could not verify the signature (unless the hash algorithm
+were somehow linear wrt RSA). Only a shorter key leads to shorter RSA
+signatures; but recent research has demonstrated that a key length << 500
+bits will no longer be secure in the not too distant future.
+
+And there is another drawback to routinely signing messages with one's
+secret RSA key: the latter is pretty well protected by programs like
+PGP, for instance, and it has to be. Otherwise the security would be
+worse than no crypto at all ... But it is annoying to be prompted for
+the pass phrase which protects the key each time one wants to post an
+article; on the other hand, storing the pass phrase in an environment
+variable puts the security at risk.
+
+Now my conclusion: If it seems necessary to generate special keys for
+signing routine postings anyway because:-
+ - the keys should be shorter than you might want them for optimum
+   security,
+ - they actually cannot be protected as well as the `ultimately secure
+   personal RSA key' (tm) ought to be,
+ - they should consequently be changed regularly --
+then you could as well use a different algorithm altogether. ;-)
+That is why I'm suggesting one in the following paragraphs; you are
+invited to comment (or perhaps demonstrate why the whole scheme is
+flawed).
+
+
+ The Algorithm
+ -------------
+
+[For the impatient reader: It's a public key algorithm based on discrete
+logarithms.]
+
+A sufficiently large (see below), preferably `safe' prime p and a base g
+(that is a generator of F^{*}(p) ) are selected and publicly agreed upon.
+
+Each user selects a secret value x (1 < x < p-1) and distributes the value
+k:= g^x mod p. The distribution could be done via personal mail or through
+keyservers; PGP, RIPEM or such can be used to sign k for authentication.
+Every such `short signature key' k should only be certified for a
+(relatively) short period ( o(month) ) and not be used for messages that
+are created after that period.
+
+The user must make sure that gcd(x,p-1)=1; if p is a safe prime, this is
+very easy: Assume that p has n significant bits; then generate (n-1)
+random bits, not all zeroes, check that they are not identical with the
+(n-1) high order bits of p, and append a "1" after the least significant
+bit. [Note that the generation of such a key is much easier and cheaper
+than that of an RSA key.]
+
+Then the user computes a multiplicative inverse v:= x^{-1} mod (p-1) and
+keeps it safely as his/her secret key.
+
+To sign a message, its body (excluding the header and the .signature;
+trailing blanks should be discarded; newline characters normalised) is fed
+into a cryptographic checksum algorithm, e.g. MD5. Let c denote the result,
+interpreted as an integer number.
+
+The value s:= c * v mod (p-1) is ascii-armoured and, together with some
+control information, added to the message -- if possible, as an additional
+header line.
+
+The recipient does the same checksum calculation, gets (hopefully) the same
+c, retrieves s from the header, and verifies that k^s == g^c (mod p). If
+this holds (and it should, because k^s = k^{c*v} = g^{x*c*x^{-1}} = g^c)
+and k is the trusted public signature key of the originator, then the
+message could not be forged or tampered with -- unless some spook got hold
+of x or managed to compute discrete logarithms.
+
+
+ Message format
+ --------------
+
+The best solution would be to transmit the `short signature' in a special
+header line; this should contain
+ - an identification of the checksum and signature algorithms including a
+   version number (which should be incremented whenever a larger or
+   otherwise different p or g is chosen);
+ - some bits of a hash value of the associated public key;
+ - a timestamp;
+ - a representation of the binary value of s;
+ - the signer's (internet) address if it is different from that in the
+   "From:" line.
+
+Just to give you an idea how it might look like:
+
+Signed: SCS_0.9A/MD5-Ed47C-0a4J8-So1me28ot4her9Ju7nk993
+                     ^^^^^ ^^^^^ ^^^^^^^^^^^^^^^^^^^^^^
+                     |     |     + this is the value "s"
+                     |     + the timestamp
+                     + the public key id
+(All binary values are ascii-armoured, e.g. in radix-64 format.)
+
+The same information could even be stuffed into an "Approved:" line to
+prove that the newsgroup moderator accepted the message:
+
+Approved: check@nix.com <SCS_0.9A/MD5-C74dE-0a4K9-Qu1ite28di4ffe9re7nt93>
+
+
+ Security Considerations
+ -----------------------
+
+Obviously p should be larger than the largest possible c, i.e., for MD5
+p > 2^128. Is that sufficient? I don't know; it certainly depends on the
+security requirements. If more bits are needed, the hash algorithm could
+be run several times (in parallel) over the same data with different
+initialisation vectors ad libitum. But then, the original intention was
+to have *shorter* signatures; thus a suitable compromise has to be found.
+
+To the best of my knowledge, the complexity of computing discrete logs
+is comparable to factoring numbers of o(p); ~128 bits would not seem very
+secure then. If, however, the keys are "only" used for signing messages,
+not for encryption, and if they are changed periodically over highly
+secure channels (e.g. signed with 1024-bit RSA keys), I would not worry
+too much even with as few as 128 bits. (The Silver/Pohlig/Hellman
+algorithm is not very useful for an attacker if p is a safe prime.)
+
+A timestamp value should be included in the calculation of the checksum
+and transmitted in clear to avoid replay attacks; it could be transmitted
+in the header line (as in the example above) or in the message body. Both
+solutions seem (to me) to have their advantages.
+
+If a secure distribution of signature keys should be automated and/or
+other, highly protected channels such as PGP/*PEM signed messages are
+not available, new "replacement" keys can be included in signed messages.
+This does not increase the overall security but gives an attacker less
+time to break a key -- and this might already suffice to deter them.
+
+If p is selected carefully, there should not be any (known) backdoors.
+As usual, a good randomness of x is crucial; the keystroke-timing approach
+would certainly be sufficient to make x unpredictable. I do not see any
+other reason (apart from gcd(x,p-1)==1) why one x should be worse than
+others. (Corrections welcome!)
+
+Other than the  `ultimately secure personal RSA key', the private key v
+would not need the most deliberate protection; I wouldn't mind storing
+a pass phrase for v in an environment variable -- what I dare not do
+with the pass phrase for my PGP key.
+
+
+ Legalese
+ --------
+
+Must I really address the legal aspects? Well, let's make it short; like
+any public key algorithm, this one is probably also protected by PKP
+patents in North America. Our friends who happen to live there might thus
+need a licence; I don't see any problems for the rest of the world.
+
+Note that this suggestion does not depend in any way on the use of PGP or
+RIPEM; these might be useful for key distribution and authentication but
+are by no means required.
+
+ --
+This article is in the public domain.
+
+-----BEGIN PGP SIGNATURE-----
+Version: 2.2
+
+iQCVAgUBLD3DZzT52nfBH0L9AQGmewQArVil2baWkydFxvyEZ3DH1hQ6jc7UF5il
+PbM6Xl5t8z0C1qMDIgnLgdCuT7sgUAl3v1wiBwtHRDlJ6627WQebx/N0kbXyFuux
+4CRnpOpYVxQPKemeQx8WOE2M8uBW2xKVFd9IjMlydCNx/WbulQDXyNczYhvxb7P1
+GXtWfyTOZEw=
+=710P
+-----END PGP SIGNATURE-----
+--
+Detlef Lannert      DC3EK      E-Mail: tsos@rz.uni-duesseldorf.de
+PGP 2.x key available (finger lannert@clio.rz.uni-duesseldorf.de)
+Die Mathematiker sind eine Art Franzosen:  Redet man zu ihnen, so
+uebersetzen sie es in ihre Sprache, und dann ist es alsobald ganz
+etwas anderes.                         Johann Wolfgang von Goethe

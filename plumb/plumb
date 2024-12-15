@@ -1,0 +1,98 @@
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Newsgroups: sci.crypt
+Subject: Re: this looked like it might be interesting
+Date: 10 Aug 1995 23:59:55 -0600
+
+For the interested, here's a picture of the cipher's operation.
+The fact that this cipher is clearly designed for software
+implementation and avoids some seemingly obvious diffusion
+possibilities makes me suspect that it is not Skipjack.
+
+/*
+ * This is an overview of the round transformation, repeated 32 times.
+ *
+ * Each double line represents 8 bits, and each single line represents 4 bits,
+ * except for the lines out of the G0 and G1 boxes, which are 1 bit each
+ * and are combined (the G1 bit is the most significant) to choose the
+ * base F value.  The other 4 F boxes are taken as offsets from the
+ * base F value, modulo 4.
+ *
+ * Each of the function boxes takes an 8-bit input and an 8-bit key
+ * (Indicated above the box) and maps the 8-bit XOR of the two to a
+ * smaller range - 1 bit for the G function and 4 bits for the F function.
+ * The keys K0 through K5 vary in each round.
+ *
+ * Note how the "high" and "low" halves of each byte are indicated, and
+ * how the position in which each 4-bit F-function output is XORed into
+ * a byte is indicated.
+ *
+ *     0       1       2       3       4       5       6       7
+ *    HL      HL      HL      HL      HL      HL      HL      HL
+ *    ||      ||      ||      || K0   || K1   ||      ||      ||
+ *    ||      ||      ||      ||/--\  ||/--\  ||      ||      ||
+ *    ||      ||      ||      |||G0|<=++|G1|<=++      ||      ||
+ *    ||      ||      ||      ||\--/  ||\--/  ||      ||      ||
+ *    ||      ||      ||      ||  |   || |    ||      ||      ||
+ *    ||      ||      ||      ||  |   || |    ||      ||      ||
+ *    ||      ||      ||      || /-------/    ||      ||      ||
+ *    ||      ||      ||      || ||   ||      ||      ||      ||
+ *    ||      ||      ||      || \/   ||      ||      ||      ||
+ *    ||      ||      ||      ||  F   ||      ||      ||      ||
+ *    ||      ||      ||      ||      ||      ||      ||      ||
+ *    ||      ||      ||      ||  K2  ||      ||      ||      ||
+ *    ||      ||      ||      ||/---\ ||      ||      |v      ||
+ *    ||      ||      ++=======>|F+0|----------------->*      ||
+ *    ||      ||      ||      ||\---/ ||      ||      ||      ||
+ *    ||      ||      ||      ||      ||/---\ ||      v|      ||
+ *    ||      ||      ||      ++=======>|F+1|-------->*|      ||
+ *    ||      ||      ||      ||      ||\---/ ||      ||      ||
+ *    ||      ||  K4  ||      ||      ||  K3  ||      ||      ||
+ *    ||      ||/---\ ||      ||      ||      ||      ||      |v
+ *    ++=======>|F+2|----------------------------------------->*
+ *    ||      ||\---/ ||      ||      ||      ||      ||      ||
+ *    ||      ||      ||/---\ ||      ||      ||      ||      v|
+ *    ||      ++=======>|F+3|-------------------------------->*|
+ *    ||      ||      ||\---/ ||      ||      ||      ||      ||
+ *    ||      ||      ||  K5  ||      ||      ||      ||      ||
+ *    ||      ||      ||      ||      ||      ||      ||      ||
+ *    \\      \\     //      //      //      //      //      //
+ *     \\      \\   //      //      //      //      //      //
+ *      \\      \\ //      //      //      //      //      //
+ *       \\      \//      //      //      //      //      //
+ *        \\     //\     //      //      //      //      //
+ *         \\   // \\   //      //      //      //      //
+ *          \\ //   \================================\ //
+ *           \//      //      //      //      //     \//
+ *           //\     //      //      //      //      //\
+ *          // \\   //      //      //      //      // \\
+ *         //   \================================\ //   \\
+ *        //      //      //      //      //     \//     \\
+ *       //      //      //      //      //      //\      \\
+ *      //      //      //      //      //      // \\      \\
+ *     //      //      //      //      //      //   \\      \\
+ *    //      //      //      //      //      //     \\      \\
+ *    ||      ||      ||      ||      ||      ||      ||      ||
+ *    HL      HL      HL      HL      HL      HL      HL      HL
+ *     0       1       2       3       4       5       6       7
+ *
+ * Note that the bytes that were just operated on (6 and 7) are the
+ * inputs to the G functions next round, choosing the permutation of
+ * the F functions for the next round.
+ */
+
+Due to the nature of the G1 function, only 4 bits of byte 5 (and K1)
+matter to the output of G1 and thus the selection of the F box.
+That seems odd.  Also, the fact that each F box only affects 1 byte
+instead of 2 is unusual, only affecting the input of 1 of the F boxes
+on the following rounds.  And the F+3 box hardly affects G1 at all -
+only one bit of output matters.
+
+Matt Blaze has done some analysis of the F boxes, and found that they
+are quite skewed.  The output distributions are quite non-flat.
+Even the individual bit distributions aren't flat.  This leads,
+through the key scheduling algorithm, to non-flat distributions on
+the inner working keys.  This seems very Bad.
+
+I wonder what else people will find.
+-- 
+	-Colin

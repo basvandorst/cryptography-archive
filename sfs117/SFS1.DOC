@@ -1,0 +1,644 @@
+
+                        sSSSSs      FFFFFFFFFF    sSSSSs
+                       sSSSSSSs     FFFFFFFFF    sSSSSSSs
+                      sSs     sS    FF          sSs     sS
+                      SS            FF          SS
+                      sSs           FF          sSs
+                       sSSSSSSs     FFFFFFF      sSSSSSSs
+                             sSs    FF                 sSs
+                              SS    FF                  SS
+                      Ss      Ss    FF          Ss      Ss
+                       sSSSSSSs     FF           sSSSSSSs
+                        sSSSSs      FF            sSSSSs
+
+
+                       S e c u r e   F i l e S y s t e m
+
+                                  Version 1.20
+
+                  Copyright Peter C.Gutmann  1993, 1994, 1995
+
+
+      "The right to privacy... is the most comprehensive of rights and the
+       right most valued by civilized man"
+                          - Justice Louis Brandeis, US Supreme Court, 1928
+
+
+Ever since Julius Caesar used the cipher which now bears his name to try to
+hide his military dispatches from prying eyes, people have been working on
+various means to keep their confidential information private.  Over the years,
+the art of cryptography (that is, of scrambling information so only those in
+possession of the correct password can unscramble it) has progressed from
+simple pencil-and-paper systems to more sophisticated schemes involving complex
+electromechanical devices and eventually computers.  The means of breaking
+these schemes has progressed on a similar level.  Today, with the
+ever-increasing amount of information stored on computers, good cryptography is
+needed more than ever before.
+
+There are two main areas in which privacy protection of data is required:
+
+  - Protection of bulk data stored on disk or tape.
+  - Protection of messages sent to others.
+
+SFS is intended to solve the problem of protecting bulk data stored on disk.
+The protection of electronic messages is best solved by software packages such
+as PGP (available on sites the world over) or various implementations of PEM
+(currently available mainly in the US, although non-US versions are beginning
+to appear).
+
+SFS has the following features:
+
+  - The current implementation runs as a standard DOS device driver, and
+    therefore works with both plain MSDOS or DRDOS as well as other
+    software such as Windows, QEMM, Share, disk cacheing software, Stacker,
+    JAM, and so on.  SFS has been used to encrypt disk volumes ranging from
+    360K floppy disks up to 2.1 GB SCSI drives without problems.
+
+  - Up to five encrypted volumes can be accessed at any one time, chosen
+    from a selection of as many volumes as there is storage for.
+
+  - Volumes can be quickly unmounted with a user-defined hotkey,
+    automatically unmounted after a certain amount of time, or unmounted
+    under control of a smart card.  They can also be converted back to
+    unencrypted volumes or have their contents destroyed if required.
+
+  - SFS volumes can be controlled using either DOS or Windows software,
+    and are fully compatible with Windows 32-bit disk access.  The Windows
+    software has internationalization support and is available in English,
+    German, and Italian.
+
+  - The software contains various stealth features to minimise the
+    possibility of other programs monitoring or altering its operation.
+
+  - The encryption algorithms used have been selected to be free from any
+    patent restrictions, and the software itself is not covered by US
+    export restrictions as it was developed entirely outside the US
+    (although once a copy is sent into the US it can't be re-exported).
+
+  - SFS complies with a number of national and international data
+    encryption standards, among them ANSI X3.106, ANSI X9.30 Part 2,
+    Federal Information Processing Standard (FIPS) 180, Australian
+    Standard 2805.5.2, ISO 10116:1991 and ISO 10126-2:1991, and is on
+    nodding terms with several other relevant standards.
+
+  - The documentation includes fairly in-depth analyses of various security
+    aspects of the software, as well as complete design and programming
+    details necessary to both create SFS-compatible software and to verify
+    the algorithms used in SFS.
+
+  - The encryption system provides reasonable performance.  One tester has
+    reported a throughput of 250 K/s for the basic version of SFS, and 260
+    K/s for the 486+ version on his 486 system, when copying a file with
+    the DOS copy command from one location on an SFS volume to another.
+    Throughput on a vanilla 386 system was reported at around 160 K/s.  The
+    resident portion requires around 7.5K of memory, and can be loaded high
+    if desired.
+
+  - Direct access to IDE and SCSI drives is available for better
+    performance and for drives which aren't normally accessible to DOS (for
+    (for example systems with more than 2 hard drives).  SFS supports SCSI
+    host adapters from Adaptec, Advanced Integration Research (AIR), Alpha
+    Research, Always Technology, American Megatrends (AMI), BusLogic,
+    Distributed Processing Technology, DTC, Future Domain, IBM, LinkSys,
+    NEC, Trantor, Ultrastor, and others.
+
+  - The software provides an extensive key safeguarding system using a
+    threshold scheme to allow emergency access to SFS volumes if the
+    original key is forgotten or lost.
+
+  - Smart card access control for invidual SFS volumes or groups of
+    volumes is possible.
+
+Although the use of DOS is described throughout this document, SFS is not
+limited to any particular operating environment, and can be used to contain
+virtually any type of filesystem.  In the future an SFS driver for OS/2 HPFS
+filesystems may be developed, and there have been discussions on creating a
+Linux SFS driver for Unix machines.  A 68000 version of SFS is also rumoured to
+be under development.
+
+
+Overview
+--------
+
+This document is arranged to provide step-by-step instructions on setting up
+the SFS driver, creating an encrypted volume, and using the encrypted volume to
+store information securely.  The first three sections cover each of these
+steps, with a special quick-start section preceding them giving a rapid
+introduction to getting an encrypted disk volume up and running.  The next
+sections provide extra details on topics such as password management,
+incompatibility problems, other encryption software, and the politics of
+cryptography and privacy.  The final sections provide an in-depth security
+analysis, technical information on the SFS driver, and data formats for anyone
+wanting to write SFS-compatible software or wanting to check the security of
+the software for themselves.
+
+The document is divided into sections as follows:
+
+  Why Use SFS?
+      Some reasons why use of security measures like SFS may be necessary
+      for your data.
+
+  Terminology
+      An explanation of some of the technical terms use in this document.
+      Experienced users can skip this section.
+
+  Quick Start
+      A quick overview of the use of SFS which summarizes the next three
+      sections for people in a hurry
+
+  Loading the SFS Driver
+      How to set up the SFS driver needed to handle encrypted volumes.
+
+  Creating an SFS Volume
+      How to prepare an SFS encrypted volume for use.
+
+  Mounting an SFS Volume
+      How to mount a previously prepared SFS encrypted volume so the
+      operating system can use it.
+
+  Unmounting an SFS Volume
+      How to unmount and otherwise change the status of one or more SFS
+      volumes after they have been mounted.
+
+  Advanced SFS Driver Options
+      Various advanced options such as how to mount SFS volumes at system
+      startup so that they are automatically available when the system is
+      booted, and customizing the SFS driver operation and user interface.
+
+  Changing the Characteristics of an SFS Volume
+      How to change various characteristics of an SFS volume such as the
+      password, volume name, disk access method, and auto-unmount timeout,
+      and how to delete SFS volumes or convert them back to normal DOS
+      volumes.
+
+  Sharing SFS Volumes Between Multiple Users
+      How to securely share a single encrypted SFS volume between multiple
+      users.
+
+  Creating Compressed SFS Volumes
+      How to create a compressed drive inside a normal SFS volume
+
+  Emergency Access to Encrypted Information
+      How to use the SFS key safeguarding features to allow emergency
+      access to SFS volumes if a key is lost or forgotten.
+
+  Controlling SFS Volumes with Smart Cards
+      How to control access to SFS volumes using smart cards.
+
+  WinSFS - Using SFS with Windows
+      An overview of the Windows version of SFS.
+
+  Usage Examples
+      Examples of how to perform various basic operations using the SFS
+      software.
+
+  Command Summary
+      A summary of the commands available with the various SFS programs.
+
+  Troubleshooting
+      Comments on unusual hardware and software combinations which may
+      create problems for SFS.
+
+  Authentication of SFS Software
+      How to verify that the SFS distribution you have is indeed the real
+      thing.
+
+  Applications
+      Various applications and uses for SFS.
+
+  The Care and Feeding of Passwords
+      Details on how to choose and handle a password to protect an SFS
+      volume.
+
+  Other Software
+      An overview of other available security software and the weakness and
+      problems present in it.
+
+  Data Security
+      Various issues in data security which should be taken into
+      consideration when using SFS and similar encryption software.
+
+  Politics
+      A discussion on the politics of cryptography, the right to privacy,
+      and some of the reasons why SFS was written.
+
+  An Introduction to Encryption Systems
+      A brief introduction to encryption systems with an emphasis on the
+      methods used in SFS.
+
+  Security Analysis
+      An analysis of the level of security offered by SFS and some possible
+      attacks on it.
+
+  Design Details
+      Various in-depth design details not covered in the security analysis.
+
+  SFS Disk Volume Layout
+      Details on the disk layout used by SFS.
+
+  SFS Share File Layout
+      Details on the share file layout used in the SFS key safeguarding
+      system.
+
+  SFS Smart Card Data Layout
+      Details on the layout of the data stored inside smart cards by SFS.
+
+  Interfacing with SFS
+      How to control the SFS driver through software.
+
+  Interfacing with mountsfs
+      How to control the mountsfs program from external software such as
+      graphical front-ends.
+
+  Selected Source Code
+      A walkthrough of selected portions of the source code to allow
+      verification and help implementors.
+
+  Future Work
+      Various enhancements which may be incorporated into future versions
+      of SFS.
+
+  Recommended Reading
+      A short list of recommended reading material for those wishing to
+      know more about the design of SFS and encryption in general.
+
+  Staying Current with SFS Developments
+      Information on using the SFS mailing list and SFS Web page to stay
+      up to date with the latest SFS developments.
+
+  Using SFS
+      Conditions and terms for use of SFS.
+
+  Revision Levels
+      The changes and improvements made for each release of the SFS
+      software.
+
+  Credits
+
+  Warranty
+
+
+Why Use SFS?
+------------
+
+Virtually all information stored on computer systems is sensitive to some
+degree, and therefore worth protecting.  Exactly how sensitive a piece of data
+is is unique to each environment.  In some cases the data may be much more
+sensitive to errors or omissions, or to unavailability, or to fraudulent
+manipulation, than to the problems SFS is designed to guard against.  SFS helps
+guard against data being disclosed to the wrong people or organisations, and
+against some types of fraudulent manipulation.  By making the data being
+protected accessible only to those with authorized access, SFS helps protect
+the confidentiality of the information, and the privacy of the individuals the
+information pertains to.  Preventing access by unauthorized users also helps to
+protect the integrity of the data[1].
+
+One way to determine whether your data is sensitive enough to require the use
+of SFS is to consider the following:
+
+  What are the consequences of the data being made available to the wrong
+  people or organisations?
+
+  What are the consequences of the data being manipulated for fraudulent
+  purposes?
+
+An additional impetus for security comes from the legal requirement of many
+countries for individuals and organisations to maintain the confidentiality of
+the information they handle, or to control their assets (such as computer data)
+properly.  For example, one of the "OECD guidelines governing the protection of
+privacy and transborder flows of computer data" states that data should be
+protected against "loss or unauthorized access, destruction, use, modification,
+or disclosure"[2].  An example of the requirements for the control of assets is
+the US Foreign Corrupt Practices Act of 1977.
+
+In summary, if the cost of damage or disclosure of your data is more than the
+cost of using a security measure such as SFS (where cost is measured not only
+in monetary terms but also in terms of damage to business and loss of privacy)
+then the data should be regarded as being sensitive and should have adequate
+security controls to prevent or lessen the potential loss.
+
+Footnote [1]: Although inadvertent modification by authorized users is still
+              possible, the risk from deliberate compromise of the data is
+              greatly reduced.
+
+Footnote [2]: These guidelines are discussed in more detail in "Computer
+              Networks", Volume 5, No.2 (April 1981).
+
+
+Terminology
+-----------
+
+Throughout this document a number of specialised terms are used to describe the
+operation of the SFS encryption software.  This section provides a brief
+explanation of the terms used.  Experienced users can skip this material and go
+directly to the "Loading the SFS Driver" section below.
+
+  Disk volume:
+
+    An individual logical disk drive, volume, partition, or filesystem.  A
+    single physical hard disk can (and usually does) contain more than one
+    volume on it.  Under DOS, each of these volumes is assigned its own drive
+    letter and appears as a separate drive, even though they all reside on the
+    same physical hard disk.  Thus a system might have a single 240MB hard disk
+    which contains four 60MB volumes accessed by the drive letters C:, D:, E:,
+    and F:.
+
+    This system is rather confusing and dates back fifteen to twenty years.
+    SFS refers to these volumes by name rather than an arbitrary letter, so
+    that the volumes might be called "Encrypted data", "Personal
+    correspondence", or "Accounts receivable, March 1994".  Unfortunately once
+    SFS has set up the volume for DOS to access, it's back to the old F: to
+    identify your data.
+
+  Password, key:
+
+    The password or encryption key that is used to protect the data on an
+    encrypted volume.  Despite its name, a password can (and should) be more
+    than just a single word.  The SFS software will accept up to 100 characters
+    of password, so that perhaps the term "passphrase" would be more
+    appropriate.
+
+    For maximum security, you should protect each volume with its own unique
+    password.  The SFS software takes the password for a volume, adds extra
+    keying information to it, and converts the result into an encryption key
+    which is used to encrypt and decrypt data on a given volume.  You should
+    take great care in how you choose your passwords and how you keep them
+    secret.  More details on this are given in the section "The Care and
+    Feeding of Passwords" below.
+
+  Device driver:
+
+    A device driver is a special piece of software which is used by the
+    operating system to access hardware which it wasn't designed to.  Unless
+    the device driver is loaded, the operating system generally won't recognise
+    that a piece of hardware even exists.  Even the computer's monitor,
+    keyboard, and disk drives are accessed through device drivers, although
+    their presence is hidden by the operating system.
+
+    An example of a visible device driver is the one used to handle a mouse.
+    Networked disk drives may be accessed through a device driver[1].  RAM
+    disks are implemented as device drivers.  CDROM drives are handled via a
+    device driver.  Finally, encrypted SFS volumes are accessed through a
+    device driver.
+
+  Mount point:
+
+    Mount points are the locations provided by the SFS driver for mounting
+    encrypted volumes - in other words the number of encrypted volumes which
+    can be accessed by the driver at any one time.  By default the driver
+    provides one mount point, which means one encrypted volume can be accessed
+    through it at any given time.  The exact number of mount points can be
+    specified when the SFS driver is loaded.
+
+Footnote [1]: Actually they use a specialised kind of driver called a network
+              redirector.
+
+
+Quick Start
+-----------
+
+This section contains a condensed version of the next three sections and allows
+a quick start for SFS.  Although it is recommended that you read the full text,
+it should be possible to install and use a minimal SFS setup using only the
+quick-start information.
+
+Initially, you need to load the SFS driver by adding an entry for it to your
+CONFIG.SYS file.  For example if the SFS.SYS driver was located in the DOS
+directory on drive C: the following line should be added to the CONFIG.SYS
+file:
+
+  DEVICE=C:\DOS\SFS.SYS
+
+Alternatively, you can use the DEVICEHIGH option to load the driver into high
+memory under those versions of DOS which support it.  After you have set the
+CONFIG.SYS entry for the SFS driver, you should reboot your system to make sure
+the driver is installed.
+
+The use of the SFS driver is covered in more detail in the sections "Loading
+the SFS Driver" and "Advanced SFS Driver Options" below.
+
+If you want to use SFS under Windows, you should copy the SFS assist program
+SFS.EXE into the Windows directory, copy the SFS dynamic link library SFS.DLL
+into the Windows\System directory, and edit the WIN.INI file to include SFS.EXE
+in the list of programs which are run when Windows is started up.  You can do
+this by adding it to the list of programs in the RUN= entry in WIN.INI:
+
+  RUN=SFS.EXE
+
+Although the SFS driver will function normally under Windows without this step
+being taken, the use of timed unmounts, smart card unmounts, and hotkey
+unmounts will be disabled unless SFS.EXE is also run.
+
+You can create encrypted SFS volumes with the "mksfs" program, giving it the
+letter of the drive to encrypt and the name of the encrypted volume preceded by
+the "volume=" option as arguments.  For example to encrypt the E: drive to
+create a volume with the name "Encrypted volume", the command would be:
+
+  mksfs "volume=Encrypted volume" e:
+
+Note that that "volume=..." option is quoted, as the volume name contains a
+space.  Volume names without a space don't need to be quoted.
+
+mksfs will ask you to confirm that the given drive is indeed the one to be
+encrypted, and then ask for an encryption password of between 10 and 100
+characters.  After asking for the password a second time to confirm it, it will
+encrypt the drive.  This will take a few minutes, and the program will display
+a progress bar as the encryption takes place.
+
+There are a great many options and special safety checks built into mksfs to
+ensure that no data is accidentally destroyed, and it is recommended that you
+at least glance through the section "Creating an SFS Volume" to get an idea of
+the functioning of mksfs before it is run.
+
+Once you have loaded the SFS driver and created an encrypted volume, you can
+mount it with the "mountsfs" utility.  Mounting a volume makes it available to
+DOS as a normal disk volume, with all encryption being done transparently by
+the SFS driver.  As with mksfs, you must tell mountsfs the name of the
+encrypted volume in order to access it.  The full name doesn't need to be used,
+mountsfs will accept any part of the name in upper or lower case.  Using the
+name from the previous example, the command to mount the volume would be:
+
+  mountsfs volume=encrypt
+
+mountsfs will match the partial name "encrypt" with the full volume name
+"Encrypted volume", ask for the encryption password for the volume, and mount
+it.  The volume will now be accessible as a normal DOS drive.
+
+More details on the use of mountsfs are contained in the section "Mounting an
+SFS Volume" and "Unmounting an SFS Volume" below.  Other methods for mounting
+volumes are given in the section "Advanced SFS Driver Options" below.
+
+
+Loading the SFS Driver
+----------------------
+
+You can load the SFS device driver SFS.SYS or SFS486.SYS just like any other
+device driver by specifying it in the CONFIG.SYS file:
+
+  DEVICE=[drive][path]SFS.SYS [SILENT] [UNITS=n] [NOXMS] [PROMPT=xxxx]
+                              [READONLY] [READWRITE] [FIXED] [REMOVABLE]
+                              [ECHO] [ACCESS=xxxx] [HOTKEY=xxxx] [TIMEOUT=nn]
+                              [MOUNT=nnnn]
+
+You can also load it high under those versions of DOS which support this with:
+
+  DEVICEHIGH=[drive][path]SFS.SYS [SILENT] [UNITS=n] [NOXMS] [PROMPT=xxxx]
+                                  [READONLY] [READWRITE] [FIXED] [REMOVABLE]
+                                  [ECHO] [ACCESS=xxxx] [HOTKEY=xxxx]
+                                  [TIMEOUT=nn] [MOUNT=nnnn]
+
+The SFS486.SYS driver is loaded the same way.  This driver contains code for
+80486 and higher processors, and is slightly smaller and a few percent faster
+than the equivalent 80386 version.
+
+The arguments to SFS are not case-sensitive, and can be given in upper or lower
+case.  You can optionally precede them with a '/' for compatibilty with older
+types of software.  For example if your copy of the SFS.SYS driver was located
+in the DOS directory on drive C: you would add the following line to your
+CONFIG.SYS file:
+
+  DEVICE=C:\DOS\SFS.SYS
+
+The driver will only work on systems with an 80386 or higher processor.  This
+is because the en/decryption code (over 10,000 lines of assembly language) has
+to have a 32-bit processor to run on.  Virtually all recent PC's fulfil these
+requirements, and a 16-bit version would both be much slower and require about
+three times as much code space to run in[1].
+
+If you try to load SFS.SYS on a machine which doesn't have a 32-bit CPU, the
+driver will display the message:
+
+  Error: Processor must be 386 or higher
+
+and de-install itself.
+
+The driver currently recognises thirteen options, ACCESS, ECHO, FIXED, HOTKEY,
+MOUNT, NOXMS, PROMPT, READONLY, READWRITE, REMOVABLE, SILENT, TIMEOUT, and
+UNITS:
+
+  The ACCESS option is used in conjunction with the MOUNT option to enable
+  various high-speed direct disk access modes in the SFS driver.  These can
+  significantly affect the overall performance of the driver, and are discussed
+  in more detail in the section "Advanced SFS Driver Options" below.
+
+  The ECHO option is used in conjunction with the MOUNT option to echo the
+  password to the screen when asking for the password for the SFS volume to be
+  mounted, and is explained in more detail in the section "Advanced SFS Driver
+  Options" below.
+
+  The FIXED option is used in conjunction with the MOUNT option to indicate
+  that a volume mounted at system startup is to be kept mounted until the
+  system is turned off or reset, as opposed to the normal behaviour of allowing
+  it to be unmounted at any point.  This is discussed in more detail in the
+  section "Advanced SFS Driver Options" below.
+
+  The HOTKEY option is used to specify the quick-unmount hotkey which can be
+  used to instantly unmount all currently mounted SFS volumes, and is explained
+  in more detail in the sections "Mounting an SFS Volume" and "Advanced SFS
+  Driver Options" below.
+
+  The MOUNT option is used to mount SFS volumes at system startup, and is
+  explained in more detail in the section "Advanced SFS Driver Options" below.
+  The older AUTOMOUNT form of this command is still supported by this version
+  of SFS, but will be discontinued in future versions.
+
+  The NOXMS option is used to disable SFS buffering data in extended memory.
+  By default SFS will allocate a 64K write buffer to speed up disk writes.  If
+  no extended memory is available or if the NOXMS option is used, SFS will
+  print:
+
+    Warning: No XMS buffers available, slow writes will be used
+
+  The driver will then switch to using slow disk writes which are about half as
+  fast as normal reads and writes.  These are necessary to fix buffering
+  problems in MSDOS 6.x and some disk utilities.  If an extended memory buffer
+  is used, the slow writes aren't necessary.
+
+  The PROMPT option is used in conjunction with the MOUNT option to display a
+  user-defined prompt when asking for the password for the SFS volume to be
+  mounted, and is explained in more detail in the section "Advanced SFS Driver
+  Options" below.
+
+  The READONLY and READWRITE options are used in conjunction with the MOUNT
+  option to disable write access to the volumes being mounted.  The READONLY
+  option disables write access to all following mounted volumes; the READWRITE
+  option enables write access to all following mounted volumes.  The default
+  setting is to allow read and write access to all volumes.  More details on
+  read-only access to SFS volumes is given in the section "Mounting an SFS
+  Volume" below.
+
+  The REMOVABLE option is used to undo the effects of the FIXED option which is
+  explained above.
+
+  The SILENT option can be used to suppress the printing of the start-up
+  message.
+
+  The TIMEOUT option is used to specify the time in minutes after which SFS
+  volumes are automatically unmounted if they haven't been accessed during that
+  time, and is explained in more detail in the sections "Mounting an SFS
+  Volume" and "Advanced SFS Driver Options" below.
+
+  The UNITS=n option specifies the number of mount points (or number of disk
+  volumes) the driver will provide, where `n' is the number of units and can
+  range from 1 to 5.  Each drive mount point requires 384 bytes of extra memory
+  storage.  By default, the driver allocates storage for one mount point.
+
+As an example, to suppress the printing of the start-up message and to specify
+that the driver should handle up to three encrypted volumes, you would change
+the previously given example for loading the driver to:
+
+  DEVICE=C:\DOS\SFS.SYS SILENT UNITS=3
+
+The number of mount points can range from 1 to 5.  If you specify a number
+outside this range, the driver will display the message:
+
+  Error: Invalid number of units specified
+
+and will de-install itself.  Finally, if you give an invalid option (such as a
+misspelled or badly-formatted parameter) SFS will again de-install itself after
+displaying:
+
+  Error: Unknown parameter specified
+
+All the remaining driver options are covered in the section "Advanced SFS
+Driver Options" below.
+
+If the driver installs successfully, and unless the SILENT option is used, it
+will display a general message showing that it has been installed and then
+indicate which drive or drives will be used as the encrypted ones.  For example
+if the encrypted drive is made available as E:, the message indicating the
+drive availability would be:
+
+  Encrypted volume will be mounted as drive E:
+
+This indicates that once an encrypted volume is mounted, DOS will access it as
+drive E:  If you specify more than one mount point, the complete range of
+drives which will be made available is shown, so that if you used UNITS=3 when
+loading the driver the message would be:
+
+  Encrypted volumes will be mounted as drives E: - G:
+
+If a smart card reader is present, the driver will check for the presence of a
+card and set the LED on the reader to either green (to indicate that no card is
+present) or orange (to indicate that a card is present which is not currently
+in use by the reader).
+
+When installed, the SFS driver consumes around 7.5K of memory, most of which is
+encryption code.
+
+If you want to use SFS under Windows, you should copy the SFS assist program
+SFS.EXE into the Windows directory, copy the SFS dynamic link library SFS.DLL
+into the Windows\System directory, and edit the WIN.INI file to include SFS.EXE
+in the list of programs which are run when Windows is started up.  You can do
+this by adding it to the list of programs in the RUN= entry in WIN.INI:
+
+  RUN=SFS.EXE
+
+Although the SFS driver will function normally under Windows without this step
+being taken, the use of timed unmounts, smart card unmounts, and hotkey
+unmounts will be disabled unless SFS.EXE is also run.
+
+Footnote [1]: There have been calls for 286 versions of SFS from countries in
+              which 386+ machines are still difficult to obtain.  There may
+              eventually be a 16-bit version, although at the current rate by
+              the time it's written everyone will be using Pentiums anyway.

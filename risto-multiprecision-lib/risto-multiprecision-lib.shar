@@ -1,0 +1,423 @@
+From msuinfo!netnews.upenn.edu!dsinc!cs.widener.edu!eff!sol.ctr.columbia.edu!howland.reston.ans.net!europa.asd.contel.com!darwin.sura.net!haven.umd.edu!uunet!mcsun!news.funet.fi!network.jyu.fi!paasivir Thu Feb  4 22:23:19 1993
+Path: msuinfo!netnews.upenn.edu!dsinc!cs.widener.edu!eff!sol.ctr.columbia.edu!howland.reston.ans.net!europa.asd.contel.com!darwin.sura.net!haven.umd.edu!uunet!mcsun!news.funet.fi!network.jyu.fi!paasivir
+From: paasivir@jyu.fi (Risto Paasivirta)
+Newsgroups: alt.sources
+Subject: Multiprecision math library
+Summary: Math library and RSA encryption in C.
+Keywords: C obfuscated crypt math RSA portable fnord
+Message-ID: <1993Jan25.142037.24768@jyu.fi>
+Date: 25 Jan 93 14:20:37 GMT
+Followup-To: alt.sources.d
+Organization: University of Jyvaskyla, Finland
+Lines: 409
+
+
+Hope someone finds this useful.
+
+#!/bin/sh
+# This is a shell archive (produced by shar 3.49)
+# To extract the files from this archive, save it to a file, remove
+# everything above the "!/bin/sh" line above, and type "sh file_name".
+#
+# made 01/25/1993 14:09 UTC by paasivir@tukki
+# Source directory /home/tukki/opis/paasivir/cwr
+#
+# existing files will NOT be overwritten unless -c is specified
+#
+# This shar contains:
+# length  mode       name
+# ------ ---------- ------------------------------------------
+#   1006 -rw-r--r-- README
+#   6351 -rw-r--r-- mtest.c
+#
+# ============= README ==============
+if test -f 'README' -a X"$1" != X"-c"; then
+	echo 'x - skipping README (File already exists)'
+else
+echo 'x - extracting README (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'README' &&
+X
+This is a not-anything-better-to-do hack which took two
+days to write. Math library and toy RSA implementation. 
+Have fun. This should be portable to almost any machine 
+with 8-bit chars, >8-bit shorts and ANSI-C compiler.
+X
+X	Risto, Paasivir@jyu.fi
+X
+Example output:
+X
+6.Risto:crypt/src> mtest 123456789abcdef fedba987654321
+Generating key...
+o
+Done, key components: pq,e,d,p,q,dp,dq,qp
+00000121f8c9fd0967040d8e2cd56061a7
+0000000000000000000000000000000003
+000000305421aa2c3bd5a73cd9f60d3807
+0000000000000000000123456789abce1b
+00000000000000000000fedba987654365
+00000000000000000000c22e4506728967
+00000000000000000000a9e7c65a438243
+00000000000000000001131e77b8539abb
+testing, msg,cip,dec1,dec2
+000000c0779cc8dd3286b517b445dac469
+000000c5e1a492e91f8044ef6f8acfc1aa
+000000c0779cc8dd3286b517b445dac469
+000000c0779cc8dd3286b517b445dac469
+6.Risto:crypt/src>
+X
+(Chinese remainder shortcut isn't here faster than
+brute force, because modexp doesn't optimize precision.
+That optimization is trivial to add however.)
+X
+SHAR_EOF
+chmod 0644 README ||
+echo 'restore of README failed'
+Wc_c="`wc -c < 'README'`"
+test 1006 -eq "$Wc_c" ||
+	echo 'README: original size 1006, current size' "$Wc_c"
+fi
+# ============= mtest.c ==============
+if test -f 'mtest.c' -a X"$1" != X"-c"; then
+	echo 'x - skipping mtest.c (File already exists)'
+else
+echo 'x - extracting mtest.c (Text)'
+sed 's/^X//' << 'SHAR_EOF' > 'mtest.c' &&
+X
+#include <stdio.h>
+#include <stdlib.h>
+X
+/*
+X * Small-is-beautiful portable multiprecision math library
+X * 24-Jan-93 Risto Paasivirta, paasivir@jyu.fi.
+X * PD, no warranty, use as you wish.
+X */
+X
+/*
+X * change S to change precision bytes 
+X * (17 (=128+8 bits) is too low for real)
+X */
+#define S 17
+#define W while
+#define R return
+typedef unsigned char *N, NN[S];
+typedef unsigned short I;
+typedef void V;
+X
+/*
+X * ts(a) -- test signed
+X */
+X
+int ts(N a){I i=S;if(a[S-1]&128)R -1;W(i--)if(*a++)R 1;R 0;}
+X
+/*
+X * ng(a) -- a = -a, negate
+X */
+X
+I ng(N a){I c=0,i=S;W(i--){c=0-*a-c;*a++=c;c=(c>>8)&1;}R c;}
+X
+/*
+X * cl(a) -- a = 0, clear
+X */
+X
+V cl(N a){I i=0;W(i++<S)*a++=0;}
+X
+/*
+X * cp(a,b) -- a = b, copy
+X */
+X
+V cp(N a, N b){I i=S;W(i--)*a++=*b++;}
+X
+/*
+X * cu(a,b) -- compare unsigned
+X */
+X
+int cu(N a,N b){I i=S;a+=S;b+=S;W(i--)if(*--a-*--b)R(int)*a-
+(int)*b;R 0;}
+X
+/*
+X * ad(a,b) -- a += b, add (return carry)
+X */
+X
+I ad(N a,N b){I c=0, i=S;W(i--){c=*b++ +*a+c;*a++=c;c>>=8;}R
+c;}
+X
+/*
+X * sb(a,b) -- a -= b, substract (return carry)
+X */
+X
+I sb(N a,N b){I c=0,i=S;W(i--){c=*a-*b++-c;*a++=c;c=(c>>8)&1
+;}R c;}
+X
+/*
+X * sr(a) -- a /= 2, shift right (return lo bit)
+X */
+X
+I sr(N a){I c=0, i=S;a+=S;W(i--){c|=*--a;*a=c>>1;c=(c&1)<<8;
+}R c;}
+X
+/*
+X * sl(a) -- a *= 2, shift left (return hi bit)
+X */ 
+X
+I sl(N a){I c=0,i=S;W(i--){c|=(I)*a<<1;*a++=c;c=(c>>8)&1;}R 
+c;}
+X
+/*
+X * dm(a,b,c) --  a /= b, c = a % b, divide/mod
+X */
+X
+V dm(N a,N b,N c){I i=S*8;cl(c);W(i--){sl(c);*c|=sl(a);if(sb
+(c,b))ad(c,b);else *a|=1;}}
+X
+/*
+X * mu(a,b) -- a *= b, unsigned multiply
+X */
+X
+V mu(N a,N b){I i=S*8;NN c;cl(c);W(i--){sl(c);if(sl(a))ad(c,
+b);}cp(a,c);}
+X
+/*
+X * mm(a,b,m) -- a *= b mod m, modular multiply
+X */
+X
+V mm(N a,N b,N m){I i=S*8;NN c;cl(c);W(i--){sl(c);if(sb(c,m)
+)ad(c,m);if(sl(a))ad(c,b);if(sb(c,m))ad(c,m);}cp(a,c);}
+X
+/*
+X * em(a,e,m) -- a = a^b mod m, modular exponentation
+X * This function is the one to optimize first!
+X */
+X
+V em(N a,N e,N m){I i=S,j;NN c,t;cl(c);*c=1;e+=S;W(!*--e&&i)
+i--;W(i--){for(j=8;j--;){cp(t,c);mm(c,t,m);if(*e&(1<<j))mm(c
+,a,m);}e--;}cp(a,c);}
+X
+/*
+X * gd(N a, N b) -- a = gcd(a,b), find greatest common divisor
+X */
+X
+V gd(N a,N bb){NN r,b;cp(b,bb);W(ts(b)){dm(a,b,r);cp(a,b);cp
+(b,r);}}
+X
+/* iv(N a, N b) -- a = a^{-1} mod b (inverse) */
+X
+V iv(N a,N b){NN c,d,e,f,g,y;cp(c,b);cl(e);cl(f);*f=1;W(ts(a
+)){cp(y,c);dm(y,a,d);if(f[S-1]&128){ng(f);mu(y,f);ng(f);ng(y
+);}else mu(y,f);cp(g,e);sb(g,y);cp(c,a);cp(a,d);cp(e,f);cp(f
+,g);}if(e[S-1]&128)ad(e,b);cp(a,e);}
+X
+/* nh(N a, N b) -- number to hex */
+X
+V nh(N a,N b){N d="0123456789abcdef";I i=S;a+=S*2;*a=0;W(i--
+){*--a=d[*b&15];*--a=d[*b++>>4];}}
+X
+/* hn(N a, N b) -- hex to number */
+X
+V hn(N a,N b){cl(a);W(*b){sl(a);sl(a);sl(a);sl(a);*a+=*b<'a'
+?*b-'0':*b-('a'-10);b++;}}
+X
+/*
+X * ri() -- (not cryptologically strong) pseudorandom generator
+X */
+X
+I ri(V){static I s=27182;s=s*31421+6927;R s;}
+X
+/*
+X * rn(N a) -- randomize a
+X */
+X
+V rn(N a){I i=S;W(i--)*a++^=ri()>>8;}
+X
+#undef W
+#undef R
+/*-------------------  end library code  ------------------*/
+X
+/*
+X * Example: RSA public key cryptosystem
+X * 25-Jan-93 Risto Paasivirta, paasivir@jyu.fi.
+X * PD, no warranty, use as you wish.
+X */
+X
+typedef struct rsa_key {
+X	I	b;
+X	NN	pq, e;
+X	NN	d, p, q, dp, dq, qp;
+} rsa_key;
+X
+/*
+X * think() -- twiddle thumbs
+X */
+X
+I show_think = 1;
+X
+V think(void)
+{
+X	static I j=0;
+X	if(show_think) {
+X		putchar(".oOo"[j&3]); j++;
+X		putchar('\b'); fflush(stdout);
+X	}
+}
+X
+/*
+X * success = rsa_gen(rsa_key *key)
+X * Generate a RSA key. Give seed values of appropriate size in key->p
+X * and key->q. Returns number of bits in modulus if success, 0 if failure.
+X * (If gen fails, give new seed values and try again.)
+X */
+X
+#define N_PRIMES 54
+X
+static unsigned char small_prime[N_PRIMES] = {
+X  2,  3,  5,  7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53,
+X 59, 61, 67, 71, 73, 79, 83, 89, 97,101,103,107,109,113,127,131, 
+137,139,149,151,157,163,167,173,179,181,191,193,197,199,211,223, 
+227,229,233,239,241,251
+};
+X
+V next_prime(N a)
+{
+X	I i;
+X	NN b,c,d;
+X
+X	*a |= 1; /* make odd */
+X
+X	cl(b);
+X
+X	for(;;) {
+X		think();
+X		for(i=1;i<N_PRIMES;i++) {
+X			/* sieve with small primes */
+X			*b = small_prime[i];
+X			cp(c,a);
+X			dm(c,b,d);
+X			if(!ts(d)) break; /* found divisor */
+X		}
+X		if(i==N_PRIMES) {
+X			/* probable prime if 2^(a-1) mod a ==1 */
+X			*b = 1;
+X			cp(c,a);
+X			sb(c,b);
+X			cl(d);
+X			*d = 2;
+X			em(d,c,a);
+X			*b = 1;
+X			if(!cu(b,d)) return; /* is prob prime */
+X		}
+X		*b = 2; /* increment by 2 */
+X		ad(a,b);
+X		
+X	}
+}
+X
+I rsa_gen(rsa_key *k)
+{
+X	NN p1,q1,pq1,f,g,t;
+X	next_prime(k->p);
+X	next_prime(k->q);
+X
+X	if(cu(k->p,k->q)<0) {
+X		cp(t,k->p);
+X		cp(k->p,k->q);
+X		cp(k->q,t);
+X	}
+X	hn(t,"1"); cp(p1,k->p); sb(p1,t);
+X	cp(q1,k->q); sb(q1,t); cp(g,p1); gd(g,q1);
+X	hn(t,"ff");
+X	if(cu(t,g)<0) return 0; /* gcd(p-1,q-1) large */
+X	cp(k->pq,k->p); mu(k->pq,k->q);
+X	cp(pq1,p1); mu(pq1,q1); cp(f,pq1); dm(f,g,t);
+X	hn(k->e,"3"); hn(k->qp,"1"); /* try e */
+X	cp(t,pq1); gd(t, k->e);
+X	if(cu(t,k->qp)) {
+X		hn(k->e,"10001");
+X		cp(t,pq1); gd(t, k->e);
+X		if(cu(t,k->qp)) return 0;
+X	}
+X	cp(k->d,k->e); iv(k->d,f);
+X	cp(t,k->d); dm(t,p1,k->dp);
+X	cp(t,k->d); dm(t,q1,k->dq);
+X	cp(k->qp,k->q); iv(k->qp,k->p);
+X	cp(t,k->pq); for(k->b = 0; ts(t); sr(t),k->b++);
+X	return k->b;
+}
+X
+/*
+X * rsa_dec(m, rsa_key) -- rsa decrypt using chinese remainder shortcut
+X */
+X
+V rsa_dec(N m, rsa_key *k)
+{
+X	NN mp,mq,t;
+X	cp(t,m); dm(t,k->p,mp);
+X	cp(t,m); dm(t,k->q,mq);
+X	em(mp,k->dp,k->p);
+X	em(mq,k->dq,k->q);
+X	if(sb(mp,mq)) ad(mp,k->p);
+X	mm(mp,k->qp,k->p);
+X	mu(mp,k->q);
+X	ad(mp,mq);
+X	cp(m,mp);
+}
+X
+/*
+X * rsa_enc(N m, rsa_key k) -- rsa encrypt
+X */
+X
+V rsa_enc(N m, rsa_key *k)
+{
+X	em(m, k->e, k->pq);
+}
+X
+X
+V main(int i, N *v) {
+X	NN m,c,d;
+X	rsa_key key;
+X	char s[S*2+2];
+X	if(i!=3) {
+X		puts("Usage: mtest [hex_pseed] [hex_qseed]");
+X		exit(EXIT_FAILURE);
+X	}
+X
+X	hn(key.p,v[1]);
+X	hn(key.q,v[2]);
+X
+X	puts("Generating key...");
+X	if(!rsa_gen(&key)) {
+X		puts("Failed, try other seed values.");
+X		exit(EXIT_FAILURE);
+X	}
+X	puts("\nDone, key components: pq,e,d,p,q,dp,dq,qp");		
+X	nh(s,key.pq); puts(s);
+X	nh(s,key.e); puts(s);
+X	nh(s,key.d); puts(s); 
+X	nh(s,key.p); puts(s);
+X	nh(s,key.q); puts(s);
+X	nh(s,key.dp); puts(s);
+X	nh(s,key.dq); puts(s);
+X	nh(s,key.qp); puts(s);
+X	puts("testing, msg,cip,dec1,dec2");
+X	cl(c);rn(c);dm(c,key.pq,m);	
+X	nh(s,m); puts(s);
+X	cp(c,m); rsa_enc(c,&key);
+X	nh(s,c); puts(s);
+X	cp(d,c); em(d,key.d,key.pq); /* slow way */
+X	nh(s,d); puts(s);
+X	cp(d,c); rsa_dec(d,&key); /* faster way */
+X	nh(s,d); puts(s);
+X	exit(EXIT_SUCCESS);
+}
+X
+SHAR_EOF
+chmod 0644 mtest.c ||
+echo 'restore of mtest.c failed'
+Wc_c="`wc -c < 'mtest.c'`"
+test 6351 -eq "$Wc_c" ||
+	echo 'mtest.c: original size 6351, current size' "$Wc_c"
+fi
+exit 0
+
+-- 
+/*paasivir@jyu.fi*/int a[3302],b=3301,*c=a,d,e,f;main(){for(e=b;--e;*c++=1);*c
+=2;for(d=2001;d--;printf("%05d",f))for(c=a,e=b;e;f/=e--){f+=*c*1e5;*c++=f%e;}}
+

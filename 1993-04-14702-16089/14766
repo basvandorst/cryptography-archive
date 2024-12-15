@@ -1,0 +1,93 @@
+Path: msuinfo!uwm.edu!spool.mu.edu!agate!iat.holonet.net!psinntp!psinntp!suite.com!usenet
+From: Jim-Miller@suite.com
+Newsgroups: sci.crypt
+Subject: Hierarchy of Certifying Authorities
+Date: 1 Apr 1993 22:32:22 GMT
+Organization: Suite Software
+Lines: 82
+Message-ID: <1pfqhm$cf3@bilbo.suite.com>
+Reply-To: Jim-Miller@suite.com
+NNTP-Posting-Host: nimrod.suite.com
+
+
+I'm trying to understand what is involved when sending and authenticating  
+messages in RSA's public-key cryptosystem when there exists a hierarchy of  
+Certifying Authorities.  Here is an example of my understanding.
+
+----------------------
+Assume two users, A and B, and the following hierarchy of Certifying  
+Authorities:
+
+                                CA.0
+                             /        \
+                          CA.1        CA.2
+                           |            |
+                           A            B
+
+Assume:
+
+CA.1's public key is digitally signed by CA.0's private key, creating CA.1's  
+Digital Certificate.  I don't know if there is a standard symbol for a Digital  
+Certificate, so I will use (PK_CA.1) to indicate CA.1's Digital Certificate.
+
+A's public key is digitally signed by CA.1's private key, creating A's Digital  
+Certificate (PK_A).
+
+Similarily,  CA.2's digitally public key is signed by CA.0's private key,  
+creating CA.2's Digital Certificate (PK_CA.2).
+
+B's public key is digitally signed by CA.2's private key, creating B's Digital  
+Certificate (PK_B).
+
+Assume everybody has CA.0's public key.
+
+
+Case 1) User A want's to send an message to User B with one-way authentication  
+(B authenticates A).  User A is not concerned with secrecy.  Ignore details  
+such as nonces or timestamps.  PK_A indicates A's public key.
+
+User A sends the message data, a digitally signed hash of the message, A's  
+public key, A's Digital Certificate, CA.1's public key, and CA.1's Digital  
+Certificate.
+
+A => B: msg, (msg), PK_A, (PK_A), PK_CA.1, (PK_CA.1)
+
+To authenticate the message, B decrypts (PK_CA.1) using CA.0's public key, and  
+obtains the MD5 (or 4?) hash of CA.1's public key.  B hashes the copy of CA.1's  
+public key that came in the massage and compares this to the hash obtained from  
+the decryption of (PK_CA.1).  If they match, B trusts PK_CA.1.  B then decrypts  
+(PK_A) using PK_CA.1 and valididates A's public key in the same manner that he  
+used to validate PK_CA.1.  B validates and authenticates the message from the  
+message digest using the same mechanism.
+
+Case 2) User A wants to perform mutual authentication, and then send an  
+encrypted message to User B.
+
+Assume the same sequence as above, only this time the message is a request to  
+engage in mutual authentication.
+
+A => B: data, (data), PK_A, (PK_A), PK_CA.1, (PK_CA.1)
+
+B authenticates the message from A, then constructs the following reply:
+
+B => A: data+1, (data+1), PK_B, (PK_B), PK_CA.2, (PK_CA.2)
+
+A authenticates the reply in a manner similiar to the way B did and obtains a  
+copy of B's public key that he can trust.  User A now creates a Digital  
+Envelope by encrypting his message using B's public key, and encrypting the  
+result with his (A's) private key.  (Actually, A will generate a DES key and  
+use that for encryption and sign the DES key, but I'll ignore that for this  
+example).  User A can now send the Digital Envelope.
+
+A => B: { {msg}PK_B }priv_A
+
+B decrypts the Digital Envelope using his copy of A's public key, then decrypts  
+the message using his (B's) private key.
+----------------------
+
+Is the above basically correct, or have I got it wrong?
+
+Thanks,
+
+Jim-Miller@suite.com
+

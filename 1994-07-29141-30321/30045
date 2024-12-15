@@ -1,0 +1,241 @@
+Path: msuinfo!uwm.edu!spool.mu.edu!bloom-beacon.mit.edu!ai-lab!life.ai.mit.edu!hal
+From: hal@murren.ai.mit.edu (Hal Abelson)
+Newsgroups: sci.crypt
+Subject: 2x2 matrix variant of RSA
+Date: 25 Jul 1994 03:19:34 GMT
+Organization: MIT Artificial Intelligence Lab
+Lines: 229
+Distribution: world
+Message-ID: <HAL.94Jul24231934@murren.ai.mit.edu>
+Reply-To: hal@mit.edu
+NNTP-Posting-Host: murren.ai.mit.edu
+
+
+There's been a thread on this list recently about non-RSA public key
+algorithms.  The following note describes a simple variant of RSA that
+uses 2x2 unimodular matrices rather than integers.  It seems to have
+about the same behavior and security as RSA, with a performnace
+penalty of a factor of 15-20 over RSA.  It's also possible that this
+method does not come under the scope of the RSA patent, given the way
+that the claims in the patent are worded.
+
+Comments appreciated,
+
+Hal Abelson -- hal@mit.edu
+Brian LaMacchia -- bal@mit.edu
+
+		    ******************************
+
+
+\documentstyle[11pt]{article}
+ 
+\begin{document}
+ 
+\begin{center}
+{\bf
+A simple variant of RSA based on $2 \times 2$ matrices}\\
+\medskip
+Hal Abelson and Brian LaMacchia\\
+\medskip
+July 24, 1994\\
+\end{center}
+
+\medskip
+
+This note describes a new algorithm for public-key encryption.  The
+algorithm is a simple variant of RSA~\cite{RSA}.  Recall that RSA is
+based upon exponentiation of elements of Z/$n$, the integers modulo $n$.
+If $a$ is an integer relatively prime to $n$, then the multiplicative
+order of $a$ in Z/$n$ is given by the Euler totient function $\phi(n)$.
+The utility of RSA as a public-key algorithm derives from the
+presumption that, for $n=pq$ where $p$ and $q$ are distinct primes (and
+hence $\phi(n)=(p-1)(q-1)$) it is as difficult to extract roots modulo $n$
+as it is to factor $n$ to obtain $p$ and $q$.
+
+The algorithm described here uses the same exponentiation procedure as
+RSA, except that one works in the group $G$ of $2\times 2$ unimodular
+matrices over Z/$n$, rather than in Z/$n$ itself.  We use the fact
+(proved below) that if $n=pq$ then the order of $G$ is
+\begin{equation}
+L(n)= n \phi(n) \left( 2n - \phi(n) + 2 \right)
+\label{formula}
+\end{equation}
+
+\medskip
+
+\noindent
+{\em The method}
+
+As with RSA, begin by choosing distinct primes $p$ and $q$.  Let
+$n=pq$ and compute $L(n)$ as given by~(\ref{formula}).  Choose an exponent $e$
+relatively prime to $L(n)$ and compute $f$, the multiplicative inverse
+of $e$ modulo $L(n)$.  The values for $n$ and $e$ are used as the public
+key; $f$ is the secret key.
+
+The method encrypts three values at a time.  To encrypt the message
+given by three numbers $a$, $b$, and $c$, pick a matrix in $G$ that has
+$a$, $b$, and $c$ as elements.  For example, one can use the matrix
+\[
+{\bf M} = \left( \begin{array}{cc}
+                   a & b \\
+                   c & d
+                 \end{array} \right)
+\]
+with $d$ is chosen so that $\det{\bf M} = 1$, i.e.,
+\begin{equation}
+d = a^{-1}(1+bc) \pmod{n}
+\label{choose-d}
+\end{equation}
+where $a^{-1}$ is the multiplicative inverse of $a$ modulo $n$.  (Note
+that this requires that $a$ be relatively prime to $n$.)  The encrypted
+message is formed by raising ${\bf M}$ to the $e$-th power, with all
+numeric operations performed modulo $n$.
+
+Given an encrypted message ${\bf M}^e$, one recovers ${\bf M}$ by
+raising ${\bf M}^e$ to the $f$-th power, just as with ordinary RSA.
+That this recovers ${\bf M}$ follows from
+${\bf M}^{ef}={\bf M}^{1+cL(n)}$
+and the fact that the order of ${\bf M}$ must divide the order of $G$,
+which is $L(n)$.
+
+\medskip
+\noindent
+{\em Remarks}
+
+This method is similar in performance to RSA, although less efficient.
+To encrypt three values requires performing a certain number of $2\times
+2$ matrix multiplications, whereas RSA requires that same number
+of ordinary multiplications to encrypt a single value.  One must also
+solve equation~(\ref{choose-d}) for $d$.  For decryption, there is an
+additional overhead of about a factor of 3: one raises the matrix to a
+power about the size of $L(n)$, which is on the order of $n^3$, as
+opposed to RSA, which raises a number to a power about the size of
+$\phi(n)$, which is on the order of $n$.
+
+The security of this method, like that of RSA, is based on the
+presumption that computing roots essentially requires factoring $n$ so
+as to compute $L(n)$ according to~(\ref{formula}).  Although we have no
+proof of this presumption, it seems hard to believe that there is a
+general non-factoring attack against this method that would not also
+work against RSA.  Of course, one might pick an ``unlucky'' matrix ${\bf
+M}$ whose order actually divides $n$ (which is a known factor of
+$L(n)$).  For powers of such matrices, the root can be extracted knowing only $n$
+without $p$ and $q$.  We have not carefully investigated how many
+matrices in $G$ actually satisfy this condition.  Presumably they are
+rare, and in any case the encryption algorithm can include a step to
+check for such unlucky values and avoid them.
+
+One reason for using this algorithm might be that it could provide a
+way to perform public-key encryption without coming under the scope of
+the RSA patent.\footnote{People who wish to exploit this idea should
+be aware that Public-Key Partners, which has licensed the RSA patent
+from MIT, claims patent rights over {\em all} public-key encryption
+systems, based upon a patent that expires in 1997.  The RSA patent
+itself expires in 2000.  There are also other non-RSA public-key
+encryption methods available, e.g., ??.}
+
+More interestingly, this note indicates that there ought to be entire
+families of RSA-like public-key algorithms based on finite groups, the
+group of $2 \times 2$ unimodular matrices over Z/$n$ being only a simple
+special case.
+
+\medskip
+\noindent
+{\em Computing the order of $G$}
+
+\medskip
+
+\noindent
+{\em Claim:} Let $n=pq$ where $p$ and $q$ are distinct prime numbers,
+and let $G$ be the group of unimodular $2 \times 2$ matrices over
+Z/$n$.  Then the order of $G$ is $L(n)$ as given by~(\ref{formula}).
+
+\medskip
+\noindent
+{\em Proof:} The order of $G$ is equal to the number of distinct
+integer solutions modulo $n$ of $ad-bc=1$ where $a$, $b$, $c$, and $d$
+are all between $0$ and $n-1$.  To count the solutions, we partition
+them into four types and consider the number of solutions of each
+type.
+
+Type 1 solutions are those with $a$ relatively prime to $n$.
+Given such an $a$, pick any values for $b$ and $c$.  Then $d$ is
+uniquely determined by
+
+\begin{eqnarray*}
+ad &=& 1 + bc \pmod{n} \\
+ d &=& a^{-1}(1+bc) \pmod{n}
+\end{eqnarray*}
+where $a^{-1}$ is the multiplicative inverse of $a$ in Z/$n$.  Thus the
+number of solutions of type 1 is $\phi(n)$ (the number of choices for $a$)
+times $n$ (the number of choices for $b$) times $n$ (the number of choices
+for $c$), or $n^2 \phi(n)$.
+
+Type 2 solutions are those with $\gcd(a,n)>1$ and $\gcd(b,n)=1$.  Given
+such values for $a$ and $b$, pick any value for $d$ and then $c$ is
+uniquely determined by
+\begin{eqnarray*}
+bc &=& ad - 1 \pmod{n}\\
+ c &=& b^{-1}(ad - 1) \pmod{n}
+\end{eqnarray*}
+where $b^{-1}$ is the multiplicative inverse of $b$ in Z/$n$.  Thus the
+number type 2 solutions is $n-\phi(n)$ (the number of choices for $a$) times
+$\phi(n)$ (the number of choices for $b$) times $n$ (the number of choices for
+$d$), or $n \phi(n) \left(n - \phi(n)\right)$.
+
+Type 3 solutions are the remainder, namely, those where $a$ and $b$ are
+each divisible by either $p$ or $q$.  Notice that $a$ and $b$ cannot
+both be divisible by $p$, or both be divisible by $q$, since $ad-bc=1$
+modulo $n$.  Type 3 solutions are therefore of two kinds: Type 3a, where
+$p$ divides $a$ and $q$ divides $b$; and type 3b, where $q$ divides $a$ and $p$
+divides $b$.
+
+To count the number of type 3a solutions, consider a solution with
+$a=rp$ for $1\leq r \leq q-1$ and $b=sq$ for $1 \leq s \leq q-1$.  We must
+choose $b$ and $c$ such that
+\begin{equation}
+ad = 1 + bc \pmod{n}
+\label{count1}
+\end{equation}
+Since $a$ is a multiple of $p$, we need $1+bc$ to be a multiple of $p$,
+i.e, $bc = -1$ modulo $p$.  This implies that, for a given $b$, there
+are $q$ choices for $c$ modulo $n$, namely, $c_0$, $c_0+p$, \ldots, $c_0
++ (q-1)p$, where $c_0$ is the multiplicative inverse of $-b$ modulo $p$.
+Picking one of these values for $c$, we have $bc=tp$, and substituting
+this into (\ref{count1}) gives
+$rpd = tp$ modulo $n$
+which implies that
+$rd = t$ modulo $q$.
+There are $p$ choices for $d$ that satisfy this modulo $n$,
+namely, $d_0$, $d_0 + q$, \ldots, $d_0 + (p-1)q$, where $d_0=r^{-1}t$,
+$r^{-1}$ being the multiplicative inverse of $r$ modulo $q$.
+
+Thus, the total number of type 3a solutions is $q-1$ (the number of
+choices for $a$) times $p-1$ (the number of choices for $b$) times $q$ (the
+number of choices for $c$) times $p$ (the number of choices for $d$), or
+$pq(p-1)(q-1) =  n \phi(n)$.  Similarly, the number of solutions of type 3b
+is also $n \phi(n)$.
+
+Adding the numbers of type 1, type 2, and type 3 solutions thus gives
+\begin{eqnarray*}
+L(n) &=& n^2 \phi(n) + n \phi(n) \left(n - \phi(n)\right) + 2 n \phi(n) \\
+     &=& n \phi(n) \left(2n - \phi(n) + 2\right)
+\end{eqnarray*}
+as required.
+
+\begin{thebibliography}{99}
+
+\bibitem{RSA} Ronald L.~Rivest, Adi Shamir, and Leonard M.~Adleman.  A
+method for obtaining digital signatures and public-key cryptosystems.
+{\it Communications of the ACM}, 21(2):120--126 (1978).  See also
+U.S.~Patent 4,405,829.
+
+\end{thebibliography}
+
+\end{document}
+
+
+--
+
+-- Hal
+

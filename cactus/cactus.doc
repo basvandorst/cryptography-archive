@@ -1,0 +1,393 @@
+                   ************* CACTUS *************
+
+                   Crypto Algorithm Construction Tool
+
+                   **********************************
+
+CACTUS
+------
+CACTUS is a set of C++ classes for the construction of strong proprietary
+cipher algorithms.
+
+
+Content of this package
+-----------------------
+This test and shareware package contains a description of the CACTUS classes
+and a set of programs for the demonstration of its use.
+
+The programs are designed as demos. They are fully functional but do not have
+any error handling. The user has to take care for proper usage.
+
+The following programs are compiled with WATCOM C/C++ 10.5a for DOS and
+OS/2. The source code for the main files is attached to demonstrate the use of
+the CACTUS class.
+
+- RNG.EXE     Random Number Generator
+              RNG produces an file with random bytes (0 ... 255)
+              Usage:  RNG <file.name> <file.length> <preruns> [<seed>]
+                      The first three parameters are mandatory, the seed
+                      is optional.
+              RNG can be used to produce key files. It is recommended to
+              use another CACTUS.PAR file for producing the key file then
+              for the encryption of files, when the same key file is used
+              as key.
+
+- FCRYPTX.EXE File encryption/decryption
+              Usage:  FCRYPTM -e|d <plain.file> <crypt.file>
+                      -e for encryption, -d for decryption
+
+- FCRYPTM.EXE File encryption/decryption includes a kind of MIME coding
+              to produce a printable crypt file.
+              Usage:  FCRYPTM -e|d <plain.file> <crypt.file>
+
+- STRCRYPT.EXE String encryption/decryption with some kind of MIME coding.
+              STRCRYPT returns the plain and the crypted string.
+              Usage:  STRCRYPT -e|d <string>
+                      -e encrypts the string, -d decrypts the string.
+              STRCRYPT can be used to generate passwords from user names.
+
+Only for OS/2 and compiled with IBM VAC++ 3.0 is:
+
+- PMCactus.exe   A PM based clipboard encryptor/decryptor.
+                 A marked text of any PM application can be copied or cut to
+                 the clipboard, then be encrypted and placed back into the
+                 application encrypted form. Decryption works the same way.
+                 The original text and the modified text (encrypted/
+                 decrypted) are shown in two windows and can be control before
+                 they are placed into the application. To make the
+                 encrypted text printable, some kind of MIME coding is
+                 used.
+
+                 No editing should be done on the encrypted text. Any
+                 insertion or deletion of characters makes decryption
+                 impossible. When marking encrypted text for decryption, the
+                 marked block should start with '###' and end with ###'.
+                 No error detection is build in.
+
+                 I have tested it with DeScribe 5.0, MESA, Lotus 123G and
+                 several text processors.
+
+                 PMCactus is usefull to secure in an easy way some parts of
+                 a file or to authenticate an signature.
+
+As mentioned earlier, all these programs are added only to demonstrate the
+use of the CACTUS classes. The main object is the set of the C++ classes.
+
+The programs get their parameters for the cipher algorithm from a
+parameter file. An example is included (CACTUS.PAR). The programs look for
+the location of this file in the environment parameter CACTUSPAR. You have
+to set this parameter in the AUTOEXEC.BAT: SET CACTUSPAR=c:\cactus\cactus.par.
+
+Another environment parameter can be set: CACTUSKEY. With CACTUSKEY one can
+set the key to be used by the programs.
+
+Usage: SET CACTUSKEY=c:\cactus\cactus.key.
+
+If no key file is specified in CACTUSKEY, all key and message key bytes will
+be set to 0. RNG.EXE has the possibility to add a seed to the key. The seed
+is XORed with the key file bytes. If the seed is shorter then the required
+length, the seed will be repeated.
+
+
+The CACTUS classes
+------------------
+There are 3 elementary classes for the construction of any cipher algorithm:
+
+- MiShiftReg  A shift register of variable length, and a set of
+              three feedback taps.
+
+              Public members:
+
+              void MiShiftReg::initiate(unsigned len,int t1,int t2,int t3)
+                 initialiates the shift register with length and the three taps.
+
+              void MiShiftReg::reset(unsigned len,int t1,int t2,int t3)
+                 resets the shift register to the original stage.
+
+              void MiShiftReg::set(unsigned pos, char val)
+                 sets one byte in the shift register. This can be used
+                 for initialization or distortion.
+
+              void MiShiftReg::rotate(char dist, unsigned count)
+                 rotates the shift register _count_ times and XORS the tap
+                 bytes with the distortion byte _dist_.
+
+              char MiShiftReg::output()
+                 output of the byte at position 0.
+
+- MiTable     A lookup table with one byte output for one byte input.
+
+              Public members:
+
+              void MiTable::MiTable()
+                 Constructor for the 256 byte array of the table.
+
+              void MiTable::fill(char i1, char i2, char i3, char i4, char i5,char i6)
+                 fills the table based on the 5 input bytes and a fixed table.
+
+              void MiTable::set(unsigned pos, char val)
+                  sets one byte of the table. Can also be used to fill the table.
+
+              void MiTable::manipulate(char i1,char i2, char i3,char i4)
+                  manipulates the table based on the 4 input bytes and a
+                  fixed table. An extra manipulation of the table.
+
+              char MiTable::output(unsigned in)
+                  output of the looked up byte.
+
+- MiCombiner  A combiner with 8 bytes input and one byte output. The
+              combiner uses one bit of each input byte to generate the
+              output byte. The bit selection of the input bytes can be
+              changed.
+
+              Public members:
+
+              void MiCombiner::set(char in)
+                  changes the sequence of the input byte bit selection.
+
+              void MiCombiner::reset()
+                   resets the combiner to the original stage.
+
+              char MiCombiner::output(char * reg)
+                    output of one byte after input of an 8 byte array.
+
+Using these basic classes I have designed the CACTUS class as a complete
+algorithm:
+
+- MiCactus    A complete cipher algorithm
+
+              Public members:
+
+              unsigned long lenall
+                 the sum of all shift register lengths. This sum is calculated
+                 during initialization based on the input from CACTUS.PAR.
+
+              void MiCactus::MiCactus()
+                 Constructor which also checks the registration from CACTUS.PAR.
+
+              void MiCactus::initiate(char * key,char * msk)
+                 initialization of the shift registers with _key_ and
+                 _message_key_. The user has to take care that key is an array
+                 of char with length _lenall_ and msk is an array of char with
+                 length _256_.
+
+              void MiCactus::reset(char* key, char * msk)
+                 resets the algorithm.
+
+              char MiCactus::gen_byte()
+                  generates one crypto byte.
+
+The use of the class members can be seen in the demonstration files.
+
+
+Description of the CACTUS algorithm
+-----------------------------------
+CACTUS consists of
+
+- 5  shift registers.
+     The length and the 3 taps each can be set in the CACTUS.PAR file.
+     This feature is only for the registered users. The unregistered version
+     has fixed lengths and taps.
+
+- 1  combiner
+     The combiner combines the 8 first bytes of the shift registers to one byte.
+     The presetting for the combiner is fixed. It can only be changed in the
+     source code.
+
+- 11 tables
+     table[0]... table[7] get input from byte[0] of the next shift register and
+     their output is XORed with byte[0] of the shift register. The resulting
+     byte is used for feedback to the taps.
+
+     table[8] gets one byte from the combiner and produces the output byte.
+
+     table[9] gets the same byte from the combiner as table[8] and the output
+     of table[9] controls the change of input byte bit selection of the
+     combiner and controls table[10].
+
+     table[10] controls with each output bit the rotation steps of the
+     shift registers.
+
+     The filling parameters of the tables are taken from CACTUS.PAR. These
+     parameters can be changed in the registered and unregistered version.
+
+The configuration is as follows:
+
+8 times this configuration of a shift register:
+===============================================================================
+               -----------------------------------
+ combiner[0]<- |  shiftreg[0]                     | <- bit[0] from table[10]
+               0----------------------------------     if 0: one rotation step
+               |        ^     ^       ^ taps 1...3        1: two rotation steps
+               |        |_____|_______|
+               |              |
+               ------------> XOR
+                              ^
+                          table[0]
+                              ^
+                              |
+                           byte[0] from table[1]
+
+                              .
+                              .
+                              .
+                              .
+
+               -----------------------------------
+ combiner[7]<- |  shiftreg[7]                     | <- bit[7] from table[10]
+               0----------------------------------     if 0: one rotation step
+               |          ^     ^       ^ taps 1...3      1: two rotation steps
+               |          |_____|_______|
+               |              |
+               ------------> XOR
+                              ^
+                          table[7]
+                              ^
+                              |
+                           byte[0] from table[0]
+===============================================================================
+
+The output and control looks like:
+===============================================================================
+                         combiner[0] | <- shiftreg[0][0] | <- table[10],0
+                         combiner[1] | <- shiftreg[1][0] | <- table[10],1
+                         combiner[2] | <- shiftreg[2][0] | <- table[10],2
+output <-table[8]<--     combiner[3] | <- shiftreg[3][0] | <- table[10],3
+         table[9]<--  <- combiner[4] | <- shiftreg[4][0] | <- table[10],4
+              |          combiner[5] | <- shiftreg[5][0] | <- table[10],5
+              |          combiner[6] | <- shiftreg[6][0] | <- table[10],6
+              |          combiner[7] | <- shiftreg[7][0] | <- table[10],7
+              |                ^                                ^
+              |                | changes the combiner           |controls
+              |                |                                |table[10]
+              |________________|________________________________|
+===============================================================================
+
+The rotation of the shift registers is done in sequence 0 to 7. Hence the
+distortion byte from the next shift register is the same for one or two
+rotation steps.
+
+
+Initialization of the CACTUS algorithm
+--------------------------------------
+The constructor of CACTUS reads all parameters from the file CACTUS.PAR
+and checks the username and registration number.
+
+- the tables are filled using the 5 parameters from CACTUS.PAR and a fixed table.
+
+- the shift registers are filled in sequence with the key bytes, which are XORed
+  with the message key bytes.
+
+- a number of _prerun_ steps are done. The number of steps is taken from
+  CACTUS.PAR. Unregistered version do 256 steps.
+
+- optional a manipulation of the tables can be done using the output from the
+  crypto generator (only for registered users).
+
+- again _prerun_ steps of prerun.
+
+Now CACTUS is ready for output.
+
+For encryption or decryption the output is XORed with the plain or ciphered
+text in an application program.
+
+The reset function of CACTUS can be used to do extra preruns, for reset  or to
+set the crypto generator to some starting point to keep synchronization in a
+multi session environment.
+
+
+Restrictions for the unregistered test version
+----------------------------------------------
+- The lengths and the taps of the shift registers are fixed. The total length
+  of all shift registers is 404.
+- Prerun count is fixed to 256.
+- Table manipulation off.
+- Registration reminder in the programs.
+
+The restrictions do not reduce the security. One can test the quality of the
+algorithm with the pseudo random output of RNG.EXE.
+
+
+Registration scheme
+-------------------
+The basic registration for using the programs of this package with all
+features of CACTUS.PAR is US$10.- Online registration via CompuServe is
+prefered (GO SWREG # 11105). I will send the registration number by E-Mail.
+
+Source code of the header file CACTUS.HPP is US$50.-. Registration via CIS
+(GO SWREG 5 times and an E-Mail to me for notification.
+The source code will be sent via CIS or internet.
+
+Tayloring of applications to customer needs on request.
+
+Also available: QUIPU V1.2 for OS/2 and DOS
+                Full featured file encryption with QUIPU algorithm, which is
+                more complex then CACTUS.
+                Key length of 1632 bytes.
+                Optional file dependend random message key of 256 bytes.
+                Name and CRC of the original file are encrypted in
+                    the encrypted file.
+                Compression is included.
+                Authentication of the decrypted file by 32 bit CRC.
+                Much faster then QUIPU V1.1.
+                US$ 15.- for delivery over CIS or internet.
+
+My address:
+INFOQUEST
+Michael Mieves
+Wessobrunner Weg 1
+D-82407 Wielenbach
+Germany
+
+CIS:    100334,142
+E-Mail: mieves@ibm.net
+        mieves@t-online.de
+
+
+-----------------------------------------------------------------------------
+At the end of all:
+
+                Why CACTUS?????
+                We have already some good ciphers
+                DES PGP IDEA and many more...
+
+The more a crypto algorithm is used on the world the more profit does a
+hacker get for his effort when he breaks it. It is not profitable for him
+to try breaking a rarely used and strong crypto algorithm. One might change
+his CACTUS crypro algorithm every day by changing his CACTUS.PAR file.
+
+CACTUS is an example for what can be done with the base classes. Using the
+source code any other crypto algorithm can be constructed in short time,
+optimized for speed, complexity or whatever else.
+
+CACTUS is best used for
+- securing sensitive files on a PC,
+- for securing the communication traffic in closed user groups,
+- for generating random byte files,
+- creation of passwords or registration codes,
+- for authentications.
+
+The advantage of CACTUS over other algorithms is the easy change of all
+parameters of the algorithm - not only the key - by a parameter file.
+
+
+********************* Important legal aspect *******************************
+*                                                                          *
+* Most probably CACTUS falls under US governments ITAR regulations. Others *
+* then US or Canadian Citizens should get CACTUS from a server outside     *
+* of Northamerica to avoid illegal export from the US.                     *
+*                                                                          *
+* Encryption is prohibited in some countries (i.e. France) without         *
+* permission from the government.                                          *
+*                                                                          *
+****************************************************************************
+
+
+
+
+
+
+
+
+
+

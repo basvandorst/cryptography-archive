@@ -1,0 +1,161 @@
+#!/bin/sh
+#
+# PGP editor wrapper, Version 1.0 (editpgp)
+# Copyright (c) 1994, Mark Lewis (nostra@city.ac.uk).
+#
+
+# Where temporary files should be kept.
+tmpdir=${TMP:-/tmp}
+
+### Functions
+
+f_usage()
+{
+    echo "Usage: `basename $0` [-option] [- [editor_options]] filename" >&2
+    echo "Options:" >&2
+    echo "\t-i\tinteractive (start at the menu)" >&2
+    echo "\t-h\theader mode (don't sign or encrypt headers)" >&2
+}
+
+f_split_file()
+{
+    if [ "$headermode" ]; then
+        nawk -v HDR=${tmpdir}/tmp$$.hdr -v BODY=${tmpdir}/tmp$$ \
+        '{ if ( body == 1 ) { print > BODY } else \
+        { print > HDR } }; /^$/ { body=1 }' $filename
+
+        # Use this if your awk doesn't support the -v argument
+        #awk '{ print }; /^$/ { exit }' $filename > ${tmpdir}/tmp$$.hdr
+        #awk 'body == 1 { print }; /^$/ { body=1 }' $filename > ${tmpdir}/tmp$$
+    else
+        cp $filename ${tmpdir}/tmp$$
+    fi
+}
+
+f_restore_file()
+{
+    if [ "$headermode" ]; then
+        cat ${tmpdir}/tmp$$.hdr ${tmpdir}/tmp$$.asc > $filename
+    else
+        mv -f ${tmpdir}/tmp$$.asc $filename
+    fi
+}
+
+f_clean_up()
+{
+    if [ "$headermode" ]; then
+        rm -f ${tmpdir}/tmp$$.hdr ${tmpdir}/tmp$$.asc ${tmpdir}/tmp$$
+    else
+        rm -f ${tmpdir}/tmp$$.asc ${tmpdir}/tmp$$
+    fi
+}
+
+### Start of script
+
+# Parse arguments
+while [ 1 ]; do
+    case $1 in
+    -)
+        shift
+        if [ $# -eq 0 ]; then
+            f_usage
+            exit 1
+        fi
+        break
+    ;;
+    -i)
+        shift
+        ans=interactive
+    ;;
+    -h)
+        shift
+        headermode=1
+    ;;
+    *)
+        if [ $# -ne 1 ]; then
+            f_usage
+            exit 1
+        fi
+        break
+    ;;
+    esac
+done
+
+clear
+
+defeditor=${EDITOR:-${VISUAL:-vi}}
+filename=`echo $* | cut -f$# -d' '`
+
+if [ "$ans" != interactive ]; then
+    echo "$defeditor $*"
+    $defeditor $*
+fi
+
+# Interactive part
+while [ 1 ]; do
+
+    echo "\n[E]dit/view, en[C]rypt, clear[S]ign or e[X]it? \c"
+    read ans
+
+    case $ans in
+    [eE])
+        echo "Which Editor/Viewer? [${defeditor}] \c"
+        read editor
+        echo "${editor:-$defeditor} $*"
+        ${editor:-$defeditor} $*
+    ;;
+    [cC])
+        recipients="?"
+        while [ "$recipients" = "?" ]; do
+            echo "Enter recipients, separated by spaces: ('?' to list keys)"
+            read recipients
+            if [ "$recipients" = "?" ]; then
+                pgp -kv
+            elif [ "$recipients" = "" ]; then
+                echo "Encryption aborted."
+            else
+                while [ ! "$opts" ]; do
+                    echo "Sign encrypted message (y/n)? [n] \c"
+                    read tmp
+                    if [ "$tmp" = "" ]; then
+                        tmp=n
+                    fi
+                    case $tmp in
+                    [yY])
+                        opts=seat
+                    ;;
+                    [nN])
+                        opts=eat
+      		    ;;
+                    esac
+                done
+                f_split_file
+                pgp -$opts ${tmpdir}/tmp$$ $recipients
+                if [ $? -eq 0 ]; then
+                    f_restore_file
+                else
+                    echo "\n*Error in encryption. Aborted."
+                fi
+                f_clean_up
+            fi
+        done
+    ;;
+    [sS])
+        f_split_file
+        pgp -sat +clearsig=on ${tmpdir}/tmp$$
+        if [ $? -eq 0 ]; then
+            f_restore_file
+        else
+            echo "\n*Error in signing. Aborted."
+        fi
+        f_clean_up
+    ;;
+    [xX])
+        break
+    ;;
+    esac
+
+done
+
+clear
+exit 0

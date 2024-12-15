@@ -1,0 +1,135 @@
+Xref: msuinfo alt.security:5465 sci.crypt:7413
+Path: msuinfo!uchinews!ncar!elroy.jpl.nasa.gov!ames!sgi!fido!bolyard.wpd.sgi.com!nelson
+From: nelson@bolyard.wpd.sgi.com
+Newsgroups: alt.security,sci.crypt
+Subject: Re: secure telnetd password encryption & authentication techniques
+Summary: IP options are the wrong place for end-to-end info
+Message-ID: <h9fb760@fido.asd.sgi.com>
+Date: 19 Feb 92 19:47:25 GMT
+References: <1992Feb13.190458.20395@qualcomm.com>
+Sender: news@fido.asd.sgi.com (Usenet News Admin)
+Reply-To: nelson@sgi.com
+Followup-To: sci.crypt
+Organization: Silicon Graphics, Inc., Mountain View, CA
+Lines: 119
+Originator: nelson@bolyard.wpd.sgi.com
+
+karn@chicago.qualcomm.com (Phil Karn) writes:
+
+>In addition to Kerberos, there are also new TELNET options for
+>authentication and encryption. Dunno if the servers/clients are
+>available yet, though.
+
+>But having watched the various IETF groups working on enhancing
+>Internet security with cryptography, I'm beginning to wonder if it's
+>being done the wrong way.  There's Telnet authentication and
+>encryption, there's Kerberos for rlogin/rsh like services, there's
+>authentication for SNMP, and so forth -- one authentication or
+>encryption method per application protocol, each one doing essentially
+>the same thing in a slightly different, application-specific way.
+
+>Aren't authentication and secrecy fundamental enough services to
+>deserve common, shared mechanisms to provide them? 
+
+I share your concern that every application protocol is inventing its own
+mechanism for adding authentication and data confidentiality.  The IETF
+Common Authentication Technology Working Group has prepared an Internet
+Draft document, which I believe is based on John Linn's GSSAPI (the Generic
+Security Services API), but I'm not sure this address the protocol issues.
+
+There exist certain large communities of computer users within the US
+Government that have established their own "standard" for using Kerberos
+for TELNET, FTP, and other older TCP-based protocols.  Their approach is
+to use a Kerberos authentication exchange before allowing the older
+protocol to run, so that one the older protocol (say FTP) begins to run,
+it need not operate differently than before.  This "wrap authentication
+around the old protocol" approach has the advantage that is is quite easy
+to do for most TCP (or COTP) based application protocols, and it is
+consistently done accross all cases.
+
+>                                                    Why can't we add
+>them to IP as options so that not only would any application be able
+>to use them, but transport protocols like TCP would be protected as
+>well?
+
+>Here's how I would do it. One IP option would carry an authenticator,
+>probably produced by using MD-5 to hash the body of the datagram
+>concatenated with a secret key shared by the two systems. The option
+>field might also carry a key identifier, in case the systems share
+>more than one key.
+
+There are several problems with this approach of using IP options for 
+authentication, both technical and business problems.  For the past two
+years, I have participated in the TSIG/IETF Commercial IP Security Option
+(CIPSO) working group, and have learned first hand the problems of adding
+an IP option.
+
+First, the technical problems.  The entire length of an IP header,
+including all options, is limited to 15 words (60 bytes) maximum, and the
+minimum IP header length is 20 bytes, so there is a maximum of 40 bytes
+available for IP options in any IP datagram.  IMhO, it's a shame that the 
+4-bit IP Header Length (IHL) field in the IP header isn't interpreted as
+the length _beyond_ the initial 20 bytes, but that's a digression not
+suited for sci.crypt.  In short, I dont think there's enough room for your
+authentication data _and_ routing options _and_ security options, etc. etc.
+
+Second, IP options have to be parsed and understood by all routers thru
+which they pass from source to sink.  Even if the router's "understanding"
+is to simply ignore it, the router must parse it.  For some (many ?) of the
+most well known routers, the presence of _any_ IP options means that the
+datagram must go thru the "slow path" rather than the "fast path" (which is
+often handled in hardware/microcode on the interface board itself).
+Getting an IP option approved requires getting at least one or two
+commercial router vendors and one or two "host" vendors to implement it.
+To do that, you have to convince those vendors that it is in their best
+(financial) interests to do so.  So you have a chicken and egg problem.
+Since the routers have no need for the authentication information to do
+their routing job, it's hard to convince them to do this.
+
+So, I'm convinced that authentication and confidentiality need to be done
+at a higher layer (in the ARM) than IP.  
+
+>                   For encryption, there are two possibilities.  You
+>could simply encrypt everything starting with the transport (e.g.,
+>TCP) header and add an IP option saying "this packet is encrypted with
+>keyid x".  Or, to deny an eavesdropper even the knowledge of what
+>transport protocol you're using, create a "pseudo transport protocol"
+>that would sit between IP and the transport protocol. The actual
+>protocol ID (e.g., 6 for TCP) would be moved into this pseudo
+>transport protocol that would be encrypted.
+
+You could invent new transport protocols (using a different number than 6
+for TCP or 17 for UDP) that are encrypted-TCP and encrypted UDP, but it
+would be easier to use TCP-header options, or to add a new layer of
+protocol on top of TCP, but below sockets.  This is exactly what the TSIG
+Trusted Sessions Working Group (TSWG) is doing at the moment.
+
+>The authentication and encryption options could both be used in the
+>same packet. The authentication of an incoming packet could be done
+>either before or after the packet is decrypted -- any thoughts on
+>which way might be better?
+
+Having the data confidentiality (encryption) ride on top of the transport
+protocol has the advantage that you can use the more-secure chaining
+encryption methods (e.g. Cipher Feedback Mode, or Output Feedback Mode) 
+on the byte stream, and not have to worry that fragmentation/reassembly or
+datagram misordering will mess up your ability to correctly decrypt the
+data.
+
+>Each application could set a flag specifying whether it demands
+>authentication and/or encryption from its peers.
+
+Gee, I think you'd like the stuff the TSIG TSWG is doing.
+
+>Comments?
+
+I've redirected followups to sci.crypt because I think this thread
+deserves better distribution than alt groups get, but if the sci.crypt
+readers think it belongs elsewhere, so be it.
+
+>Phil
+
+--
+Nelson Bolyard      nelson@sgi.COM      {decwrl,sun}!sgi!whizzer!nelson
+Disclaimer: Views expressed herein do not represent the views of my employer.
+--

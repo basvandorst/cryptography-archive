@@ -1,0 +1,884 @@
+#!/usr/bin/perl
+#
+# Premail v. 0.20, last update 27 Aug 1994
+#
+# Usage:
+#   premail [-options]
+#     Same options as sendmail
+#
+#   premail -test <target email address>
+#     Send test message to all known remailers
+#
+# Change log:
+# 27 Aug 1994 v. 0.20
+#   Minor fixes
+#
+# 26 Aug 1994 v. 0.19
+#   Recipients on the command line, getkeys
+#
+# 25 Aug 1994 v. 0.18
+#   Multiple recipients, Anon-From and Anon-To headers
+#
+# 24 Aug 1994 v. 0.17
+#   Invoke pgp and sendmail through pipes rather than temp files
+#
+# 23 Aug 1994 v. 0.16
+#   Moved auto-finger into new_mail_route
+#
+# 22 Aug 1994 v. 0.15
+#   Increases in configurability: pgp, pgppath, premailrc, remailers,
+#     defaultpath, getmailers config options
+#
+# 12 Aug 1994 v. 0.14
+#   Added command line config options
+#
+# 10 Aug 1994 v. 0.13
+#   Added No-Reply field, short remailer key
+#
+# 28 Jul 1994 v. 0.12
+#   Support for sendmail syntax, remailer test
+#
+# 16 Jul 1994 v. 0.11
+#   Added support for "eric" and "penet" style remailers
+#
+# 11 Jul 1994 v. 0.10
+#   New features: oldpgp, no :: Encrypted: field for extropia, an->na
+#     filtering for penet hops, mail encryption, default reply
+# 
+# 7 Jul 1994 v. 0.09
+#   New mail handling, for smooth routing through cypherpunk
+#     remailers. Still in developement.
+#
+
+sub read_file {
+# @contents = &read_file ("filename")
+   local ($filename) = @_;
+   local (@contents) = ();
+   open (RFILE, $filename);
+   while (<RFILE>) {
+      push (@contents, $_);
+   }
+   close (RFILE);
+   @contents;
+}
+
+sub write_file {
+# &write_file ($filename, @contents)
+# note: if filename begins with a single > , then it is opened for append
+   local ($filename) = ($_[0]);
+   shift;
+   if ($filename !~ /^\|/) { $filename = ">$filename"; }
+   open (WFILE, "$filename");
+   foreach $line (@_) {
+      print WFILE $line;
+   }
+   close (WFILE);
+}
+
+sub tilde_expand {
+# $file_name = &tilde_expand ($file_name)
+   local ($file_name) = @_;
+
+   $file_name =~ s/\~/$ENV{"HOME"}/;
+   return $file_name;
+}
+
+sub pgp_encrypt {
+# ($exitcode, @output) = &pgp_encrypt ($options, $key, @input)
+# note: uses temporary files for input and output
+   return &pgp_encrypt_bin (&tilde_expand ($config{"pgp"}), @_);
+}
+
+sub pgp_encrypt_bin {
+# ($exitcode, @output) = &pgp_encrypt ($bin, $options, $key, @input)
+# note: uses temporary files for input and output
+   local ($bin, $options, $key, @in_seg) = @_;
+   local (@output) = ();
+   local ($exitcode);
+
+   if ($config{"debug"} =~ /y/) {
+      return (0,
+              "----- BEGIN PGP ENCRYPTED MESSAGE ----- <key = $key>\n",
+              @in_seg,
+              "----- END PGP ENCRYPTED MESSAGE -----\n");
+   }
+
+   &write_file ("|$bin -f $options $key > temp$$.asc", @in_seg);
+   if (-e "temp$$.asc") {
+      @output = &read_file ("temp$$.asc");
+      unlink "temp$$.asc";
+   }
+   return ($exitcode, @output);
+}
+
+sub usage {
+   print "Usage:\n";
+   print "  premail [-options]\n";
+   print "     Same options as sendmail\n";
+   print "\n";
+   print "  premail -test <target email address>\n";
+   print "     Send test message to all known remailers\n";
+}
+
+# Here begins the new mail stuff
+#
+# Some notes on the theory of operation
+#
+# The standard unit of the new mail routines is called the "pack",
+# because it suggests packet or package, and I like the sound of it.
+# It is an array of strings, one line each. It is further composed of
+# a header and a message, separated by one blank line. Each of the
+# header lines has the syntax:
+#   Field: contents
+# Fields which will be handled include:
+#
+#   To: <standard internet mail address or news.group.name>
+#   Key: <pgp encryption key>
+#   Path: <new-mail style path>
+#   Subject: whatever the subject is
+#   Anon-From: whatever the address is to reply to
+#
+# Other fields will be added to increase customizability.
+#
+# The most important new thing is the path. It consists of a semicolon
+# separated list of remailer names, in order of transmission. I.e. the
+# innermost nesting is the last name in the path. The empty path is a
+# single semicolon
+
+# Configuration options
+$config{"pgp"} = "pgp";
+$config{"premailrc"} = "~/.premailrc";
+$config{"remailers"} = "~/.remailers";
+$config{"getmailers"} = "finger remailer-list@kiwi.cs.berkeley.edu";
+
+$remailer{"chaos"} = "<remailer@chaos.bsu.edu> cpunk hash ksub";
+$remailer{"vox"} = "<remail@vox.hacktic.nl> cpunk oldpgp.";
+$remailer{"avox"} = "<anon@vox.hacktic.nl> cpunk oldpgp";
+$remailer{"extropia"} = "<remail@extropia.wimsey.com> cpunk pgp special";
+$remailer{"kaiwan"} = "<ghio@kaiwan.com> cpunk pgp hash latent cut";
+$remailer{"portal"} = "<hfinney@shell.portal.com> cpunk pgp hash";
+$remailer{"alumni"} = "<hal@alumni.caltech.edu> cpunk pgp hash";
+$remailer{"bsu-cs"} = "<nowhere@bsu-cs.bsu.edu> cpunk hash ksub";
+$remailer{"rebma"} = "<remailer@rebma.mn.org> cpunk hash pgp";
+$remailer{"jpunix"} = "<remailer@jpunix.com> cpunk hash";
+$remailer{"wien"} = "<remailer@ds1.wu-wien.ac.at> cpunk pgp hash nsub";
+$remailer{"c2"} = "<remail@c2.org> eric pgp hash";
+$remailer{"soda"} = "<remailer@csua.berkeley.edu> eric pgp.";
+$remailer{"penet"} = "<anon@anon.penet.fi> penet";
+$remailer{"ideath"} = "<remailer@ideath.goldenbear.com> cpunk hash ksub";
+$remailer{"usura"} = "<usura@hacktic.nl> cpunk pgp hash latent cut";
+$remailer{"leri"} = "<remail@leri.edu> cpunk pgp hash";
+
+# Global parameters
+$error_mode = "p";
+
+@ranking = ("wien", "portal", "kaiwan");
+$rank_ptr = 0;
+
+sub get_field {
+# ($present, $contents) = &get_field ($field, @pack)
+   local ($field, @pack) = @_;
+   local ($pattern);
+   $pattern = "^" . $field . "\\: ?(.*)\n";
+   foreach $line (@pack) {
+      if ($line =~ /$pattern/i) { return (1, $1); }
+      if ($line eq "\n") {return (0, ""); }
+   }
+   return (0, "");
+}
+
+sub clean_pack {
+# (@pack) = &clean_pack (@pack)
+#   Makes sure the blank line is in the right place, removes leading
+#   blank lines.
+   local (@pack) = @_;
+   local ($state, @newpack);
+
+   $state = 0;
+   foreach $line (@pack) {
+      if ($state == 0 && line ne "\n") {
+         $state = 1;
+         push (@newpack, $line);
+      } elsif ($state == 1 && $line =~ /^[a-zA-z0-9\-\_]+\:.*$/) {
+         push (@newpack, $line);
+      } elsif ($state == 1 && $line =~ /^[ \t](.*)$/ && $#newpack >= 0) {
+         $line = pop @newpack;
+         chop $line;
+         $line = "$line $1\n";
+         push (@newpack, $line);
+      } elsif ($state == 1 && $line eq "\n") {
+         $state = 2;
+         push (@newpack, $line);
+      } elsif ($state == 1) {
+         $state = 2;
+         push (@newpack, "\n", $line);
+      } elsif ($state == 2) {
+         push (@newpack, $line);
+      }
+   }
+
+   return @newpack;
+}
+
+sub extract_field {
+# ($present, $contents, @new_pack) = &extract_field ($field, @pack)
+   local ($field, @pack) = @_;
+   local ($pattern, $state, @new_pack);
+   local ($present, $contents);
+   $pattern = "^" . $field . "\\: ?(.*)";
+   $present = 0;
+   $contents = "";
+   $state = 0;
+   foreach $line (@pack) {
+      if (!$state && $line =~ /$pattern/i) {
+         $present = 1;
+	 $contents = $1;
+	 $state = 1;
+      } else {
+         if ($line eq "\n") { $state = 1; }
+         push (@new_pack, $line);
+      }
+   }
+   return ($present, $contents, @new_pack);
+}
+
+sub sendmail {
+# &sendmail ($flags, @pack) {
+   local ($flags, @pack) = @_;
+   local ($sendmail);
+
+   $sendmail = &tilde_expand ($config{"sendmail"});
+   if ($sendmail eq "") {
+      $sendmail = "/usr/lib/sendmail";
+   }
+   &write_file ("|$sendmail $flags", @pack);
+}
+
+sub error {
+# &error ($error_msg)
+   local ($error_msg) = @_;
+
+   if ($error_mode eq "m") {
+      &sendmail ("-t -oi",
+         "To: $ENV{'USER'}\n",
+         "Subject: premail error: undelivered mail\n",
+         "\n",
+         "$error_msg\n",
+         "\n",
+         "Original message follows:\n",
+         ("-" x 71). "\n",
+         @orig_seg);
+      exit (1);
+   } else {
+      die "$error_msg\n";
+   }
+}
+
+sub new_pgp_encrypt_remail {
+# ($exitcode, $seg) = &new_pgp_encrypt_remail ($to, @seg)
+   local ($to, @in_seg) = @_;
+   local ($options, $exitcode, @out_seg);
+
+   $options = "+verbose=0 +batchmode -tea";
+   ($exitcode, @out_seg) = &pgp_encrypt ($options, $to, @in_seg);
+   if ($exitcode < 0 || $exitcode > 256) {
+      &error ("Can't encrypt to remailer $to, exitcode= $exitcode");
+   }
+   return ($exitcode, @out_seg);
+}
+
+sub new_oldpgp_encrypt_remail {
+# ($exitcode, $seg) = &new_oldpgp_encrypt_remail ($to, @seg)
+   local ($to, @in_seg) = @_;
+   local ($options, $exitcode, @out_seg);
+
+   $options = "+verbose=0 +batchmode -tea";
+   ($exitcode, @out_seg) = &pgp_encrypt_bin (&tilde_expand ($config{"oldpgp"}),
+                                             $options, $to, @in_seg);
+   if ($exitcode < 0 || $exitcode > 256) {
+      &error ("Can't encrypt to remailer $to, exitcode= $exitcode");
+   }
+   return ($exitcode, @out_seg);
+}
+
+sub new_pgp_mail_encrypt {
+# ($exitcode, @out_pack) = &pgp_mail_encrypt ($key, @in_pack)
+   local ($key, @pack) = @_;
+   local ($options, @out_pack, $exitcode);
+   local ($state, @header, @seg);
+
+   $options = "+verbose=0 +batchmode -tea";
+   if ($config{"signuser"} ne "") {
+      $options = $options . "s -u \"" . $config{"signuser"} . "\"";
+   }
+   if ($config{"signpass"} ne "") {
+      $options = "$options -z \"" . $config{"signpass"} . "\"";
+   }
+   $state = 0;
+   foreach $line (@pack) {
+      if ($state == 0) {
+         if ($line eq "\n") {
+            $state = 1;
+         } else {
+            push (@header, $line);
+         }
+      } else {
+         push (@seg, $line);
+      }
+   }
+   ($exitcode, @seg) = &pgp_encrypt ($options, $key, @seg);
+   if ($exitcode < 0 || $exitcode > 256) {
+      &error ("Can't encrypt to key $key, exitcode= $exitcode");
+   }
+   ($exitcode, @header,
+               "MIME-Version: 1.0\n",
+               "Content-Type: application/x-pgp\n",
+               "\n",
+               @seg);
+}
+
+sub get_mailers {
+# &get_mailers ()
+# If we haven't already, get the remailers by fingering
+   local ($remailers);
+   local ($need_mailers, @remailers);
+   local ($state, @new_ranking);
+
+   if ($got_mailers) { return; }
+   $need_mailers = 1;
+   $remailers = &tilde_expand ($config{"remailers"});
+   if ($config{"getmailers"}) {
+      @remailers = &read_file ($config{"getmailers"}."|");
+      if ($#remailers > 5) {
+         if ($config{"remailers"}) {
+            &write_file ($remailers, @remailers);
+         }
+         $need_mailers = 0;
+      }
+   }
+   if ($need_mailers && $config{"remailers"}) {
+      @remailers = &read_file ($remailers);
+   }
+   $state = 0;
+   foreach $remailer (@remailers) {
+      if ($remailer =~
+          /^[ \t]*\$remailer\{\"([^\"]+)\"\}[ \t]*\=[ \t]*\"([^\"]*)\"/) {
+         $remailer{$1} = $2;
+      }
+      if ($remailer =~ /--------/) {
+         $state = 1;
+      }
+      if ($state && $remailer eq "\n") {
+         $state = 0;
+      }
+      if ($state && $remailer =~ /^([a-zA-Z0-9\-]+) /) {
+         push (@new_ranking, $1);
+      }
+   }
+   if ($#new_ranking > -1) { @ranking = @new_ranking; }
+   $got_mailers = 1;
+}
+
+sub new_mail_route {
+# (@new_pack) = &new_mail_route (@pack);
+# Route the pack, using a default path if none provided
+   local ($ispath, $path, @path);
+   local ($isanonto, $anonto);
+   local ($isx, $x);
+
+   ($ispath, $path, @pack) = &extract_field ("Path", @pack);
+   if (!$ispath) {
+      $path = $config{"defaultpath"};
+      if (!$path) { $path = ";"; }
+   }
+
+   ($isanonto, $anonto, @pack) = &extract_field ("Anon-To", @pack);
+   if ($path eq ";" && $isanonto) {
+      $path = 3;
+   }
+
+   if ($path ne ";") {
+      &get_mailers ();
+   }
+
+   if ($path =~ /^[0-9]+$/) {
+      $i = 0;
+      while ($i != $path) {
+         while ($remailer{$ranking[$rank_ptr]} =~ /special/) {
+            $rank_ptr = ($rank_ptr + 1) % ($#ranking + 1);
+            # interesting failure mode when all mailers are special :-)
+         }
+         @path = ($ranking[$rank_ptr], @path);
+         $rank_ptr = ($rank_ptr + 1) % ($#ranking + 1);
+         $i = $i + 1;
+      }
+      $path = join (";", @path);
+   }
+
+   return ("Path: $path\n", @pack);
+}
+
+sub anonymize_header {
+# @header = &anonymize_header (@header)
+   local (@old_header) = @_;
+   local ($isx, $x, @new_header);
+
+   foreach $field ("To",
+                   "Subject",
+                   "Path",
+                   "X-Anon-To",
+                   "X-Anon-Password") {
+      ($isx, $x) = &get_field ($field, @old_header);
+      if ($isx) { push (@new_header, "$field: $x\n"); }
+   }
+
+   return @new_header;
+}
+
+sub new_mail_hop {
+# (@new_pack) = &new_mail_hop (@pack);
+# Take a pack, prepare it for the last hop in the path
+   local (@pack) = @_;
+   local ($ispath, $path, $hop, $newpath, $to, $isrrt, $rrt);
+   local ($issub, $subject, $isrep, $reply, @hashpaste);
+   local ($isxto, $xto, @paste);
+   local ($encrypt, $exitcode, $remailkey, @enc_message);
+   local ($state, @header);
+   local (@message);
+   local ($isx, $x, $savepgppath);
+
+   ($ispath, $path, @pack) = &extract_field ("Path", @pack);
+   @pathseq = split(/;/, $path);
+   $hop = pop @pathseq;
+   if ($#pathseq >= 0) {
+      $newpath = join (';', @pathseq);
+   } else {
+      $newpath = ";";
+   }
+   # ok, we've got the hop and the new path
+   $info = $remailer{$hop};
+   if (!$info) { &error ("remailer $hop is unknown"); }
+   if ($info =~ /\<([^\>]*)\>/) { $to = $1; }
+   if ($config{"debug"} =~ /h/) {
+      print "hop=$hop to=$to newpath=$newpath\n";
+   }
+   $encrypt = ($info =~ /pgp/) && ($config{"encrypt"} ne "")
+               && ($info !~ /oldpgp/ || $config{"oldpgp"});
+
+   # Factor the pack into header and message
+   $state = 0;
+   foreach $line (@pack) {
+      if (!$state) {
+         if ($line eq "\n") {
+            $state = 1;
+         } else {
+            push (@header, $line);
+         }
+      } else {
+	 push (@message, $line);
+      }
+   }
+
+   # Get request-remailing-to address
+   ($isrrt, $rrt, @header) = &extract_field ("To", @header);
+   if (!$isrrt) {
+      &error ("no recipient specified");
+   }
+   $rrt =~ s/^an([0-9]*)\@anon\.penet\.fi$/na$1\@anon\.penet\.fi/;
+
+   # If remailer supports hashmarks, move subject and reply-to fields
+   #   from header into message
+   ($isrep, $reply, @header) = &extract_field ("Anon-From", @header);
+   if ($info =~ /hash/) {
+       # we should do this for "special" as well
+       $issub = 0;
+       if (($encrypt || $info =~ /ksub/)
+           && $info !~ /eric/ && $info !~ /nsub/) {
+          ($issub, $subject, @header) = &extract_field ("Subject", @header);
+       }
+      if ($issub) { push (@hashpaste, "Subject: $subject\n") };
+      if ($isrep) { push (@hashpaste, "Reply-To: $reply\n") };
+      foreach $field ("MIME-Version",
+                      "Content-Type",
+                      "X-Anon-To",
+                      "X-Anon-Password",
+                      "In-Reply-To",
+                      "References") {
+         ($isx, $x, @header) = &extract_field ($field, @header);
+         if ($isx) { push (@hashpaste, "$field: $x\n"); }
+      }
+      if ($#hashpaste >= 0) {
+         @message = ("##\n", @hashpaste, "\n", @message);
+      }
+   }
+
+   # Assemble new header and message
+   push (@header, "To: $to\n", "Path: $newpath\n");
+
+   if ($info =~ /cpunk/) {
+      @paste = ();
+      if ($info =~ /special/) {
+         ($issub, $subject, @header) = &extract_field ("Subject", @header);
+         if ($issub) {
+            push (@paste, "Subject: $subject\n");
+         }
+         ($isxto, $xto, @header) = &extract_field ("X-Anon-To", @header);
+         if ($isxto) {
+            push (@hpaste, "X-Anon-To: $xto\n");
+         }
+      }
+      @message = ("::\n",
+                  "Request-Remailing-To: $rrt\n",
+                  @paste,
+                  "\n",
+                  @message);
+   } elsif ($info =~ /eric/) {
+      @paste = ();
+      ($issub, $subject, @header) = &extract_field ("Subject", @header);
+      if ($issub) {
+         push (@paste, "Subject: $subject\n");
+      }
+      @message = ("::\n",
+                  "Anon-Send-To: $rrt\n",
+                  @paste,
+                  "\n",
+                  @message);
+   } elsif ($info =~ /penet/) {
+      push (@header, "X-Anon-To: $rrt\n");
+      if ($config{"penetpass"} && $newpath eq ";") {
+         push (@header, "X-Anon-Password: ".$config{"penetpass"}."\n");
+      }
+   }
+
+   # If remailer supports encryption, encrypt for the remailer
+   if ($encrypt) {
+      if ($info =~ /pgp\./) {
+         $remailkey = $hop;
+      } else {
+         $remailkey = $to;
+      }
+      if ($config{"pgppath"}) {
+         $savepgppath = $ENV{"PGPPATH"};
+         $ENV{"PGPPATH"} = &tilde_expand ($config{"pgppath"});
+      }
+      if ($info =~ /oldpgp/ && $config{"oldpgp"}) {
+         ($exitcode, @enc_message) =
+            &new_oldpgp_encrypt_remail ($remailkey, @message);
+      } else {
+         ($exitcode, @enc_message) =
+            &new_pgp_encrypt_remail ($remailkey, @message);
+      }
+      if ($config{"pgppath"}) {
+         if ($savepgppath) {
+            $ENV{"PGPPATH"} = $savepgppath;
+         } else {
+            delete $ENV{"PGPPATH"};
+         }
+      }
+      if ($exitcode <= 256 && $exitcode >= 0) {
+         if ($info =~ /special/) {
+            @message = @enc_message;
+         } else {
+            @message = ("::\n",
+                        "Encrypted: PGP\n",
+                        "\n",
+                        @enc_message);
+         }
+      } else {
+         &error ("pgp error in encrypting for remailer $hop, key $remailkey");
+      }
+   }
+
+#  # Put on a dummy subject header
+#  ($issub, $subject) = &get_field ("Subject", @header);
+#  if (!$issub) {
+#     push (@header, "Subject: remail\n");
+#  }
+
+   @header = &anonymize_header (@header);
+
+   # Assemble new pack
+   return (@header,
+           "\n",
+           @message);
+}
+
+sub new_mail_send {
+# ($exitcode) = &new_mail_send ($sendmail_options, @pack)
+# Take a pack as input, process it, and put it in the out queue
+   local ($sendmail_options, @pack) = @_;
+   local ($ispath, $path, $isto, $to, $issub, $subject);
+   local ($iskey, $key, $exitcode);
+   local ($isrep, $reply);
+   local ($state, @seg);
+   local ($orig_to, $orig_path, $orig_sub);
+   local ($sendmail);
+   local ($cksum);
+
+   ($iskey, $key, @pack) = &extract_field ("Key", @pack);
+   if ($iskey) {
+      ($exitcode, @pack) = &new_pgp_mail_encrypt ($key, @pack);
+   }
+
+   if ($config{"anon-from"} ne "") {
+      ($isrep, $reply) = &get_field ("Anon-From", @pack);
+      if (!$isrep) {
+         @pack = ("Anon-From: " . $config{"anon-from"} . "\n",
+                  @pack);
+      }
+   }
+   ($isrep, $reply, @pack) = &extract_field ("No-Reply", @pack);
+   if ($isrep) {
+      ($isrep, $reply, @pack) = &extract_field ("Reply-To", @pack);
+      ($isrep, $reply, @pack) = &extract_field ("Anon-From", @pack);
+   }
+
+   if ($config{"debug"} =~ /d/) {
+      print "---\n", @pack;
+   }
+   ($isto, $orig_to) = &get_field ("To", @pack);
+   ($isto, $orig_sub) = &get_field ("Subject", @pack);
+   @pack = &new_mail_route (@pack);
+   if ($config{"debug"} =~ /d/) {
+      print "---\n", @pack;
+   }
+   ($ispath, $path) = &get_field ("Path", @pack);
+   $orig_path = $path;
+   while ($path ne ";") {
+      @pack = &new_mail_hop (@pack);
+      if ($config{"debug"} =~ /d/) {
+         print "---\n", @pack;
+      }
+      ($ispath, $path) = &get_field ("Path", @pack);
+   }
+   ($ispath, $path, @pack) = &extract_field ("Path", @pack);
+   ($isrep, $reply, @pack) = &extract_field ("Anon-From", @pack);
+
+   # Now, the mail is ready to assemble into a sendable seg
+#  ($issub, $subject, @pack) = &extract_field ("Subject", @pack);
+#  if (!$issub) { $subject = "remail"; }
+#  ($isto, $to, @pack) = &extract_field ("To", @pack);
+#  if (!$isto) {
+#     print "no To: field in pack!\n";
+#     return 1;
+#  }
+#  $state = 0;
+#  foreach $line (@pack) {
+#     if (!$state && $line eq "\n") {
+#        $state = 1;
+#     } else {
+#        push (@seg, $line);
+#      }
+#  }
+
+   $cksum = "";
+   foreach $line (@pack) {
+      if ($line =~ /^(=....)\n$/) { $cksum = $1; }
+   }
+
+   $sendmail = &tilde_expand ($config{"sendmail"});
+   if ($sendmail eq "") {
+      $sendmail = "/usr/lib/sendmail";
+   }
+   if ($config{"storefile"} || $config{"debug"} =~ /[yp]/) {
+      @seg = ("$sendmail $sendmail_options -oi -t << -eof-\n",
+              @pack,
+              "-eof-\n");
+      if ($config{"debug"} =~ /[yp]/) {
+         print @seg;
+      } else {
+         &write_file (">".&tilde_expand ($config{"storefile"}), @seg);
+         chmod 0644, &tilde_expand ($config{"storefile"});
+         if ($config{"logfile"}) {
+            &write_file (">".&tilde_expand ($config{"logfile"}),
+               "!Sent $orig_to [$orig_path]$cksum: $orig_sub\n");
+            system "date >> ".&tilde_expand ($config{"logfile"})."\n";
+         }
+      }
+   } else {
+      &sendmail ("$sendmail_options -oi -t", @pack);
+      if ($config{"logfile"}) {
+         &write_file (">".&tilde_expand ($config{"logfile"}),
+            "!Sent $orig_to [$orig_path]$cksum: $orig_sub\n");
+         system "date >> ".&tilde_expand ($config{"logfile"})."\n";
+      }
+   }
+   return 0;
+}
+
+sub set_config_options {
+# (@command_line) = &set_config_options (@command_line)
+   local (@command_line) = @_;
+   local (@new_command_line);
+   local ($premailrc);
+
+   foreach $arg (@command_line) {
+      if ($arg =~ /\+([a-zA-Z0-9\-]+)\=(.*)/) {
+         $config{$1} = $2;
+      } else {
+         push (@new_command_line, $arg);
+      }
+   }
+   if ($config{"premailrc"}) {
+      $premailrc = &tilde_expand ($config{"premailrc"});
+      open (PREMAILRC, $premailrc);
+      while (<PREMAILRC>) {
+         if (/^[ \t]*\$config\{\"([^\"]+)\"\}[ \t]*\=[ \t]*\"([^\"]*)\"/) {
+            $config{$1} = $2;
+         }
+      }
+      close (PREMAILRC);
+   }
+   return @new_command_line;
+}
+
+# Here ends the new mail stuff
+sub get_recipients {
+# (@recipients) = &get_recipients ($line)
+   local ($line) = @_;
+
+   return split (/[ \t]*,[ \t]*/, $line);
+}
+
+sub premail {
+# &premail (@sendmail_options)
+   local (@seg);
+   local ($oi, $done, @command_line);
+   local ($sendmail, $sendmail_options, @sendmail_options);
+   local ($isto, $to, @recipients, @line);
+   local ($ispath, $path);
+   local ($iskey, $key);
+
+   $sendmail = &tilde_expand ($config{"sendmail"});
+   if ($sendmail eq "") {
+      $sendmail = "/usr/lib/sendmail";
+   }
+   if ($0 =~ /(mailq|newaliases|smptd)/) {
+      # out of our league, let the real sendmail take over
+      exec ($sendmail, @_);
+   }
+   @command_line = &set_config_options (@_);
+   $oi = 0;
+   foreach $option (@command_line) {
+      $option eq "-oi" && ($oi = 1);
+      if ($option =~ /^-oe(.)/) {
+         push (@sendmail_options, $option);
+         $error_mode = $1;
+      }
+      if ($option =~ /^-b(.)/) {
+         if ($1 ne "m") {
+            exec ($sendmail, @_);
+         }
+      }
+      if ($option !~ /^-/) {
+         push (@recipients, $option);
+      }
+   }
+   @orig_seg = ();
+   $done = 0;
+   while (!$done && ($_ = <STDIN>)) {
+      if (!$oi && $_ eq ".\n") {
+         $done = 1;
+      } else {
+         push (@orig_seg, $_);
+      }
+   }
+   $sendmail_options = join (" ", @sendmail_options);
+
+   @seg = &clean_pack (@orig_seg);
+
+   ($isto, $to) = &get_field ("Anon-To", @seg);
+   if ($isto) { push (@recipients, &get_recipients ($to)); }
+
+   # Figure out whether we really need to premail it, or whether we
+   #  should give it directly to sendmail.
+   ($ispath, $path) = &get_field ("Path", @seg);
+   ($iskey, $key) = &get_field ("Key", @seg);
+   if (!$isto && (!$ispath || $path =~ /^\;?$/) &&
+       !$config{"defaultpath"} && !$config{"storefile"} && !$iskey) {
+      $sendmail_options = join (" ", @command_line);
+      if (!$oi) { $sendmail_options = "-oi $sendmail_options"; }
+      print ("sendmail $sendmail_options\n");
+      &sendmail ($sendmail_options, @orig_seg);
+      return;
+   }
+
+   # Find all the recipients
+   ($isto, $to, @seg) = &extract_field ("To", @seg);
+   if ($#recipients < 0 && !$isto) { &error ("No recipients specified"); }
+   if ($isto) { push (@recipients, &get_recipients ($to)); }
+
+   ($isto, $to, @seg) = &extract_field ("Cc", @seg);
+   if ($isto) { push (@recipients, &get_recipients ($to)); }
+
+   ($isto, $to, @seg) = &extract_field ("Bcc", @seg);
+   if ($isto) { push (@recipients, &get_recipients ($to)); }
+
+   # Get newsgroups, when we support posting
+
+   foreach $recipient (@recipients) {
+      &new_mail_send ($sendmail_options, "To: $recipient\n", @seg);
+   }
+}
+
+sub test {
+# &test ($to_addr)
+   local ($to_addr);
+   local ($date, @command_line);
+
+   @command_line = &set_config_options (@_);
+   ($to_addr) = @command_line;
+   if ($#command_line != 0) {
+      die "Usage: premail -test to_addr\n";
+   }
+   system "date > temp1\n";
+   ($date) = &read_file ("temp1");
+   unlink ("temp1");
+   &get_mailers ();
+   foreach $remailer (keys %remailer) {
+      @pack = ("To: $to_addr\n",
+               "Subject: test of remailers\n",
+               "Path: $remailer\n",
+               "No-Reply:\n",
+               "\n",
+               "Test of $remailer run: $date");
+      &new_mail_send ("", @pack);
+   }
+}
+
+sub getkeys {
+# &getkeys ( | $finger_address | $file )
+   local ($arg, $pgppath, @command_line);
+
+   @command_line = &set_config_options (@_);
+   if ($#command_line_ == -1) {
+      $arg = "remailer-list@chaos.bsu.edu";
+   } else {
+      $arg = $command_line[0];
+   }
+   if ($config{"pgppath"}) {
+      $pgppath = &tilde_expand ($config{"pgppath"});
+      $ENV{"PGPPATH"} = $pgppath;
+      if (! -d $pgppath) { mkdir ($pgppath, 0700); }
+   }
+   if ($arg =~ /^[^\@]+\@[^\.]+\./) {
+      system "finger $arg | ".&tilde_expand ($config{"pgp"})." -kaf\n";
+   } else {
+      system &tilde_expand ($config{"pgp"})." -ka $arg";
+   }
+}
+
+# main
+{
+   if ($#ARGV == -1 || $ARGV[0] =~ "-[h\?]") {
+      &usage ();
+   } elsif ($ARGV[0] eq "-test") {
+      shift @ARGV;
+      &test (@ARGV);
+   } elsif ($ARGV[0] eq "-getkeys") {
+      shift @ARGV;
+      &getkeys (@ARGV);
+   } else {
+      &premail (@ARGV);
+   }
+}

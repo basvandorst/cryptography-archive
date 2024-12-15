@@ -1,0 +1,106 @@
+# Adding SSL support to SRA telnet and telnetd
+
+H1: SRA telnet
+
+The initial aim was to have a telnet client that would talk to
+a {{SSL}} server (i.e. be able to telnet www.netscape.com https). 
+I also wanted to be able to use it as a replacement for the SRA telnet
+way of handling authentication. 
+
+When testing you will probably want something like this in
+your $HOME/.telnetrc file (where "orb" is replaced with the
+name of the host you are testing against).
+
+E: # /home/tjh/.telnetrc
+E: orb toggle options authdeb
+E: orb set autologin
+
+The "key" is to have {{autologin}} set otherwise none of the "advanced"
+stuff (including {{SSL}}) is activated. Alternatively you can use the 
+{{-K}} option to activate this stuff.
+
+I haven't documented all this stuff yet as I've hacked the SRA stuff for
+SUNOS 5.x and IRIX 5.x support myself {{B:before}} I started on the {{SSL}}
+stuff. I'll sort it out soonish.
+
+The rest of this is basically random notes to turn into 
+something more useful later.
+
+The first thing I did with {{SRA}} was to use the Eric Young {{DES}} 
+library so a couple of little fiddles were needed to get this working
+correctly as a few "different" ideas exist in the various {{DES}} 
+libraries that are floating around ... perhaps we can convince people
+to standardise on the {{Eric Young}} implementation as we use it
+quite effectively and it has been plugged back into the {{Bones}} 
+version of {{Kerberos}} and it is used in {{SSLREF}}.
+
+H2: libutil/ssl.c
+
+Add this stuff ... most of the guts of the {{SSL}} to telnet/telnetd
+interface is in here.
+
+H2: libutil/auth-proto.h
+
+Add prototypes for the {{SSL}} interface in ssl.c
+
+H2: libutil/auth.c
+
+Add the ssl stuff into the list of "authenticators".
+
+H2: telnet/commands.c
+
+Add in ssl calls after {{connect()}}.
+
+H2: telnet/externs.h
+
+Declare the ssl vars that I use ... 
+
+H2: telnet/main.c
+
+Add in processing of {{-z}} options which add
+
+E: -z ssl
+E: -z debug
+E: -z socks          # might as well!
+E: -z verify=INT 
+E: -z cert=filename
+E: -z key=filename
+E: -z secure
+
+H2: telnet/network.c
+
+Hook netflush to call {{SSL_write()}}
+
+H2: telnet/sys_bsd.c
+
+Hook NetClose to call {{SSL_free()}}
+
+Remove ioctl call to {{FIONBIO}} (was stuffing things up in 
+SSL version 0.0) so I'll have to rethink this
+
+Remove all references to {{OOB}} data.
+
+Hook the read calls in process_rings to {{SSL_read()}}
+
+H2: telnetd/ext.h
+
+Declare the ssl vars that I use ... 
+
+H2: telnetd/telnetd.c
+
+Command line arg processing + calls to {{SSL_read()}} plus remove
+any references to {{FIONBIO}}.
+
+
+H2: telnetd/utility.c
+
+Hook ttloop() for {{SSL_read()}}
+Hook netflush() for {{SSL_write()}}
+
+H1: SSLtelnet additions
+
+Added a new option to the command line now that I've enabled {{SOCKS}}
+by default I needed a way to switch it off.
+
+E: -z !socks          
+

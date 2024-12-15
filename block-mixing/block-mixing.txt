@@ -1,0 +1,1030 @@
+From msuinfo!agate!ames!elroy.jpl.nasa.gov!swrinde!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin Sat Mar 19 21:39:34 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!ames!elroy.jpl.nasa.gov!swrinde!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar14.223702.6452@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Keywords: DES replacement, Large blocks
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1994Mar13.051515.27175@cactus.org>
+Date: Mon, 14 Mar 94 22:37:02 GMT
+Lines: 78
+
+Terry Ritter <ritter@cactus.org> proposes the following simple
+function for transforming two plaintext blocks A and B to two
+ciphertext blocks X and Y:
+
+X = 2A+3B	Y = 3A+2B
+A = 2X+3Y	B = 3X+2Y
+
+
+This is done in GF(2^n), for a suitable n-bit blocksize.  That is,
+modulo a suitable n-bit irreducible polynomial p.  So "2" and "3" are
+actually the bit patterns "0...010" and "0...011", and "+" means
+exclusive-or.
+
+The algorithm is self-inverse.  Let's rephrase it as:
+
+T = (A+B)*2 (mod p)
+A += T;
+B += T;
+
+The reason it's self-inverse is that it preserves A+B.  This means that
+if it is used in a structure like an FFT butterfly to encrypt large
+blocks (with an unknown polynomial p), it preserves the XOR of the
+entire block.  That's quite an information leak.
+
+From A+B, it is easy to obtain most of T, save only the term of p which
+may be added in the modular reduction.  Because this depends on the high
+bit of A+B, it is also easy to see when this has been added.
+
+Given a very few pairs (X,Y) of ciphertext only, half of them will
+have the high bit of X^Y clear, so the plaintext can be recovered using
+T = (X^Y)<<1; A = Y^T; B = X^T;  If there are any exploitable patterns
+in A and B, these can be used to find p in the cases where X^Y has
+its high bit set and T = (X^Y)<<1; A = Y^T^p; B = X^T^p;, for some
+unknown p.  Finding p should not be difficult.
+
+Basically, this operation is far too linear.
+
+As an aside, if you want a better block-mixing function, try starting
+with the MA-structure used in IDEA:
+
+      A    B
+      |    |
+      v    v
+ K1-->*--->+
+      |    |
+      |    |
+      v    v
+      +<---*<--K2
+      |    |
+      v    v
+      X    Y
+
+Now, to avoid colliding with the patent restrictions, change the operations
+so that they are still non-distributive but aren't group operations.
+I'd suggest * be multiplication in GF(2^n) (so K1 and K2 are constrained
+to be non-zero to make it invertible) and + be addition modulo 2^n.
+
+The transformation can be expressed in C with the * and + operators as:
+
+A *= K1;
+B += A;
+B *= K2;
+A += B;
+
+(X and Y are now A and B)
+
+and the inverse, if K1' and K2' are the inverses of K1 and K2, is:
+
+A -= B;
+B *= K2';
+B -= A;
+A *= K1';
+
+That is a much less linear transformation.  The last A += B step,
+of course, has no direct cryptographic significance, but it introduces
+dependancy on K2 into A, which is useful if this is cascaded.
+-- 
+	-Colin
+
+From msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!cactus.org!ritter Sat Mar 19 21:39:34 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!cactus.org!ritter
+From: ritter@cactus.org (Terry Ritter)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar15.065615.3895@cactus.org>
+Keywords: DES replacement, Large blocks
+Organization: Capital Area Central Texas UNIX Society, Austin, Tx
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar14.223702.6452@mnemosyne.cs.du.edu>
+Date: Tue, 15 Mar 1994 06:56:15 GMT
+Lines: 189
+
+
+
+ In: <1994Mar14.223702.6452@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+ (Colin Plumb) comments on block mixing transforms:
+
+
+>The algorithm is self-inverse.
+>[...]
+>This means that
+>if it is used in a structure like an FFT butterfly to encrypt large
+>blocks [...]
+
+ perhaps this quote from the original article will ring a bell:
+
+>> Simple constructs like
+>>
+>>           A      B
+>>           |      |
+>>           v      v
+>>           MixTrans
+>>           |      |
+>>           v      v
+>>           C      D
+>>
+>> are not likely to be very useful as ciphers by themselves, even if
+>> the mixing transformation is keyed and the blocks are large.
+
+ My intent in defining such constructs was to try and separate the
+ concepts of "strength" from the "mixing" property.  This means
+ that we do not have to define what "strength" means in such a
+ construct, but can instead rely on more classical forms, such as
+ DES or substitution.
+
+
+>From A+B, it is easy to obtain most of T, save only the term of p which
+>may be added in the modular reduction.
+>
+>Because this depends on the high
+>bit of A+B, it is also easy to see when this has been added.
+
+ Well, the original polynomial reduction (when p is added) is
+ conditional upon the shifted-out-and-lost upper bit of T.
+ It is not there (not in the output) to see.
+
+ Certainly we can expect to form the inverse T (say, T') given
+ both X and Y.  Then, if we had access to A and B, we could see
+ what p was when it was added.  Hopefully, we will not have that
+ access.  I believe I made that requirement clear:
+
+>> It is crucial to remember that these simple, high-speed, but linear
+>> mixing transforms can be said to have "strength" only if the input
+>> and output values are never both available.  That is, these
+>> structures do not by themselves handle "known-plaintext" attack.
+>> (Of course, the same could be said for many other simple internal
+>> mechanisms used in block cipher construction.)
+
+
+>Given a very few pairs (X,Y) of ciphertext only, half of them will
+>have the high bit of X^Y clear, so the plaintext can be recovered using
+>T = (X^Y)<<1; A = Y^T; B = X^T;
+
+ For those cases where msb(X^Y) = 0.
+
+
+>If there are any exploitable patterns
+>in A and B, these can be used to find p in the cases where X^Y has
+>its high bit set and T = (X^Y)<<1; A = Y^T^p; B = X^T^p;, for some
+>unknown p.  Finding p should not be difficult.
+
+ In many (most?) cases A and B should already be randomized by the
+ time they get to the mixer being attacked.  Without "exploitable
+ patterns," finding p will get a whole lot trickier.
+
+ It certainly is true that the structure is weak.  Since it is weak,
+ it must be protected.  But when the structure is protected, finding
+ p becomes difficult.
+
+ Anyway, I claim the real issue is: "Does it mix well?"  The answer
+ may be: "Not all that well, but we can afford to do a lot of it."
+
+
+>As an aside, if you want a better block-mixing function, try starting
+>with the MA-structure used in IDEA:
+>
+>
+>      A    B
+>      |    |
+>      v    v
+> K1-->*--->+
+>      |    |
+>      |    |
+>      v    v
+>      +<---*<--K2
+>      |    |
+>      v    v
+>      X    Y
+
+ I say you get what you pay for.  This proposal implies two full
+ polynomial multiplications per mixing, at a cost of O(n^2) each.
+ And while it may be said to be "stronger" (and also a better
+ mixer), the question of how many such structures are required
+ (that is, how many "rounds" are needed) is one of the open
+ questions in cryptography, so this added "strength" is difficult
+ to use.  And, because the cost of these mixers is O(n^2), the
+ structure cannot be expanded dramatically without considering the
+ impact on speed or circuit complexity.
+
+ In contrast, I proposed a scheme with no general multiplications
+ at all, just a single shift and three adds; cost O(n) each.  Such
+ a scheme is not a cipher, nor was it intended to be.  It was
+ intended to be a mixer (and, in fact, not that good a mixer).
+ But with it, we might avoid depending on the strength of
+ designs which are not well understood.  And the structure can be
+ expanded arbitrarily in the sense that one large mixer has the
+ same cost as many little ones which handle the same data.
+
+ One of the examples in the original article showed 61 mixing
+ operations for a single 256-bit block operation.  Given that
+ the mixing structure is so weak, perhaps a better approach
+ would be:
+
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --------------mix-------------- --------------mix--------------
+    ------------------------------mix------------------------------
+    --------------mix-------------- --------------mix--------------
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --------------mix-------------- --------------mix--------------
+    ------------------------------mix------------------------------
+    --------------mix-------------- --------------mix--------------
+    ------mix------ ------mix------ ------mix------ ------mix------
+    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+
+ This is 122 total mixing operations, but they are O(n) so the
+ cost is something like 4 * 18 * 128 = 9216 (and probably less).
+
+   levels * mixings-per-level * cost-per-mixer * size
+
+    2 *  1 * 4 * 128 +
+    4 *  2 * 4 *  64 +
+    4 *  4 * 4 *  32 +
+    4 *  8 * 4 *  16 +
+    4 * 16 * 4 *   8 =  9216
+
+ If we use the IDEA-derived mixer we have:
+
+   levels * mixings-per-level * cost-per-mixer * size^2
+
+    2 *  1 * 2 * 128^2 +
+    4 *  2 * 2 *  64^2 +
+    4 *  4 * 2 *  32^2 +
+    4 *  8 * 2 *  16^2 +
+    4 * 16 * 2 *   8^2 =  188,416
+
+ or over 20 times the computation of the simple approach.
+
+ Of course, the ideal would be
+
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    ------------------------------mix------------------------------
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+    ------------------------------mix------------------------------
+    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+
+ If we use the simple mixer we have 4 * 128 = 512; with the IDEA-type
+ mixer, we have a cost of 2 * 2 * (128)^2 or 65,536; approximately
+ 128 times the cost of the simple approach.
+
+ Is the version with the IDEA-type mixer stronger?  Probably.  But
+ is it likely to be stronger than, say, 100 sequential versions using
+ the simple mixer, which would require about the same processing?
+
+ Sometimes added strength is not worth the cost.
+
+ ---
+ Terry Ritter   ritter@cactus.org (cactus.org dies March 18)
+                ritter@rts.com
+                ritter@io.com (perhaps temporarily)
+
+
+From msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin Sat Mar 19 21:39:34 1994
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!vixen.cso.uiuc.edu!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar15.124011.19463@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Keywords: DES replacement, Large blocks
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar14.223702.6452@mnemosyne.cs.du.edu> <1994Mar15.065615.3895@cactus.org>
+Date: Tue, 15 Mar 94 12:40:11 GMT
+Lines: 123
+
+In article <1994Mar15.065615.3895@cactus.org>,
+Terry Ritter <ritter@cactus.org> wrote:
+>
+>
+> In: <1994Mar14.223702.6452@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+> (Colin Plumb) comments on block mixing transforms:
+
+>>From A+B, it is easy to obtain most of T, save only the term of p which
+>>may be added in the modular reduction.
+>>
+>>Because this depends on the high
+>>bit of A+B, it is also easy to see when this has been added.
+>
+> Well, the original polynomial reduction (when p is added) is
+> conditional upon the shifted-out-and-lost upper bit of T.
+> It is not there (not in the output) to see.
+
+Yes it is.  T is A^B, which is the same as X^Y.  The high bit is
+highly visible.
+
+> Certainly we can expect to form the inverse T (say, T') given
+> both X and Y.  Then, if we had access to A and B, we could see
+> what p was when it was added.  Hopefully, we will not have that
+> access.  I believe I made that requirement clear:
+>
+>>> It is crucial to remember that these simple, high-speed, but linear
+>>> mixing transforms can be said to have "strength" only if the input
+>>> and output values are never both available.  That is, these
+>>> structures do not by themselves handle "known-plaintext" attack.
+>>> (Of course, the same could be said for many other simple internal
+>>> mechanisms used in block cipher construction.)
+
+And I observed that half the bits of the input are trivially derivable
+from the output (A^B = X^Y), and the other half are also trivially derivable
+half the time (and you know which half!), and almost as easy the other
+half of the time.
+>
+> In many (most?) cases A and B should already be randomized by the
+> time they get to the mixer being attacked.  Without "exploitable
+> patterns," finding p will get a whole lot trickier.
+
+If that's the case, almost any mixing pattern will suffice.
+
+> It certainly is true that the structure is weak.  Since it is weak,
+> it must be protected.  But when the structure is protected, finding
+> p becomes difficult.
+>
+> Anyway, I claim the real issue is: "Does it mix well?"  The answer
+> may be: "Not all that well, but we can afford to do a lot of it."
+
+> One of the examples in the original article showed 61 mixing
+> operations for a single 256-bit block operation.  Given that
+> the mixing structure is so weak, perhaps a better approach
+> would be:
+>
+>    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+>    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+>    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+>    ------mix------ ------mix------ ------mix------ ------mix------
+>    --------------mix-------------- --------------mix--------------
+>    ------------------------------mix------------------------------
+>    --------------mix-------------- --------------mix--------------
+>    ------mix------ ------mix------ ------mix------ ------mix------
+>    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+>    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+>    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+>    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+>    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+>    ------mix------ ------mix------ ------mix------ ------mix------
+>    --------------mix-------------- --------------mix--------------
+>    ------------------------------mix------------------------------
+>    --------------mix-------------- --------------mix--------------
+>    ------mix------ ------mix------ ------mix------ ------mix------
+>    --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix-- --mix--
+>    mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix mix
+>    S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S
+>
+> This is 122 total mixing operations, but they are O(n) so the
+> cost is something like 4 * 18 * 128 = 9216 (and probably less).
+
+My observation about the extremely high degree of linearity in the
+operation was that anything made up only of these mixing operations
+is weak.  I'm not sure the above is more trustworthy than the
+substitutions.
+>
+>   levels * mixings-per-level * cost-per-mixer * size
+>
+>    2 *  1 * 4 * 128 +
+>    4 *  2 * 4 *  64 +
+>    4 *  4 * 4 *  32 +
+>    4 *  8 * 4 *  16 +
+>    4 * 16 * 4 *   8 =  9216
+
+Oh!  You were using super-wide mixers.  I was assuming you were using
+a fixed-width mixer, in  FFT butterfly style:
+
+_        _
+ \ /\   /
+  *  \ /
+_/ \  *  _
+    \/ \/
+_   /\ /\_
+ \ /  *  
+  *  / \
+_/ \/   \_
+
+> If we use the IDEA-derived mixer we have:
+>
+>   levels * mixings-per-level * cost-per-mixer * size^2
+>
+>    2 *  1 * 2 * 128^2 +
+>    4 *  2 * 2 *  64^2 +
+>    4 *  4 * 2 *  32^2 +
+>    4 *  8 * 2 *  16^2 +
+>    4 * 16 * 2 *   8^2 =  188,416
+>
+> or over 20 times the computation of the simple approach.
+
+I see your idea now.  Changing the widths like that will require a bit
+more thinking.  The preservation of Z^B still applies, but the substitutions
+-- 
+	-Colin
+make it rather more complex.
+
+From msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!cactus.org!ritter Sat Mar 19 21:39:34 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!cactus.org!ritter
+From: ritter@cactus.org (Terry Ritter)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar15.194249.28915@cactus.org>
+Keywords: DES replacement, Large blocks
+Organization: Capital Area Central Texas UNIX Society, Austin, Tx
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar15.124011.19463@mnemosyne.cs.du.edu>
+Date: Tue, 15 Mar 1994 19:42:49 GMT
+Lines: 57
+
+
+ In <1994Mar15.124011.19463@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+ (Colin Plumb) writes:
+
+
+>T is A^B, which is the same as X^Y.  The high bit is
+>highly visible.
+
+ Yup.  I had not seen it.
+
+
+>And I observed that half the bits of the input are trivially derivable
+>from the output (A^B = X^Y), and the other half are also trivially derivable
+>half the time (and you know which half!), and almost as easy the other
+>half of the time.
+
+ Yes.  They are much weaker even than I had thought.
+
+
+>> In many (most?) cases A and B should already be randomized by the
+>> time they get to the mixer being attacked.  Without "exploitable
+>> patterns," finding p will get a whole lot trickier.
+>
+>If that's the case, almost any mixing pattern will suffice.
+
+ OK, let's see some alternatives.
+
+ Then we can itemize their strengths and weaknesses and put them
+ in a design catalog.
+
+
+>My observation about the extremely high degree of linearity in the
+>operation was that anything made up only of these mixing operations
+>is weak.  I'm not sure the above is more trustworthy than the
+>substitutions.
+
+ Fine by me.  96 8-bit substitutions means 256!^96 keys.
+
+ (Obviously we initialize this state by shuffling with a
+ cryptographic RNG, but we can make that RNG just as large as we
+ want and seed it with all the key material we want.)
+
+ Just the 32 substitutions in the middle would be more than secure,
+ *provided* all the stuff around them spread their effects and
+ prevented them from being attacked separately.
+
+ All we need the mixings to do is to mix.  Essentially, we want to
+ end up with the effect of a bit change in any particular position
+ being spread among the entire output (statistically), after a set
+ of mixings.  If this can be accomplished, we can use small,
+ practical substitutions to make a large-block cipher.
+
+ ---
+ Terry Ritter   ritter@cactus.org (cactus.org dies on the 18th)
+                ritter@rts.com
+                ritter@io.com  (perhaps temporarily)
+
+
+From msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin Sat Mar 19 21:39:35 1994
+Newsgroups: sci.crypt
+Path: msuinfo!agate!howland.reston.ans.net!cs.utexas.edu!uunet!mnemosyne.cs.du.edu!nyx10!colin
+From: colin@nyx10.cs.du.edu (Colin Plumb)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar16.010710.4943@mnemosyne.cs.du.edu>
+X-Disclaimer: Nyx is a public access Unix system run by the University
+ 	of Denver for the Denver community.  The University has neither
+ 	control over nor responsibility for the opinions of users.
+Keywords: DES replacement, Large blocks
+Sender: usenet@mnemosyne.cs.du.edu (netnews admin account)
+Organization: Nyx, Public Access Unix at U. of Denver Math/CS dept.
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar15.124011.19463@mnemosyne.cs.du.edu> <1994Mar15.194249.28915@cactus.org>
+Date: Wed, 16 Mar 94 01:07:10 GMT
+Lines: 140
+
+In article <1994Mar15.194249.28915@cactus.org>,
+Terry Ritter <ritter@cactus.org> wrote:
+>
+> In <1994Mar15.124011.19463@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+> (Colin Plumb) writes:
+>
+>
+>>T is A^B, which is the same as X^Y.  The high bit is
+>>highly visible.
+>
+> Yup.  I had not seen it.
+
+Okay, time to comme clean: I get a bit annoyed when I see a fancily-formatted
+"report" that might fool some people when such glaring points as this are
+wide open.  It seems enormously pretensious and makes me think poorly
+about the author.  Sorry if it's unkind, but it's true that a part of
+my mind is saying "I wish Terry would quit posting his `clever' ideas
+until he learns thing one about cryptanalysis."
+
+>>My observation about the extremely high degree of linearity in the
+>>operation was that anything made up only of these mixing operations
+>>is weak.  I'm not sure the above is more trustworthy than the
+>>substitutions.
+>
+> Fine by me.  96 8-bit substitutions means 256!^96 keys.
+
+Yes, it's called polyalphabetic substitution and ciphertext-only attacks
+are trivial.  (Remember that the 26! = 403291461126605635594000000
+possible keys to a basic momoalphabetic substitution is more than 88
+bits; larger than the Skipjack key size.  And yet newspapers routinely
+print short stretches of ciphertext for people to solve for amusement.)
+
+Now, the mixing probably makes it harder, but I'm not convinced it's
+that much harder.
+
+> (Obviously we initialize this state by shuffling with a
+> cryptographic RNG, but we can make that RNG just as large as we
+> want and seed it with all the key material we want.)
+>
+> Just the 32 substitutions in the middle would be more than secure,
+> *provided* all the stuff around them spread their effects and
+> prevented them from being attacked separately.
+>
+> All we need the mixings to do is to mix.  Essentially, we want to
+> end up with the effect of a bit change in any particular position
+> being spread among the entire output (statistically), after a set
+> of mixings.  If this can be accomplished, we can use small,
+> practical substitutions to make a large-block cipher.
+
+There are two desirable properties in a mixing: non-linearity (see all
+the papers on bent functions, which are functions a maximum Hamming
+distance from any affine function) and the Strict Avalanche Criterion.
+Which means that, over all possible values of the other n-1 bits, changing
+one inut bit has a 50% probability of changing each output bit.
+(Higher-order SAC constraints require this to hold for subsets of the
+set of excluded input bits. E.g. 2nd order requires that if any one
+of the n-1 other inputs is fixed, the probability is still 50% over
+all combinations of the remaining n-2 bits.)
+
+Now, let's see what your proposed mixing function does.  Changing bit k
+of A will change bit k of Y and bit k+1 of both X and Y.  Unless k=n-1,
+in which case it will change the bits corresponding to the bits set in
+the polynomial p.  But in most cases, toggling one input bit toggles three
+output bits.  In all cases, there is no dependency on any other input
+bits; the function is completely linear.
+
+You might want to look at the following papers from Eurocrypt '93.
+The proceedings have now been published by Springer-Verlag, in their
+Lecture Notes on Computer Science series.  Tor Helleseth (Ed.).  The
+full title is "Advanced in Cryptology - Eurocrypt '93" and the ISBN number
+is 3-540-57600-2 and 0-387-57600-2.
+
+Anyway, the papers:
+Differentially uniform mappings for cryptography, K. Nyberg
+On almost perfect nonlinear permutations, T. Beth, C. Ding
+Two new classes of bent functions, C. Carlet
+Boolean functions satisfying a higher order strict avalanche criterion
+	T.W. Cusick
+On constructions and nonlinearity of correlation immune functions
+	J. Seberry, X.-M. Zhang, Y. Zheng
+
+These talk about useful properties for mixing functions.
+
+Another thing about your proposed mixing function is that the bits that
+get modified are close to each other.  Modifying a bit and the bit
+next to it produces the following pattern of differentials:
+
+        1
+       11
+      101
+     1111
+    10001
+   110011
+  1010101
+ 11111111
+100000001
+
+This is immediately recognizable as Pascal's triangle, but serves to
+illustrate the fact that a 1-bit change in the input is slow to propagate.
+Because you only hav three levels of S-boxes, I suspect the whole thing
+can be reduced to a system of simultaneous equations of reasonable size
+and solved with a bunch of known plaintext that is basically the size
+of the unicity distance.
+
+Cryptanalysis is difficult.  I am not any good at it, to speak of.
+(My general rule is that anything I can find a chink in, someone good
+can probably find a hole in you could drive a Mack truck through.)
+If you look at papers proposing ciphers, you'll see that the onus is
+on the proposer to show that a number of known methods of cryptanalysis
+are ineffective.  "Show" does not mean "I couldn't do it", but "Here
+is a proof that nobody can do it."  The requirement for proof can be
+weakened to an argument, but Xuejia Lai's PhD Thesis gives a good
+example to try to emulate.  More work on the subject can be seen in the
+Eurocrypt '93 paper
+
+Markov ciphers and alternating groups, G. Hornauer, W. Stephan, R. Wernsdorf.
+
+Cryptography is harder than cryptanalysis.  Cryptanalysis (of modern ciphers)
+is extremely difficult.  I'm not qualified to do either, although I'm
+slowly working my way through the cryptanalytic literature in an attempt
+to develop a modicum of skill.
+
+One cipher that might be worth exploring is one based on an FFT-like mixing
+pattern (all butterflies the same size), with S-boxes after each round of the
+FFT.  But if you were to stick to 8-bit mixing, you could merge the mixing
+function with the previous S-box by having each of the two input S-boxes
+to the mixer emit 16 bits, which are XORed and the two halves used as outputs.
+And that would permit much more complex mixing functions with no increase
+in cost.
+
+Even then, I'm not sure if one pass through the FFT network would be enough.
+Each input byte has only one chance to affect each output byte; that
+could make solutions comparatively simple.  I'd prefer at least two
+rounds.
+
+But remember, these are all off-the-cuff ideas; if I were to start work
+now and not find any holes after 6 months of effort, it might be worth
+considering using them to protect data.
+-- 
+	-Colin
+
+From msuinfo!uwm.edu!cs.utexas.edu!cactus.org!ritter Sat Mar 19 21:39:35 1994
+Newsgroups: sci.crypt
+Path: msuinfo!uwm.edu!cs.utexas.edu!cactus.org!ritter
+From: ritter@cactus.org (Terry Ritter)
+Subject: Re: Block Mixing Transformations
+Message-ID: <1994Mar16.093035.1330@cactus.org>
+Keywords: DES replacement, Large blocks
+Organization: Capital Area Central Texas UNIX Society, Austin, Tx
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar16.010710.4943@mnemosyne.cs.du.edu>
+Date: Wed, 16 Mar 1994 09:30:35 GMT
+Lines: 236
+
+
+ In <1994Mar16.010710.4943@mnemosyne.cs.du.edu> colin@nyx10.cs.du.edu
+ (Colin Plumb) writes:
+
+
+>Okay, time to comme clean: I get a bit annoyed when I see a fancily-formatted
+>"report" that might fool some people when such glaring points as this are
+>wide open.  It seems enormously pretensious and makes me think poorly
+>about the author.  Sorry if it's unkind, but it's true that a part of
+>my mind is saying "I wish Terry would quit posting his `clever' ideas
+>until he learns thing one about cryptanalysis."
+
+ Frankly, I think this says more about Colin Plumb than Terry Ritter.
+
+ When Plumb publishes a practical cryptosystem which he can *prove*
+ secure, then I'm sure the rest of us will take some notice.  Until
+ then, we all must learn to deal with--and depend upon--not only
+ proposals, but actual fielded systems of unknown strength.
+
+ Frankly, I think the *practice* of Science--and especially
+ cryptography--is benefitted more from the exposure of reasonable
+ wrong approaches than right ones.  Nobody comes up with only great
+ ideas; to publish only after a great one is finally found and
+ confirmed is to hide what the work of Science actually is.  The
+ work is the process, not the result.  There will always be another
+ result.
+
+ And, sci.crypt is not a refereed publication.  I do not expect
+ to treat it like one.
+
+
+>Yes, it's called polyalphabetic substitution and ciphertext-only attacks
+>are trivial.
+
+ Well, the term "polyalphabetic substitution" is normally applied
+ to stream ciphers instead of block ciphers.  To apply it here,
+ we must already have come to the conclusion that the mixing is
+ so ineffective that individual characters are enciphered--through
+ the entire cipher--by independent substitutions.  This seems
+ unlikely, but in any case it has not been shown.  Thus, the
+ term is inappropriate.
+
+ Perhaps, after some study, Plumb would recognize that substitution
+ is "weak" precisely to the extent that it can be separated and
+ investigated.  Plumb might also want to look at the construction
+ of DES for an example of the use of small, extremely-weak
+ substitutions as major parts of a very respected cryptosystem.
+
+
+>Now, the mixing probably makes it harder, but I'm not convinced it's
+>that much harder.
+
+ A critical comment made without benefit of analysis?  "It seems
+ enormously pretensious and makes me think poorly about the author."
+
+
+>There are two desirable properties in a mixing: non-linearity (see all
+>the papers on bent functions, which are functions a maximum Hamming
+>distance from any affine function) and the Strict Avalanche Criterion.
+
+ 1)  Keyed substitution is inherently non-linear.  (The probability
+ of a linear randomized substitution is vanishingly small.)
+
+ 2)  It is easy to build weak ciphers which have good avalanche
+ properties.
+
+ The whole point of my proposal is to separate the mixing from the
+ strength.  A cipher with extremely fast, weak mixing may well be
+ preferable to the slow form Plumb proposed, which turns out in fact
+ to be 20-50 times slower. (!!!!)
+
+ Think about it:  Using the fast mixing I proposed, one can afford
+ to make a block cipher with perhaps 20 times as many stages--and 20
+ times as many unique substitution tables--as one with Plumb's
+ "improved" mixer.  I would say that there is at least a reasonable
+ chance that the cipher with the fast mixer--having up to 20 times
+ as many stages--would be a stronger cipher.  And if it could be
+ better analyzed for strength, use fewer stages and operate faster
+ as well, so much the better.
+
+
+>This is immediately recognizable as Pascal's triangle, but serves to
+>illustrate the fact that a 1-bit change in the input is slow to propagate.
+
+ One of the characteristics I mentioned for the fast mixing function
+ was the fact that a single bit-change in *either* input block would
+ produce at least (and probably) a bit change in *both* output
+ blocks.  A modest propagation, true, but it rolls through 61 mixing
+ operations per stage.  The reason for cascading the mixings is to
+ spread the various changes throughout the field of substitution
+ inputs.
+
+ As soon as even one bit changes into a substitution, we get an
+ inherent "avalanche" in the output from that substitution.  Thus,
+ the role of the mixing is to get bit changes into (potentially)
+ all the substitutions.
+
+
+>Because you only hav three levels of S-boxes, I suspect the whole thing
+>can be reduced to a system of simultaneous equations of reasonable size
+>and solved with a bunch of known plaintext that is basically the size
+>of the unicity distance.
+
+ Big talk.  Let's see it.
+
+
+>Cryptography is harder than cryptanalysis.
+
+ Not in my experience.
+
+
+>Cryptanalysis (of modern ciphers)
+>is extremely difficult.  I'm not qualified to do either, although I'm
+>slowly working my way through the cryptanalytic literature in an attempt
+>to develop a modicum of skill.
+
+ Interesting, then, that Plumb feels so capable of judgement.
+
+
+>If you look at papers proposing ciphers, you'll see that the onus is
+>on the proposer to show that a number of known methods of cryptanalysis
+>are ineffective.
+
+ If someone were to actually read my Block Mixing article, s/he
+ would see that it was concerned with the existence of such
+ structures, and with one fast structure in particular.
+
+ That structure works.  It reversibly mixes without expansion.
+ The article is not in error.  I did expect the mixing to be
+ stronger than it turned out to be, but "strength" was specifically
+ disclaimed as an issue.
+
+ The article was not concerned with overall cryptosystems, other
+ than to explain why one might want a Block Mixing structure in
+ the first place, and to propose some cipher constructs which
+ might be worth investigating.  It specifically stated:
+
+    "These are new ciphering architectures.  Clearly, it is not
+    known how strong these constructs would be."
+
+ and
+
+    "Other opportunities exist when constructing completely new
+    block ciphers.  These might, for example, be based on byte-wide
+    key-permuted substitutions, thus avoiding differential attacks
+    on fixed "optimal" tables."
+
+ Since the article was specifically limited to detailed discussion
+ of the *mixing*, it does seem a little odd that it would be
+ criticized for not being a proven cipher.
+
+
+>"Show" does not mean "I couldn't do it", but "Here
+>is a proof that nobody can do it."
+
+ Ah, then we must *have* practical cryptosystems which are proven
+ secure.  Which ones would those be, exactly?
+
+
+>The requirement for proof can be
+>weakened to an argument, but Xuejia Lai's PhD Thesis gives a good
+>example to try to emulate.
+
+ While emulating someone else's thesis may be Plumb's highest goal,
+ it certainly is not mine.
+
+ Postings to sci.crypt are not, and should not be considered to be,
+ scientific publications.  We need room to speculate, room to fail
+ without career implications, and room to consider alternative
+ approaches that your PhD advisor may not like.  One of these may
+ lead to better solutions.  Or not.
+
+ We have a lot of people laboring in secret because they are afraid
+ to say anything and get the kind of response we see from Plumb.
+ We are all poorer for it; those who read because we don't read the
+ new ideas, and those who don't write, because it is through error
+ that they learn more than they know.
+
+
+>One cipher that might be worth exploring is one based on an FFT-like mixing
+>pattern (all butterflies the same size), with S-boxes after each round of the
+>FFT.  But if you were to stick to 8-bit mixing, you could merge the mixing
+>function with the previous S-box by having each of the two input S-boxes
+>to the mixer emit 16 bits, which are XORed and the two halves used as outputs.
+>And that would permit much more complex mixing functions with no increase
+>in cost.
+
+ It would certainly be a different cipher.  But it would be moving in
+ the opposite direction from my proposal, which specifically intends
+ to separate the concepts of "strength" and "mixing" each into their
+ own particular mechanism.
+
+ One of the major problems with modern cipher design is the inability
+ to *measure* "strength."  It is very easy to say "this mixer is
+ nonlinear so it must be stronger."  It is easy to *say*, but not so
+ easy to prove.  And very few academic papers even begin to approach
+ the idea that "stronger" may not be worth the expense, if it takes
+ 20 times as long.
+
+ I have proposed to finesse the issue of unknown mixing strength
+ by placing the strength in particular simple components in a
+ relatively simple structure.  If this approach is successful, we
+ can avoid speculating about the "strength" of the mixing, since
+ it is exactly this speculation which leads to the question of "How
+ many rounds do we need."  Where is the formula which provides that
+ answer?
+
+ If the approach is not successful, we know yet one more thing
+ that does not work, and, hopefully, why.  And this knowledge must
+ benefit the continued search.
+
+
+>But remember, these are all off-the-cuff ideas; if I were to start work
+>now and not find any holes after 6 months of effort, it might be worth
+>considering using them to protect data.
+
+ I certainly am not using any of the many schemes I suggested in
+ the article to protect data.
+
+ However, I have not seen a sufficient problem with it to prevent
+ continued investigation in that direction.
+
+ Until that succeeds, Plumb might consider using my Penknife email
+ cipher for DOS.  Admittedly quite a stretch from the theories
+ tossed around here, Penknife is an honest, fielded, commercial
+ stream-cipher product which does not infringe anyone else's patent.
+ It is based on my own patent for Dynamic Substitution, which was
+ described in my (refereed) Cryptologia article of October 1990.
+ Penknife also uses random-number techniques described in my
+ Cryptologia article (59 pp., 213 refs) of April 1991.
+
+ ---
+ Terry Ritter   ritter@cactus.org  (cactus.org dies Friday)
+                ritter@io.com  (perhaps temporarily)
+                ritter@rts.com  (perhaps temporarily)
+
+
+From msuinfo!uwm.edu!math.ohio-state.edu!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585 Sat Mar 19 21:40:42 1994
+Path: msuinfo!uwm.edu!math.ohio-state.edu!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: Re: Block Mixing Transformations
+Date: Fri, 18 Mar 94 19:39:48 CST
+Organization: University of Missouri, Columbia
+Lines: 47
+Message-ID: <16F7D11487S86.C445585@mizzou1.missouri.edu>
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar14.223702.6452@mnemosyne.cs.du.edu> <1994Mar15.065615.3895@cactus.org>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+In article <1994Mar15.065615.3895@cactus.org>
+ritter@cactus.org (Terry Ritter) writes:
+ 
+> If we use the simple mixer we have 4 * 128 = 512; with the IDEA-type
+> mixer, we have a cost of 2 * 2 * (128)^2 or 65,536; approximately
+> 128 times the cost of the simple approach.
+>
+> Is the version with the IDEA-type mixer stronger?  Probably.  But
+> is it likely to be stronger than, say, 100 sequential versions using
+> the simple mixer, which would require about the same processing?
+>
+> Sometimes added strength is not worth the cost.
+ 
+   Hmmm.  Are you familiar with Merkle's Khufu and Wood's REDOC cryptosystems?
+Both of these use a scheme that could be used for cheap, fast mixing of blocks.
+ 
+   The basic idea:  To mix two 64-bit blocks, you first do some pre-
+processing, to generate a key table (Wood's term) of 256 64-bit entries.
+These are secret, derived from key information, probably by running your
+general block cipher over a buffer containing key material in CBC mode
+over and over again.  (Merkle's Khufu does this.)  The general idea:
+   Let T(i) be the ith 64-bit key table entry.  Let L be the left 64-bit
+block, and R be the right 64-bit block.  Let R_i be the ith byte of R.
+ 
+   For i = 0 to 7 Do Begin
+     L = L xor T(R_i)
+     R = R xor T(L_i)
+   End
+ 
+   Now, you've done 16 XORs and table lookups.  The table takes 2048 bytes,
+so it will fit into a 4K cache.  The same general scheme can be extended to
+blocks of arbitrary length, and there are huge numbers of possible variations.
+The general idea, however, seems to have cropped up independently in REDOC
+and Khufu -- Use the bytes being encrypted to select which key bytes to XOR
+into your block.  By itself, one complete trip through the two blocks isn't
+enough to guarantee any kind of cryptographic strength, but it *is* enough
+to make every bit depend on every other bit--except for the bits in the last
+byte of each block.  To get those, too, after you're done with the above,
+re-process the first byte in each block, ie L = L xor K(R_0), R = R xor K(L_0)
+ 
+> ---
+> Terry Ritter   ritter@cactus.org (cactus.org dies March 18)
+>                ritter@rts.com
+>                ritter@io.com (perhaps temporarily)
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu
+ 
+
+From msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585 Sat Mar 19 21:48:17 1994
+Path: msuinfo!agate!howland.reston.ans.net!europa.eng.gtefsd.com!MathWorks.Com!zombie.ncsc.mil!golf!mizzou1.missouri.edu!C445585
+From: C445585@mizzou1.missouri.edu
+Newsgroups: sci.crypt
+Subject: Khufu, REDOC III, and patent issues
+Date: Sat, 19 Mar 94 15:14:07 CST
+Organization: University of Missouri, Columbia
+Lines: 44
+Message-ID: <16F7ED641S86.C445585@mizzou1.missouri.edu>
+References: <1994Mar13.051515.27175@cactus.org> <1994Mar14.223702.6452@mnemosyne.cs.du.edu> <1994Mar15.065615.3895@cactus.org> <16F7D11487S86.C445585@mizzou1.missouri.edu>
+NNTP-Posting-Host: mizzou1.missouri.edu
+
+   I should add a couple of comments to my earlier post about using a
+REDOC-III or Khufu-like scheme for block mixing.  First, the scheme I
+described might infringe on someone's patent--my guess is that it would
+come closer to infringing on Merkle's than Wood's, but I'm about as far
+from being a legal expert as you can get.  The general idea of using
+key-generated tables of possible keys, and then using the block being
+processed by the cipher to select which key to XOR into the rest of
+the block, seems kind-of broad to be patentable, but then, so do a lot
+of current patents.
+ 
+   Second, the general idea of this kind of operation could also be used
+to strongly interrelate a large block, like the MD2-like operations of
+DESX.  For example, with a given key table K() of 64-bit key blocks, first
+pre-xor the block with something, maybe repetitions of a 63-bit value
+or something.  Next:
+ 
+   Let blocks be X(0) to X(7) (for a concrete example).  Let bytes be
+b(0) to b(63).  Let K(i) be the ith key table entry:
+ 
+   For i = 0 to 63 Do
+      XOR K(b(i)) into b(i+1)..b(i+8)
+   End
+ 
+   If you repeat this twice, you probably have some pretty strongly
+interrelated blocks.  You might wind up using several different variations
+of the same key table, with 128-bit entries that are half 0's, for
+speed.
+ 
+   Again, I don't know whether this would infringe on anyone's patents.
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu
+ 
+Sideline note:
+ 
+   Looking at REDOC-III's structure vs. 16-round Khufu's structure, they
+looked pretty comparable in terms of security.  Merkle varied the s-boxes
+after each 8 rounds, where Wood didn't vary the key table--but then, with
+only 16 "rounds," it's not clear to me whether this is a major security
+problem.  Wood XORs in 56 bits of key material each time, where Merkle
+sticks with the standard Feistel-type scheme and XORs in only 32 bits
+of key material at a time.  Any thoughts about how these differences
+affect security?
+ 
+   --John Kelsey, c445585@mizzou1.missouri.edu
+

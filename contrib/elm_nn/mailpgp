@@ -1,0 +1,212 @@
+#!/usr/bin/perl
+# -*- Perl -*-
+
+# written by jason steiner, jsteiner@anwsun.phya.utoledo.edu, Jan 1993
+#
+# if you use or make improvements to this program i would appreciate
+# copies of your modifications & your PGP public key.
+#
+
+# Modified by Greg Spencer, greg@graphics.cornell.edu, May 1994
+# Mostly just cleaned up things and added stuff like automatic
+# addition and detection (and ignoring) of keys to be added to keyring,
+# and signal catching, as well as environment variable control of
+# most site-specific stuff.
+#
+# Must set the following environment variables:
+#
+# EDITOR or VISUAL set to editor of choice
+#
+# PGPCOMMAND set to the pgp decryption command
+#
+# PGPID or SIGNATURE set to the id you wish to
+# have used for your pgp signatures, etc.
+#
+# PREFIX set to the forwarded message prefix that you use
+#
+
+# setup some variables
+($visual = $ENV{'EDITOR'}) || ($visual = $ENV{'VISUAL'}) || ($visual = '/usr/ucb/vi');
+($pgpcommand = $ENV{'PGPCOMMAND'}) || ($pgpcommand = "/usr/local/bin/pgp");
+#($myname = $ENV{'PGPID'}) || ($myname = $ENV{'SIGNATURE'});
+($prefix = $ENV{'PREFIX'}) || ($prefix = "> ");
+$topgp = 0;
+$blanks = 0;
+$paragraphs = 1;
+$blankcompress = 1;
+$name=@ARGV[$#ARGV];
+
+#temporary file names
+$rplyfile = "$name.rply";
+$pgpfile  = "$name.pgp";
+$ascfile  = "$name.asc";
+$clrfile  = "$name.clr";
+
+# trap signals so we don't leave
+# (possibly sensitive!) garbage around
+sub catcher {
+	local($sig) = @_;
+
+	print "Caught a SIG$sig -- exiting\n";
+	close (OUTPUT);
+	close (PGPFILE);
+	close (CLEAR);
+	close (INPUT);
+	unlink ("$pgpfile");
+	unlink ("$rplyfile");
+	unlink ("$clrfile");
+	unlink ("$ascfile");
+}
+
+$SIG{'INT'}  = 'catcher';
+$SIG{'QUIT'} = 'catcher';
+$SIG{'HUP'}  = 'catcher';
+$SIG{'KILL'} = 'catcher';
+
+# parse the input file to see if we're replying to an encrypted message
+# user may need to type in pass phrase to decode
+umask (077);
+open (INPUT, "<$name");
+open (OUTPUT, ">$rplyfile") || die "Cannot open $rplyfile for output.\n";
+while (<INPUT>) {
+	# make sure to allow printing of key blocks
+	if (!$topgp && (!m/^$prefix-----BEGIN PGP .*-----/ || m/^$prefix-----BEGIN PGP PUBLIC KEY BLOCK-----/)) {
+		if (m/^$prefix*$/) {
+			if ($paragraphs) {
+				if ($blankcompress) {
+					if ($blanks == 0) {
+						print OUTPUT "\n";
+						$blanks = 1;
+					}
+				} else {
+					print OUTPUT "\n";
+				}
+			} else {
+				print OUTPUT;
+			}
+		} elsif (m/^[ \t\r]*$/) {
+			if ($blankcompress) {
+				if ($blanks == 0) {
+					print OUTPUT "\n";
+					$blanks = 1;
+				}
+			} else {
+				print OUTPUT;
+			}
+		} else {
+			print OUTPUT;
+			if ($. == 1 && !m/^$prefix/) {
+				print OUTPUT "\n";
+				$blanks = 1;
+			} else {
+				$blanks = 0;
+			}
+		}
+	}
+	# make sure to skip key blocks because we already did 'em in morepgp
+	if (!$topgp && m/^$prefix-----BEGIN PGP .*-----/ && !m/^$prefix-----BEGIN PGP PUBLIC KEY BLOCK-----/ ) {
+		$topgp = 1;
+		unlink ($pgpfile);
+		open (PGPFILE, ">$pgpfile") || die "Cannot open $pgpfile for output.\n";
+	}
+	if ($topgp) {
+		$_ =~ s/^$prefix//;
+		print PGPFILE $_;
+		# make sure to skip key blocks because we already did 'em in morepgp
+		if (m/^-----END PGP .*-----/ && !m/^-----END PGP PUBLIC KEY BLOCK-----/) {
+			$blocktype = $_;
+			$blocktype =~ s/^-----END (PGP .*)-----/$1/;
+			$blocktype =~ s/PGP MESSAGE/DECRYPTED MESSAGE/;
+			$blocktype =~ s/PGP SIGNATURE/SIGNED MESSAGE/;
+			chop ($blocktype);
+			$topgp = 0;
+			close (PGPFILE);
+			system ("$pgpcommand $pgpfile -o $clrfile > /dev/tty 2>&1");
+			open (CLEAR, "<$clrfile") || die "Cannot open $clrfile for input.\n";
+			print OUTPUT "$prefix-----BEGIN $blocktype-----\n> \n";
+			$blanks = 0;
+			while (<CLEAR>) {
+				if (m/^[ \t\r]*$/) {
+					if ($paragraphs) {
+						if ($blankcompress) {
+							if ($blanks == 0) {
+								print OUTPUT "\n";
+								$blanks = 1;
+							}
+						} else {
+							print OUTPUT "\n";
+						}
+					} else {
+						print OUTPUT "$prefix\n";
+					}
+				} else {
+					print OUTPUT "$prefix";
+					print OUTPUT;
+					$blanks = 0;
+				}
+			}
+			close (CLEAR);
+			unlink ($clrfile);
+			unlink ($pgpfile);
+			print OUTPUT "$prefix-----END $blocktype-----\n\n";
+		}
+	}
+}
+close OUTPUT;
+close INPUT;
+unlink ($name);
+rename ("$rplyfile", "$name");
+
+system ($visual, @ARGV);
+
+while (!$q) {
+	print "\nSign this message? [Y]: ";
+	$q = <STDIN>;
+	$q =~ s/[ \t\n]//g;
+	$q = substr ($q, 0, 1);
+	if (($q eq 'Y') || ($q eq 'y') || ($q eq '')) {
+		push (@opts, '-st', '+clearsig=on');
+		$q = "y";
+	} elsif (($q ne 'N') && ($q ne 'n')) {
+		$q = '';
+	}
+}
+
+# note that it is the default to NOT encrypt,
+# simply because not everyone has PGP (unfortunately :-)
+$q='';
+while (!$q) {
+	print "Encrypt this message? [N]: ";
+	$q = <STDIN>;
+	$q =~ s/[ \t\n]//g;
+	$q = substr ($q, 0, 1);
+	if (($q eq 'Y') || ($q eq 'y')) {
+		push (@opts, '-e');
+		$q = "y";
+	} elsif (($q eq 'N') || ($q eq 'n') || ($q eq '')) {
+		$q = "n";
+	} else {
+		$q = '';
+	}
+}
+
+if (@opts) {
+	if ($q eq 'y') {
+		print "Enter receipients, each on a separate line, terminate with EOF or a single `.':\n";
+		{
+			print "> ";
+			if ($_ = <STDIN>) {
+				chop;
+				last if ("$_" eq '.');
+				push (@receipients, "$_");
+				redo;
+			}
+			last;
+		}
+	}
+	system ($pgpcommand, '-a', @opts, "$name", @receipients);
+	if ($? == 0) {
+		unlink ($name);
+		rename ("$ascfile", "$name");
+	}
+}

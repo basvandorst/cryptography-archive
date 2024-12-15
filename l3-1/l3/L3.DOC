@@ -1,0 +1,276 @@
+L3 is a simple public key package which uses LUC encryption.
+It is based on the GNU gmp library.
+
+I'm not going to explain the theory of public key cryptography here.
+There are lots of books and other references which will tell you
+about it. LUC is described in the Jan 1993 issue of Dr. Dobb's Journal 
+
+Disclaimer: USE THIS SOFTWARE AT YOUR OWN RISK. This means
+that you understand that if the security of this system is broken
+or a legal challenge is issued to your right to use this system
+you are wholly responsible for the consequences of the use
+of the software. No warranty is provided.
+
+In other words, read the code, understand it, and then you might 
+decide to trust it. LUC hasn't really been around long enough to 
+have a great degree of trust in it, anyway.
+
+If you are looking for a full featured system for email &c., you're
+probably better off with RIPEM, PGP, TIS/PEM, another PEM implementation, 
+or something else which may not exist as of the time I'm writing this.
+However, there is no reason you couldn't use this with some scripts and
+something like prencode (included here). A few such sample perl scripts 
+are included in the utils directory and will be installed by the
+install procedure. See utils/README for some more details.
+
+BUILDING L3:
+With any luck you can get away with:
+1. building gmp 1.3 or fgmp 1.0
+2. editing the makefile (changing GMPDIR and INSTDIR)
+3. then typing make
+4. then type make install (possibly as root)
+
+You'll need an ANSI C compiler (perhaps unproto will work with 
+a K&R compiler). GMP is usually faster if built with gcc 
+version 2 or better.
+
+If you have getrusage, be sure to define GETRUSAGE in
+prandom.c
+
+---------------------------------------------------
+
+L3 SUPPORTS THE FOLLOWING OPERATIONS
+key generation
+self-signed public keys (sort of a low assurance certificate, prevents
+  a denial of service attack by changing key information)
+encrypting/decrypting
+signing/verifying signatures
+encrypt and verify signature operations will also verify the self-signatures
+ on public keys.
+
+This implementation of LUC is somewhere between 50% slower and twice as
+slow as RSA on the platforms for which I did testing.  The implementation 
+could certainly be fine-tuned for better performance.
+
+More operations could be added.
+
+---
+
+ENVIRONMENT VARIABLES
+
+L3PATH
+uses the standard Unix path variable syntax (: separated list). 
+It gives the search path for READING (but not writing) public
+and private keys. If L3PATH is not set, the default value of 
+"." is used.
+
+The first component of L3PATH must be writable (OK, I'm lazy, but that
+is where the seed file gets stored).
+
+e.g.
+csh users could use
+setenv L3PATH "$HOME/lkeys:." 
+to make L3 search for key files first in $HOME/lkeys, then in the
+current directory.
+
+I recommend leaving . off this path for security reasons.
+
+Note that genkey and ssk do not use L3PATH for writing key files. You
+should be in your key directory ($HOME/lkeys or whatever) when you 
+run these.
+
+
+
+L3ALG
+L3ALG can be set to either 1,2,3
+
+If L3ALG=1, RSA is used.
+if L3ALG=2, LUC is used.
+if L3ALG=3, a composition of RSA and LUC is used (slow)
+
+---
+
+How to generate an L3 public key.
+
+There are two steps to generating an L3 public key. The commands involved
+are "genkey" and "ssk". Before you decide
+
+Step 0. make a public key directory and cd into it. 
+        Decide on a file name to hold your key (I use mch). In the
+        examples below I'll use bob.
+Step 1. Execute
+        genkey bob 
+        (If you want to use a key size other than the default 1024 bits do 
+        genkey bob [keysize]
+        where keysize is the number of bits. keysize may range between
+        664 and 1900. operations with 1900 bit keys are very slow.)
+
+        You will be asked to type a random string. The security of
+        this system is dependent on your using a long string (and
+        actuallly typing it in, rather than just pasting it into your 
+        window).
+
+        You will also be asked to type in a passphrase for your secret key.
+        Don't forget this phrase and keep it secret.
+        This will take a few minutes to execute.
+        You can optionally include another argument after keysize which
+        contains some more "random" data in text form. For example, you might 
+        use the output of "netstat".
+
+Step 2. (Optional, but recommended)
+        Execute
+        ssk bob
+        This will ask you for an identifier string and your passphrase.
+        ssk digitally signs the combination of your key and the identifier
+        you enter.
+        ssk stands for "self sign key".
+        If you don't do step 2, encrypt and vsign will print out warning
+        messages indicating that the key is not self signed. You also have
+        somewhat less security.
+
+        The identifier string must be less than 127 characters long.
+
+At this point you'll have files bob.pub and bob.prv.
+bob.pub contains your public key (you'll need to send this to people
+you need to communicate with, beware that it is a binary file, so
+you'll need to uuencode it for transmission by email).
+bob.prv contanis your encrypted private key. Don't give this to anybody else.
+Make sure permissions are set up so that bob.prv isn't readable by anyone
+else.
+
+---
+
+Using L3
+
+Now that you've generated a key, you can use L3 to sign and send
+encrypted messages.
+
+Throughout the discussion below we'll assume that bob is sending a file
+to alice.
+
+Bob will have access to the files: bob.prv and alice.pub
+Alice will have access to the files: bob.pub and alice.prv
+
+---
+
+encrypting a file
+
+To encrypt a file for Alice, Bob types
+
+encrypt alice <file >encrypted_file
+
+Bob will be propted for a random string. Again the security of the
+system is dependent on typing a fairly long string.
+
+After this, the encrypted version of file is placed in
+encrypted_file. Only Alice will be able to decrypt this file.
+
+Again it is a binary file, you'll need to uuencode it (or something
+similar) for transmission via email. 
+
+When Alice receives the file, she'll type
+
+decrypt alice <encrypted_file >plaintext
+
+and recover a copy of the original file sent.
+
+Note that there is no way for bob to actually decrypt encrypted_file.
+
+Some day I'll add support for multiple recipients.
+
+---
+
+signing a file
+
+Again, Bob is sending a file to Alice which is digitally signed.
+
+bob types
+sign bob <file >file.sig
+(he'll be prompted for his password)
+
+Bob then sends both file and file.sig to Alice.
+
+Alice verifies the signature by typing
+
+vsign bob <file file.sig
+(note the syntax is a little different here).
+
+He'll be propmpted for
+        
+sign keyname <file >signature
+signs file using keyname.prv (MD5 + LUC signatures)
+
+There are a few other commands which might be useful.
+---
+chpwd <private1 >private2
+rewrites private1 with a new password. Of course, you need to
+know the password of private1. private2 will contain the same
+key encrypted with the new password.
+---
+prv2pub <private >public
+derives public key from private key. You need to know the
+password of the private key. This is really a very stripped
+down ssk (read code)
+---
+md5 pubfile
+
+for generating md5 of a public key file. This is  RSADSIs MD5
+driver program modified to use L3PATH (see below). One can
+use this to communicate a "fingerprint" of a key over
+an alternate channel.
+
+---
+both genkey and encrypt will grab any surplus parameters and
+seed them into the PRNG. 
+
+This means you might want to use:
+
+encrypt joe <infile >outfile  `rndsrc`
+genkey joe 1024 `rndsrc`
+
+where rndsrc could be a script which grabs some extra "random"
+data from the system (and possibly hashes it, but it needs
+to be encoded in a printable way).
+
+---
+Note that encrypt/decrypt and sign/vsign don't generate any
+temporary files and don't need to know the length of their input
+before proceeding. This means that they can be used on
+very large files with pipes, for example to make an
+encrypted tape.
+e.g.
+tar cf - . | encrypt pubkey |  suitable dd to tape device
+suitable dd from tape device | decrypt pubkey | tar xvf -
+
+----------------------------------------------
+
+In addition I've included Mark Riordan's prencode for encoding
+signatures and encrypted messages in printable format and RSA DSI's
+MD5 driver with a small modification, essentially for calculating
+the md5 value of a public key for verification purposes.
+
+--
+---
+Licensing:
+
+- binaries linked with libgmp are covered by the GPL. 
+- algorithms used here may be covered by a software patent where you live.
+  This may mean that you can use it only for "experimental and educational use".
+  You should find out before you use it, especially in a commercial 
+  context.
+- IDEA is covered by a software patent but it OK for non-commercial use
+  (see idea.c for licensing details)
+- MD5 is copyright RSA Data Security Inc. (read files for restrictions)
+- d3des is copyright Richard Outerbridge (read files for restrictions)
+- I'm not asserting copyright over any of this code. So, modulo the above,
+  and the export restrictions placed on it by Canadian and U.S. law, do what 
+  you want with it. This includes changing it, claiming you wrote it, 
+  selling it and anything else that is legal. Please do not violate 
+  Canadian and U.S. export laws by exporting this outside the U.S. and 
+  Canada. 
+
+---
+Send comments, flames and bug reports to me via email.
+
+Mark Henderson
+markh@wimsey.bc.ca (personal account)

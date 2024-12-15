@@ -1,0 +1,164 @@
+Path: msuinfo!agate!howland.reston.ans.net!vixen.cso.uiuc.edu!moe.ksu.ksu.edu!engr.uark.edu!news.ualr.edu!grapevine!grady@netcom.com
+Newsgroups: comp.org.eff.talk,sci.crypt,alt.security.pgp
+Subject: PASSPHRASE FAQ
+Message-ID: <13327.492.uupcb@grapevine.lrk.ar.us>
+From: grady@netcom.com@grapevine.lrk.ar.us (Grady@Netcom.Com) 
+Date: 4 Oct 93 01:56:00 GMT
+Reply-To: grady@netcom.com@grapevine.lrk.ar.us (Grady@Netcom.Com) 
+Followup-To: sci.crypt,alt.security.pgp
+Distribution: world
+Organization: The GrapeVine BBS *** N. Little Rock, AR *** (501) 753-8121
+Lines: 151
+Xref: msuinfo comp.org.eff.talk:20900 sci.crypt:20170 alt.security.pgp:5408
+
+This article split by uuPCB: Part # 7 of 7
+
+From: grady@netcom.com (Grady Ward)
+Date: Sun, 3 Oct 1993 04:16:32 GMT
+
+{(a) += H ((b), (c), (d)) + (x) + (UINT4)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
+#define II(a, b, c, d, x, s, ac) \
+{(a) += I ((b), (c), (d)) + (x) + (UINT4)(ac); \
+(a) = ROTATE_LEFT ((a), (s)); \
+(a) += (b); \
+}
+
+/* The routine MD5Init initializes the message-digest context
+mdContext. All fields are set to zero.
+*/
+void MD5Init ( MD5_CTX *mdContext)
+{
+mdContext->i[0] = mdContext->i[1] = (UINT4)0;
+
+/* Load magic initialization constants.
+*/
+mdContext->buf[0] = (UINT4)0x67452301L;
+mdContext->buf[1] = (UINT4)0xefcdab89L;
+mdContext->buf[2] = (UINT4)0x98badcfeL;
+mdContext->buf[3] = (UINT4)0x10325476L;
+}
+
+/*
+The routine MD5Update updates the message-digest context to
+account for the presence of each of the characters
+inBuf[0..inLen-1]
+in the message whose digest is being computed.
+*/
+
+void MD5Update (register MD5_CTX *mdContext, unsigned char *inBuf,
+unsigned int inLen)
+{
+register int i, ii;
+int mdi;
+UINT4 in[16];
+
+/* compute number of bytes mod 64 */
+mdi = (int)((mdContext->i[0] >> 3) & 0x3F);
+
+/* update number of bits */
+if ((mdContext->i[0] + ((UINT4)inLen << 3)) < mdContext->i[0])
+mdContext->i[1]++;
+mdContext->i[0] += ((UINT4)inLen << 3);
+mdContext->i[1] += ((UINT4)inLen >> 29);
+
+while (inLen--) {
+/* add new character to buffer, increment mdi */
+mdContext->in[mdi++] = *inBuf++;
+
+/* transform if necessary */
+if (mdi == 0x40) {
+for (i = 0, ii = 0; i < 16; i++, ii += 4)
+in[i] = (((UINT4)mdContext->in[ii+3]) << 24) |
+(((UINT4)mdContext->in[ii+2]) << 16) |
+(((UINT4)mdContext->in[ii+1]) << 8) |
+((UINT4)mdContext->in[ii]);
+Transform (mdContext->buf, in);
+mdi = 0;
+}
+}
+}
+
+/*
+The routine MD5Final terminates the message-digest computation and
+ends with the desired message digest in mdContext->digest[0...15].
+*/
+void MD5Final (MD5_CTX *mdContext)
+{
+UINT4 in[16];
+int mdi;
+unsigned int i, ii;
+unsigned int padLen;
+
+/* save number of bits */
+in[14] = mdContext->i[0];
+in[15] = mdContext->i[1];
+
+/* compute number of bytes mod 64 */
+mdi = (int)((mdContext->i[0] >> 3) & 0x3F);
+
+/* pad out to 56 mod 64 */
+padLen = (mdi < 56) ? (56 - mdi) : (120 - mdi);
+MD5Update (mdContext, PADDING, padLen);
+
+/* append length in bits and transform */
+for (i = 0, ii = 0; i < 14; i++, ii += 4)
+in[i] = (((UINT4)mdContext->in[ii+3]) << 24) |
+(((UINT4)mdContext->in[ii+2]) << 16) |
+(((UINT4)mdContext->in[ii+1]) << 8) |
+((UINT4)mdContext->in[ii]);
+Transform (mdContext->buf, in);
+
+/* store buffer in digest */
+for (i = 0, ii = 0; i < 4; i++, ii += 4) {
+mdContext->digest[ii] = (unsigned char)(mdContext->buf[i] &
+0xFF);
+mdContext->digest[ii+1] =
+(unsigned char)((mdContext->buf[i] >> 8) & 0xFF);
+mdContext->digest[ii+2] =
+(unsigned char)((mdContext->buf[i] >> 16) & 0xFF);
+mdContext->digest[ii+3] =
+(unsigned char)((mdContext->buf[i] >> 24) & 0xFF);
+}
+}
+
+/*
+Basic MD5 step. Transforms buf based on in.  Note that if the
+Mysterious Constants are arranged backwards in little-endian order
+and decrypted with the DES they produce OCCULT MESSAGES!
+*/
+void Transform(register UINT4 *buf,register UINT4 *in)
+{
+register UINT4 a = buf[0], b = buf[1], c = buf[2], d = buf[3];
+
+/* Round 1 */
+#define S11 7
+#define S12 12
+#define S13 17
+#define S14 22
+FF ( a, b, c, d, in[ 0], S11, 0xD76AA478L); /* 1 */
+FF ( d, a, b, c, in[ 1], S12, 0xE8C7B756L); /* 2 */
+FF ( c, d, a, b, in[ 2], S13, 0x242070DBL); /* 3 */
+FF ( b, c, d, a, in[ 3], S14, 0xC1BDCEEEL); /* 4 */
+FF ( a, b, c, d, in[ 4], S11, 0xF57C0FAFL); /* 5 */
+FF ( d, a, b, c, in[ 5], S12, 0x4787C62AL); /* 6 */
+FF ( c, d, a, b, in[ 6], S13, 0xA8304613L); /* 7 */
+FF ( b, c, d, a, in[ 7], S14, 0xFD469501L); /* 8 */
+FF ( a, b, c, d, in[ 8], S11, 0x698098D8L); /* 9 */
+FF ( d, a, b, c, in[ 9], S12, 0x8B44F7AFL); /* 10 */
+FF ( c, d, a, b, in[10], S13, 0xFFFF5BB1L); /* 11 */
+FF ( b, c, d, a, in[11], S14, 0x895CD7BEL); /* 12 */
+FF ( a, b, c, d, in[12], S11, 0x6B901122L); /* 13 */
+FF ( d, a, b, c, in[13], S12, 0xFD987193L); /* 14 */
+
+RBBS-UTI v3.01: by Bob Snyder - this copy NOT Registered
+---
+* PC Assist * Reston, Va. * (703) 264-1826
+* PostLink(tm) v1.05  PCASSIST (#5267) : RelayNet(tm)
+
+----
+The GrapeVine Bulletin Board System  (501) 753-8121
+PGP Distribution Site, UseNet, RIME, ThrobNet, MediaNet, U'niNet, ForthNet
+RecoveryNet, MetroLink.  Putting Communications back in Telecommunication

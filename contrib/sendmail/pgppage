@@ -1,0 +1,39 @@
+#!/usr/local/extras/bin/perl
+
+# PGPpage (C) Copyright 1993, by Jason L. Steiner
+#
+# Permission is hearby granted to freely modify, use and copy this code.
+# This notice must be retained in all distributions and derivatives.
+
+# version 11.4.93
+
+$|=1;
+$topgp=0;
+$logname = $ENV{'LOGNAME'};
+$tmpfile = "/tmp/.pgp.$$.$logname";
+$pager='/usr/ucb/more';
+$pager = $ENV{'PAGER'} if ($ENV{'PAGER'});
+
+open (PAGER, "|$pager") || die "Can't open $pager.\n";
+while (<>) {
+    if (!$topgp && m/^-----BEGIN PGP .*-----/) {
+        $topgp = 1;
+        unlink($tmpfile);
+        open (TMPFILE, ">$tmpfile") || die "Can't open $tmpfile for output.\n";
+    }
+    if (!$topgp) {print PAGER;}
+    if ($topgp) {
+        print TMPFILE $_;
+        if (m/^-----END PGP .*-----/) {
+            $topgp = 0;
+            close TMPFILE;
+            open (CLEAR, "pgp -f +verbose=0 < $tmpfile |") || die "Can't open PGP.\n";
+			print PAGER "-----BEGIN PGP BLOCK-----\n";
+            while (<CLEAR>) { print PAGER; }
+            close CLEAR;
+            unlink($tmpfile);
+            print PAGER "-----END PGP BLOCK-----\n";
+        }
+    }
+}
+close PAGER;

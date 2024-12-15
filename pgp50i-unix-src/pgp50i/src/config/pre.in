@@ -1,0 +1,99 @@
+#
+# config/pre.in
+#
+# Copyright (C) 1996,1997 Pretty Good Privacy, Inc.  All rights reserved.
+#
+# Written by:	Derek Atkins <warlord@MIT.EDU> and Colin Plumb
+#
+# $Id: pre.in,v 1.34.2.9.2.2 1997/08/23 00:42:54 quark Exp $
+#
+
+SHELL=/bin/sh
+.SUFFIXES:
+.SUFFIXES: .c .h .o
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+
+includedir=$(prefix)/include
+mandir=$(prefix)/man
+bindir=$(exec_prefix)/bin
+libdir=$(exec_prefix)/lib
+
+VPATH=@srcdir@
+srcdir=@srcdir@
+top_srcdir=@top_srcdir@
+top_builddir=@top_builddir@
+buildinc=$(top_builddir)/include
+buildlib=$(top_builddir)/lib
+dir_suffix=@dir_suffix@
+DESTDIR=
+THIS_DIR=@THIS_DIR@
+
+LN_S=@LN_S@
+INSTALL=@INSTALL@
+RANLIB=@RANLIB@
+TEST_L=@TEST_L@
+CC=@CC@
+RM=rm -f
+MV=mv -f
+OPT= @CFLAGS@
+OSDEF=-DUNIX=1
+CCOPTS=
+DEFINES=-DPGPTRUSTMODEL=0 -DDEBUG=1 -DUNFINISHED_CODE_ALLOWED=0
+LOCALDEFINES=
+DO_DISTRIBUTION_COMMON_SRC=1
+DO_DISTRIBUTION_COMMON_BIN=1
+
+CFLAGS=	$(OPT) $(OSDEF) @CPPFLAGS@ @WARN@ @DEFS@ $(DEFINES) $(LOCALDEFINES) \
+	$(RSAOPTS) $(RELOPTS) \
+	-I$(top_builddir) -I$(buildinc) -I../include -I$(srcdir) \
+	$(LOCALINCLUDES) $(CCOPTS) @RSAINCS@
+LDFLAGS=@LDFLAGS@ -L$(buildlib)
+
+LIBPRE=	lib
+LIBEXT=	a
+
+#
+# due to how post.in works, some systems, like AIX, require PROG
+# to be set to something real.  This is here in case it isn't set
+# in the Makefile.in, so make wont complain!
+PROG=aix-and-pains
+LIBTARGET=aix-and-pains2
+
+DEPEND=@DEPEND@
+SRCS=${OBJS:.o=.c}
+
+TTYUI=	$(LIBPRE)pgptty.$(LIBEXT)
+LIBTTYUI= -lpgptty
+DEPTTYUI= $(buildlib)/$(TTYUI)
+
+PGPLIB=	$(LIBPRE)pgp.$(LIBEXT)
+LIBPGP= -lpgp
+DEPLIBPGP= $(buildlib)/$(PGPLIB)
+
+BNLIB=	$(LIBPRE)bn.$(LIBEXT)
+LIBBN=	-lbn
+DEPLIBBN= $(buildlib)/$(BNLIB)
+
+SIMPLE=	$(LIBPRE)simple.$(LIBEXT)
+LIBSIMPLE=	-lsimple
+DEPLIBSIMPLE=	$(buildlib)/$(SIMPLE)
+
+LIBS=	$(LIBTTYUI) $(LIBPGP) $(LIBBN) $(LIBSIMPLE) @LIBS@
+DEPLIBS= $(DEPTTYUI) $(DEPLIBPGP) $(DEPLIBBN) $(DEPLIBSIMPLE)
+
+all::
+
+# Recursively perform operations on all SUBDIRS
+all check clean depend headers install very-clean distribution-common-src \
+distribution-freeware-src-internal::
+	@if test 'x$(SUBDIRS)' != x; then \
+		for i in $(SUBDIRS)''; do \
+			echo Making $@ in $(SUB)$$i ; \
+			(cd $$i; $(MAKE) $(MFLAGS) SUB=$(SUB)$$i/ $@) \
+					|| exit 1; \
+		done \
+	else :; \
+	fi
+

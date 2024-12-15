@@ -1,0 +1,57 @@
+Path: msuinfo!news.mtu.edu!sol.ctr.columbia.edu!howland.reston.ans.net!cs.utexas.edu!not-for-mail
+From: boucher@csl.sri.com (Peter K. Boucher)
+Newsgroups: sci.crypt
+Subject: Cryptanalysis of Algorithm M?
+Date: 30 Mar 1994 13:31:25 -0600
+Organization: UTexas Mail-to-News Gateway
+Lines: 46
+Sender: daemon@cs.utexas.edu
+Message-ID: <9403301931.AA17930@redwood.csl.sri.com>
+NNTP-Posting-Host: cs.utexas.edu
+
+What is it about Knuth's algorithm M that makes it unsuitable for use in a
+crypto application?
+
+I made a version that passes all my statistical tests with flying colors.
+It uses 2 additive congruential generators, based on the irreducible
+trinomials X**1201 + X**388 + 1, and Y**1423 + Y**228 + 1, respectively.
+
+It uses high-order bits of Yn (call them j) to select some previous output
+of X (call it V[j]).  It outputs the sum of 
+
+	 circular-shifted V[j]
+    plus the (as yet unused) low-order bits of Yn,
+
+and then sets V[j] equal to Xn.
+
+How would you cryptanalize this?
+
+================= Begin Code Fragment
+
+unsigned long
+M()
+{
+#define BARREL(x) (((x)>>RSFTN)^((x)<<LSFTN))        /* Circular shift       */
+#define Xn (*frntX += *rearX)                        /* Additive generator X */
+#define Yn (*frntY += *rearY)                        /* Additive generator Y */
+
+    register unsigned long Y = Yn;                   /* Generate Yn          */
+    register unsigned long *V_sub_j = &(V[Y>>RSFTN]);/* Get ptr to V[j]      */
+    register unsigned long old_V_sub_j = *V_sub_j;   /* Save old V[j]        */
+
+    *V_sub_j = Xn;                                   /* Set V[j] <-- Xn      */
+    UPDATE_PTRS_FOR_X;                               /* Update X's pointers  */
+    UPDATE_PTRS_FOR_Y;                               /* Update Y's pointers  */
+
+    return( BARREL(old_V_sub_j) + (Y & MASKN) );     /* Output the sum of    */
+			        /* the circular-shifted old value of V[j]    */
+			        /* plus the unused low-order bits of Yn      */
+}
+
+================= End Code Fragment
+
+Peter K. Boucher
+--
+DISCLAIMER:  I am solely responsible for the contents of this message,
+	     which should not be misconstrued as being in any way related
+	     to the opinions of my employer.

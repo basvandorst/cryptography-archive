@@ -1,0 +1,946 @@
+#
+# ssl.sdf    - programmer documentation for SSL
+#
+# 18-Jul-95 tjh    documentation now that things have stablised a little
+# ................ with Eric's complete reworking of error handling
+# 06-Jun-95 tjh    IDEA added 
+# 02-Jun-95 tjh    more updates for functions that I didn't know about
+# ................ and for a few that were written today 
+# 01-Jun-95 tjh    fixed incomplete prototype for SSL_set_fd
+# 10-May-95 tjh    more details from continued eay emailing as he is
+# ................ getting closer to releasing it 
+# 29-Apr-95 tjh    filled in a lot of the verbage
+# 28-Apr-95 tjh    started this documentation now that
+# ................ things are working so that "support"
+# ................ when this is release should be manageable
+#    
+# Note: SDF is a perl-based markup language that can 
+#       generate hypertext versions of:
+#       - postscript
+#       - frame viewer
+#       - frame MIF
+#       - HTML
+#       - windows help
+# 
+# tjh@mincom.oz.au
+# Tim Hudson
+# Mincom Pty Ltd
+# Brisbane, Australia
+# +61 7 303 3333
+#
+
+#------------------------- Configuration --------------------------------
+
+# These should really go in a config file
+!on chartag; if ($attr{'jump'} == 1) {$attr{'jump'} = $text}
+
+!block charaliases
+From	To
+PERSON	N
+!endblock
+
+!block jumps
+Text			Soft
+Tim Hudson 		http://orb.mincom.oz.au/~tjh/
+Eric Young		http://orb.mincom.oz.au/~eay/
+tjh			mailto:tjh@mincom.oz.au
+eay			mailto:eay@mincom.oz.au
+!endblock
+
+!block script
+@fns = (
+
+"SSL_TRACE",
+"SSL_accept",
+"SSL_connect",
+"SSL_copy_session_id",
+"SSL_debug",
+"SSL_error_func_string",
+"SSL_error_string",
+"SSL_flush_connections",
+"SSL_fprintf",
+"SSL_free",
+"SSL_get_cipher",
+"SSL_get_fd",
+"SSL_get_peer_certificate",
+"SSL_get_pref_cipher",
+"SSL_get_read_ahead",
+"SSL_get_time",
+"SSL_get_timeout",
+"SSL_new",
+"SSL_pending",
+"SSL_read",
+"SSL_set_fd",
+"SSL_set_pref_cipher",
+"SSL_set_read_ahead",
+"SSL_set_timeout",
+"SSL_set_verify",
+"SSL_use_RSAPrivateKey",
+"SSL_use_RSAPrivateKey_file",
+"SSL_use_RSAPrivateKey_DER",
+"SSL_use_certificate",
+"SSL_use_certificate_file",
+"SSL_use_certificate_DER",
+"SSL_write",
+"X509_set_default_verify_paths",
+"X509_add_cert_dir",
+"X509_add_cert_file",
+"X509_load_verify_locations",
+
+"X509_get_default_cert_area",
+"X509_get_default_cert_dir",
+"X509_get_default_cert_file",
+"X509_get_default_cert_dir_env",
+"X509_get_default_cert_file_env",
+
+# new things
+"SSL_load_error_strings",
+"ERR_get_error",
+"ERR_error_string",
+"ERR_print_errors",
+
+"SSL_get_shared_ciphers",
+"X509_get_default_private_dir",
+
+
+);
+$fnlist = join("|", @fns);
+!endblock
+
+!block filters
+From	To
+sdfsub	tjhSdfSubFilter
+screen  ScreenFilter
+!endblock
+
+!block script
+sub tjhSdfSubFilter {
+    local (*text, $filter, %attr) = @_;
+    local($line);
+
+#    for $para (@sdf) {
+#        $para =~ s/^H([1234])?(:|\[)/A\1\2/;
+#    }
+
+    for $line (@text) {
+       # print STDERR "WAS $line\n";
+       $line =~ s/^H([1234])/sprintf("H%d",$1+1)/e;
+       # print STDERR "NOW $line\n";
+    }
+
+}
+
+sub ScreenFilter {
+    local (*text, $filter, %attr) = @_;
+    local($line);
+
+    for $line (@text) {
+       $line = "E80:$line";
+    }
+}
+
+!endblock
+
+#!on chartag "1"; if ($text =~ /^($fnlist)\b/) { $attr{"jump"} = "#$1" }
+#!on paratag "E"; if ($text =~ /($fnlist)\b/) { $attr{"id"}   = "$1" }
+
+#--------------------------- Document ----------------------------------
+
+!if ONLINE
+dName: SSLeay Programmer Reference
+dAuth: {{[jump="mailto:tjh@mincom.oz.au"]T J Hudson	tjh@mincom.oz.au}}
+dAuth: {{[jump="mailto:eay@mincom.oz.au"]E A Young	eay@mincom.oz.au}}
+!else
+dProj: SSL
+dName: SSLeay 
+dType: Programmer Reference
+dStat: (Draft)
+#dCode:
+#dActn: PREPARED BY:
+dAuth: T J Hudson	tjh@mincom.oz.au (documentation + app patches)
+dAuth: E A Young	eay@mincom.oz.au (library implementation)
+#dActn: APPROVED BY:
+#dAppr: T J Hudson
+!endif
+
+H1: Introduction
+
+Document Last updated {{[[MODIFIED_SHORT]].}} The documentation
+version number is 1.1.
+
+The version of {{SSLeay}} at the time of writing was {{0.4.2}}.
+
+This documentation is Copyright Tim Hudson (tjh@mincom.oz.au). See
+the COPYRIGHT file for the usage and redistribution restrictions.
+
+H2[notoc] Purpose
+
+This document describes an implementation of 
+the {{B:Secure Sockets Layer}} {{(SSL)}} protocol. This implementation
+will be refered to a {{B:SSLeay}} for simplicity.
+
+This implementation was coded from scratch using
+only the publically available documentation of
+the various protocols 
+by {{B:Eric Young}} {{[jump="mailto:eay@mincom.oz.au"]eay@mincom.oz.au}}.
+
+The initial prompting to tackle an {{SSL}} implementation, the
+alpha testing, SSL developer (i.e. Eric) hassling, and documentation was 
+done by {{B:Tim Hudson}} {{[jump="mailto:tjh@mincom.oz.au"]tjh@mincom.oz.au}}.
+
+This implementation has been used 
+by {{B:Tim Hudson}} {{tjh@mincom.oz.au}} to add {{SSL}} 
+support to the following:
+
+* SRA telnet (server and client)
+* SRA ftp (server and client)
+* NCSA Mosaic 2.5 
+* NCSA Mosaic 2.6b1
+* NCSA Mosaic 2.7b2
+* NCSA httpd 1.3 
+* NCSA httpd 1.4.2
+
+Patch kits for each of these are stored in the same location (actually
+a separate directory) as this implementation of {{SSL}}. Also {{B:full}}
+source trees for most of these are available in the same location as
+people have had difficulty finding the same version of the source that
+I've patched.
+
+The aims of the document are:
+
+* to provide a description of the call interface for {{SSL}} clients 
+  and {{SSL}} servers
+* to provide an overview of this implementation
+* to record design rationale
+* to reduce confusion and questions
+
+Refer to [1] for details of the {{SSL}} protocol.
+Refer to [2] for details of the location of this implementation.
+
+H2[notoc] Disclaimer
+
+The development and distribution of this code has nothing to do 
+with Mincom Pty Ltd in any way whatsoever. {{Eric Young}} 
+and {{Tim Hudson}} are currently employed by Mincom Pty Ltd.
+
+The call interface is probably not the same as {{SSLREF}} but
+it shouldn't be too hard to put together a wrapper that makes this
+look the same. We would appreciate that anyone who does this emails
+the patch to us (or alternatively perhaps someone can put together
+a wrapper for {{SSLREF}} to make it look like this library).
+
+This documentation is Copyright Tim Hudson (tjh@mincom.oz.au). See
+the COPYRIGHT file for the usage and redistribution restrictions.
+
+:Note: a nicely formatted postscript version of this document is
+included in the file SSLeay.doc-version.tar.gz in the same
+directory as the SSLeay source.
+
+#H2[notoc] Definitions
+#
+#GL: TCP/IP	Transport Control Protocol/Internet Protocol
+#GL: IP		Internet Protocol
+#GL: SSL		Secure Sockets Layer
+
+H1: References
+
+RE: {{[jump="http://www.netscape.com/info/SSL.html"]http://www.netscape.com/info/SSL.html}} Draft specification
+RE: {{[jump="ftp://ftp.psy.uq.oz.au/pub/Crypto/SSL"]ftp.psy.uq.oz.au:/pub/Crypto/SSL}} - current source + documentation
+RE: {{[jump="ftp://ftp.psy.uq.oz.au/pub/Crypto/SSLapps"]ftp.psy.uq.oz.au:/pub/Crypto/SSLapps}} - SSL applications
+RE: {{[jump="http://www.psy.uq.oz.au/~ftp/Crypto/"]www.psy.uq.oz.au:/~ftp/Crypto/}} - online documentation
+RE: {{[jump="ftp://ftp.bond.edu.au/pub/Crypto/SSLapps"]ftp.bond.edu.au:/pub/Crypto/SSLapps}} - SSL applications
+RE: {{[jump="http://www.bond.edu.au/External/Misc/Crypto/"]www.psy.uq.oz.au:/~ftp/Crypto/}} - online documentation
+RE: {{Secure RPC Authentication (SRA) for TELNET and FTP}}
+RE: {{RFC1409}} Telnet Authentication Option
+RE: {{ietf ftpsec draft}} FTP Security Extensions
+
+:Note: the primary site for fetching the SSL applications code is 
+{{B:ftp.psy.uq.oz.au}}, however I push the initial versions and other
+interesting stuff to {{B:ftp.bond.edu.au}} first as that is where
+I have {{best}} access.
+
+H1: Description
+
+The {{SSL}} Protocol is designed to provide privacy between two
+communicating applications (a client and a server). Second, the protocol
+is designed to authenticate the server, and optionally the client. {{SSL}}
+requires a reliable transport protocol (e.g. {{TCP}}) for data transmission
+and reception.
+
+The advantage of the {{SSL}} Protocol is that it is "application protocol"
+independent. A "higher level" application protocol (e.g. HTTP, FTP, TELNET, 
+etc.) can layer on top of the {{SSL}} Protocol transparently.
+
+# Grab more stuff from the ssl draft spec later 
+
+H1: Portability
+
+{{SSL}} is written in a portable manner with no major assumptions about the
+underlying environment (except for the fact that {{long}} must be
+at least 32 bits [this code works on 64 bit machines too])
+
+It is intended that the following environments be supported:
+* UNIX 
+* Windows 3.1 (about 1/2 done)
+# * VMS
+# * MVS
+
+{{SSL}} has been compiled and tested on the following platforms
+
+* SunOS 4.1.3 (gcc, cc)
+* SunOS 5.x   (gcc, ucbcc, cc) SPARC and INTEL
+* HP-UX 9.x   (gcc, cc)
+* IRIX 5.x, 4.x
+* DGUX 5.x 
+* OSF 1.x 
+* AIX 3.2 
+
+See {{PORTING}} for the current list.
+
+This implementation has triggered C compiler bugs on a number of
+platforms. We have worked around all those we have found so far
+at "normal" {{-O}} level optimisation. These bugs are documented
+with test programs in {{bugs/}}
+
+H1: Interface Description
+
+The {{SSL}} interface itself is documented here ... the "best"
+approach is to read {{ssl/client.c}} and {{ssl/server.c}} to 
+see what is done there (and perhaps also look at the patches
+done to SRA telnet). You will also need to read through the
+{{Certificates}} section.
+
+H2: Key Encoding Types
+
+All the keys and certificates used in {{SSL}} can be encoded via the
+following different mechanisms:
+
+* DER  - binary DER encoding
+* PEM  - base64 Privacy Enhanced Mail encoding
+
+The corresponding C "constants" are:
+
+* X509_FILETYPE_PEM
+* X509_FILETYPE_DER
+
+The "prefered" encoding format is {{PEM}}.
+
+H2: Error handling
+
+#
+# THIS IS THE OLD ERROR HANDLING STUFF ... IT WILL BE REMOVED
+# SOON -- tjh
+#
+#Rather standard stuff here ... most functions return <=0 on error
+#and set {{SSL_errno}}. If {{SSL_errno}} is set to {{SSL_R_ERRNO}} 
+#then you {{B:should}} check the system {{errno}} value as it
+#contains the real details of the error. If you call {{SSL_error_string()}}
+#then it returns {{SYSTEM_ERROR}} (lib4.0 returns {{SSL_ERRNO}}).
+#
+#E: int SSL_errno
+#E: char *SSL_error_string(int SSL_errno)
+#E: char *SSL_error_func_string(int SSL_errno)
+#
+#:Note: you currently {{B:must}} include {{ssl_err.h}} to have access to
+#the {{SSL_*}} error defines.
+#:Note: the error interface (internally at least) is currently being
+#totally reworked to make it more Windows NT and Windows DLL friendly so
+#this stuff {{B:will}} change soon.
+#
+#For the other libraries
+#
+#E: int RSA_errno
+#E: char *RSA_error_string(int RSA_errno);
+#E: int X509_errno
+#E: char *X509_error_string(int X509_errno);
+#E: int PEM_errno
+#E: char *PEM_error_string(int PEM_errno);
+#
+#:Note: you will have to include the {{appropriate}} header file to
+#get access to the error defines for each of the above.
+
+The new error handling stuff is (from the callers point of view) a
+much simplier interface:
+
+E: void SSL_load_error_strings(void);
+E: unsigned long ERR_get_error(void);
+E: char *ERR_error_string(unsigned long error);
+E: void ERR_print_errors(FILE *fp);
+
+So on application initialisation if you want non-numeric error
+string you simply call {{SSL_load_error_strings()}} and then use
+either of the two different interfaces for getting at the 
+error information:
+
+E: error_code=ERR_get_error();
+E: string=ERR_error_string(error_code);
+E:    OR
+E: ERR_print_errors(stderr);
+
+H2: Create SSL Context
+
+All information that is likely to be of use on more than one {{SSL}} 
+connection is now stored in a {{context structure}}. You specify the
+binding between an {{SSL}} connection and it's context when you call
+{{SSL_new()}}. The context can (and should) be shared between {{SSL}}
+connections.
+
+E: SSL_CTX *SSL_CTX_new(void)
+
+H2: Create SSL Handle
+
+Before anything useful can be done on an {{SSL}} connection you must
+have created and initialise the context data structure for {{SSL}}
+state using {{SSL_CTX_new()}}. 
+{{SSL_new()}} simply allocates the required {{SSL}} data structure 
+and initialises all the right things.
+
+E: SSL *SSL_new(SSL_CTX *ssl_ctx)
+
+H2: Release Handle
+
+If you wish to remove all allocated memory for a given {{SSL}} connection
+
+E: void SSL_free(SSL *s)
+
+H2: Establish keys
+
+You must register a callback via {{PEM_set_getkey_callback()}}
+if you do not wish to be prompted for a password on {{/dev/tty}} 
+when the {{pass phrase}} is required when loading the {{key file}} 
+if it is stored in {{PEM}} format with encryption enabled. 
+Note that this callback will be invoked prior to the call 
+to {{SSL_use_RSAPrivateKey()}} returning.
+
+E: int SSL_use_RSAPrivateKey(SSL *s, RSA *key)
+
+See {{PEM_read_RSA()}} for the interface for loading.
+
+E: int SSL_use_RSAPrivateKey_file(SSL *s, char *file,int type)
+E: int SSL_use_RSAPrivateKey_fp(SSL *s, FILE *fp,int type)
+
+E: int PEM_set_getkey_callback(int (*callback)(char *buf,int len))
+
+{{callback}} is passed a buffer into which is can store the value of
+the key up to {{len}} bytes. The length of the key must be returned. 
+On error return {{-1}}.
+
+H2: Register Certificates
+
+The {{server}} {{B:must}} have a certificate. 
+The {{client}} can (and probably should) have a certificate.
+
+E: int SSL_use_certificate(SSL *s, X509 *cert)
+
+See {{PEM_read_X590()}} for the interface for loading.
+
+E: int SSL_use_certificate_file(SSL *s, char *file, int type)
+E: int SSL_use_certificate_fp(SSL *s, FILE *fp, int type)
+
+H2: Set Verification policy
+
+See the {{Certificate Verification Process}} section as that describes
+this function in more detail.
+
+E: void SSL_set_verify(SSL *s,int mode, int (*callback)() )
+
+H2: Bind descriptor
+
+To set the association between an {{SSL}} connection and the underlying
+file descriptor:
+
+E: void SSL_set_fd(SSL *s, int fd)
+
+H2: Set read-ahead 
+
+By default, {{SSL}} does not read more data from the network than
+is requested. However if you are not using {{select()}} to determine
+the availability of data, you can get a significant throughput 
+improvement by simply switch read-ahead on. See {{SSL_pending()}} 
+for a mechanism for determining if there is more data available.
+
+E: void SSL_set_read_ahead(SSL *s, int yes)
+
+H2: Get read-ahead 
+
+To find out the current setting of the {{read-ahead}} flag:
+
+E: int SSL_get_read_ahead(SSL *s)
+
+H2: Check for more data
+
+When using {{read-ahead}} mode you cannot rely on {{select()}} to 
+determine if more data is available as {{SSL_read()}} {{may}} have
+already read data off the wire that has not been read by the caller 
+(the caller will get this data returned in future calls to 
+{{SSL_read()}}).
+
+E: int SSL_pending(SSL *s)
+
+H2: Get descriptor binding
+
+To get the association between an {{SSL}} connection and the underlying
+file descriptor:
+
+E: int SSL_get_fd(SSL *s)
+
+H2: Client connect
+
+E: int SSL_connect(SSL *s)
+
+H2: Server accept
+
+E: int SSL_accept(SSL *s)
+
+H2: Read
+
+E: int SSL_read(SSL *s,char *buf,int len)
+
+H2: Write
+
+E: int SSL_write(SSL *s,char *buf,int len)
+
+:Note: {{SSL_write()}} will not sent {{B:any}} data if {{len}} is less
+than or equal to {{0}}.
+
+H2: Copy session ID
+
+E: int SSL_copy_session_id(SSL *to,SSL *from)
+
+H2: Formatted Output
+
+To make life easier in porting programs that use the {{stdio}} library
+interface {{tjh}} put the following together ... so you cannot blame {{eay}}
+for this one ;-)
+
+E: void SSL_fprintf(SSL *s, char *format, ...)
+
+H2: Set Preferred Cipher
+
+E: int SSL_set_pref_cipher(SSL *s, char *str)
+
+A colon separated list of cipher names as per the defines
+
+* SSL_TXT_RC4_128_WITH_MD5                "RC4-MD5"
+* SSL_TXT_RC4_128_EXPORT40_WITH_MD5       "EXP-RC4-MD5"
+* SSL_TXT_IDEA_128_CBC_WITH_MD5           "CBC-IDEA-MD5"
+* SSL_TXT_DES_64_CBC_WITH_MD5             "CBC-DES-MD5"
+* SSL_TXT_DES_192_EDE3_CBC_WITH_MD5       "CBC3-DES-MD5"
+* SSL_TXT_DES_64_CFB64_WITH_MD5_1         "CFB-DES-M1"
+* SSL_TXT_DES_64_CFB64_WITH_NULL          "CFB-DES-NULL"
+
+The default preference sequence for cipher negotiation is:
+
+* SSL_TXT_DES_64_CBC_WITH_MD5,
+* SSL_TXT_RC4_128_WITH_MD5,
+* SSL_TXT_DES_192_EDE3_CBC_WITH_MD5,
+* SSL_TXT_RC4_128_EXPORT40_WITH_MD5,
+* SSL_TXT_DES_64_CFB64_WITH_MD5_1,
+* SSL_TXT_DES_64_CFB64_WITH_NULL
+
+It is probably a good idea to allow the user to override the
+setting of the preferred cipher via an environment variable. We
+have been standardising on using {{SSL_CIPHER}} for this 
+purpose via the following:
+
+E: SSL_set_pref_cipher(s,getenv("SSL_CIPHER"))
+
+H2: Get Negotiated Information
+
+Once {{SSL_connect()}} has returned there are a number of functions
+that can be used to get hold of information about the server and
+the negotiated cipher.
+
+H3: Negotiated Cipher 
+
+Which of the ciphers was actually negotiated.
+
+E: char *SSL_get_cipher(SSL *s)
+
+H3: Common Ciphers
+
+To find out what ciphers are in common (and hence could have been
+negotiated)
+
+# While eric fixes the problem ...
+# E: char *SSL_get_shared_ciphers(SSL *s,int bufsize,char *buf)
+E: char *SSL_get_shared_ciphers(SSL *s,char *buf,int bufsize)
+
+H2: Using standard locations
+
+The values in {{rsa/location.h}} are accessible via the following
+functions.
+
+E: char *X509_get_default_cert_area(void)
+E: char *X509_get_default_cert_dir(void)
+E: char *X509_get_default_cert_file(void)
+E: char *X509_get_default_cert_dir_env(void)
+E: char *X509_get_default_cert_file_env(void)
+E: char *X509_get_default_private_dir(void)
+
+i.e. {{X509_get_default_cert_area()}} will return {{/usr/local/ssl}}
+by default.
+
+These settings can also be changed by using the following 
+environment variables:
+
+E: SSL_CERT_DIR
+E: SSL_CERT_FILE
+
+H1: Guide to adding {{SSL}} to an existing protocol
+
+The basic decision that has to be made is whether or not
+you are going to transparently layer {{SSL}} on top of an
+existing protocol/application or if you are going to 
+dynamically negotiate {{SSL}} using whatever mechanisms 
+already exist in the protocol that you are extending. The
+authors have talking the approach of doing {{both}} where 
+the existing protocol supported such a negotiation model.
+
+Both {{telnet}} and {{ftp}} have been extended in the past 
+to support additional authentication models. See {{RFC1409}} for
+TELNET and {{IETF ftpsec}} for FTP so it is only logical to 
+use the existing mechanism for these particular programs.
+
+H2: Client Program Structure
+
+E:/* create an SSL structure */
+E: con=(SSL *)SSL_new();	
+E:
+E: - do normal socket(), [bind()] connect()
+E:
+E: /* give it a file descriptor to use */
+E: SSL_set_fd(con,s);		
+E: /* do connection */
+E: SSL_connect(con);		
+E:
+E: - then use SSL_read() and SSL_write() rather 
+E:   than read() and write()
+E:
+E: e.g.
+E:   SSL_write(con,"bye\n",4);	/* start reading and writting */
+
+H2: Server Program Structure
+
+E: con=(SSL *)SSL_new();
+E:
+E: - do normal socket(), bind(), listen(), accept()
+E:
+E: SSL_set_fd(con,s);
+E:
+E: /* specify private key */
+E: SSL_use_RSAPrivateKey(con,"server.rsa"); 
+E:
+E: /* specify certificate */
+E: SSL_use_certificate(con,"server.cert");  
+E: SSL_accept(con);
+E:
+E: - then use SSL_read() and SSL_write() rather than 
+E:   read() and write()
+E:
+E: e.g.
+E:   SSL_read(con,buf,1024);
+E:     for the client example this will return the 4 bytes 
+E:     written "bye\n" (possibly in multiple packets)
+E:
+
+H1: Library implementation details
+
+In order to have a working implementation of {{SSL}} a number of 
+components are required. 
+
+* DES library (if you want to support DES)
+* RSA/X509 library (key generation, certificate management)
+* MD library (for message digest encoding MD2, MD4)
+* SSL library (layered on top of the above)
+* RC4 library (if you want to support RC4)
+
+This implementation of {{SSL}} is structured as per:
+
+E: des/    Eric Young's libdes DES library
+E: rsa/    RSA and X509 stuff
+E: md/     message digest things (md2, md5)
+E: rc4/    rc4 implementation
+E: lhash/  hashing library
+E: ssl/    SSL itself
+E: idea/   IDEA 
+
+There is a top level Makefile that has the usual targets of
+{{all}}, {{clean}}, {{tags}}, {{tar}}, and {{install}}. 
+By default, this implementation expects to be 
+installed in {{/usr/local/ssl}}. 
+
+:Note: there are a number of compile options that define what is
+built into the library and which RSA routines are used - you should see
+the documentation (and the Makefile) for {{SSLeay}} for more details.
+
+H1: Supported Cipher Modes
+
+{{B:Note:}} the overheads in bytes per block for supported encryption 
+modes are different and are indicated beside each mode in terms
+of the {{header}} and fixed {{SSL}} header and any padding required.
+
+The following are currently supported:
+
+E: RC4-MD5        2 + 16 + {{N}}
+E: EXP-RC4-MD5    2 + 16 + {{N}}
+E: CBC-DES-MD5    3 + 16 + ( ({{N}}+7) / 8 ) * 8
+E: CBC-IDEA-MD5   3 + 16 + ( ({{N}}+7) / 8 ) * 8
+E: CBC3-DES-MD5   3 + 16 + ( ({{N}}+7) / 8 ) * 8
+E: CFB-DES-MD5    2 + {{N}}
+
+Refer to {{SSL_set_pref_cipher()}} for details of the {{#defines}} that
+match the particular cipher.
+
+H1: Performance Characteristics
+
+The current timings for each of the machines we have had access to
+are listed in {{times/times}} along with the required support
+files to generate your own timing figures.
+
+We really need to include details on the following:
+
+* key generation - {{B:any}} size
+* certificate signing
+* connection negotiation
+* stream I/O rates
+
+However we do have figures for {{private key encryption}} and
+support files (including 512, 1024, 2048, 3072, and 4096 bit keys)
+are included in the {{times/}} directory. The following is an 
+indication of relative performance:
+
+!include "/home/eay/lib/times/times"; example
+
+H1: Distribution and Usage Restrictions
+
+For the {{B:exact}} details you need to refer to the file {{COPYRIGHT}}
+in the top-level directory.
+
+Basically, this implementation of {{SSL}} is being distributed
+under a slightly modified version of the {{UCB license}}.
+Attribution is {{B:mandatory}}. Commercial usage is permitted. 
+
+The license and distribution terms for any {{B:publically}} available
+version or derivative of this code {{B:cannot}} be changed. 
+i.e. this code {{B:cannot}} simply be copied and put under 
+another distrubution license [including the {{GNU Public License}}.] 
+
+The reason behind this being stated in this direct manner is past 
+experience in code simply being copied and the 
+attribution {{B:removed}} from it and then being distributed 
+as part of other packages. This implementation was a non-trivial
+and {{B:unpaid}} effort.
+
+We would appreciate feedback on any use of this implementation
+in either, public domain, shareware or commercial software. 
+
+Free licenses for commercial products using this library would naturally
+be greatly appreciated; however there is no {{B:legal}} requirement
+to do so.
+
+Donations of almost any form to the author(s) will 
+naturally be gratefully accepted and may even result in you
+joining our Christmas card list ;-)
+
+Given the amount of effort that has been put into this implementation
+by the authors, any extensions or bug fixes {{should}} be forwarded
+to {{[jump="mailto:ssl-bugs@mincom.oz.au"]ssl-bugs@mincom.oz.au}}. 
+
+The majordomo based mailing list for discussions of this implementation 
+is {{[jump="mailto:ssl-users@mincom.oz.au"]ssl-users@mincom.oz.au}} and
+can be joined by sending email 
+to {{[jump="mailto:ssl-users-request@mincom.oz.au"]ssl-users-request@mincom.oz.au}} which will forward instructions for using the {{majordomo}} varient
+{{factotum}} that manages these lists.
+
+H1: Authentication Model
+
+Both the server and the client can validate each other. The 
+currently shipping {{Netscape}} client authenticates any server 
+that it connects to by checking that the certificate offered 
+has been either obtained from {{Netscape}} or {{RSA Data Security Inc}}. 
+
+The current list of certificates are available directly 
+from Netscape and include:
+
+* commercial-ca.text      
+* netscape-test-ca.text   
+* secure-server-ca.text
+
+In order for a server implementation based on this implementation 
+(perhaps using the patches to NCSA httpd version 1.3) to work
+with the current {{Netscape}} client, all that should be required 
+is a certificate {{signed}} by one of the above trusted list. If
+you do not have a certificate {{signed}} by one of the above then
+the current version of the Netscape browser will {{B:not}} work
+with the patched NCSA httpd server. 
+
+If you do have a signed key then the patches I've done to 
+NCSA httpd 1.3 {{B:work}} with the current version of {{SSLeay}} 
+according to reliable reports. 
+
+The authors have been unable to test this functionality as we do
+not have such a key.
+
+The patches to NCSA Mosaic version 2.5, however mean that it
+will connect to {{Netscape}} servers (and naturally to
+the patched NCSA httpd) using {{https}}. This has been tested. 
+Currently we do not bother to authenticate the {{server}} (in 
+what we have released) as for our purposes this is not required 
+during testing (one extra function call will enable this in the
+code however you will need to figure out how you are going to
+manage certificate issuing before you do this).
+
+H1: Key Management
+
+How do we secure the private key of the user? It {{B:must}} be 
+encrypted as access to it is equivalent to access to 
+the {{B:plaintext}} version of a {{password}}. Read the {{PEM}} and
+{{PGP}} {{FAQ}}s for a clear discussion of this. Currently
+we encrypt the {{PEM}} format of the key with a {{pass phrase}}
+using {{DES}}.
+
+H1: Certificate Management
+
+How do we set things up so that servers and clients can 
+cross-authenticate without ending up with servers and clients that
+will not communicate across logical security zones? This is one of
+the unresolved challenges for {{SSL}} and other proposed commercial
+Internet security protocols.
+
+H1: Future Directions
+
+{{SSL}} is the answer to a number of problems. It should enable
+most applications to be adapted with little effort to be able
+to run across non-trusted networks in a secure manner. 
+
+A reference implementation (known as {{SSLREF}}) is available 
+free of charge for non commercial use for US residents 
+from {{Netscape}}. A commercial license for {{SSLREF}} is 
+also available from {{Netscape}}. 
+
+This implementation enables those of us who are not {{blessed}} with
+being US residents to participate in the use of and development of
+{{SSL}} enabled applications. It should also end some of the 
+apparent reluctance to adopt {{SSL}} now that it is more 
+freely available.
+
+The key attributes of {{SSL}} from the point of view of the authors
+of this distribution:
+
+* the specification is publically available
+* the protocol is extensible
+* it is ({{B:now}}) available to {{B:all}} users in source form
+* it is {{B:application}} independant
+* it is {{B:easy}} to add to existing applications
+* it is already in use in a number of commercial applications
+* it now can be linked with {{B:RSAref}} (and it works too according
+  to reports we have had) to enable US residents access to this code
+
+H2: Privacy Enhanced Mail
+
+There are lots of things in common here that should be looked at 
+- some nice encoding ideas and much of what is required to do {{PEM}}
+is in this {{SSL}} implementation. This was not the original aim
+of writing this library. A number of good ideas were taken from 
+the way in which {{PEM}} handles things.
+
+{{PEM}} and {{PGP}} style tools layered on top of this library are
+a logical step that is planned - and it is not all that much work; 
+however both Eric and myself have been concentrating on other issues.
+
+#:TODO:
+
+H2: Secure Unix-Unix authentication
+
+We intend to layer a {{kerberos}}-style security mechanism on
+top of this such that we can have secure machine to machine login
+without the requirement of a password exchange or requiring 
+hosts to trust each other. This is a logical extension of 
+the certificate management stuff. The basic outline is as follows:
+
+* central certificate issuing machine
+* client generates a public and private key
+* client sends via an {{SSL}} connection (and hence using
+  the standard certificate exchange) their {{Unix}} credentials
+  including their password (details encoded with private key)
+* certificate issuing machines checks the password against
+  the {{normal}} Unix password database and if it is correct
+  returns a signed certificate
+* client stores this certificate and uses it to connect to
+  whatever service they wish to ... the private key must
+  be stored encrypted somehow ... we need a {{daemon}} that
+  is given a password and can then return the key any number
+  of times to the user without the password being required. 
+
+#:TODO: Check this against the kerberos model
+
+H2: Link level security
+
+It should be possible to implement an auto-pushed {{STREAMS}}
+module that provides transparent {{SSL}} support for all 
+applications in any modern {{SVR4}} based kernel. Implementation
+of this is left as an exercise for the reader :-)
+
+Alternatively, for those environments that support {{pre-load}} 
+libraries (e.g. SunOS 5.x), a wrapper to perform {{SSL}} is fairly
+straight forward to implement. The author of this document has already
+implemented {{SOCKS}} support in such a manner.
+
+
+H1: Certificates
+
+!if ONLINE
+
+{{[jump="certs"]Certificate Handling Interface}}
+
+!else
+!on paratag "H1,H2,H3,H4"; $tag =~ tr/1234/2345/; DOWN
+!include "certs.sdf"
+!off DOWN
+!endif
+
+H1: Porting Notes
+
+!if ONLINE
+
+{{[jump="mosaic"]NCSA Mosaic 2.5}}
+
+{{[jump="telnet"]SRA Telnet}}
+
+{{[jump="httpd"]NCSA HTTPD 1.3}}
+
+!else
+!on paratag "H1,H2,H3,H4"; $tag =~ tr/1234/2345/; DOWN
+!include "mosaic.sdf"
+!include "telnet.sdf"
+!include "httpd.sdf"
+!off DOWN
+!endif
+
+!endif
+
+H1: Patent Issues and other such ramblings
+
+!if ONLINE
+
+{{[jump="ramblings"] Ramblings from Eric Young }}
+
+!else
+!on paratag "H1,H2,H3,H4"; $tag =~ tr/1234/2345/; DOWN
+!include "ramblings.sdf"
+!off DOWN
+!endif
+
+H1: Change history
+
+!if ONLINE
+
+{{[jump="changes"] CHANGES }}
+
+!else
+!on paratag "H1,H2,H3,H4"; $tag =~ tr/1234/2345/; DOWN
+!include "changes.sdf"
+!off DOWN
+!endif
+

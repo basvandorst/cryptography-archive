@@ -1,0 +1,205 @@
+10 '** GRAND/ENC GRANDPRE ENCIPHERMENT ** 87 July 25 mod for ibm july 88
+15 'set dictionary data in 2080
+20 KEY OFF:CLEAR:CLS:DEFINT A-Z:DIM CH$(26),CJ$(26),X$(26),X(26),NW(26),ST(26)
+30 AL$="ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+40 NU$="111213141516171812122232425262728313233343536373841424344454647485152535455565758616263646566676871727374757677788182838485868788"
+50 GOTO 170
+55 '
+60 'LOCATE 13,1:PRINT SPC(79):PRINT SPC(79):LOCATE 13,1:PRINT"Doing a frequency run:":LOCATE 14,1
+62 FOR N=1 TO 26:CH$(N)="":CJ$(N)="":NEXT
+65 FOR N=1 TO 26:Y=1:
+70   X=INSTR(Y,MA$,MID$(AL$,N,1)):IF X=0 THEN 110
+80   X(N)=X(N)+1:Y=X+1
+90   CH$(N)=CH$(N)+MID$(NU$,2*X,2)
+95   'CJ$(N)=CJ$(N)+MID$(NU$,2*X,2)+" " 'space it neatly
+100  GOTO 70
+110 NEXT
+115 GOTO 800
+120 FOR N=1 TO 26:PRINT MID$(AL$,N,1);X(N);CJ$(N),:NEXT
+130 PRINT:PRINT"High frequency plaintext letters are ETAONIRSH.":PRINT SPC(79)"Are you happy with the above distribution? (Y*/N) ";:LINE INPUT Q$:IF Q$="N"OR Q$="n"THEN 520
+140 GOTO 800
+160 '
+                    ---- start here ----
+170 GOSUB 5010
+180 PRINT TAB(33)"By Mike Barlow"
+190 GOSUB 10000:GOSUB 11010 'get example matrix, ptxt
+199 '
+    
+200 PT$="":LOCATE 7,1:PRINT "Enter the plaintext:":PRINT"(UPPER CASE, no punctuation, with or without spaces, 100-150 chars):";:LINE INPUT PT$
+210 IF PT$=""THEN PT$=XPT$:PRINT PT$
+220 RP$=PT$          'remember it for printout
+230  PRINT"Blanks deleted: ";
+240 X=INSTR(PT$," "):IF X>0 THEN PT$=LEFT$(PT$,X-1)+RIGHT$(PT$,LEN(PT$)-X):GOTO 240                  'delete blanks in plaintext
+250 LP=LEN(PT$): PRINT USING"### chars left";LP
+260 '
+     --- check alphabet required by ptext ---
+270 PRINT:PRINT"Letters required by the plaintext are ";
+290 FOR N=1 TO 26:Y=1
+300   X=INSTR(Y,PT$,MID$(AL$,N,1)):IF X=0 THEN 320
+310   X(N)=X(N)+1:Y=X+1:GOTO 300
+320 NEXT
+330 LR$="":FOR N=1 TO 26
+340  IF X(N)>0 THEN PRINT MID$(AL$,N,1);:LR$=LR$+MID$(AL$,N,1)
+350 NEXT
+360 PRINT:PRINT"Letters NOT required are ";:FOR N=1 TO 26
+370  IF X(N)=0 THEN PRINT MID$(AL$,N,1);:
+380 NEXT
+390 PRINT:PRINT:Y=CSRLIN:PRINT TAB(13)"Press <C> to change the plaintext, or <ENTER> to proceed: ";:LINE INPUT Q$:IF Q$="C"OR Q$="c"THEN GOSUB 5010:GOTO 200
+395 LOCATE Y,1:PRINT SPC(79)
+400 '
+    --- get the matrix ---
+410 PRINT:PRINT"Do you want a manual or automatic matrix? (M/A*) ";:LINE INPUT Q$:IF Q$="M"OR Q$="m" THEN 420 ELSE 2050
+420 '
+    --- manual matrix entry ---
+425 GOSUB 5010: LOCATE 23, 25:PRINT"Press <ENTER> for built-in examples";
+430 LOCATE 4,1:PRINT"Enter the 8 rows of 8-letter words one at a time, pressing <ENTER> after each one. Use UPPER CASE, please.
+440 PRINT:FOR N=1 TO 8:MA$(N)="":PRINT" Enter word"N": ";:LINE INPUT MA$(N): IF MA$(N)="" THEN MA$(N)=XMA$(N):PRINT MA$(N):GOTO 470
+450   IF LEN(MA$(N))<>8 THEN PRINT"Wordlength error - try again: ":GOTO 440
+460   IF ASC(LEFT$(MA$(N),1))>90 THEN PRINT"UPPER CASE please!": GOTO 440
+470 NEXT
+480 LOCATE 23,1:PRINT SPC(79):PRINT"Is that correct? (Y*/N) ";:LINE INPUT Q$:IF Q$="N"OR Q$="n"THEN 520
+490 GOSUB 5010:PRINT"The matrix is:":MA$="":FOR N=1 TO 8:PRINT TAB(36)MA$(N):MA$=MA$+MA$(N):NEXT
+500 PRINT:PRINT:PRINT TAB(29)"Press <ENTER> to proceed: ";:LINE INPUT Q$
+510 GOTO 60
+520 '
+    --- correction routine ---
+530 GOSUB 5010:PRINT"The matrix is:":MA$="":FOR N=1 TO 8:PRINT TAB(36)MA$(N):MA$=MA$+MA$(N):NEXT
+540 PRINT:PRINT"Which line do you wish to change? (1-8, or <@> if ok): ";:LINE INPUT Q$:IF Q$="@"THEN 60 ELSE Q=VAL(Q$):IF Q<1 OR Q>8 THEN 540
+550 PRINT"It presently reads "MA$(Q)". What should it read? (UPPER CASE) ";:LINE INPUT MA$(Q):GOTO 530
+800 '
+    --- encipher text ---
+810 GOSUB 5010:LOCATE 1,60:PRINT"Vert. Key: "KW$;
+820 LOCATE 4,1: PRINT"The matrix is:":FOR N=1 TO 8:PRINT TAB(3)MA$(N):NEXT
+830 LOCATE 4,32:COLOR 0,7:PRINT"The plaintext is:";:COLOR 7,0:FOR N=1 TO 4:LOCATE 5+N,16:PRINT MID$(RP$,1+(N-1)*64,64);:NEXT:PRINT USING"  (### chars)";LP;
+850 LOCATE 12,32:COLOR 0,7:PRINT"The Ciphertext is:":COLOR 7,0:PRINT:OP$=""
+860 FOR N=1 TO LP
+870  X$=MID$(PT$,N,1)    'get a letter
+880  X=INSTR(AL$,X$)     'get its alphab posn
+890  IF LEN(CH$(X))>2 THEN N$=MID$(CH$(X),1+(INT(1+RND*(LEN(CH$(X))/2))-1)*2,2) ELSE N$=CH$(X)
+900  PRINT N$+" ";     'no limit to displayed text length
+910  IF N<=80 THEN OP$=OP$+N$+" ":GOTO 940
+920  OQ$=OQ$+N$+" "    'have to use two strings though
+940 NEXT
+950 GOTO 9260
+1990 '
+2000 '--- automatic matrix generation ---
+2010 'NO$ is permanent lockout (directory or other) in line 2080. LR$ is letters required.
+2011 'This program sets any limits on the alphabet set, and then pulls out of the dictionary 8-letter words at random until one is found satisfying the limits. This word becomes the (vertical) keyword.
+2012 'The program then pulls out other 8-letter words starting with each letter of the keyword, making up an 8x8 enciphering matrix. These 8 words are not checked for lockouts. The 8 are concatenated into MA$ which is then
+2013 'checked to see that all the letters of LR$ are included. If not, it loops for another keyword.
+2030 'Use DICTREAD.BAS to get dictionary data for line 2790.
+2040 :
+2050 GOSUB 5010
+2060 AF=1:A1=28               'AF auto flag 1=Y
+2070 GOSUB 2710               'clear the matrix
+2080 DF$="DICT8.GP (Lovelock)":NO$="XZ":TC=694 'dict data. TC is total # words
+2090  RANDOMIZE TIMER
+2130 GOSUB 2720 'get dictionary ref data (# words/starting letter)
+2140 'PRINT@128,CHR$(31):PRINT"The "DF$" file has no entries for these letters: "NO$
+2150 PRINT:PRINT"The letters we need for the ptext are "LR$
+2160 FOR N=1 TO LEN(NO$):IF INSTR(LR$,MID$(NO$,N,1))=0 THEN 2200 ELSE PRINT"PROBLEM!
+2170 PRINT TAB(1+4)"This plaintext cannot be used with this dictionary file, as it contains letters not in the dictionary, ie "NO$:PRINT:PRINT TAB(1+7)"Press <ENTER> to adjust the plaintext, <Q> to quit: ";:LINE INPUT Q$
+2180 IF Q$="Q"OR Q$="q"THEN END
+2200 NEXT
+2210 OPEN"R",1,"DICT8.GP",10         'was 9 on the trs80. Mickey Mouse MS-DOS
+2220 FIELD 1, 8 AS FW$
+2230 IF NO$>" "THEN PRINT"Locked out letters are "NO$
+2235 PRINT:PRINT"Looking for a vertical keyword:"
+2240 Y=TC:Z=0:GOSUB 2270:KW$=FW$
+2250 LOCATE 1,60:PRINT"Vert. Key: "KW$;:GOTO 2380
+2260 '
+  --- SUB: get a word and accept it (used for v.keyword only) ---
+2270 IF Y<2 THEN X=Z:GOTO 2290     'if only 1 word in dict
+2280 X=INT(RND*(Y))+Z              'y is range, z is start
+2290 GET 1,X
+2300 'IF AF=0 THEN 300             'AF=0 for no prompts; need 'em for key
+2310 LOCATE 14,1:PRINT "Trying word #"USING"###  ";X;:PRINT FW$:GOTO 2320 ELSE PRINT FW$
+2320 FOR N=1 TO 8:X$=MID$(FW$,N,1)
+2330  IF INSTR(NO$,X$) THEN GOTO 2270 'PRINT"This word contains a locked-out character: trying another.": GOTO 2270
+2340 NEXT
+2350 IF AF THEN PRINT"This word contains no locked-out chars. Do you accept it? (Y*/N) ";:LINE INPUT Q$:IF Q$="N"OR Q$="n"THEN 2270 ELSE GOSUB 5010:RETURN
+2360 RETURN
+2370 '
+     --- keyword OK so build up matrix ---
+2380 AF=0                          'no more prompts
+2390 FOR N=1 TO 8: X$(N)=MID$(KW$,N,1)
+2400 NEXT
+2410 FOR M=1 TO 8:K=INSTR(AL$,X$(M))
+2420   Y=NW(K):Z=ST(K):
+2430   IF Y<2 THEN X=Z:GOTO 2450   'if only 1 word in dict
+2440   X=INT(RND*(Y))+Z          'y is range, z is start; RND formula should                                      give a number between 0 and Y.
+2450   GET 1,X
+2460   IF FW$=KW$ THEN 2440 ELSE MA$(M)=FW$   'h keys <> v key
+2470   LOCATE 3+M,36:PRINT MA$(M);
+2475  X1$=INKEY$:IF INKEY$="Q" OR INKEY$="q" THEN M=9:GOSUB 5030:GOTO 2240
+2480 NEXT
+2490 '
+   --- check avail alphab with this matrix and put in LA$ ---
+2495 LOCATE 14,1:PRINT"Letters required by this plaintext are "LR$;
+2498 LOCATE 15,1:PRINT "(Press and hold key Q to interrupt and try another vertical keyword)
+2500 LOCATE 13,1:PRINT"Available letters with this matrix are ";
+2510 MA$="":FOR N=1 TO 8:MA$=MA$+MA$(N):NEXT
+2520 LA$="":FOR N=1 TO 26:Y=1:X(N)=0
+2530   X=INSTR(Y,MA$,MID$(AL$,N,1)):IF X=0 THEN 2550
+2540   X(N)=X(N)+1:Y=X+1:GOTO 2530
+2550   IF X(N)>0 THEN PRINT MID$(AL$,N,1);:LA$=LA$+MID$(AL$,N,1)
+2560 NEXT:PRINT"                 "
+2570 '
+    --- compare LA$ (avail) with LR$ (reqd) ---
+2580 FOR N=1 TO LEN(LR$) 'letters reqd by ptxt
+2590   IF INSTR(LA$,MID$(LR$,N,1))=0 THEN GOSUB 2710:GOTO 2380
+2600 NEXT:LOCATE 16,29:PRINT"MATRIX OK FOR THIS TEXT!":BEEP:BEEP
+2610 CLOSE:GOSUB 5030:GOTO 60
+2660 '
+     --- SUB: print the matrix ---
+2670 LOCATE 5,1:PRINT;:FOR N1=1 TO 8:PRINT TAB(1+A1)MA$(N1):NEXT
+2680 RETURN
+2690 '
+ 
+2710 FOR N=1 TO 8:MA$(N)=STRING$(8,"."):NEXT:RETURN 'clear the matrix
+2720 '
+      --- read the data ---
+2730 ON ERROR GOTO 2770
+2740 N=1
+2750 READ CH$(N), ST(N), NW(N) 'char # in alphab, start point in file DF$, # words starting with this char
+2760 N=N+1:GOTO 2750
+2770 RESUME 2780
+2780 ON ERROR GOTO 0:RETURN
+2790 DATA A,1,61,B,62,24,C,86,72,D,158,47,E,205,45,F,250,21,G,271,4,H,275,11,I,286,37,J,323,2,K,325,2,L,327,15,M,342,41,N,383,12
+2800 DATA O,395,32,P,427,61,Q,488,3,R,491,68,S,559,77,T,636,25,U,661,13,V,674,9,W,683,11,X,0,0,Y,694,1,Z,0,0
+4999 '
+5000 ' --- misc subs ---
+5010 CLS:PRINT DATE$ TAB(26)"  * GRANDPRE ENCIPHERMENT *  ":PRINT TAB(30)STRING$(21,"-"):RETURN
+5020 GOSUB 5010:PRINT"The matrix is:":MA$="":FOR N=1 TO 8:PRINT TAB(36)MA$(N):MA$=MA$+MA$(N):NEXT:RETURN
+5030 LOCATE 23,1:PRINT SPC(79):LOCATE 23,29:PRINT"Press <ENTER> to proceed: ";:LINE INPUT QQ$:LOCATE 23,29:PRINT SPC(40):RETURN
+9250 '
+9260 LOCATE 23,1:PRINT"Do you wish to <P*>rint this for the Cm, do <A>nother, or <Q>uit? ";:LINE INPUT Q$
+9270 ON INSTR("PpAaQq",Q$)GOTO 9280,9280,10,10,9500,9500:GOTO 9260
+9280 ON ERROR GOTO 18000
+9290 WIDTH "lpt1:",255    'needed by GWBASIC
+9300 EM(0)=-12971:EM(1)=23813:EM(2)=-28469
+9310 X=VARPTR(EM(0))
+9320 CALL X
+9340 FOR N=1 TO 20:LPRINT:NEXT   'space to bottom of page
+9350 LPRINT "GRANDPRE encipherment by Mike Barlow   "DATE$:LPRINT
+9360 LPRINT OP$;:LPRINT OQ$
+9370 ON ERROR GOTO 0
+9380 LPRINT CHR$(12):GOTO 9260
+9500 LOCATE 23,1:PRINT SPC(79):LOCATE 23,39:PRINT "end"
+9510 LOCATE 23,1:END
+10000 '
+   --- examples of manual Matrices and Plaintext ---
+10010 MA$="LADYBUGSAZIMUTHSCALFSKINQUACKISHUNJOVIALEVULSIONROWDYISMSEXTUPLY" 'ACA&U P17 matrix
+10020 FOR N=1 TO 8:XMA$(N)=MID$(MA$,1+(N-1)*8,8):NEXT
+10030 RETURN
+11000 '
+ 
+11010 XPT$="THE FIRST COLUMN IS THE KEYWORD":SO$="ACA&U P17"
+11020 'XPT$="THE GRANDPRE IS A CHALLENGE TO PROGRAMMERS BUT IT MUST BE HELL FOR SPIES AND CIPHERISTS TO REMEMBER NINE KEYWORDS WHAT IS THE PURPOSE OF THE NINTH I SUPPOSE AS A MEMORY AID TO THE FIRST EIGHT
+11030 RETURN
+18000 '   --- printer error trap ---
+18010 IF ERR=24 OR ERR=25 OR ERR=27 THEN LOCATE 23,1:PRINT SPC(79):LOCATE 23,15: PRINT "Printer not ready; press <ENTER> to proceed: ";:LINE INPUT Q$:LOCATE 23,1:PRINT SPC(79):RESUME
+18020 ON ERROR GOTO 0:STOP
+60000 ' ACA limits reduced in line 200. Inkey interrupt added at 2475. Freq run bypassed at Line 70; Cm printout added at 9250. Oct 1989
+65000 SAVE"grandpre.enc",A
+

@@ -1,0 +1,88 @@
+Data Encryption Standard routines in portable C and 386/486 assembler
+Phil Karn, KA9Q
+September 2, 1994
+
+There are two user calls, deskey() for creating a key schedule for
+encryption or decryption, and des() that does the actual encryption or
+decryption. They are declared as follows:
+
+void
+deskey(unsigned long k[16][2],unsigned char key[8],int decrypt);
+
+void
+des(unsigned long k[16][2],unsigned char buf[8]);
+
+The deskey() function creates a key schedule 'k' from 'key' for
+later use by des(); both arrays must be created by the caller.
+
+The des() function encrypts or decrypts the user-provided buffer 'buf'
+in place under control of the key schedule 'k'. Whether des() encrypts
+or decrypts is controlled by the 'decrypt' argument to deskey() when
+the key schedule is created. This is because DES encryption and
+decryption are identical except for the key schedule being in reverse
+order.
+
+The deskey() routine is in portable C; if you want great speed (e.g.,
+for key searching or UNIX password cracking) you'll have to tune it
+yourself.
+
+There are three flavors of the des() routine, one in portable C and
+two in 386/486 assembler. One assembler version, desborl.cas, is in
+inline assembler format for Borland C++ and can be used in DOS
+environments.  The other, desgnu.s, is in GNU 'as' format and is
+intended for use in 386 BSD UNIX systems (e.g., BSDI, FreeBSD,
+NetBSD). The portable C version is in desport.c.
+
+All three versions of des() refer to an external table containing the
+combined S&P boxes. Because the format of this table differs between
+the assembler and C versions, different symbol names are used: Spbox
+for C and Spboxa for assembler. Both tables are generated as C source
+files by the program gensp, which takes one argument: 'a' for
+assembler and 'c' for C.
+
+This is an almost complete rewrite of my old public domain DES code
+written circa 1987, which in turn borrowed heavily from Jim Gillogly's
+1977 public domain code. I pretty much kept my key scheduling code,
+but the actual encrypt/decrypt routines are taken from from Richard
+Outerbridge's DES code as printed in Schneier's "Applied
+Cryptography."
+
+Note to Borland C++ users: Borland C++ 3.1 has no way of ensuring that
+32-bit objects (in particular the Spbox[] array) are aligned on a
+32-bit boundary. Even the -a option provides only 16-bit alignment. So
+without any special precautions it's a 50-50 crapshoot. I've included
+a special dessp.asm file which has been manually messaged to ensure
+32-bit alignment.  It also helps if callers to des() can ensure that
+the key schedule array is 32-bit aligned; this is automatic if the
+array is created with malloc().
+
+Some measured execution speeds in crypts/sec:
+Borland Assembler version, Borland C++ 3.1 -O2, DOS 16-bit real mode:
+110,254 (90 Mhz Pentium)
+72,098 (60 Mhz Pentium)
+43,460 (486DX-50)
+
+Gnu assembler version, 32-bit protected mode:
+69,348 (486DX2-66, BSDI 1.1)
+
+Portable C version:
+109,890 (Sparc 20 Model 61, GCC 2.5.8 -O)
+93,457 (Sparc 1000)
+88,495 (Sparc 5/85)
+84,034 (Sparc 2000)
+83,333 (Sparc 20 Model 51)
+80,000 (Sparc 10 Model 51)
+71,942 (Sparc 5/70)
+66,666 (Sparc 10 Model 41)
+66,225 (Sparc 10 Model 30)
+45,248 (Sun 4/15)
+44,643 (Sun 4/30)
+36,101 (Sun 4/690)
+35,335 (Sun 4/75)
+35,199 (486DX2-66, BSDI 1.1, GCC 1.42 -O, 32-bit prot mode)
+11,561 (486DX-50, DOS, Borland C++ 3.1 -O2, 16-bit real mode)
+
+This code is in the public domain. Bug reports and enhancements are
+appreciated.
+
+Phil Karn KA9Q, karn@unix.ka9q.ampr.org

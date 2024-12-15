@@ -1,0 +1,885 @@
+#--------------------------Cut Here--------------------------
+#! /bin/sh
+# This is a shell archive.  Remove anything before the "#! /bin/sh" line,
+# then unpack it by saving it in a file and typing "sh file."
+#
+# Wrapped by Mark G. Johnson,,,,hal,open (mark) at hal on Thu Jan 17 15:10:09 1991
+#
+# unpacks with default permissions
+#
+# Contents : Create_Key_Prime Create_Seed Example_ifile Example_pfile
+#	Example_qfile Generate_Bits Makefile README Sample_Primes bitgen_bc
+#	find_blum_prime_bc find_residue_bc reblock.c
+#
+if `test ! -s Create_Key_Prime`
+then
+echo "x - Create_Key_Prime"
+cat > Create_Key_Prime << '@\Rogue\Monster\'
+#!/bin/csh
+
+# Syntax: Create_Key_Prime  -d num_digits   file
+#
+#  num_digits   how many decimal digits do you want me to use in constructing
+#                     a Blum prime.
+#  file         contains a guess at a prime number.  The guess needn't contain
+#                     num_digits.  However, if it does, and if it is a Blum
+#                     prime, then the guess is returned as the key_prime.
+#  stdout       will be written with an approved Blum prime of num_digits
+
+if ($#argv != 3) then
+   echo "Usage: " $0 "  -d no_of_digits   guessfile"
+   exit 1
+endif
+
+if( "$1" == "-d" ) then
+   @ num_digits = $2
+   shift ; shift
+else
+   echo "Usage: " $0 "  -d no_of_digits   guessfile
+   echo "   .... Please specify the number of digits to be generated"
+   echo "   .... by using the -d option"
+   exit 1
+endif
+
+if ( ! -e $1 ) then
+   echo "Cant find file " $1
+   exit 1
+endif
+
+
+
+# cook up a name for a temporary workfile
+set tf = ./keycreat_ugh.$$
+
+# first, grab the bc program that does the Blum, Blum, and Shub generator
+cp ./find_blum_prime_bc $tf
+chmod 777 $tf
+
+# grab the guess from guessfile
+echo ' a = \' >> $tf
+cat $1 >> $tf
+
+# the number of digits to be generated was specified on the command line
+echo ' l = \' >> $tf
+echo $num_digits >> $tf
+
+# tell bc to run the BBS generator
+echo "k(a,l)" >> $tf
+
+# fire up bc.  Output is directed to stdout as desired.
+bc < $tf
+
+# clean up the excess
+rm $tf
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Create_Key_Prime"
+fi
+if `test ! -s Create_Seed`
+then
+echo "x - Create_Seed"
+cat > Create_Seed << '@\Rogue\Monster\'
+#!/bin/csh
+
+# Syntax: Create_Seed  file1  file2  file3  > outputfile
+#
+#  file1, file2 contain the two Key Primes, p and q
+#  file3        contains an initial starting point from which seed is generated
+#  stdout       will be written with an approved seed -- a quadratic residue
+#                       modulo p*q
+
+if ($#argv != 3) then
+   echo "Usage: " $0 " keyfile1  keyfile2  initializer"
+   exit 1
+endif
+
+if ( ! -e $1 ) then
+   echo "Cant find file " $1
+   exit 1
+endif
+
+if ( ! -e $2 ) then
+   echo "Cant find file " $2
+   exit 1
+endif
+
+if ( ! -e $3 ) then
+   echo "Cant find file " $3
+   exit 1
+endif
+
+# cook up a name for a temporary workfile
+set tf = ./seed_ugh.$$
+
+# first, grab the bc program that calculates quadratic residues
+cp ./find_residue_bc $tf
+chmod 777 $tf
+
+# grab the first Blum integer from keyfile1
+echo ' p = \' >> $tf
+cat $1 >> $tf
+
+# grab the second Blum integer from keyfile2
+echo ' q = \' >> $tf
+cat $2 >> $tf
+
+# grab the initial starting point for the seed from initializerfile
+echo ' i = \' >> $tf
+cat $3 >> $tf
+
+# tell bc to execute the quadradic-redidue-seedfinder routine named s
+echo "s(p,q,i)" >> $tf
+
+# fire up bc.  Output goes to stdout as desired.
+bc < $tf
+
+# clean up the excess
+rm $tf
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Create_Seed"
+fi
+if `test ! -s Example_ifile`
+then
+echo "x - Example_ifile"
+cat > Example_ifile << '@\Rogue\Monster\'
+531239488390347823749122374098239452383464
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Example_ifile"
+fi
+if `test ! -s Example_pfile`
+then
+echo "x - Example_pfile"
+cat > Example_pfile << '@\Rogue\Monster\'
+8831561234306654874703614778892482837746817613596197418647114123471358\
+35097987578439478017739414136083
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Example_pfile"
+fi
+if `test ! -s Example_qfile`
+then
+echo "x - Example_qfile"
+cat > Example_qfile << '@\Rogue\Monster\'
+768831500489483601796323319562819578680970439956889887388197467275197\
+61887242662093444289044322125718092759
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Example_qfile"
+fi
+if `test ! -s Generate_Bits`
+then
+echo "x - Generate_Bits"
+cat > Generate_Bits << '@\Rogue\Monster\'
+#!/bin/csh
+
+# Syntax: Generate_Bits -n num_bits  file1  file2  file3  > outputfile
+#
+#  num_bits      how many bits do you want me to create
+#  file1, file2  contain the two Key Primes, p and q
+#  file3         contains the seed for the random number generator
+#  stdout        will be the place where the random bita are written
+#
+#  Note: it is assumed that the Key Primes are in standard Blum form,
+#        and that the seed is a quadratic residue modulo (p*q)
+
+if ($#argv != 5) then
+   echo "Usage: " $0 " -n no_of_bits   keyfile1  keyfile2  seedfile"
+   exit 1
+endif
+
+if( "$1" == "-n" ) then
+   @ num_bits = $2
+   shift ; shift
+else
+   echo "Usage: " $0 " -n no_of_bits   keyfile1  keyfile2  seedfile"
+   echo "   .... Please specify the number of bits to be generated"
+   echo "   .... by using the -n option"
+   exit 1
+endif
+
+if ( ! -e $1 ) then
+   echo "Cant find file " $1
+   exit 1
+endif
+
+if ( ! -e $2 ) then
+   echo "Cant find file " $2
+   exit 1
+endif
+
+if ( ! -e $3 ) then
+   echo "Cant find file " $3
+   exit 1
+endif
+
+if ( ! -e ./Reblock ) then
+   echo "Cant find executable program Reblock"
+   exit 1
+endif
+
+
+
+
+# cook up a name for a temporary workfile
+set tf = ./genbit_ugh.$$
+
+# first, grab the bc program that does the Blum, Blum, and Shub generator
+cp ./bitgen_bc $tf
+chmod 777 $tf
+
+# grab the first Blum integer from keyfile1
+echo ' p = \' >> $tf
+cat $1 >> $tf
+
+# grab the second Blum integer from keyfile2
+echo ' q = \' >> $tf
+cat $2 >> $tf
+
+# grab the seed (a quadratic residue modulo p*q) from seedfile
+echo ' s = \' >> $tf
+cat $3 >> $tf
+
+# the number of bits to be generated was specified on the command line
+echo ' b = \' >> $tf
+echo $num_bits >> $tf
+
+# tell bc to run the BBS generator
+echo "g(p,q,s,b)" >> $tf
+
+# fire up bc.  Output is piped thru Reblock then goes to stdout as desired.
+bc < $tf | Reblock $num_bits
+
+# clean up the excess
+rm $tf
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Generate_Bits"
+fi
+if `test ! -s Makefile`
+then
+echo "x - Makefile"
+cat > Makefile << '@\Rogue\Monster\'
+#
+#
+#
+compile:	Reblock
+		echo "compiling C program"
+#
+#
+#
+clean:
+		chmod 444 README Example_?file Sample_Primes *_bc
+		chmod 755 Generate_Bits Create_*e*
+		rm -i Reblock Example_sfile reblock.o *ugh*
+#
+#
+#
+Reblock:	reblock.o
+		cc reblock.o -o Reblock
+#
+#
+#
+Example:	Reblock
+		Create_Seed Example_pfile Example_qfile Example_ifile \
+		> Example_sfile
+		Generate_Bits   -n 300   Example_pfile  Example_qfile \
+		  Example_sfile
+#
+#
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Makefile"
+fi
+if `test ! -s README`
+then
+echo "x - README"
+cat > README << '@\Rogue\Monster\'
+                                                         July 1, 1990
+
+INTRODUCTION:
+
+This is a quick-and-dirty package for the generation of "strong"
+pseudorandom numbers using the quadratic residue algorithm published by
+Blum, Blum, and Shub [1].  It is "strong" in that it passes all
+polynomial-time statistical tests; informally speaking, there is no
+effective algorithm which, in polynomial time, will distinguish the
+output of this generator from that produced by a truly random source.
+
+The goal of the package is to allow experimentation with the generator;
+to that end, simplicity has been favored over speed.  Thus the software
+constructed as a set of subroutines for use with the UNIX bignum
+calculator "bc" (bc is unfortunately not a champion of runtime efficiency).
+
+The generator uses two "keys" and a "seed".  Each of the two keys is a
+large "Blum" prime number; that is, a prime which is congruent to 3, mod 4.
+[If you divide the number by 4, it yields a remainder of 3].  A script
+is provided for creating and/or verifying keys: Create_Key_Prime.
+
+The seed must also be in a specific form: it must be a quadratic residue
+modulo (the product of the keys).  Another script is provided for
+finding suitable seeds: Create_Seed.
+
+The security of the pseudorandom generator, and the runtime of the program
+implementing it, is dependent upon the size of the two keys.  The larger
+are the keys, the more secure (and slower) the generator.  In their
+landmark paper Rivest, Shamir, and Adleman [2] recommend that the product
+of the two keys should be about 200 decimal digits long (or longer).
+
+Preliminary experiments have been performed with keys about 100 decimal
+digits each (product is about 200 decimal digits).  If we let N stand
+for the product of the key primes, the algoritm generates about log2(log2(N))
+bits per iteration.  So when N is 200 digits long, the generator produces
+9 bits per iteration.  This is due to a theoretical refinement published
+by Alexi et al [3]; prior to that, it was felt that the generator should
+only produce a single bit per iteration.
+
+Experiments were performed on an RC3240 deskside computer.  When the
+product of the keys was 200 digits, this software generated pseudorandom
+bits at the rate of 64 bits/second.  The software was also tried on
+the SPARCstation 1 machine.  Unfortunately this machine has somewhat slower
+integer multiplication (which is a frequent operation in the generator),
+so its performance was lower: 24 bits/second.  Although not blindingly
+fast, this is still adequate for many purposes,esepcially including
+research and/or verification of higher-speed implementations in either
+software or hardware.
+
+(State of the art for special-purpose "RSA microcomputer" chips is
+reportedly around 9000 bits/second, not uncomfortably larger than
+this [unoptimized] software approach).
+
+
+HOW TO USE THIS SOFTWARE:
+
+
+ 0.   Clean up the directory and establish the required file permissions
+      by doing a "make clean".  In all likelihood, make will tell you that
+      it was unable to find any temporary files called "*ugh*" to delete.
+
+
+
+ 1.   Select two large prime numbers as your secret "keys".  Supplied
+      with this package are a few precomputed large prime numbers, but
+      you will probably want to calculate new, secret primes of your own.
+
+      BEWARE: it takes a very large amount of computer time to find
+              these large prime numbers.  Fortunately, once found, they
+              are used repeatedly (as the "keys"), so you can compute
+              them once [say, over the weekend] and that's that.  The
+              runtime is quite variable; here are the runtimes used by
+              an RC3240 to compute the primes supplied in this s/w:
+
+                          99 digit Blum prime    773 seconds
+                          99 digit Blum prime   3357 seconds
+                         100 digit Blum prime    915 seconds
+                         101 digit Blum prime    859 seconds
+                         102 digit Blum prime   2601 seconds
+                         104 digit Blum prime   1125 seconds
+                         107 digit Blum prime   2003 seconds
+
+      Make an initial guess of a prime number and place it in a file, for
+      example "guessfile".
+           % cat - >guessfile
+           37
+           ^D
+           %
+      (Naturally we would prefer the guess to be a 100 digit number but 
+       the above is only a simple example.)
+
+      Now execute the CShell script that finds Blum primes.  Assuming that
+      you want a prime of about 103 decimal digits in length:
+
+           % nohup Create_Key_Prime -d 103  guessfile  >My_key_P &
+
+      (We use "nohup" so we can log out later and keep the process alive).
+
+      Of course, you will need to do this a second time for your second
+      Blum integer key ("My_key_Q"), *using*a*different*guess* (!!).  If
+      you were to just run Create_Key_Prime again, using the same guess
+      and asking for the same number of digits again, you'd get the same
+      Blum prime as before -- not what you want.
+
+
+
+ 2.   Select a "seed" for the pseudorandom number generator.  This is
+      effectively a starting-place for the sequence of pseudorandom
+      numbers produced by your chosen key primes.  
+
+      We supply an "initializer" integer which is then converted into an
+      acceptable quadratic-residue seed.  Note that the pseudorandom number
+      generator is deterministic [this is the "paradox" of pseudo-random
+      number generators which prompted John von Neumann to quip that users
+      of them are in a state of sin].  Given (key1, key2, seed), the
+      generator computes the same stream of output bits, each and every
+      time it is invoked (with the same key1, key2, and seed).  Thus, to vary
+      the generator output, you vary the seed.  This is exactly analagous
+      to the operation of other, non-secure random number generators such
+      as the linear congruential generators, additive generators, etc.
+
+      The "initializer" integer is converted into a quadratic-residue seed
+      using a CShell script.  This script is relatively quick: it runs in
+      less than ten seconds:
+           % Create_Seed  My_key_P  My_key_Q  initializerfile  >My_seed
+
+
+
+ 3.   Run the pseudorandom number generator.  Assuming that you desire
+      450 bits of random output,
+           % Generate_Bits -n 450  My_key_P  My_key_Q  My_seed  >OutputBits
+
+      As mentioned above, this procedure is relatively quick: it operates
+      at 60 bits/second or so, when the keys are each about 100 decimal
+      digits.
+
+
+
+FILES NEEDED:
+
+      This preliminary version uses a very crude file structure: it assumes
+      all necessary files are located in the same directory where the
+      software is being executed.
+
+      It also assumes the existence of the UNIX "bc" bignum calculator.
+
+==============================================================================
+Although some small effort has been expended to verify the correctness of
+this package, no warranty is expressed or implied.  Use at your own risk.
+You get what you pay for, and you paid nothing.
+
+It has been tested and successfully run on an RC3240 and a SPARCstation 1.
+==============================================================================
+
+REFERENCES:
+
+[1] Blum, Blum, and Shub, "Comparison of Two Pseudorandom Number Generators",
+    in Chaum, D. et al, _Advances_in_Cryptology:_Proceedings_Crypto_82_,
+    pp. 61-79, Plenum Press, 1983.
+
+[2] Rivest, Shamir, and Adleman, "A Method for Obtaining Digital Signatures
+    and Public-Key Cryptosystems", MIT Lab for Computer Science, Technical
+    Memo number LCS/TM-82, April 1977.
+
+[3] Alexi, Chorr, Goldreich, and Schnorr, "RSA/Rabin bits are 1/2 + 
+    1/poly(log N) Secure", IEEE Symposium on the Foundations of Computer
+    Science, volume 25, pp. 449-457, 1984.
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write README"
+fi
+if `test ! -s Sample_Primes`
+then
+echo "x - Sample_Primes"
+cat > Sample_Primes << '@\Rogue\Monster\'
+99 digits
+212004934506826557583707108431463840565872545889679278744389317666981\
+496005411448865750399674653351
+
+99 digits
+100677295735404212434355574418077394581488455772477016953458064183204\
+108039226017738610663984508231
+
+100 digits
+6532397526713572558002996436047610652198976342688871456105735958745441\
+414193025997412441121667211431
+
+100 digits
+6120129179086996256356843953578741410800835293202077271511146493424487\
+123537148225298747420493245199
+
+102 digits
+8831561234306654874703614778892482837746817613596197418647114123471358\
+35097987578439478017739414136083
+
+104 digits
+2402817347952094929236812094632243946031663579319835032200729854233918\
+0259858116811084077541164901409791
+
+104 digits
+6324212005698972890901509149344159170425013897486872489593971253681961\
+2909672964015920938194323527052563
+
+104 digits
+8507193241843634651120055295992096463663774256340967595601139867066826\
+8497215200813867824624111285184219
+
+104 digits
+9603323251722245006392188844610336123507356579341615672719895765646730\
+1774368207786260646008076492221063
+
+104 digits
+7790061714780856879987402270336060699423893155706890265833600728377159\
+2226510078038396983680028380232927
+
+104 digits
+5035627243813501361769658050080683227259924776386767791057608750304182\
+3137695706870695762769743646966883
+
+107 digits
+768831500489483601796323319562819578680970439956889887388197467275197\
+61887242662093444289044322125718092759
+
+121 digits
+367815756938328665764975879276566338182477099378421598825107373049399\
+1549439924118989900774278863137878668101426048605507
+
+138 digits
+4749026515534113644288972600863770929681240222944881258920787690101677\
+15172819500161450400877727043914164156062863022937942960776130663483
+
+138 digits
+8256645300296551035125513924517828164832553515355704854184338974596659\
+92075996133980870349193525439680961734688478063706429098059328924011
+
+138 digits
+2461395467523643040141574674260166572098938422516397715192887002298250\
+01603181731813980092140809065753793458400789611049752100448260352631
+
+142 digits
+5596605965439783972250686853657802155981323901993039325781009334999656\
+7405082550795926884377196214944444783940147667391544040695012666938159\
+87
+
+155 digits
+675768360676181375379736997633891311617469510310159900256596029719180\
+5299872067528959202440703933897913089980263005360294645081500632168544\
+0874797217689391
+
+222 digits
+5710541605130057929122437623145942173940161861682649791840109478822235\
+8852620856234093324483044134499733093394031533642191102540428215474074\
+2795725673791100344324622573948243770867729037494216451840716200642861\
+516620154487
+
+222 digits
+8696952171933528755080136920087586064321701942399234988717157542825595\
+9761373164127055305982481926778191111879894777545669340786892366830368\
+1789503421188298945305297035900649845908959054858277449879310444921845\
+188396121579
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write Sample_Primes"
+fi
+if `test ! -s bitgen_bc`
+then
+echo "x - bitgen_bc"
+cat > bitgen_bc << '@\Rogue\Monster\'
+/* Generate cryptographically-strong pseudorandom numbers using the  */
+/* algorithm of Blum, Blum, and Shub.  Take advantage of the result  */
+/* by Alexi et al that the log(log(N)) lsb's are secure.             */
+
+
+/* Inputs:   p,q    large primes ... (p*q) should have >200digits    */
+/*           s      seed                                             */
+/*           b      bitcount     ... number of bits to output        */
+
+/* Output:   a pseudorandom stream of bits, length>=b, formatted     */
+/*           l bits per line, where l = log(log(p*q))                */
+
+
+
+/* ASSUME: prior computations have validated that p,q are Blum       */
+/*         primes and that s is a quadratic residue modulo (p*q)     */
+
+
+
+define g(p,q,s,b) {
+	auto n,x,l,m,i,z
+
+	n = p * q
+	/* calculate a lower-bound approximation of log2(log2(n)) */
+	x = n
+	l = 0
+	while(x>1) { x = x/2 ; l = l+1 }
+	x = l
+	l = 0
+	while(x>1) { x = x/2 ; l = l+1 }
+	m = 2^l
+l   /* print out the number of significant bits per line of output */
+
+
+	/* main loop follows ..... x = (x^2) mod n */
+	i = 0
+	x = s
+	while(i<b) {
+		x = (x * x) % n
+		i = i+l
+x % m   /* print out the  l  lsbs */
+	}
+
+}
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write bitgen_bc"
+fi
+if `test ! -s find_blum_prime_bc`
+then
+echo "x - find_blum_prime_bc"
+cat > find_blum_prime_bc << '@\Rogue\Monster\'
+/* approximation of static storage: variable at top level */
+	y[0]  = 2348715845
+	y[1]  = 1665052570
+	y[2]  = 796063141
+	y[3]  = 2350298980
+	y[4]  = 2079021256
+	y[5]  = 2596604540
+	y[6]  = 1508146164
+	y[7]  = 2625542359
+	y[8]  = 2223371122
+	y[9]  = 3676765191
+	y[10] = 1906462346
+	y[11] = 3413673518
+	y[12] = 2758255651
+	y[13] = 1940057027
+	y[14] = 794662019
+	y[15] = 1625129301
+	y[16] = 1264837106
+	y[17] = 65203769
+	y[18] = 4059481360
+	y[19] = 2503345998
+	y[20] = 3784670567
+	y[21] = 522126999
+	y[22] = 95643657
+	y[23] = 368857307
+	y[24] = 1152080261
+	y[25] = 862814598
+	y[26] = 558599104
+	y[27] = 3544928103
+	y[28] = 1434957517
+	y[29] = 1916900940
+	y[30] = 319033340
+	y[31] = 1699592126
+	y[32] = 2662027628
+	y[33] = 2324637842
+	y[34] = 2105951963
+	y[35] = 2201325727
+	y[36] = 2252826763
+	y[37] = 1284343040
+	y[38] = 1360358289
+	y[39] = 2548429334
+	y[40] = 704311033
+	y[41] = 769414534
+	y[42] = 3596700434
+	y[43] = 2706354780
+	y[44] = 1428208683
+	y[45] = 1578471924
+	y[46] = 1080158821
+	y[47] = 2894994679
+	y[48] = 850918056
+	y[49] = 4025981341
+	y[50] = 3661851959
+	y[51] = 3007918068
+	y[52] = 3502108515
+	y[53] = 3928308459
+	y[54] = 3438283319
+	y[55] = 4048307971
+	y[56] = 32112902
+	y[57] = 3120700983
+	y[58] = 161283647
+	y[59] = 4280346983
+	y[60] = 2427798542
+	y[61] = 24
+	y[62] = 55
+	y[63] = 2^32
+
+define r(n) {	/* generate a random number between 1 and (n-1) inclusive  */
+	auto x,j,k,m,z
+	m = 2^32
+	j = y[61]
+	k = y[62]
+	x = 0
+	while(x < n) {
+		y[k] = (y[k] + y[j]) % m
+		j = j - 1
+		k = k - 1
+		if(j <= 0) j = 55
+		if(k <= 0) k = 55
+		x = (x * m) + y[k]
+	}
+	y[61] = j
+	y[62] = k
+	z = 1 + (x % (n-1))
+	return(z)
+}
+
+
+/* prime test of the number n using the random parameter z */
+define p(n,z){
+	auto x,m,v,j,k,t,q,c,i,b[]
+	t=0
+	k=n-1
+	m=k
+	q=m/2
+	while(m == (2*q)) {
+		t = t+1
+		m = q
+		q = m/2
+	}
+
+	/* compute   x = (z^m) % n   by repeated squaring & multiplication */
+	i=1
+	c=m
+	while(c>0) {   /* build the base-2 representation of m into b */
+		b[i] = c%2
+		c = c/2
+		i = i + 1
+	}
+	x=1
+	for(j=(i-1); j>=1; j=j-1) {
+		x = (x*x) % n
+		if(b[j] == 1) x = (x * z) % n
+	}
+
+	j=0
+	if(x==1) return(1)
+	if(x==k) return(1)
+
+	while(j<t) {
+		if(x==k) return(1)
+		if(x==1) return(0)
+		x = (x*x) % n
+		j=j+1
+	}
+	return(0)  /* composite!! */
+}
+
+
+
+/* Rabin probabilistic test: is the number  n  prime or composite      */
+
+/* Do the test 50 times.  Then the probability of a composite number   */
+/* accidentally being reported "prime" is less than 2^(-100) ... i.e.  */
+/* a failure rate lower than the hardware failure rate achieved by a   */
+/* (1 trillion MHz) computer that has one cycle of hardware failure    */
+/* in 40,000 years of operation                                        */
+
+define t(n){
+	auto i,j,x
+
+	for(i=1; i<=50; i=i+1) {
+		x = r(n)    /* generate a random  x  s.t. 1 <= x <= n  */
+		j = p(n,x)  /* is this  x  a witness to primality of n */
+		if(j==0) return(0)
+	}
+
+	/* so it passed 50 trials of the probabilistic test */
+	return(1)
+}
+
+
+/* create a prime number of the Blum form: (p mod 4) == 3 */
+define k(a,l) { /* ask for estimate  a  and desired length of prime  l  */
+	auto	 x,v,i,z
+
+	x = a
+	for(i=1; i<l; i=i+1) { x = x / 10 }
+	v = 1
+	if(x <= 0) v=0
+	if(x >= 10) v=0
+	z = a % 4
+	if(z != 3) v=0
+	if(v==1) { if (t(a) == 1) return(a) }
+
+	m = (10^l)
+	x = a
+	while(v == 0) {
+		x = (x + r(m)) % m       /* try again with a random number */
+		if(x < 0) { x = 0 - x }
+		z = x % 4
+		x = x + (3-z)            /* put it in Blum form */
+		if(x < m) { v = t(x) }   /* is it prime?        */
+	}
+
+	return(x)
+}
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write find_blum_prime_bc"
+fi
+if `test ! -s find_residue_bc`
+then
+echo "x - find_residue_bc"
+cat > find_residue_bc << '@\Rogue\Monster\'
+define s(p,q,i) {  /* start from i, find a quadratic residue "seed" mod p*q */
+	auto n,z,x,v
+
+	n = p * q
+	z = i % n
+	if(z <= 1) z = 2
+
+	x = (z * z) % n
+	x = (x * x) % n
+	v = 1
+	if((x%p) == 0) { v=0 ; x = (x+1) % n }
+	if((x%q) == 0) { v=0 ; x = (x+1) % n }
+	if(x <= 1) v=0
+
+	while(v == 0) {
+		x = (x * x) % n
+		x = (x * x) % n
+		v = 1
+		if((x%p) == 0) { v=0 ; x = (x+1) % n }
+		if((x%q) == 0) { v=0 ; x = (x+1) % n }
+		if(x <= 1) { v=0 ; x=2 }
+	}
+
+	return(x)
+}
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write find_residue_bc"
+fi
+if `test ! -s reblock.c`
+then
+echo "x - reblock.c"
+cat > reblock.c << '@\Rogue\Monster\'
+/* take the output of the  bc  program and make it more readable */
+/* by converting to binary, blocking in groups of ten, etc.      */
+
+
+#include <stdio.h>
+
+main(argc, argv)
+int	argc ;
+char	*argv[] ;
+{
+	int	nbits, i, j, new, buf, blen, llen, gave, enuf ;
+
+	int	atoi() ;
+
+	if(argc != 2) { printf("Usage: %s no_of_bits\n", argv[0]); exit(1); }
+	enuf=atoi(argv[1]);
+
+	i = scanf("%d", &nbits);  if(i == EOF) exit(1);
+
+	gave = 0;
+	buf = 0;
+	blen = 0;
+	llen = 0;
+	while(gave < enuf)
+	{
+		i = scanf("%d", &new) ;  if(i==EOF) new=0;
+		buf = (buf << nbits) | new ;
+		blen += nbits ;
+		if(blen >= 10)
+		{
+			for(j=(blen-1); j>=(blen-10); j--)
+			{
+				i = (buf & (0x001 << j)) ? 1 : 0 ;
+				buf &= (~ (0x001 << j) ) ;
+				if(gave < enuf) { printf("%01d",i); gave++; }
+			}
+			blen -= 10 ;
+			llen += 11 ;
+			if(llen > 75) { printf("\n"); llen = 0; }
+			else printf(" ");
+		}
+	}
+	if(llen != 0) printf("\n");
+}
+@\Rogue\Monster\
+else
+  echo "shar: Will not over write reblock.c"
+fi
+# to concatenate archives, remove anything after this line
+exit 0

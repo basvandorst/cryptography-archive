@@ -1,0 +1,172 @@
+#!/usr/bin/perl
+# -*- Perl -*-
+
+# written by jason steiner, jsteiner@anwsun.phya.utoledo.edu, Jan 1993
+#
+# if you use or make improvements to this program i would appreciate
+# copies of your modifications & your PGP public key.
+#
+
+# Modified by Greg Spencer, greg@graphics.cornell.edu, May 1994
+# Mostly just cleaned up things and added stuff like automatic
+# addition and detection (and ignoring) of keys to be added to keyring,
+# and signal catching, as well as environment variable control of
+# most site-specific stuff.
+# 
+# Must set the following environment variable:
+# 
+# PGPCOMMAND set to the pgp decryption command
+# 
+# PAGER set to the desired pager command
+#
+# NOTE that this program NEVER writes sensitive data to a disk file.
+# it will only slurp it into memory, so if you have a HUGE file, you might
+# have problems.
+
+# setup some variables
+($pgpcommand = $ENV{'PGPCOMMAND'}) || ($pgpcommand = "/usr/local/bin/pgp");
+
+# just used for tmpfile names...
+($logname = $ENV{'LOGNAME'}) || ($logname = "nobody");
+
+($pager = $ENV{'PAGER'}) || ($pager="/usr/local/bin/less -i -n -s -S -c -M");
+
+$|=1;
+$topgp = 0;
+$tokey = 0;
+$pgpused = 0;
+($tmpdir = $ENV{'TMPDIR'}) || ($tmpdir = "/tmp");
+
+#temporary file name
+$tmpfile  = "${tmpdir}/.pgp1.$logname.$$";
+$tmpfile2 = "${tmpdir}/.pgp2.$logname.$$";
+
+# trap signals so we do not leave
+# garbage around
+sub catcher {
+	local ($sig) = @_;
+
+	print "Caught a SIG$sig -- exiting\n";
+	close (TMPFILE);
+	close (OUTPUT);
+	close (PAGER);
+	unlink ($tmpfile);
+	unlink ($tmpfile2);
+}
+
+$SIG{'INT'}  = 'catcher';
+$SIG{'QUIT'} = 'catcher';
+$SIG{'HUP'}  = 'catcher';
+$SIG{'KILL'} = 'catcher';
+
+# make sure nobody can read stuff
+umask 077;
+
+# prepare a data area
+@tmpdata = ();
+@newkeys = ();
+
+while (<>) {
+	if (!$topgp && m/^-----BEGIN PGP .*-----/ && !m/^-----BEGIN PGP PUBLIC KEY BLOCK-----/) {
+		$topgp = 1;
+		$pgpused = 1;
+		unlink ($tmpfile);
+		open (TMPFILE, ">$tmpfile") || (unlink ($tmpfile) && die "Cannot open $tmpfile for output.\n");
+	}
+	if (!$topgp) {
+		push(@tmpdata, $_);
+	} 
+	if ((!$tokey) && (m/^-----BEGIN PGP PUBLIC KEY BLOCK-----/)) {
+		$contains_keys = 1;
+		$tokey = 1;
+	}
+	if ($tokey) {
+		push (@newkeys, $_);
+		if (m/^-----END PGP PUBLIC KEY BLOCK-----/) {
+			$tokey = 0;
+		}
+	}
+	if ($topgp) {
+		print TMPFILE $_; # OK to write this to a file -- it is encrypted!
+		if (m/^-----END PGP .*-----/ && !m/^-----END PGP PUBLIC KEY BLOCK-----/) {
+			$topgp = 0;
+			close TMPFILE;
+			open (CLEAR, "$pgpcommand -f < $tmpfile |") || 
+			(unlink($tmpfile) && die "Cannot open pipe to PGP.\n");
+			$blocktype = $_;
+			$blocktype =~s/^-----END (PGP .*)-----/$1/;
+			$blocktype =~s/PGP MESSAGE/DECRYPTED MESSAGE/;
+			$blocktype =~s/PGP SIGNATURE/SIGNED MESSAGE/;
+			chop ($blocktype);
+			push (@tmpdata, "-----BEGIN $blocktype-----\n");
+			while (<CLEAR>) {
+				push (@tmpdata, $_);
+				if ((!$tokey) && (m/^-----BEGIN PGP PUBLIC KEY BLOCK-----/)) {
+					$contains_keys = 1;
+					$tokey = 1;
+				}
+				if ($tokey) {
+					push (@newkeys, $_);
+					if (m/^-----END PGP PUBLIC KEY BLOCK-----/) {
+						$tokey = 0;
+					}
+				}
+			}
+			close CLEAR;
+			print STDERR "\n";
+			unlink ($tmpfile);
+			push (@tmpdata, "-----END $blocktype-----\n");
+		}
+	}
+}
+
+select (STDIN);  $|=1;
+select (STDERR); $|=1;
+select (STDOUT); $|=1;
+
+# This handles things if we found keys that need
+# adding to our keyring
+# note that we are only writing the KEYS to the file.
+if ($contains_keys) { 
+	print STDERR "PGP Keys found, attempting to add...\n";
+
+	open (TMPFILE2, ">$tmpfile2");
+	foreach $_ (@newkeys) {
+		print TMPFILE2;
+	}
+	close (TMPFILE2);
+
+	# strange things happen if we do not 
+	# read/write directly from /dev/tty (perl bug??)
+	system ("$pgpcommand -ka $tmpfile2 >/dev/tty </dev/tty 2>&1");
+	unlink ($tmpfile2);	# get rid of it asap
+	$pgpused = 1;
+}
+
+# copy the contents of @tmpdata to the pager we want to use.
+open (PAGER, "|$pager") || (unlink ($tmpfile1) && die "Cannot open pipe to $pager.\n");
+
+# do "press any key to continue"
+# only if we had some output from PGP
+# (like a verified signature)
+# again with the /dev/tty thing (weird!)
+if ($pgpused) {
+	$q='';
+	open (TTY, "</dev/tty")	|| (unlink ($tmpfile1) && die "Couldn't open /dev/tty\n");
+	select(TTY); $| = 1;
+	print STDERR "Press any key to continue...\n";
+	$q = getc (TTY);
+	select (STDIN);
+}
+
+# output the decoded thing to the pager
+foreach $_ (@tmpdata) {
+	print PAGER;
+}
+@tmpdata = ();
+
+close OUTPUT;
+close PAGER;
+
+# cleanup
+unlink ($tmpfile);

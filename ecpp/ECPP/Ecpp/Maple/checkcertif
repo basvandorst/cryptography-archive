@@ -1,0 +1,182 @@
+######################################################################
+#                   Checking a certificate                           #
+######################################################################
+
+CheckCertificate := proc(certif)
+
+	local oldm, i, cert, p;
+
+	oldm:=0;
+	lprint(`N=`, certif[1][1]);
+	for i to nops(certif)
+	do
+	  cert:=certif[i];
+	  lprint(`C[`.i.`]: D=`, cert[2], time());
+	  p:=cert[1];
+	  if oldm <> 0 then
+	    if irem(oldm, p) <> 0 then
+	      ERROR(`p does not divide oldm`, p, oldm);
+	    fi;
+	  fi;
+	  if cert[2] > 1 then
+	    CheckEcm(cert, oldm);
+	    oldm:=cert[4];
+	  else
+	    if cert[2] = -1 then CheckNminus1(cert);
+	    else CheckNplus1(cert);
+	    fi;
+	    oldm:=cert[1]+cert[2];
+	  fi;
+	od;
+	RETURN(true);
+
+end:
+
+########## N-1 ##########
+CheckNminus1 := proc(cert)
+
+	local lf, h, tord, maxp, p;
+
+	p:=cert[1];
+	h:=cert[3];
+	if h = 0 then RETURN(CheckPratt(cert[4]));
+	elif h = 1 then
+	  lf:=cert[4];
+	  maxp:=convert(map(proc(x) x[1]^x[2] end, lf), `*`);
+	  maxp:=(p-1)/maxp;
+	  if maxp > 1 then lf:=[[maxp, 1], op(lf)]; fi;
+	  RETURN(CheckTheorem1(cert[1], lf, cert[5]));
+	elif h = 3 then
+	  RETURN(CheckTheorem3(cert[1], cert[4], cert[5][1]));
+	fi;
+
+end:
+
+# p - 1 = prod(lf[i][1]^lf[i][2]), ta = [a1, ..., ak]
+CheckTheorem1 := proc(p, lf, ta)
+
+	local a, c, ac, i;
+
+	for i to nops(lf)
+	do
+	  c:=(p-1)/lf[i][1];
+	  ac:=power(ta[i], c) mod p;
+	  if ac = 1 then ERROR(`Th1`, lf[i]); fi;
+	  if power(ac, lf[i][1]) mod p <> 1 then 
+	    ERROR(`p is not prime`, p, lf[i][1]); 
+	  fi;
+	od;
+	RETURN(true);
+
+end:
+
+# N - 1 = m * p, with 2*p+1 > sqrt(N).
+CheckTheorem3 := proc(N, lm, a)
+
+	local c, ac, i, m, p;
+
+	m:=convert(map(proc(x) x[1]^x[2] end, lm), `*`);
+	p:=(N-1)/m;
+	if((2*p+1)^2 < N) then ERROR(`2*p+1 < sqrt(N)`, p, N); fi;
+	ac:=power(a, m/2) mod N;
+	if ac = N-1 then ERROR(`Th3`, a); fi;
+	if power(ac, p) mod N <> N-1 then 
+	    ERROR(`not prime a`, N);
+	fi;
+
+end:
+########## N+1 a` la Cohen-Lenstra ##########
+CheckNplus1 := proc(cert)
+
+	local h, p, u, a, lf, maxp;
+
+	p:=cert[1];
+	if p mod 4 = 1 then u:=0; a:=cert[5]; else u:=cert[5]; a:=1; fi;
+	lf:=cert[4];
+	maxp:=convert(map(proc(x) x[1]^x[2] end, lf), `*`);
+	maxp:=(p+1)/maxp;
+	if maxp > 1 then lf:=[[maxp, 1], op(lf)]; fi;
+	RETURN(CheckLucas(p, u, a, lf, cert[6]));
+
+end:
+
+CheckLucas := proc(N, u, a, lf, lm)
+
+	local p, i, x, y;
+
+	for i to nops(lf)
+	do
+	  p:=lf[i][1];
+#	  lprint(`Checking for p=`.p);
+	  x:=LucasNorm1(lm[i], u, a, N);
+	  y:=LucasExp(x, (N+1)/p, u, a, N);
+#	  lprint(`y=`, y);
+	  if(y[1] = 1) and (y[2] = 0)then ERROR(`Lucas`); fi;
+	  y:=LucasExp(y, p, u, a, N);
+	  if((y[1] <> 1) or (y[2] <> 0))then ERROR(`Lucas`); fi;
+	od;
+	RETURN(true);
+
+end:
+
+########## Elliptic curves ##########
+CheckEcm := proc(cert)
+
+	local p, m, D, E, P, tord;
+
+	p:=cert[1]; D:=cert[2]; m:=cert[4]; E:=cert[5]; P:=cert[6]; 
+	tord:=convert(cert[7], list);
+	if not CheckOrder(p, m, E, P, tord) then
+	  ERROR(`Wrong order`, P, E, p, tord);
+	fi;
+
+end:
+
+CheckOrder := proc(p, m, E, P, tord)
+
+	local pe, Q, s;
+
+	Q:=EcmMult(m, P, E, p);
+	if not EcmIsZero(Q, p) then
+	  ERROR(`Point not on the curve`, m, P, E, p);
+	fi;
+	s:=convert(map(proc(x) x[1]^x[2] end, tord), `*`);
+	if(evalf((sqrt(sqrt(p))+1)^2) >= s)then ERROR(`s too small`); fi;
+	for pe in tord
+	do
+	  Q:=EcmMult(s/pe[1], P, E, p);
+	  if EcmIsZero(Q, p) then RETURN(false);
+	  else
+	    Q:=EcmMult(pe[1], Q, E, p);
+	    if not EcmIsZero(Q, p) then RETURN(false); fi;
+	  fi;
+	od;
+	RETURN(true);
+
+end:
+
+########## Pratt ##########
+
+# prat = [p, a, [[q1, ...], ..., [qt, ...]]].
+CheckPratt := proc(prat)
+
+	local la, p, a, nq, ok, pr;
+
+	p:=prat[1];
+	a:=prat[2];
+	if p = 2 and a = 1 then RETURN(true); fi;
+	nq:=nops(prat[3]);
+	la:=[seq(a, i=1..nq)];
+	lf:=[seq([prat[3][i][1], 1], i=1..nq)];
+	ok:=CheckTheorem1(p, lf, la);
+	if not ok then RETURN(false); fi;
+	for pr in prat[3]
+	do
+	  if not CheckPratt(pr) then RETURN(false); fi;
+	od;
+	RETURN(true);
+
+end:
+
+read(`ecmodp`);
+read(`clroutines`);

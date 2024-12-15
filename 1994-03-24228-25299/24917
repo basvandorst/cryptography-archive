@@ -1,0 +1,116 @@
+Path: msuinfo!agate!ucbvax!hplabs!hp-cv!hp-pcd!hpcvsnz!ericb
+From: ericb@lsid.hp.com (Eric Backus)
+Newsgroups: sci.crypt
+Subject: Re: Encryption from Hash Functions
+Message-ID: <Cn14q8.HGA@hpcvsnz.cv.hp.com>
+Date: 21 Mar 94 19:27:43 GMT
+References: <CMvq7M.K38@hpcvsnz.cv.hp.com> <2mecr2$5f5@nef.ens.fr>
+Sender: news@hpcvsnz.cv.hp.com (News )
+Organization: Hewlett-Packard
+Lines: 104
+X-Newsreader: TIN [version 1.2 021193BETA PL3]
+
+Serge Vaudenay (vaudenay@dmi.ens.fr) wrote:
+> Let us call K = hash(password) the secret key!
+> 
+> |> 2.  Create a unique initial output block.
+> |> ...
+> |> 	out[1] = hash(time + hostname + pid + whatever_else)
+> 
+> We require it to be used only once!  Let us call S = hash(K,out[1])
+> the session secret key.
+> 
+> |> 3.  In a loop:
+> |> ...
+> |> 	out[i+1] = in[i] XOR hash(out[i] XOR hash(password))
+> |> 
+> |> Decryption is nearly the same as encryption:
+> |> 
+> |> 	out[i] = in[i+1] XOR hash(in[i] XOR hash(password))
+> |> 
+> |> That's it.  Quite simple, except for the hash function itself.
+> 
+> There is a slight problem here: hash functions usually reduces the
+> size of values.  Your hash function is used as a one-way function with
+> input of the same size as output.
+
+A hash function produces a fixed size output regardless of the size of
+the input.  In my case, I am giving it input that happens to be the
+same size as the output that will be produced.  How is this a problem?
+
+> To correct it, for instance, we can decide
+> 	out[i+1] = in[i+1] XOR hash(in[i],K).
+> 
+> Let K[i+1] be hash(in[i],K). Your scheme is a one-time pad with key
+> K[i].  All K[i] are generated with hash used as a pseudorandom
+> generator fed with all previous data.
+
+If I understand this correctly, the only change between this and what
+I proposed is that I used out[i] as input to the hash function, while
+you use in[i].  It turns out that this has problems.
+
+Suppose that the same key is used to encrypt two messages that are the
+same up to some point and then differ.  Suppose that one of the two
+messages is known, and an attacker is trying to decode the other
+message.  For the part of the messages are the same, the hash function
+produces the same value to XOR with the next block, so the encrypted
+messages are the same.  At the first block where the messages differ,
+the two messages get XORed with the same value.  Therefore, XORing the
+two encrypted messages produces the XOR of the two plaintexts for that
+block.  If one message is known, then this reveals a block of the
+other message.
+
+For this reason, it is important that the input to the hash function
+be unique every time.  This is ensured by using a unique initial
+output block, and by feeding the output (which is always unique) back
+into the hash function.
+
+> A problem is that an error in the transmission of in[i] (either in the
+> encryp- tion scheme, or in the decryption scheme) is fatal for the
+> decryption. We can not replace in[i] by C(in[i]) using the coding
+> scheme of a linear code as we give a way for the cryptanalyst to get a
+> direct information about K[i+1] (like its syndrom).
+
+I don't see how my method is any more error prone than any block
+encryption in CBC mode.  In either case, transmission errors destroy
+the rest of a message.  There is no reason we can't do error detection
+and correction on the encrypted message.
+
+> We can replace in[i] by out[i] : K[i+1] = hash(out[i],K).
+
+I believe this is what I proposed.  Or do I misunderstand you?
+
+> Here we can notice that a key K[i+1] used several times can easily be
+> detected seeing identical out[i]. We can argue this occures with low
+> probability, but we can correct this weakness easily letting K[i+1] =
+> hash(S,i,out[i]). We require S to be processed first in the hash
+> function.
+
+It is true that if K[i+1] were ever repeated, we would have a weakness
+in the algorithm.  However, this should NOT happen if the hash
+function behaves as it is supposed to.  Remember, one requirement of
+the hash function is that we can't find two inputs that produce the
+same output.  The K[i+1] are all the output of the hash function, with
+different inputs.
+
+The fix that you propose should work equally as well as the method I
+proposed, but I would argue that my method is slightly simpler and
+just as secure.  I don't see that your fix is any MORE secure, in any
+case.
+
+> The requirement is that we can not get any computationnal
+> information about K[i+1] (that is a computable function f s.t. we
+> know f(K[i+1]) with high proba- bility) from all out[j] and even
+> from all K[j+1] with j different from i.
+
+Yes, this is the requirement.
+
+> Hope these comments will be useful!
+> 
+>   --Serge
+
+Yes.  Thank you for examining the algorithm.
+-- 
+				Eric Backus
+				ericb@lsid.hp.com
+				(206) 335-2495

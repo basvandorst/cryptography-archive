@@ -1,0 +1,883 @@
+		          MFLOAT Version 2.0 using C
+		          ==========================
+
+
+		         Installation of MFLOAT for C
+		         ----------------------------
+
+
+A) Using integrated development environment (IDE) of BORLAND C++ 3.1:
+   ------------------------------------------------------------------
+
+
+ 1. To make the functions available specify "MFLOATA.OBJ" and "MFLOATB.OBJ"
+    in your project file:
+    Menu: Project/Open project..."MYPRO";
+	  Project/Add item... "MFLOATA.OBJ";
+	  Project/Add item... "MFLOATB.OBJ";
+	  Project/Add item... "MYFILE.CPP";
+
+      "MYFILE.CPP" ... Filename of the program
+      "MYPRO.CPP"  ... Filename for the project
+
+    For further use the created project file can be recalled:
+    Menu: Project/Open project..."MYPRO";
+
+
+ 2. Include following line as the first line in your source code, in front of
+    any declaration or function:
+    "extern unsigned _stklen = 20000U;"
+    This command installs a large stack (20000 bytes) for the program. This
+    is interesting, if you have many local variables. The maximum allowed
+    stack size is about 65000.
+    (For more information see BORLAND C++ manual).
+
+
+ 3. Define the maximum length of a mfloat number, if you want less precision
+    but more variables, otherwise skip this point.
+
+    The definition is for example:
+    "#define mfloatwords 10"
+    Now you have 9 mantissa-words and one word for the exponent.
+    Range of mfloatwords: [2 .. max+1]
+    "max" is defined in MFLOATA.OBJ and can't be changed.
+    77   decimal digits ... max = 16   (mantissa-words)
+    2408 decimal digits ... max = 500  (mantissa-words)
+    If you can use 80386 instructions, it's good to use an odd number for
+    "mfloatwords" ( --> even number of mantissa-words --> faster calculation)
+    It has no sense to define more accurate numbers than "max+1", because
+    all procedures can handle only numbers of "max" mantissa-words.
+
+
+ 4. Include the header file "MFLOAT.H" in your source code. All functions
+    for the type mfloat are included.
+
+
+ 5. If you want to use the faster procedures using 80386-instructions,
+    include the function: "mfloatTest80386()" at the first part of the main
+    program:
+    Example:
+
+    void main() {
+      .
+      mfloatTest80386(); //The type of the processor is determined
+      .
+    }
+    By using this function, the "char" variable "use386instructions" is
+    initialised according to the used processor. If you don't use it, only
+    8086-instructions are used.
+
+
+ 6. Define the error handling, if you don't want to interrupt your program
+    at an error. Include at the first part of your source code:
+
+    void main() {
+      .
+      useInterruptAtError=0; //defined in "MFLOAT.H"
+      .
+    }
+    Default value is 1, that means, the program is terminated at an error. Of
+    course you can change it in the file "MFLOAT.H" too.
+
+
+ 7. Define the accuracy of MFLOAT:
+    Include at the first part of your source code:
+
+    void main() {
+      .
+      setmantissawords(5); //defined in "MFLOAT.H"
+      .
+    }
+    Default value is 1, that means, MFLOAT calculates at minimum precision.
+    Please don't change the variable "mantissawords" directly, because if you
+    leave the allowed range, there is a fatal crash.
+
+
+ 8. Choose compiler options:
+
+    Menu: Options/Compiler/Code generation...
+    recommended memory models: "compact", "large" and perhaps "huge"
+    Its also possible to use the memory models "small" and "medium", but the
+    built in check of a stack overflow in the assembler subroutines has no
+    effect. Therefore there could be a crash without any comment. Use little
+    stack-size for these models.
+    Menu: Options/Compiler/Code generation...
+	  Unsigned characters: no!! ... linking problem
+    Menu: Options/Compiler/Entry/Exit Code...Stack Options:Test stack overflow
+	  This option is helpful for the development.
+	  The stack test of the assembler part of MFLOAT is independent of
+          this stack test and is available for PASCAL too.
+
+ 9. Look at the installation of the BORLAND C++ compiler:
+    specially: Options/Directories...
+    Standard installation:
+
+    Include Directories : C:\BC\INCLUDE
+    Library Directories : C:\BC\LIB
+    Output Directory    :
+    Source Directory    :
+
+
+ 10.Use for the first time: "Menu:Compile\Build all". You avoid linking
+    problems, because every object-file corresponds to the correct source
+    code and has the same memory model.
+
+  Here is an example for the first part of your source code:
+
+  extern unsigned _stklen = 30000U;
+  #define mfloatwords 10
+  #include "MFLOAT.H"
+
+  void main(void) {
+    mfloatTest80386();
+    useInterruptAtError=0;
+    setmantissawords(7);
+    .
+    .
+  }
+
+
+B) Using command lines for BORLAND C++ 3.1:
+   ----------------------------------------
+
+  1. Make the same as above for 2.,3.,4.,5.,6.,7.
+  2. Compile the file:
+     for example:
+
+     bcc -ml pi.c mfloata.obj mfloatb.obj
+
+     The compiler switch "-ml" defines the memory model large. The
+     program is compiled and linked using mfloata.obj mfloatb.obj.
+
+
+C) Creating a library
+   ------------------
+
+To make the project simpler, you can build a library file (delete the file
+MFLOAT.LIB, if there is such a file):
+
+TLIB MFLOAT +MFLOATA.OBJ +MFLOATB.OBJ
+
+You will get the file MFLOAT.LIB, which includes these two object-files.
+Use this library file instead of including MFLOATA.OBJ, MFLOATB.OBJ in your
+project file.
+
+
+
+
+
+		     Description of MFLOAT basic functions
+		     =====================================
+
+
+There are following types available ("MFLOAT.H"):
+
+mfloata  ... basic mfloat type       (typedef int mfloata[mfloatwords];)
+mfloat   ... identical to mfloata    (#define mfloat mfloata)
+mfloat_  ... pointer to a mfloat     (#define mfloat_ int far *)
+
+****************************************************************************
+
+void  far pascal setmantissawords(int number);
+
+This procedure sets the length of the mantissa of mfloat numbers. The number
+of words must be in the range of [1..min(mfloatwords-1,max)], otherwise it
+is bounded to these values.
+max = 16 for 77 decimal digits version
+max = 500 for 2408 decimal digits version
+If the number of mantissa-words is increased and the numbers of former
+calculations are used further, the additional words are not initialised to
+zero, their values are not known. The error of the number due to this further
+mantissa-words is of course very small and is in the range of the accuracy
+of the former calculation. If it is important, that this further mantissa-
+words are zero, the user has to initialise them (see data format:
+"INTERNAL.DOC"). If the number of mantissa-words is reduced, every number
+can be seen as truncated, although nothing is changed at this numbers. The
+number of mantissa-words refers only to calculations.
+If 80386 instructions are used, only even number of mantissa-words are used.
+For example if you specify 5 mantissa-words, MFLOAT calculates at 6 mantissa-
+words, because it is faster to calculate using 6 mantissa-words than to use
+8086 instructions and only 5 mantissa-words.
+(see "TIME.DOC").
+
+****************************************************************************
+
+int   far pascal getmantissawords(void);
+
+The function returns the actual number of mantissa-words.
+
+****************************************************************************
+
+void  far pascal reseterror(void);
+
+The error-flag is reset.
+
+****************************************************************************
+
+char  far pascal geterror(void);
+
+The error-flag is returned. If there occurs a runtime error during the
+calculation, the error-flag is set to true (=1).
+
+****************************************************************************
+
+void far pascal mfloatError(int Nr);
+
+The error-flag is set. If the variable "useInterruptAtError" isn't
+zero, an error message is written to the screen and the program terminates.
+If the variable "useInterruptAtError" is 1, the error message of number "Nr"
+is used, otherwise the error message of the number "useInterruptAtError" is
+used. The idea behind this is following: You write your own function
+and there is for example a division by zero in it. Now you want, that
+the error message is a hint to your function and not to the division by
+zero error.
+Include following lines:
+
+useInterruptAtError=30;  //30=my error message
+...
+useInterruptAtError=1;
+
+Include your error message in "MFLOAT.H" in function "mfloatError".
+
+****************************************************************************
+
+void far pascal mfloatTest80386(void);
+
+This function sets the "char" variable "use386instructions" according to the
+processor type of your computer. If you have a 80386 or a compatible
+processor the variable "use386instructions" is set to 1, else it is set to 0.
+
+****************************************************************************
+
+mfloat_  far pascal equm(mfloat_ a,                          /* a <-- b */
+			 const mfloat_ b);
+
+The value of "b" is copied to variable "a" with the defined accuracy. The
+value of "b" is not changed. The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal addm(mfloat_ a,                       /* a <-- a + b */
+			 const mfloat_ b);
+
+The value of "b" is added to the value "a" with the defined accuracy. The
+result is variable "a". The value of "b" is not changed. The return value is
+a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal subm(mfloat_ a,                       /* a <-- a - b */
+			 const mfloat_ b);
+
+The value of "b" is subtracted from the value "a" with the defined accuracy.
+The result is variable "a". The value of "b" is not changed. The return value
+is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal multm(mfloat_ a,                      /* a <-- a * b */
+			  const mfloat_ b);
+
+The value of "a" is multiplied by value "b" with the defined accuracy. The
+result is variable "a". The value of "b" is not changed. The return value is
+a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal divm(mfloat_ a,                       /* a <-- a / b */
+			 const mfloat_ b);
+
+The value of "a" is divided by the value "b" with the defined accuracy.
+The result is variable "a". The value of "b" is not changed. The return value
+is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal multi(mfloat_ a,                      /* a <-- a * b */
+			   int b);
+
+The value of "a" is multiplied by the integer value "b" with the defined
+accuracy. The result is variable "a". The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal divi(mfloat_ a,                       /* a <-- a / b */
+			 int b);
+
+The value of "a" is divided by the integer value "b" with the defined
+accuracy. The result is variable "a". The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal inversm(mfloat_ a);                   /* a <-- 1 / a */
+
+The number one is divided by the number "a" with the defined accuracy.
+The result is variable "a". The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal negm(mfloat_ a);                      /* a <--  - a  */
+
+This procedure changes the sign of the number of variable "a". The return
+value is a pointer to "a".
+
+****************************************************************************
+
+char  far pascal eqzero(const mfloat_ a);        /* eqzero <-- (a == 0)  */
+
+This function checks, if the multiple-precision number "a" is zero. The value of
+"a" is not changed. The return value is 0 or 1.
+
+****************************************************************************
+
+char  far pascal gtzero(const mfloat_ a);         /* gtzero <-- (a > 0)  */
+
+This function checks, if the multiple-precision number "a" is greater than
+zero. The value of "a" is not changed. The return value is 0 or 1.
+
+****************************************************************************
+
+char  far pascal gezero(const mfloat_ a);         /* gezero <-- (a >= 0) */
+
+This function checks, if the multiple-precision number "a" is greater than
+zero or equal zero. The value of "a" is not changed. The return value is 0
+or 1.
+
+****************************************************************************
+
+char  far pascal gtm(const mfloat_ a,                 /* gtm <-- (a > b) */
+		     const mfloat_ b);
+
+This function checks, if the multiple-precision number "a" is greater than
+the multiple-precision number "b". The values of "a" and "b" are not changed.
+The return value is 0 or 1.
+
+****************************************************************************
+
+char  far pascal eqm(const mfloat_ a,                /* eqm <-- (a == b) */
+		     const mfloat_ b);
+
+This function checks, if the multiple-precision number "a" is equal the
+multiple-precision number "b". The values of "a" and "b" are not changed. The
+return value is 0 or 1.
+
+****************************************************************************
+
+mfloat_  far pascal getzerom(mfloat_ a);                     /* a <-- 0  */
+
+This procedure copies the value zero = 0.0000.. to the variable "a". The
+return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal getonem(mfloat_ a);                       /* a <-- 1 */
+
+This procedure copies the value one = 1.0000.. to the variable "a". The
+return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal getpim(mfloat_ a);                       /* a <-- pi */
+
+This procedure copies the value pi = 3.14159.. to the variable "a". The
+return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal getln2m(mfloat_ a);                   /* a <-- ln(2) */
+
+This procedure copies the value ln(2) = 0.69314.. to the variable "a". The
+return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal getln10m(mfloat_ a);                 /* a <-- ln(10) */
+
+This procedure copies the value ln(10) = 2.3025.. to the variable "a". The
+return value is a pointer to "a".
+
+****************************************************************************
+
+int  far pascal strtomf(mfloat_ a,                            /* a <-- b */
+			const char far * b);
+
+This procedure converts the string "b" to the multiple-precision number "a".
+If the conversion is correct, zero is returned. Otherwise the number of the
+character, where the first error occurs, is returned. For conversion the
+accuracy of the calculation is set to one mantissa-word more than specified
+and afterwards it is set back to the original value. This function is not
+optimised for speed, but for accuracy, because normally it is not used very
+often.
+
+****************************************************************************
+
+char far * far pascal mftoa(char far * str,                 /* str <-- a */
+			    const mfloat_ a,
+			    int len);
+
+This procedure converts the multiple-precision number "a" to a string "str"
+using the number of ASCII-characters, which is defined in "len". If the number
+of characters is too less, the string is set to stars '*'. The format used
+for this conversion is '.32767F' (see mftostr). For conversion the accuracy
+of the calculation is set to a value, that the error of the conversion has
+little effect to the shown digits and the conversion time isn't to large.
+Afterwards it is set back to the original value. This function is not
+optimised for speed, but for accuracy, because normally it is not used very
+often.
+If you define: char a[100], the maximum number of ASCII-characters, you can
+store in the string, is 99 (a[0] - a[98]) and the last character is the
+string termination character a[99]=0. Therefore the maximum number for "len"
+is 99.
+The return value is a pointer to the character array "a".
+
+****************************************************************************
+
+char far * far pascal mftostr(char far * str,               /* str <-- a */
+			      const mfloat_ a,
+			      int len,
+			      const char far * format);
+
+This procedure converts the multiple-precision number "a" to a string "str"
+using a maximum number of ASCII-characters, which is defined in "len". If the
+number of characters is too less, the string is set to stars '*'.
+The characters of the format-string have following meaning:
+
+'.'   the point is shown every time, not significant zeros behind the point
+      are shown
+'E'   scientific format with an exponent of ten
+'F'   fixpoint format, if the number is too large, a scientific format
+      with an exponent of ten is used.
+'G'   fixpoint format, if the number is too large, or is less than 0.0001,
+      a scientific format is used.
+'1..' an integer, which declares the number of digits behind the point
+      for fixpoint and scientific format.
+
+The order of the characters (but not those of the digits for the precision)
+in the format string is arbitrary. It is also allowed to use lower case
+characters for the format, but in this case the letter for the exponent of
+ten is also the lower case letter 'e'. For conversion the accuracy
+of the calculation is set to a value, that the error of the conversion has
+little effect to the shown digits and the conversion time isn't to large.
+Afterwards it is set back to the original value. This function is not
+optimised for speed, but for accuracy, because normally it is not used very
+often.
+If you define: char a[100], the maximum number of ASCII-characters, you can
+store in the string, is 99 (a[0] - a[98]) and the last character is the
+string termination character a[99]=0. Therefore the maximum number for "len"
+is 99.
+The return value is a pointer to the character array "a".
+
+****************************************************************************
+
+double far pascal mftod(const mfloat_ b);                 /* mftod <-- b */
+
+This function converts a multiple-precision number to a double number.
+The value of "b" is not changed.
+
+****************************************************************************
+
+long double far pascal mftold(const mfloat_ b);          /* mftold <-- b */
+
+This function converts a multiple-precision number to a long double number.
+The value of "b" is not changed.
+
+****************************************************************************
+
+mfloat_  far pascal dtomf(mfloat_ a,                          /* a <-- b */
+			  double b);
+
+This procedure converts a double precision number to a multiple-precision
+number. The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal ldtomf(mfloat_ a,                         /* a <-- b */
+			   long double b);
+
+This procedure converts a long double number to a multiple-precision number.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal inttomf(mfloat_ a, int b);                /* a <-- b */
+
+This procedure converts an integer number to a multiple-precision number.
+The return value is a pointer to "a".
+
+****************************************************************************
++++++++++++++++     standard functions (Borland C: MATH.H)   +++++++++++++++
+****************************************************************************
+
+mfloat_  far pascal acosm(mfloat_ a);                   /* a <-- acos(a) */
+
+This procedure calculates the inverse cos(x) function of the argument "a". The
+result is the variable "a".
+-1 <= a <= 1        range of the argument, otherwise the error-flag is set
+ 0 <= a <= pi       range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal asinm(mfloat_ a);                   /* a <-- asin(a) */
+
+This procedure calculates the inverse sin(x) function of the argument "a". The
+result is the variable "a".
+-1 <= a <= 1        range of the argument, otherwise the error-flag is set
+-pi/2 <= a <= pi/2  range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal atanm(mfloat_ a);                   /* a <-- atan(a) */
+
+This procedure calculates the inverse tan(x) function of the argument "a". The
+result is the variable "a".
+-pi/2 <= a <= pi/2       range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal atan2m(mfloat_ a,                /* a <-- atan2(a,b) */
+			   const mfloat_ b);
+
+This function calculates the extended arctan function phi = arctan(a/b). If
+"a" is zero or less than zero, the correct value "phi" is returned, which is
+in the interval (-pi, pi]:
+a = r * sin(phi)
+b = r * cos(phi)
+r = sqrt(sqr(a) + sqr(b)) >= 0
+
+If a = 0 and b = 0, the value "phi" is not unique. The error-flag is set and
+if the interrupt-flag is set, the calculation is interrupted. The return
+variable is the variable "a". Variable "b" is not changed.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal ceilm(mfloat_ a);                   /* a <-- ceil(a) */
+
+The least integer number, which is greater than or equal the mfloat number
+"a", is calculated and returned to the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal cosm(mfloat_ a);                     /* a <-- cos(a) */
+
+This procedure calculates the cos(x) function of the argument "a". The result
+is the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal coshm(mfloat_ a);                   /* a <-- cosh(a) */
+
+This procedure calculates the cosh(x) function of the argument "a". The result
+is the variable "a".
+-22712 < a < 22712    range of the argument without an overflow
+	 a >= 1       range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal expm(mfloat_ a);                     /* a <-- exp(a) */
+
+This procedure calculates exponential function exp(x) of the argument "a". The
+result is the variable "a".
+
+ a < 22712   range of the argument without an overflow
+ a < -22712  there is an underflow => result = 0
+ a >= 0      range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal fabsm(mfloat_ a);                   /* a <-- fabs(a) */
+
+This procedure returns the absolute value of the number "a". The result is
+the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal floorm(mfloat_ a);                 /* a <-- floor(a) */
+
+The greatest integer number, which is less than or equal the mfloat number
+"a", is calculated and returned to the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal fmodm(mfloat_ a,                  /* a <-- fmod(a,b) */
+			  const mfloat_ b);
+
+This is a floating point modul function. The number "a" is divided by "b", so
+that the result is an integer. The rest of this division is returned by the
+variable "a". The variable "b" is not changed.
+
+a = k * b + c;   "k" is an integer;   0 <= c / b < 1;  "c" is assigned to "a"
+
+If the variable "b" is zero, the error-flag is set. For negative "b", the
+result is negative or zero. For very large "k", which can not be represented
+by an mfloat number exactly, the result is zero.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal frexpm(mfloat_ a,                /* a <-- frexp(a,b) */
+			   int * b);
+
+The mfloat number "a" is split into its exponent and mantissa:
+
+a = c * (2^b);  0.5 <= |c| < 1 if a <> 0;  c is assigned to a
+
+This procedure returns two results. If the mfloat number is zero, it remains
+zero and "b" is set to zero.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal hypotm(mfloat_ a,                /* a <-- hypot(a,b) */
+			   const mfloat_ b);
+
+This function is used for the calculation of the absolute value of a complex
+number:
+
+c = sqrt(sqr(a) + sqr(b)); "c" is assigned to "a", "b" remains unchanged.
+|a + i*b| = hypot(a,b);
+This procedure calculates the correct result also if sqr(a) can not be
+represented as a mfloat number, because it is too great or too small.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal ldexpm(mfloat_ a,                /* a <-- ldexp(a,b) */
+			   int b);
+
+The mfloat number "a" is multiplied by the power of two: 2^b.
+
+a <-- a * (2^b);
+
+The calculation is very fast, because only the exponent of two is manipulated.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal logm(mfloat_ a);                     /* a <-- log(a) */
+
+This procedure calculates the natural logarithm ln(x) of the argument "a". The
+result is the variable "a".
+
+a > 0                  range of the argument
+-22712 <= a <= 22712   range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal log10m(mfloat_ a);                 /* a <-- log10(a) */
+
+This procedure calculates the decade logarithm log(x) of the argument "a". The
+result is the variable "a".
+
+a > 0                  range of the argument
+-9864 <= a <= 9863     range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal modfm(mfloat_ a,                  /* a,b <-- modf(a) */
+			  mfloat_ b);
+
+This procedure splits the number "a" in an integer part and in a fractional
+part:
+
+a = k + b;    "k" is an integer;    0 <= b < 1;    "k" is assigned to "a"
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal powm(mfloat_ a,                    /* a <-- a^b  */
+			 const mfloat_ b);
+
+This procedure calculates the power of the basis "a" by the exponent "b".
+The result is assigned to the variable "a", the variable "b" is not changed.
+If the exponent is an integer, the calculation is made by repeated
+multiplications. The number of multiplications is proportional to
+log(|b|). If "b" has a fractional, the calculation is made by logarithm. In
+this case, the base "a" must be positive, otherwise the error-flag is set,
+because the result is not real. If the number "b" is very large so that
+no fractional can be represented by the mfloat format and the base
+is negative, the error-flag is set too. If a = 0 and b <= 0 the result is
+not defined and the error-flag is set.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal powi(mfloat_ a, int b);            /* a <-- a^b  */
+
+This procedure calculates the power of the basis "a" by the integer exponent
+"b". The result is assigned to the variable "a", the variable "b" is not
+changed. The calculation is made by repeated multiplications. The number of
+multiplications is proportional to log(|b|). If a = 0 and b <= 0 the result
+is not defined and the error-flag is set.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal pow10m(mfloat_ a,                     /* a <-- 10^b */
+			   int b);
+
+The power of the basis ten is built using the integer exponent "b". The
+result is assigned to "a".
+
+a <-- 10^b
+
+if b < -9864 then a = 0
+if b > 9863  then there is an overflow -> error-flag is set
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal sinm(mfloat_ a);                     /* a <-- sin(a) */
+
+This procedure calculates the sin(x) function of the argument "a". The result
+is the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal sinhm(mfloat_ a);                   /* a <-- sinh(a) */
+
+This procedure calculates the sinh(x) function of the argument "a". The result
+is the variable "a".
+-22712 < a < 22712   range of the argument without an overflow
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal sqrtm(mfloat_ a);                   /* a <-- sqrt(a) */
+
+This procedure calculates the square root of the number "a". The result is
+variable "a". If "a" is negative, the error-flag is set.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal tanm(mfloat_ a);                     /* a <-- tan(a) */
+
+This procedure calculates the tan(x) function of the argument "a". The result
+is the variable "a". It is faster than the calculation of sin(a) / cos(a).
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal tanhm(mfloat_ a);                   /* a <-- tanh(a) */
+
+This procedure calculates the tanh(x) function of the argument "a". The result
+is the variable "a".
+-1 <= a <= 1   range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+++++++++++++++++++    extended standard functions   ++++++++++++++++++++++++
+****************************************************************************
+
+mfloat_  far pascal acoshm(mfloat_ a);                 /* a <-- acosh(a) */
+
+This procedure calculates the inverse cosh(x) function of the argument "a".
+The result is the variable "a".
+1 <= a          range of the argument
+0 <= a < 22712  range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal acotm(mfloat_ a);                   /* a <-- acot(a) */
+
+This procedure calculates the inverse cot(x) function of the argument "a". The
+result is the variable "a".
+0 < a < pi       range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal acothm(mfloat_ a);                 /* a <-- acoth(a) */
+
+This procedure calculates the inverse coth(x) function of the argument "a".
+The result is the variable "a".
+ -1 > a   or   1 < a    range of the argument
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal asinhm(mfloat_ a);                 /* a <-- asinh(a) */
+
+This procedure calculates the inverse sinh(x) function of the argument "a".
+The result is the variable "a".
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal atanhm(mfloat_ a);                 /* a <-- atanh(a) */
+
+This procedure calculates the inverse tanh(x) function of the argument "a".
+The result is the variable "a".
+-1 < a < 1  range of the argument
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal cossinm(mfloat_ a,                  /* a <-- cos(a), */
+			    mfloat_ b);                 /* b <-- sin(a)  */
+
+This procedure calculates the sin(x) and cos(x) function by only one
+evaluation of the series for the sine function. Therefore this procedure is
+faster than two individual calculations. It is recommended for example
+for the calculation of the exponential function of complex arguments.
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal cotm(mfloat_ a);                     /* a <-- cot(a) */
+
+This procedure calculates the cot(x) function of the argument "a". The result
+is the variable "a". It is faster than the calculation of cos(a) / sin(a).
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal cothm(mfloat_ a);                   /* a <-- coth(a) */
+
+This procedure calculates the coth(x) function of the argument "a". The result
+is the variable "a".
+range of the result: a >= 1 or a <= -1
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal exp10m(mfloat_ a);                  /* a <-- 10^a */
+
+This procedure calculates the power of 10 of the argument "a". The result is
+the variable "a".
+ a < 9863    range of the argument without an overflow
+ a < -9864   there is an underflow, result = 0
+ a >= 0      range of the result
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal sqrm(mfloat_ a);                     /* a <-- sqr(a) */
+
+This procedure calculates the square of "a". The result is variable "a".
+sqr(a) = a * a
+The return value is a pointer to "a".
+
+****************************************************************************
+
+mfloat_  far pascal truncm(mfloat_ a);                 /* a <-- trunc(a) */
+
+This procedure returns the integer part of the number "a" (truncation). The
+result is variable "a". The sign has no influence and remains unchanged.
+The return value is a pointer to "a".
+
+****************************************************************************

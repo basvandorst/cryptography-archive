@@ -1,0 +1,2162 @@
+diff -u mutt-0.81/bind.c mutt-0.81+pgp50/bind.c
+--- mutt-0.81/bind.c	Mon Aug  4 13:53:28 1997
++++ mutt-0.81+pgp50/bind.c	Thu Jul 31 16:42:04 1997
+@@ -30,6 +30,9 @@
+  { "attach",	MENU_ATTACH },
+  { "browser",	MENU_FOLDER },
+  { "alias",	MENU_ALIAS },
++#ifdef _PGPPATH
++ { "pgp",	MENU_PGP },
++#endif /* _PGPPATH */
+  { NULL,	0 }
+ };
+ 
+diff -u mutt-0.81/commands.c mutt-0.81+pgp50/commands.c
+--- mutt-0.81/commands.c	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/commands.c	Wed Jul 30 16:09:03 1997
+@@ -20,6 +20,9 @@
+ #include "mutt_curses.h"
+ #include "mutt_menu.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <errno.h>
+ #include <unistd.h>
+@@ -59,6 +62,31 @@
+ 
+   mutt_parse_mime_message (cur);
+ 
++#ifdef _PGPPATH
++  /* see if PGP is needed for this message.  if so, we should exit curses */
++  if (cur->pgp)
++  {
++    if (cur->pgp & PGPENCRYPT)
++    {
++      if (!pgp_valid_passphrase ())
++	return 0;
++
++      set_option (OPTVERIFYSIG);
++      mutt_message ("Invoking PGP...");
++    }
++    else if (cur->pgp & PGPSIGN)
++    {
++      /* find out whether or not the verify signature */
++      if (query_quadoption (OPT_VERIFYSIG, "Verify PGP signature?") == M_YES)
++      {
++	set_option (OPTVERIFYSIG);
++	mutt_message ("Invoking PGP...");
++      }
++      else
++	unset_option (OPTVERIFYSIG);
++    }
++  }
++#endif
+ 
+   memset (&st, 0, sizeof (st));
+   st.displaying = 1;
+@@ -178,6 +206,9 @@
+ 
+     if (option (OPTPIPEDECODE))
+     {
++#ifdef _PGPPATH
++      unset_option (OPTVERIFYSIG);
++#endif
+       mutt_copy_header (msg->fp, h, s->fpout, CH_FROM | CH_WEED | CH_DECODE);
+       mutt_body_handler (h->content, s);
+     }
+@@ -212,6 +243,13 @@
+   endwin ();
+   if (h)
+   {
++#ifdef _PGPPATH
++    if (option (OPTPIPEDECODE))
++      mutt_parse_mime_message (h);
++    if(h->pgp & PGPENCRYPT && !pgp_valid_passphrase())
++      return 1;
++    endwin ();
++#endif
+     thepid = mutt_create_filter (buffer, &(s.fpout), NULL, NULL);
+     pipe_msg (h, &s);
+     fclose (s.fpout);
+@@ -219,6 +257,20 @@
+   }
+   else
+   { /* handle tagged messages */
++#ifdef _PGPPATH
++
++    if(option(OPTPIPEDECODE))
++    {
++      for (i = 0; i < Context->vcount; i++)
++	if(Context->hdrs[Context->v2r[i]]->tagged)
++	{
++	  mutt_parse_mime_message(Context->hdrs[Context->v2r[i]]);
++	  if (Context->hdrs[Context->v2r[i]]->pgp & PGPENCRYPT &&
++	      !pgp_valid_passphrase())
++	    return 1;
++	}
++    }
++#endif
+     
+     if (option (OPTPIPESPLIT))
+     {
+@@ -377,6 +429,13 @@
+   mutt_message (buf);
+ }
+ 
++#ifdef _PGPPATH
++void mutt_forget_passphrase (void)
++{
++  pgp_void_passphrase ();
++  mutt_message ("PGP passphrase forgotten.");
++}
++#endif /* _PGPPATH */
+ 
+ /* returns 1 if OK to proceed, 0 to abort */
+ static int confirm_func (const char *s)
+diff -u mutt-0.81/compose.c mutt-0.81+pgp50/compose.c
+--- mutt-0.81/compose.c	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/compose.c	Sun Aug 24 18:27:19 1997
+@@ -94,6 +94,49 @@
+ 	    m->description ? m->description : "<no description>");
+ }
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++
++static int pgp_send_menu (int bits)
++{
++  int c;
++  char *p;
++
++  mvaddstr (LINES-1, 0, "(e)ncrypt, (s)ign, sign (a)s, (b)oth or (f)orget it? ");
++  clrtoeol ();
++  do {
++    refresh ();
++    if ((c = ci_getch ()) == ERR)
++      break;
++    if (c == 'a')
++    {
++      if ((p = pgp_ask_for_key (1, NULL, "Sign as: ")))
++      {
++	snprintf (PgpSignAs, sizeof (PgpSignAs), "%s", p);
++	pgp_void_passphrase (); /* probably need a different passphrase */
++	free (p);
++	bits |= PGPSIGN;
++      }
++    }
++    else if (c == 'e')
++      bits |= PGPENCRYPT;
++    else if (c == 's')
++      bits |= PGPSIGN;
++    else if (c == 'b')
++      bits = PGPENCRYPT | PGPSIGN;
++    else if (c == 'f')
++      bits = 0;
++    else
++    {
++      BEEP ();
++      c = 0;
++    }
++  } while (c == 0);
++  CLEARLINE (LINES-1);
++  refresh ();
++  return (bits);
++}
++#endif /* _PGPPATH */
+ 
+ static void draw_envelope (HEADER *msg, char *fcc)
+ {
+@@ -133,6 +176,22 @@
+   mvaddstr (HDR_FCC, 0,     "     Fcc: ");
+   addstr (fcc);
+ 
++#ifdef _PGPPATH
++  mvaddstr (HDR_PGP, 0,     "     PGP: ");
++  if ((msg->pgp & (PGPENCRYPT | PGPSIGN)) == (PGPENCRYPT | PGPSIGN))
++    addstr ("Sign, Encrypt");
++  else if (msg->pgp & PGPENCRYPT)
++    addstr ("Encrypt");
++  else if (msg->pgp & PGPSIGN)
++  {
++    addstr ("Sign");
++    if (PgpSignAs[0])
++      printw (" as %s", PgpSignAs);
++  }
++  else
++    addstr ("Clear");
++  clrtoeol ();
++#endif /* _PGPPATH */
+ 
+   mvaddstr (HDR_ATTACH-1, 0, "===== Attachments =====");
+ }
+@@ -240,6 +299,10 @@
+   strcat (helpstr, buf);
+   mutt_make_help (buf, sizeof (buf), ":Descrip  ", MENU_COMPOSE, OP_COMPOSE_EDIT_DESCRIPTION);
+   strcat (helpstr, buf);
++#ifdef _PGPPATH
++  mutt_make_help (buf, sizeof (buf), ":PGP  ", MENU_COMPOSE, OP_COMPOSE_PGP_MENU);
++  strcat (helpstr, buf);
++#endif
+   mutt_make_help (buf, sizeof (buf), ":Help", MENU_COMPOSE, OP_HELP);
+   strcat (helpstr, buf);
+   menu->help = helpstr;
+@@ -672,6 +735,19 @@
+ 	break;
+ #endif /* ISPELL */
+ 
++#ifdef _PGPPATH
++      case OP_COMPOSE_PGP_MENU:
++
++	msg->pgp = pgp_send_menu (msg->pgp);
++	menu->redraw = REDRAW_FULL;
++	break;
++
++      case OP_FORGET_PASSPHRASE:
++
++	mutt_forget_passphrase ();
++	break;
++
++#endif /* _PGPPATH */
+     }
+   }
+ 
+diff -u mutt-0.81/curs_main.c mutt-0.81+pgp50/curs_main.c
+--- mutt-0.81/curs_main.c	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/curs_main.c	Thu Jul 31 17:14:31 1997
+@@ -1084,6 +1084,12 @@
+ 	menu->redraw = REDRAW_FULL;
+ 	break;
+ 
++#ifdef _PGPPATH
++      case OP_FORGET_PASSPHRASE:
++
++	mutt_forget_passphrase ();
++	break;
++#endif /* _PGPPATH */
+ 
+       case OP_GROUP_REPLY:
+ 
+Common subdirectories: mutt-0.81/doc and mutt-0.81+pgp50/doc
+diff -u mutt-0.81/functions.h mutt-0.81+pgp50/functions.h
+--- mutt-0.81/functions.h	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/functions.h	Thu Jul 17 17:09:31 1997
+@@ -64,6 +64,9 @@
+   { "delete-thread",		OP_DELETE_THREAD,		"\004" },
+   { "forward-message",		OP_FORWARD_MESSAGE,		"f" },
+   { "flag-message",		OP_FLAG_MESSAGE,		"F" },
++#ifdef _PGPPATH
++  { "forget-passphrase",	OP_FORGET_PASSPHRASE,		"\006" },
++#endif
+   { "group-reply",		OP_GROUP_REPLY,			"g" },
+   { "fetch-mail",		OP_MAIN_FETCH_MAIL,		"G" },
+   { "display-headers",		OP_DISPLAY_HEADERS,		"h" },
+@@ -133,6 +136,9 @@
+   { "delete-thread",	OP_DELETE_THREAD,		"\004" },
+   { "forward-message",	OP_FORWARD_MESSAGE,		"f" },
+   { "flag-message",	OP_FLAG_MESSAGE,		"F" },
++#ifdef _PGPPATH
++  { "forget-passphrase",OP_FORGET_PASSPHRASE,		"\006" },
++#endif
+   { "group-reply",	OP_GROUP_REPLY,			"g" },
+   { "display-headers",	OP_DISPLAY_HEADERS,		"h" },
+   { "exit",		OP_PAGER_EXIT,			"i" },
+@@ -207,6 +213,9 @@
+   { "edit-file",	OP_COMPOSE_EDIT_FILE,		"\030e" },
+   { "edit-encoding",	OP_COMPOSE_EDIT_ENCODING,	"\005" },
+   { "edit-fcc",		OP_COMPOSE_EDIT_FCC,		"f" },
++#ifdef _PGPPATH
++  { "forget-passphrase",OP_FORGET_PASSPHRASE,		"\006" },
++#endif
+   { "ispell",		OP_COMPOSE_ISPELL,		"i" },
+   { "print-attach",     OP_PRINT,                       "l" },
+   { "redraw-screen",	OP_REDRAW,			"\014" },
+diff -u mutt-0.81/globals.h mutt-0.81+pgp50/globals.h
+--- mutt-0.81/globals.h	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/globals.h	Fri Jul 18 19:20:19 1997
+@@ -54,6 +54,10 @@
+ WHERE char Outbox[_POSIX_PATH_MAX] INITVAL({0});
+ WHERE char Pager[_POSIX_PATH_MAX];
+ WHERE char PagerFmt[SHORT_STRING];
++#ifdef _PGPPATH
++WHERE char Pgp[_POSIX_PATH_MAX];
++WHERE char PgpSignAs[SHORT_STRING] INITVAL ({0});
++#endif
+ WHERE char PipeSep[SHORT_STRING] INITVAL({0});
+ WHERE char PopHost[SHORT_STRING] INITVAL({0});
+ WHERE char PopUser[SHORT_STRING] INITVAL({0});
+@@ -103,6 +107,9 @@
+ WHERE short DefaultMagic INITVAL(M_MBOX);
+ WHERE short HistSize INITVAL(10);
+ WHERE short PagerContext INITVAL(0);
++#ifdef _PGPPATH
++WHERE short PgpTimeout INITVAL(300); /* 5 minutes */
++#endif
+ WHERE short PopPort INITVAL(110);
+ WHERE short ReadInc INITVAL(10);
+ WHERE short Sleep_time INITVAL(1);
+diff -u mutt-0.81/handler.c mutt-0.81+pgp50/handler.c
+--- mutt-0.81/handler.c	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/handler.c	Thu Jul 31 17:28:37 1997
+@@ -27,6 +27,9 @@
+ #include "rfc1524.h"
+ #include "keymap.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ typedef void handler_f (BODY *, STATE *);
+ typedef handler_f *handler_t;
+@@ -731,14 +734,63 @@
+   }
+   else if (b->type == TYPEMULTIPART)
+   {
++#ifdef _PGPPATH
++    char *p;
++#endif /* _PGPPATH */
+ 
+     if (strcasecmp ("alternative", b->subtype) == 0)
+       handler = alternative_handler;
+ 
++#ifdef _PGPPATH
++    else if (strcasecmp ("signed", b->subtype) == 0)
++    {
++      p = mutt_get_parameter ("protocol", b->parameter);
++
++      if (!p)
++        mutt_error ("Error: Multipart/Signed has no protocol.");
++      else if (strcasecmp ("application/pgp-signature", p) == 0)
++      {
++	if (option (OPTVERIFYSIG))
++	  handler = pgp_signed_handler;
++      }
++    }
++    else if (strcasecmp ("encrypted", b->subtype) == 0)
++    {
++      p = mutt_get_parameter ("protocol", b->parameter);
++
++      if (!p)
++        mutt_error ("Error: Multipart/Encrypted has no protocol parameter!");
++      else if (strcasecmp ("application/pgp-encrypted", p) == 0)
++        handler = pgp_encrypted_handler;
++    }
++#endif /* _PGPPATH */
+ 
+     if (!handler)
+       handler = multipart_handler;
+   }
++#ifdef _PGPPATH
++  else if (b->type == TYPEAPPLICATION)
++  {
++    if (strcasecmp ("pgp", b->subtype) == 0 ||
++	strcasecmp ("x-pgp-message", b->subtype) == 0 ||
++	strcasecmp ("pgp-signed", b->subtype) == 0)
++    {
++      char *p = mutt_get_parameter ("x-action", b->parameter);
++      char *q = mutt_get_parameter ("format", b->parameter);
++
++      if(q && strcasecmp (q,"mime") == 0) 
++	handler = application_pgp_handler;
++      else if (option (OPTVERIFYSIG) || !p ||
++	       (strcasecmp (p, "sign") != 0 && 
++		strcasecmp (p, "signclear") != 0))
++	handler = application_pgp_handler;
++      else
++	plaintext = 1;
++    }
++    else if (strcasecmp ("pgp-keys", b->subtype) == 0)
++      plaintext = 1;
++  }
++#endif /* _PGPPATH */
+ 
+   if (plaintext || handler)
+   {
+diff -u mutt-0.81/hdrline.c mutt-0.81+pgp50/hdrline.c
+--- mutt-0.81/hdrline.c	Mon Aug  4 13:53:29 1997
++++ mutt-0.81+pgp50/hdrline.c	Fri Jul 18 15:56:03 1997
+@@ -19,6 +19,9 @@
+ #include "mutt.h"
+ #include "mutt_curses.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <ctype.h>
+ #include <stdlib.h>
+@@ -460,6 +463,14 @@
+ 	  
+ 	  if (hdr->mailcap)
+ 	    ch = 'M';
++#ifdef _PGPPATH
++	  else if (hdr->pgp & PGPENCRYPT)
++	    ch = 'P';
++	  else if (hdr->pgp & PGPSIGN)
++	    ch = 'S';
++	  else if (hdr->pgp & PGPKEY)
++	    ch = 'K';
++#endif
+ 	  else
+ 	    ch = ' ';
+ 	  snprintf (fmt, sizeof (fmt), "%%%ss", prefix);
+diff -u mutt-0.81/init.c mutt-0.81+pgp50/init.c
+--- mutt-0.81/init.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/init.c	Thu Jul 31 11:55:41 1997
+@@ -1288,6 +1288,11 @@
+   set_option (OPTCHECKNEW);
+   set_option (OPTWAITKEY);
+ 
++#ifdef _PGPPATH
++  set_option (OPTPGPENCRYPTSELF);
++
++  set_quadoption (OPT_VERIFYSIG, M_YES);
++#endif
+ 
+   set_quadoption (OPT_USEMAILCAP, M_ASKYES);
+   set_quadoption (OPT_INCLUDE, M_ASKYES);
+@@ -1356,6 +1361,9 @@
+     strfcpy (Tempdir, "/tmp", sizeof (Tempdir));
+ 
+   strfcpy (Tochars, " +TCF", sizeof (Tochars));
++#ifdef _PGPPATH
++  strfcpy (Pgp, _PGPPATH, sizeof (Pgp));
++#endif /* _PGPPATH */
+   strfcpy (PopUser, Username, sizeof (PopUser));
+ 
+   QuoteRegexp.pattern = safe_strdup ("^ *[|>:}#]");
+diff -u mutt-0.81/init.h mutt-0.81+pgp50/init.h
+--- mutt-0.81/init.h	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/init.h	Sun Aug 24 18:36:07 1997
+@@ -95,6 +95,15 @@
+   { "pager_context",	DT_NUM,		0,		&PagerContext },
+   { "pager_format",	DT_STR,		0,		S_DECL(PagerFmt) },
+   { "pager_stop",	DT_BOOL,	OPTPAGERSTOP,	NULL,	0 },
++#ifdef _PGPPATH
++  { "pgp",		DT_PATH,	0,		S_DECL(Pgp) },
++  { "pgp_autosign",	DT_BOOL,	OPTPGPAUTOSIGN, NULL,	0 },
++  { "pgp_encryptself",	DT_BOOL,	OPTPGPENCRYPTSELF,NULL,	0 },
++  { "pgp_getkeys",      DT_BOOL,        OPTPGPGETKEYS,  NULL,   0 },
++  { "pgp_replypgp",	DT_BOOL,	OPTPGPREPLYPGP, NULL,	0 },
++  { "pgp_sign_as",	DT_STR,		0,		S_DECL(PgpSignAs) },
++  { "pgp_timeout",	DT_NUM,		0,		&PgpTimeout },
++#endif /* _PGPPATH */
+   { "pipe_split",	DT_BOOL,	OPTPIPESPLIT,	NULL,	0 },
+   { "pipe_decode",	DT_BOOL,	OPTPIPEDECODE,	NULL,	0 },
+   { "pipe_sep",		DT_STR,		0,		S_DECL(PipeSep) },
+diff -u mutt-0.81/keymap.c mutt-0.81+pgp50/keymap.c
+--- mutt-0.81/keymap.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/keymap.c	Thu Jul 31 17:27:26 1997
+@@ -387,6 +387,9 @@
+   generic_bindings (MENU_ALIAS);
+   generic_bindings (MENU_URL);
+ 
++#ifdef _PGPPATH
++  generic_bindings (MENU_PGP);
++#endif
+ 
+   /* Miscellaneous extra bindings */
+ 
+diff -u mutt-0.81/lib.c mutt-0.81+pgp50/lib.c
+--- mutt-0.81/lib.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/lib.c	Mon Aug  4 14:31:45 1997
+@@ -382,6 +382,15 @@
+ 	return 0;
+       break;
+ 
++#ifdef _PGPPATH
++    case TYPEAPPLICATION:
++
++      if (!strcasecmp ("pgp", m->subtype) ||
++	  !strcasecmp ("pgp-signed", m->subtype) ||
++	  !strcasecmp ("x-pgp-message", m->subtype))
++	return 0;
++      break;
++#endif /* _PGPPATH */
+ 
+     case TYPEMULTIPART:
+     case TYPEMESSAGE:
+@@ -403,6 +412,13 @@
+       return 1;
+   }
+ 
++#ifdef _PGPPATH
++  if (t == TYPEAPPLICATION)
++  {
++    if (!strcasecmp ("pgp-keys", s))
++      return 1;
++  }
++#endif /* _PGPPATH */
+ 
+   return 0;
+ }
+diff -u mutt-0.81/mutt.h mutt-0.81+pgp50/mutt.h
+--- mutt-0.81/mutt.h	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/mutt.h	Sun Aug 24 18:45:51 1997
+@@ -267,6 +267,12 @@
+   OPTSIGDASHES,
+   OPTASKBCC,
+   OPTAUTOEDIT,
++#ifdef _PGPPATH
++  OPTPGPAUTOSIGN,
++  OPTPGPENCRYPTSELF,
++  OPTPGPGETKEYS,
++  OPTPGPREPLYPGP,
++#endif
+   OPTMARKOLD,
+   OPTCONFIRMCREATE,
+   OPTCONFIRMAPPEND,
+diff -u mutt-0.81/mx.c mutt-0.81+pgp50/mx.c
+--- mutt-0.81/mx.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/mx.c	Thu Jul 17 12:46:14 1997
+@@ -19,6 +19,9 @@
+ #include "mutt.h"
+ #include "mx.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <dirent.h>
+ #include <fcntl.h>
+@@ -1231,6 +1234,11 @@
+ {
+   HEADER *h = ctx->hdrs[ctx->msgcount];
+ 
++#ifdef _PGPPATH
++  /* NOTE: this _must_ be done before the check for mailcap! */
++  h->pgp = pgp_query (h->content);
++  if (!h->pgp)
++#endif /* _PGPPATH */
+     if (mutt_needs_mailcap (h->content))
+       h->mailcap = 1;
+   if (h->flagged)
+diff -u mutt-0.81/pager.c mutt-0.81+pgp50/pager.c
+--- mutt-0.81/pager.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/pager.c	Thu Jul 31 17:14:31 1997
+@@ -20,6 +20,9 @@
+ #include "mutt_curses.h"
+ #include "mutt_regex.h"
+ #include "keymap.h"
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <sys/stat.h>
+ #include <ctype.h>
+@@ -1323,6 +1326,12 @@
+ 	}
+ 	break;
+ 
++#ifdef _PGPPATH
++      case OP_FORGET_PASSPHRASE:
++
++	mutt_forget_passphrase ();
++	break;
++#endif /* _PGPPATH */
+ 
+       case OP_PIPE:
+ 
+diff -u mutt-0.81/parse.c mutt-0.81+pgp50/parse.c
+--- mutt-0.81/parse.c	Mon Aug  4 13:53:30 1997
++++ mutt-0.81+pgp50/parse.c	Mon Jul  7 18:17:02 1997
+@@ -18,6 +18,9 @@
+ 
+ #include "mutt.h"
+ #include "rfc2047.h"
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif /* _PGPPATH */
+ 
+ #include <string.h>
+ #include <ctype.h>
+@@ -737,6 +740,9 @@
+       cur->content->subtype = safe_strdup ("plain");
+     }
+     
++#ifdef _PGPPATH
++    cur->pgp = pgp_query (cur->content);
++#endif /* _PGPPATH */
+     mx_close_message (&msg);
+   }
+ }
+diff -u mutt-0.81/patchlist.c mutt-0.81+pgp50/patchlist.c
+--- mutt-0.81/patchlist.c	Mon Aug  4 13:53:25 1997
++++ mutt-0.81+pgp50/patchlist.c	Tue Aug 26 10:48:59 1997
+@@ -15,7 +15,7 @@
+   /* DO NOT MODIFY BEFORE THIS LINE */
+ 
+ 
+-
++  printf("Feature, PGP 5.0 Support, Mutt v 0.81, v1.0, Brett A. Thomas\n");
+ 
+ 
+   /* DO NOT MODIFY AFTER THIS LINE */
+diff -u mutt-0.81/pgp.c mutt-0.81+pgp50/pgp.c
+--- mutt-0.81/pgp.c	Mon Aug  4 13:53:32 1997
++++ mutt-0.81+pgp50/pgp.c	Sun Aug 24 20:09:05 1997
+@@ -0,0 +1,858 @@
++/*
++ * Copyright (C) 1996,1997 Michael R. Elkins <me@cs.hmc.edu>
++ * 
++ *     This program is free software; you can redistribute it and/or modify
++ *     it under the terms of the GNU General Public License as published by
++ *     the Free Software Foundation; either version 2 of the License, or
++ *     (at your option) any later version.
++ * 
++ *     This program is distributed in the hope that it will be useful,
++ *     but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *     GNU General Public License for more details.
++ * 
++ *     You should have received a copy of the GNU General Public License
++ *     along with this program; if not, write to the Free Software
++ *     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */ 
++
++/* WARNING!!!  WARNING!!!  WARNING!!!  WARNING!!!  WARNING!!!  WARNING!!!
++ *
++ * Legal for distribution in the U.S./Canada ONLY!  Exporting this file
++ * outside of the U.S./Canada may be in violation of ITAR regulations!
++ */
++
++/*
++ * This file contains all of the PGP routines necessary to sign, encrypt,
++ * verify and decrypt PGP messages in either the new PGP/MIME format, or
++ * in the older Application/Pgp format.  It also contains some code to
++ * cache the user's passphrase for repeat use when decrypting or signing
++ * a message.
++ */
++
++#include "mutt.h"
++#include "mutt_curses.h"
++#include "send.h"
++#include "pgp.h"
++
++#include <sys/wait.h>
++#include <string.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <sys/stat.h>
++#include <errno.h>
++#include <ctype.h>
++
++#ifdef _PGPPATH
++
++char PgpPass[STRING];
++static time_t PgpExptime = 0; /* when does the cached passphrase expire? */
++
++void pgp_void_passphrase (void)
++{
++  memset (PgpPass, 0, sizeof (PgpPass));
++  PgpExptime = 0;
++}
++
++int pgp_valid_passphrase (void)
++{
++  time_t now = time (NULL);
++
++  if (now < PgpExptime) return 1; /* just use the cached copy. */
++  pgp_void_passphrase ();
++
++  if (mutt_get_password ("Enter PGP passphrase:", PgpPass, sizeof (PgpPass)) == 0)
++  {
++    PgpExptime = time (NULL) + PgpTimeout;
++    return (1);
++  }
++  else
++  {
++    PgpExptime = 0;
++    return (0);
++  }
++  /* not reached */
++}
++
++/* ----------------------------------------------------------------------------
++ * Routines for handing PGP input.
++ */
++
++/* print the current time to avoid spoofing of the signature output */
++static void pgp_current_time (STATE *s)
++{
++  time_t t;
++  char p[STRING];
++
++  state_puts ("[-- PGP output follows (current time: ", s);
++
++  t = time (NULL);
++  strfcpy (p, asctime (localtime (&t)), sizeof (p));
++  p[strlen (p) - 1] = 0; /* kill the newline */
++  state_puts (p, s);
++
++  state_puts (") --]\n", s);
++}
++
++/* Support for the Application/PGP Content Type. */
++void application_pgp_handler (BODY *m, STATE *s)
++{
++  int needpass = -1;
++  long bytes;
++  char buf[LONG_STRING];
++  char outfile[_POSIX_PATH_MAX];
++  FILE *pgpout, *pgpin, *pgperr;
++
++  fseek (s->fpin, m->offset, 0);
++  for (bytes = m->length; bytes > 0;)
++  {
++    if (fgets (buf, sizeof (buf) - 1, s->fpin) == NULL)
++      break;
++    if (strncmp ("-----BEGIN PGP ", buf, 15) == 0)
++    {
++      if (strcmp ("MESSAGE-----\n", buf + 15) == 0)
++        needpass = 1;
++      else
++        needpass = 0;
++      break;
++    }
++  }
++
++  if (needpass < 0)
++  {
++    state_puts ("[-- Error!  Could not find beginning of PGP message! --]\n\n", s);
++    mutt_decode_attachment (m, s); /* just display as text */
++    return;
++  }
++
++  mutt_mktemp (outfile);
++  if ((pgpout = safe_fopen (outfile, "w+")) == NULL)
++  {
++    mutt_perror (outfile);
++    return;
++  }
++
++  snprintf (buf, sizeof (buf), "%s%sv +verbose=0 +batchmode -f --OutputInformationFD=1",
++	    needpass ? "PGPPASSFD=0; export PGPPASSFD; " : "", Pgp);
++
++  if (mutt_create_filter_fd (buf, &pgpin, NULL, &pgperr, -1, fileno (pgpout), -1) == -1)
++  {
++    fclose (pgpout);
++    unlink (outfile);
++    state_puts ("[-- Error: unable to create PGP subprocess --]\n", s);
++    mutt_decode_attachment (m, s); /* display as text */
++    return;
++  }
++
++  fseek (s->fpin, m->offset, 0);
++
++  if (needpass)
++  {
++    fputs (PgpPass, pgpin);
++    fputc ('\n', pgpin);
++  }
++
++  mutt_copy_bytes (s->fpin, pgpin, m->length);
++  fclose (pgpin);
++
++  if (s->displaying)
++    pgp_current_time (s);
++
++  wait (NULL);
++  
++  if(s->displaying)
++  {
++    while (fgets (buf, sizeof (buf) - 1, pgperr) != NULL)
++      state_puts (buf, s);
++  }
++  fclose (pgperr);
++
++  if (s->displaying)
++  {
++    state_puts ("[-- End of PGP output --]\n\n", s);
++
++    if (needpass)
++      state_puts ("[-- BEGIN PGP MESSAGE --]\n\n", s);
++    else
++      state_puts ("[-- BEGIN PGP SIGNED MESSAGE --]\n\n", s);
++  }
++
++  fflush (pgpout);
++  rewind (pgpout);
++  while (fgets (buf, sizeof (buf) - 1, pgpout) != NULL)
++  {
++    if (s->prefix)
++      state_puts (s->prefix, s);
++    state_puts (buf, s);
++  }
++
++  fclose (pgpout);
++  unlink (outfile);
++
++  if (s->displaying)
++  {
++    if (needpass)
++      state_puts ("[-- END PGP MESSAGE --]\n", s);
++    else
++      state_puts ("[-- END PGP SIGNED MESSAGE --]\n", s);
++  }
++}
++
++int pgp_query (BODY *m)
++{
++  char *p;
++
++  /* Check for old-style APPLICATION/PGP messages */
++  if (m->type == TYPEAPPLICATION)
++  {
++    if (!strcasecmp (m->subtype, "pgp") || !strcasecmp (m->subtype, "x-pgp-message"))
++    {
++      if ((p = mutt_get_parameter ("x-action", m->parameter)))
++      {
++	if (!strcasecmp (p, "sign") || !strcasecmp (p, "signclear"))
++	  return PGPSIGN;
++      }
++
++      if ((p = mutt_get_parameter ("format", m->parameter)) && !strcasecmp (p, "keys-only"))
++	return PGPKEY;
++
++      return PGPENCRYPT;  /* not necessarily correct, but... */
++    }
++
++    if (!strcasecmp (m->subtype, "pgp-signed"))
++      return PGPSIGN;
++  }
++
++  /* Check for PGP/MIME messages. */
++  if (m->type == TYPEMULTIPART)
++  {
++    if (strcasecmp (m->subtype, "signed") == 0)
++    {
++      if ((p = mutt_get_parameter("protocol", m->parameter)) &&
++	  strcasecmp (p, "application/pgp-signature") == 0)
++	return PGPSIGN;
++    }
++    else if (strcasecmp (m->subtype, "encrypted") == 0)
++    {
++      if ((p = mutt_get_parameter ("protocol", m->parameter)) &&
++	  strcasecmp (p, "application/pgp-encrypted") == 0)
++	return PGPENCRYPT;
++    }
++  }
++
++  return 0;
++}
++
++/*
++ * This routine verfies a PGP/MIME signed body.
++ */
++void pgp_signed_handler (BODY *a, STATE *s)
++{
++  FILE *fp, *pgpout;
++  char tempfile[_POSIX_PATH_MAX], sigfile[STRING], buffer[LONG_STRING];
++  int bytes, len;
++
++  a = a->parts;
++
++  /* First do some error checking to make sure that this looks like a valid
++   * multipart/signed body.
++   */
++  if (a && a->next && a->next->type == TYPEAPPLICATION && a->next->subtype &&
++      strcasecmp (a->next->subtype, "pgp-signature") == 0)
++  {
++    if (s->displaying)
++    {
++      mutt_mktemp (tempfile);
++      fp = safe_fopen (tempfile, "w");
++
++      fseek (s->fpin, a->hdr_offset, 0);
++      bytes = a->length + a->offset - a->hdr_offset;
++      while (bytes > 0)
++      {
++	fgets (buffer, sizeof(buffer)-1, s->fpin);
++	len = strlen (buffer);
++	/* Convert LF=>CRLF when required (probably always) */
++	if (buffer[len-2] != '\r' && buffer[len-1] == '\n')
++	{
++	  buffer[len-1] = '\r';
++	  buffer[len] = '\n';
++	  buffer[len+1] = 0;
++	}
++	fputs (buffer, fp);
++	bytes -= len;
++      }
++      fclose (fp);
++
++      /* Now grab the signature.  Since signature data is required to be 7bit,
++       * we don't have to worry about doing CTE decoding...
++       */
++      snprintf (sigfile, sizeof (sigfile), "%s.asc", tempfile);
++      fp = safe_fopen (sigfile, "w");
++      fseek (s->fpin, a->next->offset, 0);
++      mutt_copy_bytes (s->fpin, fp, a->next->length);
++      fclose (fp);
++
++      snprintf (buffer, sizeof (buffer), "%sv --OutputInformationFD=1 +batchmode +verbose=0 %s %s", Pgp, sigfile, tempfile);
++
++      pgp_current_time (s);
++
++      mutt_create_filter (buffer, NULL, &pgpout, NULL);
++      while (fgets (buffer, sizeof (buffer) - 1, pgpout) != NULL)
++	state_puts (buffer, s);
++      fclose (pgpout);
++      wait (NULL);
++      state_puts ("[-- End of PGP output --]\n\n", s);
++
++      mutt_unlink (tempfile);
++      mutt_unlink (sigfile);
++
++      /* Now display the signed body */
++      state_puts ("[-- The following data is PGP/MIME signed --]\n\n", s);
++    }
++
++    mutt_body_handler (a, s);
++
++    if (s->displaying)
++      state_puts ("\n[-- End of PGP/MIME signed data --]\n", s);
++  }
++  else
++  {
++    dprint (1,(debugfile, "pgp_signed_handler: invalid format!\n"));
++    state_puts ("[-- Error!  This message does not comply with the PGP/MIME specification! --]\n\n", s);
++    mutt_decode_attachment (a, s); /* just treat the data as text/plain... */
++  }
++}
++
++BODY *pgp_decrypt_part (BODY *a, STATE *s, FILE *fpout)
++{
++  char buf[LONG_STRING];
++  FILE *pgpin, *pgpout, *pgperr;
++  struct stat info;
++  BODY *tattach;
++  int len;
++  char pgperrfile[_POSIX_PATH_MAX];
++
++  mutt_mktemp (pgperrfile);
++  if ((pgperr = safe_fopen (pgperrfile, "w+")) == NULL)
++  {
++    mutt_perror (pgperrfile);
++    return NULL;
++  }
++  unlink (pgperrfile);
++
++  snprintf (buf, sizeof (buf), "PGPPASSFD=0; export PGPPASSFD; %sv --OutputInformationFD=1 +verbose=0 +batchmode -f", Pgp);
++
++  if (mutt_create_filter_fd (buf, &pgpin, &pgpout, NULL, -1, -1, fileno (pgperr)) == -1)
++  {
++    fclose (pgperr);
++    if (s->displaying)
++      state_puts ("[-- Error: could not create a PGP subprocess! --]\n\n", s);
++    return (NULL);
++  }
++
++  /* send the PGP passphrase to the subprocess */
++  fputs (PgpPass, pgpin);
++  fputc ('\n', pgpin);
++
++  /* Position the stream at the beginning of the body, and send the data to
++   * the PGP subprocess.
++   */
++  fseek (s->fpin, a->offset, 0);
++  mutt_copy_bytes (s->fpin, pgpin, a->length);
++  fclose (pgpin);
++
++  /* Read the output from PGP, and make sure to change CRLF to LF, otherwise
++   * read_mime_header has a hard time parsing the message.
++   */
++  while (fgets (buf, sizeof (buf) - 1, pgpout) != NULL)
++  {
++    len = strlen (buf);
++    if (len > 1 && buf[len - 2] == '\r')
++      strcpy (buf + len - 2, "\n");
++    fputs (buf, fpout);
++  }
++
++  fclose (pgpout);
++  wait (NULL);
++  
++  if (s->displaying)
++  {
++    fflush (pgperr);
++    rewind (pgperr);
++    mutt_copy_stream (pgperr, s->fpout);
++    state_puts ("[-- End of PGP output --]\n\n", s);
++  }
++  fclose (pgperr);
++
++  fflush (fpout);
++  rewind (fpout);
++  if ((tattach = mutt_read_mime_header (fpout)) != NULL)
++  {
++    /*
++     * Need to set the length of this body part.
++     */
++    fstat (fileno (fpout), &info);
++    tattach->length = info.st_size - tattach->offset;
++
++    /* See if we need to recurse on this MIME part.  */
++
++    if (tattach->type == TYPEMULTIPART)
++    {
++      fseek (fpout, tattach->offset, 0);
++      tattach->parts = parse_multipart (fpout, mutt_get_parameter ("boundary", tattach->parameter), tattach->offset + tattach->length);
++    }
++    else if (tattach->type == TYPEMESSAGE)
++    {
++      fseek (fpout, tattach->offset, 0);
++      tattach->parts = parse_messageRFC822 (fpout, tattach);
++    }
++  }
++
++  return (tattach);
++}
++
++void pgp_encrypted_handler (BODY *a, STATE *s)
++{
++  char tempfile[_POSIX_PATH_MAX];
++  FILE *fpout, *fpin;
++  BODY *tattach;
++
++  a = a->parts;
++  if (!a || a->type != TYPEAPPLICATION || !a->subtype || 
++      strcasecmp ("pgp-encrypted", a->subtype) != 0 ||
++      !a->next || a->next->type != TYPEAPPLICATION || !a->next->subtype ||
++      strcasecmp ("octet-stream", a->next->subtype) != 0)
++  {
++    if (s->displaying)
++      state_puts ("[-- Error: malformed PGP/MIME message --]\n\n", s);
++    return;
++  }
++
++  /*
++   * Move forward to the application/pgp-encrypted body.
++   */
++  a = a->next;
++
++  mutt_mktemp (tempfile);
++  if ((fpout = safe_fopen (tempfile, "w+")) == NULL)
++  {
++    if (s->displaying)
++      state_puts ("[-- Error: could not create temporary file --]\n", s);
++    return;
++  }
++  unlink (tempfile);
++
++  if (s->displaying) pgp_current_time (s);
++
++  if ((tattach = pgp_decrypt_part (a, s, fpout)) != NULL)
++  {
++    if (s->displaying)
++      state_puts ("[-- The following data is PGP/MIME encrypted --]\n\n", s);
++
++    fpin = s->fpin;
++    s->fpin = fpout;
++    mutt_body_handler (tattach, s);
++    s->fpin = fpin;
++
++    if (s->displaying)
++      state_puts ("\n[-- End of PGP/MIME encrypted data --]\n", s);
++
++    mutt_free_body (&tattach);
++  }
++
++  fclose (fpout);
++}
++
++/* ----------------------------------------------------------------------------
++ * Routines for sending PGP/MIME messages.
++ */
++
++static void convert_to_7bit (BODY *a)
++{
++  while (a)
++  {
++    if (a->type == TYPEMULTIPART)
++    {
++      if (a->encoding != ENC7BIT)
++      {
++        a->encoding = ENC7BIT;
++        convert_to_7bit (a->parts);
++      }
++    }
++    else if (a->encoding == ENC8BIT)
++      a->encoding = ENCQUOTEDPRINTABLE;
++    else if (a->encoding == ENCBINARY)
++      a->encoding = ENCBASE64;
++    else if (a->content->from)
++      a->encoding = ENCQUOTEDPRINTABLE;
++    a = a->next;
++  }
++}
++
++BODY *pgp_sign_message (BODY *a)
++{
++  PARAMETER *p;
++  BODY *t;
++  char cmd[STRING], sigfile[_POSIX_PATH_MAX], buffer[LONG_STRING];
++  FILE *pgpin, *pgpout, *pgperr, *fp;
++  int err = 0;
++  int empty = 1;
++
++  convert_to_7bit (a); /* Signed data _must_ be in 7-bit format. */
++
++  mutt_mktemp (sigfile);
++  if ((fp = safe_fopen (sigfile, "w")) == NULL)
++  {
++    return (NULL);
++  }
++
++  snprintf (cmd, sizeof (cmd), "%s%ss +verbose=0 +batchmode -abft %s %s",
++	    PgpPass[0] ? "PGPPASSFD=0; export PGPPASSFD; " : "",
++	    Pgp, PgpSignAs[0] ? "-u" : "", PgpSignAs[0] ? PgpSignAs : "");
++
++  if (mutt_create_filter (cmd, &pgpin, &pgpout, &pgperr) == -1)
++  {
++    safe_free ((void **)&sigfile);
++    fclose (fp);
++    return (NULL);
++  }
++
++  fputs (PgpPass, pgpin);
++  fputc ('\n', pgpin);
++
++  mutt_write_mime_header (a, pgpin);
++  fputc ('\n', pgpin);
++  mutt_write_mime_body (a, pgpin);
++
++  if (fclose (pgpin) != 0)
++  {
++    dprint (1,(debugfile, "pgp_sign_message: fclose() returned -1; errno=%d.\n",
++	       errno));
++    fclose (pgpout);
++    fclose (pgperr);
++    fclose (fp);
++    unlink (sigfile);
++    wait (NULL);
++    return (NULL);
++  }
++
++  /*
++   * Read back the PGP signature.  Also, change MESSAGE=>SIGNATURE as
++   * recommended for future releases of PGP.
++   */
++  while (fgets (buffer, sizeof (buffer) - 1, pgpout) != NULL)
++  {
++    if (strcmp ("-----BEGIN PGP MESSAGE-----\n", buffer) == 0)
++      fputs ("-----BEGIN PGP SIGNATURE-----\n", fp);
++    else if (strcmp("-----END PGP MESSAGE-----\n", buffer) == 0)
++      fputs ("-----END PGP SIGNATURE-----\n", fp);
++    else
++      fputs (buffer, fp);
++    empty = 0; /* got some output, so we're ok */
++  }
++
++  /* check for errors from PGP */
++  err = 0;
++  while (fgets (buffer, sizeof (buffer) - 1, pgperr) != NULL)
++  {
++    err = 1;
++    fputs (buffer, stdout);
++  }
++
++  fclose (pgperr);
++  fclose (pgpout);
++  wait (NULL);
++
++  if (fclose (fp) != 0)
++  {
++    mutt_perror ("fclose");
++    unlink (sigfile);
++    return (NULL);
++  }
++
++  if (err) ci_any_key_to_continue (NULL);
++  if (empty)
++  {
++    unlink (sigfile);
++    return (NULL); /* fatal error while signing */
++  }
++
++  t = mutt_new_body ();
++  t->type = TYPEMULTIPART;
++  t->subtype = safe_strdup ("signed");
++  t->use_disp = 0;
++  t->encoding = ENC7BIT;
++
++  t->parameter = p = mutt_new_parameter ();
++  p->attribute = safe_strdup ("protocol");
++  p->value = safe_strdup ("application/pgp-signature");
++
++  p->next = mutt_new_parameter ();
++  p = p->next;
++  p->attribute = safe_strdup ("micalg");
++  p->value = safe_strdup ("pgp-md5");
++
++  p->next = mutt_new_parameter ();
++  p = p->next;
++  p->attribute = safe_strdup ("boundary");
++  p->value = mutt_generate_boundary ();
++
++  t->parts = a;
++  a = t;
++
++  t->parts->next = mutt_new_body ();
++  t = t->parts->next;
++  t->type = TYPEAPPLICATION;
++  t->subtype = safe_strdup ("pgp-signature");
++  t->filename = safe_strdup (sigfile);
++  t->use_disp = 0;
++  t->encoding = ENC7BIT;
++  t->unlink = 1; /* ok to remove this file after sending. */
++
++  return (a);
++}
++
++/* This routine attempts to find the keyids of the recipients of a message.
++ * It returns NULL if any of the keys can not be found.
++ */
++char *pgp_findKeys (ADDRESS *to, ADDRESS *cc, ADDRESS *bcc)
++{
++  KEYINFO *db = ki_getdb (0);
++  char *key, keylist[1024];
++  ADDRESS *p = to;
++  ADDRESS *tmp;
++  int count = 0;
++  char buf[LONG_STRING];
++
++  *keylist = 0;
++  for (count = 0; count < 3; count++)
++  {
++    switch (count)
++    {
++      case 0:
++	p = to;
++	break;
++
++      case 1:
++	p = cc;
++	break;
++
++      case 2:
++	p = bcc;
++	break;
++    }
++    while (p)
++    {
++      if ((key = ki_getkeybyaddr (p, db)) == NULL)
++      {
++	/*In an ideal universe, there should be some way to decide at
++	 *the last minute, "OH!  I want to get THIS guy's key..."
++	 *However, I'll let M.E. decide the best way to do that...
++	 *Also, the screen handling could probably be much better, but
++	 *I'll let someone else handle that, too.  :)
++	 *-BAT*/
++
++	if(option(OPTPGPGETKEYS))
++	{
++	  char mail_addr[LONG_STRING] = "\0";
++	  rfc822_address (mail_addr, sizeof (mail_addr), p);
++	  fputs("\n\n", stdout);
++	  snprintf(buf, sizeof(buf), "%sk -a %s +AutoServerFetch=1", 
++		   Pgp, mail_addr);
++	  if (mutt_create_filter (buf, NULL, NULL, NULL) != -1)
++	  {
++	    wait (NULL);
++	    ki_closedb (db);
++	    db = ki_getdb(0);
++	    key = ki_getkeybyaddr (p, db);
++	  }
++	}
++      }
++
++      if(!key)
++      {
++	strfcpy (buf, "Enter keyID for ", sizeof (buf));
++	tmp = p->next;
++	rfc822_address (buf + strlen (buf), sizeof (buf) - strlen (buf), p);
++	strcat (buf, ": ");
++	p->next = tmp;
++
++	if ((key = pgp_ask_for_key (0, db, buf)) == NULL)
++	{
++	  ki_closedb (db);
++	  return NULL;
++	}
++      }
++      sprintf (keylist + strlen (keylist), " %s", key);
++      p = p->next;
++    }
++  }
++  ki_closedb (db);
++  return (safe_strdup (keylist));
++}
++
++BODY *pgp_encrypt_message (BODY *a, char *keylist, int sign)
++{
++  char buf[LONG_STRING], tempfile[_POSIX_PATH_MAX];
++  char pgperrfile[_POSIX_PATH_MAX];
++  char signopts[SHORT_STRING];
++  FILE *pgpin, *pgperr, *fpout;
++  BODY *t;
++  PARAMETER *p;
++  int err = 0;
++  int empty;
++
++  mutt_mktemp (tempfile);
++  if ((fpout = safe_fopen (tempfile, "w+")) == NULL)
++  {
++    mutt_perror (tempfile);
++    return (NULL);
++  }
++
++  mutt_mktemp (pgperrfile);
++  if ((pgperr = safe_fopen (pgperrfile, "w+")) == NULL)
++  {
++    mutt_perror (pgperrfile);
++    return NULL;
++  }
++  unlink (pgperrfile);
++
++  if (sign)
++  {
++    convert_to_7bit (a);
++
++    if (PgpSignAs[0])
++      snprintf (signopts, sizeof (signopts), "s -u \"%s\"", PgpSignAs);
++    else
++      strfcpy (signopts, "s", sizeof (signopts));
++  }
++
++  snprintf (buf, sizeof (buf),
++	    "%s%se +verbose=0 +batchmode %s -aft%s -r %s",
++	    sign ? "PGPPASSFD=0; export PGPPASSFD; " : "",
++	    Pgp,
++	    option (OPTPGPENCRYPTSELF) ? "+encrypttoself" : "",
++	    sign ? signopts : "",
++	    keylist);
++
++  if (mutt_create_filter_fd (buf, &pgpin, NULL, NULL, -1, fileno (fpout), fileno (pgperr)) == -1)
++  {
++    fclose (pgperr);
++    return (NULL);
++  }
++
++  if (sign)
++  {
++    fputs (PgpPass, pgpin);
++    fputc ('\n', pgpin);
++  }
++
++  mutt_write_mime_header (a, pgpin);
++  fputc ('\n', pgpin);
++  mutt_write_mime_body (a, pgpin);
++
++  if (fclose (pgpin) != 0)
++  {
++    fclose (fpout);
++    fclose (pgperr);
++    unlink (tempfile);
++    wait (NULL);
++    return (NULL);
++  }
++
++  wait (NULL);
++
++  fflush (fpout);
++  rewind (fpout);
++  empty = (fgetc (fpout) == EOF);
++  fclose (fpout);
++
++  fflush (pgperr);
++  rewind (pgperr);
++  while (fgets (buf, sizeof (buf) - 1, pgperr) != NULL)
++  {
++    err = 1;
++    fputs (buf, stdout);
++  }
++  fclose (pgperr);
++
++  /* pause if there is any error output from PGP */
++  if (err)
++    ci_any_key_to_continue (NULL);
++
++  if (empty)
++  {
++    /* fatal error while trying to encrypt message */
++    unlink (tempfile);
++    return (NULL);
++  }
++
++  t = mutt_new_body ();
++  t->type = TYPEMULTIPART;
++  t->subtype = safe_strdup ("encrypted");
++  t->encoding = ENC7BIT;
++  t->use_disp = 0;
++
++  t->parameter = p = mutt_new_parameter ();
++  p->attribute = safe_strdup ("protocol");
++  p->value = safe_strdup ("application/pgp-encrypted");
++
++  p->next = mutt_new_parameter ();
++  p = p->next;
++  p->attribute = safe_strdup ("boundary");
++  p->value = mutt_generate_boundary ();
++
++  t->parts = mutt_new_body ();
++  t->parts->type = TYPEAPPLICATION;
++  t->parts->subtype = safe_strdup ("pgp-encrypted");
++  t->parts->encoding = ENC7BIT;
++  t->parts->use_disp = 0;
++
++  t->parts->next = mutt_new_body ();
++  t->parts->next->type = TYPEAPPLICATION;
++  t->parts->next->subtype = safe_strdup ("octet-stream");
++  t->parts->next->encoding = ENC7BIT;
++  t->parts->next->filename = safe_strdup (tempfile);
++  t->parts->next->use_disp = 0;
++  t->parts->next->unlink = 1; /* delete after sending the message */
++
++  mutt_free_body (&a); /* no longer needed! */
++
++  return (t);
++}
++
++int pgp_protect (HEADER *msg)
++{
++  char *pgpkeylist = NULL;
++  BODY *pbody = NULL;
++
++  /* Do a quick check to make sure that we can find all of the encryption
++   * keys if the user has requested this service.
++   */
++  if (msg->pgp & PGPENCRYPT)
++  {
++    if ((pgpkeylist = pgp_findKeys (msg->env->to, msg->env->cc, msg->env->bcc)) == NULL)
++      return (-1);
++  }
++
++  if ((msg->pgp & PGPSIGN) && !pgp_valid_passphrase ())
++    return (-1);
++
++  endwin ();
++  if (msg->pgp & PGPENCRYPT)
++  {
++    pbody = pgp_encrypt_message (msg->content, pgpkeylist, msg->pgp & PGPSIGN);
++    safe_free ((void **) &pgpkeylist);
++    if (!pbody)
++      return (-1);
++  }
++  else if (msg->pgp == PGPSIGN)
++  {
++    if ((pbody = pgp_sign_message (msg->content)) == NULL)
++      return (-1);
++  }
++  msg->content = pbody;
++  return 0;
++}
++
++#endif /* _PGPPATH */
+diff -u mutt-0.81/pgp.h mutt-0.81+pgp50/pgp.h
+--- mutt-0.81/pgp.h	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/pgp.h	Wed Aug  6 18:15:46 1997
+@@ -16,3 +16,39 @@
+  *     Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+  */ 
+ 
++#ifdef _PGPPATH
++
++#define PGPENCRYPT 1
++#define PGPSIGN    2
++#define PGPKEY     3
++
++typedef struct keyinfo
++{
++  char *keyid;
++  ADDRESS *address;
++  struct keyinfo *next;
++  short revoked;
++  short keylen;
++  char *creation_date;
++  char *algorithm;
++} KEYINFO;
++
++BODY *pgp_decrypt_part (BODY *, STATE *, FILE *);
++
++int pgp_query (BODY *);
++int pgp_valid_passphrase (void);
++int pgp_protect (HEADER *);
++
++void application_pgp_handler (BODY *, STATE *);
++void pgp_signed_handler (BODY *, STATE *);
++void pgp_encrypted_handler (BODY *, STATE *);
++void pgp_void_passphrase (void);
++
++char *pgp_ask_for_key (int, KEYINFO *, char *);
++
++KEYINFO *ki_getdb (int);
++char *ki_getkeybyaddr (ADDRESS *, KEYINFO *);
++char *ki_getkeybystr (char *, KEYINFO *);
++void ki_closedb (KEYINFO *);
++
++#endif /* _PGPPATH */
+diff -u mutt-0.81/pgpkey.c mutt-0.81+pgp50/pgpkey.c
+--- mutt-0.81/pgpkey.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/pgpkey.c	Sun Aug 24 18:47:56 1997
+@@ -33,3 +33,407 @@
+ #include <unistd.h>
+ #include <sys/wait.h>
+ 
++#ifdef _PGPPATH
++
++/* ---------------------------------------------------------------------------
++ * Menu used to select a key when multiple keys match an address/name
++ */
++
++typedef struct
++{
++  KEYINFO *k;
++  char *a;
++} pgp_key_t;
++
++static pgp_key_t *KeyTable;
++
++static void pgp_entry (char *s, size_t l, MUTTMENU *menu, int num)
++{
++  snprintf (s, l, "%2d   %4d/%10s %6s (%s)   %s",
++	    num + 1, KeyTable[num].k->keylen, KeyTable[num].k->keyid,
++	    KeyTable[num].k->algorithm, KeyTable[num].k->creation_date,
++	    KeyTable[num].a);
++}
++
++static int pgp_search (regex_t *re, int n)
++{
++  char buf[LONG_STRING];
++  
++  pgp_entry (buf, sizeof (buf), NULL, n);
++  return (regexec (re, buf, 0, NULL, 0));
++}
++
++static int pgp_compare (const void *a, const void *b)
++{
++  pgp_key_t *s = (pgp_key_t *) a;
++  pgp_key_t *t = (pgp_key_t *) b;
++
++  return (strcasecmp (s->a, t->a));
++}
++
++static char *pgp_select_key (LIST *keys, 
++			     ADDRESS *p, 
++			     const char *s)
++{
++  int keymax;
++  MUTTMENU *menu;
++  ADDRESS *a;
++  int i;  
++  int done = 0;
++  LIST *l;
++  char *id = NULL, helpstr[SHORT_STRING], buf[LONG_STRING];
++
++  for (i = 0, l = keys; l; l = l->next)
++    for (a = ((KEYINFO *) l->data)->address; a; i++, a = a->next)
++      ;
++
++  if (i == 0) return NULL;
++
++  keymax = i;
++  KeyTable = safe_malloc (sizeof (pgp_key_t) * i);
++
++  for (i = 0, l = keys; l; l = l->next)
++    for (a = ((KEYINFO *) l->data)->address; a ; i++, a = a->next)
++    {
++      KeyTable[i].k = (KEYINFO *) l->data;
++      buf[0] = 0;
++      rfc822_address (buf, sizeof (buf), a);
++      if (a->personal)
++	sprintf (buf + strlen (buf), " (%s)", a->personal);
++      KeyTable[i].a = safe_strdup (buf);
++    }
++
++  qsort (KeyTable, i, sizeof (pgp_key_t), pgp_compare);
++
++  helpstr[0] = 0;
++  mutt_make_help (buf, sizeof (buf), ":Exit  ", MENU_PGP, OP_EXIT);
++  strcat (helpstr, buf);
++  mutt_make_help (buf, sizeof (buf), ":Select  ", MENU_PGP, 
++		  OP_GENERIC_SELECT_ENTRY);
++  strcat (helpstr, buf);
++  mutt_make_help (buf, sizeof (buf), ":Help", MENU_PGP, OP_HELP);
++  strcat (helpstr, buf);
++
++  menu = mutt_new_menu ();
++  menu->max = keymax;
++  menu->make_entry = pgp_entry;
++  menu->search = pgp_search;
++  menu->menu = MENU_PGP;
++  menu->help = helpstr;
++
++  strfcpy (buf, "PGP keys matching ", sizeof (buf));
++  if (p)
++    rfc822_address (buf, sizeof (buf) - strlen (buf), p);
++  else
++    strcat (buf, s);
++  menu->title = buf;
++
++  while (!done)
++  {
++    switch (mutt_menuLoop (menu))
++    {
++      case OP_GENERIC_SELECT_ENTRY:
++
++	id = KeyTable[menu->current].k->keyid;
++	done = 1;
++	break;
++
++      case OP_EXIT:
++
++	id = NULL;
++	done = 1;
++	break;
++    }
++  }
++
++  mutt_menuDestroy (&menu);
++  for (i = 0; i < keymax; i++) safe_free ((void **) &KeyTable[i].a);
++  safe_free ((void **) &KeyTable);
++
++  return (id);
++}
++
++char *pgp_ask_for_key (int secring, KEYINFO *udb, char *tag)
++{
++  KEYINFO *db;
++  char *key;
++  char resp[SHORT_STRING];
++
++  db = udb ? udb : ki_getdb (secring);
++
++  resp[0] = 0;
++
++  FOREVER
++  {
++    if (ci_get_field (tag, resp, sizeof (resp), 0) != 0)
++    {
++      if (!udb) ki_closedb (db);
++      return NULL;
++    }
++    if ((key = ki_getkeybystr (resp, db)))
++    {
++      key = safe_strdup (key);
++      if (!udb) ki_closedb (db);
++      return (key);
++    }
++    BEEP ();
++  }
++  /* not reached */
++}
++
++/* ----------------------------------------------------------------------------
++ *
++ * The following routines are used to parse the output of "pgp -kv" to build
++ * a list of the public keys in the user's database.
++ */
++static KEYINFO *ki_parse_line (char *s, int secring, int main_key_sec)
++{
++  char *keyid, *q, *creation_date, *algorithm;
++  KEYINFO *p;
++
++  if(secring && (strncmp(s, "pub", 3) == 0))
++    return 0;
++
++  if(secring && !main_key_sec)
++    return 0;
++
++  s += 3; /* skip the "pub" */
++  if(*s++ == '@') /*A disabled key*/
++    return(0);
++
++  SKIPWS (s);
++  if (!*s) return 0;
++
++  /* extract the key length */
++  q = s;
++  while (*s && *s != ' ') s++;
++  if (*s != ' ') return 0;
++  *s++ = 0;
++
++  keyid = s;
++  while (*s && !isspace (*s)) s++;
++  if (!*s) return 0;
++  *s++ = 0;
++
++  /*Next comes the creation date...*/
++  creation_date = s;
++  while (*s && !isspace (*s)) s++;
++  if (!*s) return 0;
++  *s++ = 0;
++
++  /*Next is the expiration date, which we don't bother with*/
++  while (*s && !isspace (*s)) s++;
++  if (!*s) return 0;
++  s++;
++
++  /*Next is the algorithm*/
++  algorithm = s;
++  while (*s && !isspace (*s)) s++;
++  if (!*s) return 0;
++  *s++ = 0;
++
++  /*Don't offer DSS as encryption keys...*/
++  if((strcmp(algorithm, "DSS") == 0) && !secring)
++    return 0;
++  else
++  {
++    if((strcmp(algorithm, "Diffie-Hellman") == 0) && secring)
++      return(0);
++
++    if((strcmp(algorithm, "Diffie-Hellman") == 0) ||
++       (strcmp(algorithm, "DSS") == 0))
++      algorithm = "DSS/DH";
++  }
++
++  while (*s && *s != '\n') s++;
++  *s = 0;
++
++  p = (KEYINFO *) malloc (sizeof (KEYINFO));
++  p->keyid = safe_strdup (keyid);
++  p->next = 0;
++  p->revoked = 0; /* FOO - need to look for the REVOKED keys */
++  p->keylen = atoi (q);
++  p->address = 0;
++  p->creation_date = safe_strdup(creation_date);
++  p->algorithm = safe_strdup(algorithm);
++
++  return (p);
++}
++
++KEYINFO *ki_getdb (int secring)
++{
++  FILE *in;
++  KEYINFO *db = NULL, *end = 0, *tmp = NULL;
++  char buf[LONG_STRING], *c;
++  int main_key_sec = 0;
++
++  snprintf (buf, sizeof (buf), "%sk +verbose=0 -l +language=en", Pgp);
++
++  if (mutt_create_filter (buf, NULL, &in, NULL) == -1) return NULL;
++
++  while (fgets (buf, STRING, in) != NULL)
++  {
++    if(strncmp (buf, "pub", 3) == 0 || 
++       strncmp (buf, "sec", 3) == 0 || strncmp (buf, "sub", 3) == 0)
++    {
++      if(*buf == 'p') /*Public Key*/
++	main_key_sec = 0;
++      else
++	if(*(buf + 1) == 'e') /*Secret key*/
++	  main_key_sec = 1;
++    
++      if(!secring || strncmp (buf, "sub", 3) != 0)
++      {
++	if((tmp = ki_parse_line (buf, secring, main_key_sec)))
++	{
++	  if(db)
++	  {
++	    end->next = tmp;
++	    end = end->next;
++	  }
++	  else
++	    db = end = tmp;
++	}
++      }
++    }
++    else if (tmp && strncmp(buf, "uid", 3) == 0)
++    {
++      c = buf;
++      while(c && *c && !isspace(*c)) ++c;
++      while(c && *c && isspace(*c)) ++c;
++      rfc822_parse_adrlist (&end->address, c, "@");
++    }
++  }
++  fclose (in);
++  wait (NULL);
++  return (db);
++}
++
++void ki_closedb (KEYINFO *k)
++{
++  KEYINFO *tmp;
++
++  while (k)
++  {
++    if (k->keyid) free (k->keyid);
++    mutt_free_address (&k->address);
++    tmp = k;
++    k = k->next;
++    free (tmp);
++  }
++}
++
++/* case insensitive strstr() */
++static char *mutt_stristr (char *haystack, char *needle)
++{
++  char *p, *q;
++
++  if (!haystack)
++    return NULL;
++  if (!needle)
++    return (haystack);
++
++  while (*(p = haystack))
++  {
++    for (q = needle ; *p && *q && tolower (*p) == tolower (*q) ; p++, q++)
++      ;
++    if (!*q)
++      return (haystack);
++    haystack++;
++  }
++  return NULL;
++}
++
++char *ki_getkeybyaddr (ADDRESS *a, KEYINFO *k)
++{
++  ADDRESS *p;
++  LIST *l = NULL, *t = NULL;
++  char *id = NULL;
++
++  for ( ; k ; k = k->next)
++  {
++    if (k->revoked)
++      continue;
++
++    for (p = k->address ; p ; p = p->next)
++    {
++      if ((p->mailbox && p->host && a->mailbox && a->host &&
++	   strcasecmp (p->mailbox, a->mailbox) == 0 && 
++	   strcasecmp (p->host, a->host) == 0) ||
++	  (a->personal && p->personal &&
++	   mutt_stristr (p->personal, a->personal) != NULL))
++      {
++	t = mutt_new_list ();
++	t->data = (void *) k;
++	t->next = l;
++	l = t;
++	break;
++      }
++    }
++  }
++
++  if (l)
++  {
++    if (l->next)
++    {
++      /* query for which key the user wants */
++      id = pgp_select_key (l, a, NULL);
++    }
++    else
++      id = ((KEYINFO *)l->data)->keyid;
++
++    /* mutt_free_list() frees the .data member, so clear the pointers */
++    t = l;
++    while (t)
++    {
++      t->data = NULL;
++      t = t->next;
++    }
++
++    mutt_free_list (&l);
++  }
++
++  return (id);
++}
++
++char *ki_getkeybystr (char *p, KEYINFO *k)
++{
++  LIST *t = NULL, *l = NULL;
++  char *id = NULL;
++
++  for ( ; k ; k = k->next)
++  {
++    if (k->revoked)
++      continue;
++
++    if (strcasecmp (p, k->keyid) == 0 ||
++	(k->address->personal && mutt_stristr (k->address->personal, p) != NULL) ||
++	mutt_stristr (k->address->mailbox, p) != NULL)
++    {
++      t = mutt_new_list ();
++      t->data = (void *) k;
++      t->next = l;
++      l = t;
++    }
++  }
++
++  if (l)
++  {
++    if (l->next)
++      id = pgp_select_key (l, NULL, p);
++    else
++      id = ((KEYINFO *) l->data)->keyid;
++
++    t = l;
++    while (t)
++    {
++      t->data = NULL;
++      t = t->next;
++    }
++    
++    mutt_free_list (&l);
++  }
++
++  return (id);
++}
++#endif /* _PGPPATH */
+diff -u mutt-0.81/print.c mutt-0.81+pgp50/print.c
+--- mutt-0.81/print.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/print.c	Tue Jun 17 14:46:31 1997
+@@ -20,6 +20,9 @@
+ #include "mutt.h"
+ #include "mutt_curses.h"
+ #include "rfc2047.h"
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif /* _PGPPATH */
+ 
+ #include <sys/wait.h>
+ #include <string.h>
+@@ -153,6 +156,15 @@
+ 
+   mutt_parse_mime_message (h);
+   
++#ifdef _PGPPATH
++  if (h->pgp & PGPENCRYPT)
++  {
++    if (!pgp_valid_passphrase ())
++      return;
++    endwin ();
++  }
++  unset_option (OPTVERIFYSIG); /* no need to verify at this time... */
++#endif
+ 
+   if ((msg = mx_open_message (Context, h->msgno)))
+   {
+diff -u mutt-0.81/recvattach.c mutt-0.81+pgp50/recvattach.c
+--- mutt-0.81/recvattach.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/recvattach.c	Thu Jul 31 17:14:31 1997
+@@ -21,6 +21,9 @@
+ #include "mutt_menu.h"
+ #include "rfc1524.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <ctype.h>
+ #include <stdlib.h>
+@@ -240,6 +243,10 @@
+   BODY *cur;
+   FILE *fp;
+   MESSAGE *msg;
++#ifdef _PGPPATH
++  char tempfile[_POSIX_PATH_MAX];
++  int pgp = 0;
++#endif
+   
+   /* make sure we have parsed this message */
+   mutt_parse_mime_message (hdr);
+@@ -247,6 +254,28 @@
+   if ((msg = mx_open_message (Context, hdr->msgno)) == NULL)
+     return;
+ 
++#ifdef _PGPPATH
++  if (hdr->pgp == PGPENCRYPT && hdr->content->type == TYPEMULTIPART)
++  {
++    STATE s;
++
++    pgp_valid_passphrase ();
++    memset (&s, 0, sizeof (s));
++    s.fpin = msg->fp;
++    mutt_mktemp (tempfile);
++    if ((fp = safe_fopen (tempfile, "w+")) == NULL)
++    {
++      mutt_perror (tempfile);
++      mx_close_message (&msg);
++      return;
++    }
++    cur = pgp_decrypt_part (hdr->content->parts->next, &s, fp);
++    rewind (fp);
++
++    pgp = 1;
++  }
++  else
++#endif /* _PGPPATH */
+   {
+     fp = msg->fp;
+     cur = hdr->content;
+@@ -398,6 +427,14 @@
+ 	}
+ 	safe_free ((void **) &idx);
+ 
++#ifdef _PGPPATH
++	if (pgp)
++	{
++	  fclose (fp);
++	  mutt_free_body (&cur);
++	  unlink (tempfile);
++	}
++#endif /* _PGPPATH */
+ 
+ 	mutt_menuDestroy  (&menu);
+ 	return;
+Common subdirectories: mutt-0.81/rx and mutt-0.81+pgp50/rx
+diff -u mutt-0.81/send.c mutt-0.81+pgp50/send.c
+--- mutt-0.81/send.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/send.c	Mon Aug  4 11:26:30 1997
+@@ -21,6 +21,9 @@
+ #include "keymap.h"
+ #include "send.h"
+ 
++#ifdef _PGPPATH
++#include "pgp.h"
++#endif
+ 
+ #include <ctype.h>
+ #include <stdlib.h>
+@@ -360,6 +363,18 @@
+     mutt_copy_header (s.fpin, cur, s.fpout, CH_DECODE | CH_PREFIX);
+   }
+ 
++#ifdef _PGPPATH
++  if (cur->pgp)
++  {
++    if (cur->pgp == PGPENCRYPT)
++    {
++      /* make sure we have the user's passphrase before proceeding... */
++      pgp_valid_passphrase ();
++    }
++
++    unset_option (OPTVERIFYSIG);
++  }
++#endif /* _PGPPATH */
+ 
+   mutt_body_handler (cur->content, &s);
+   
+@@ -984,6 +999,15 @@
+     if (!option (OPTNOHDRS))
+       process_user_header (msg->env);
+ 
++#ifdef _PGPPATH
++    if (! (flags & SENDMAILX))
++    {
++      if (option (OPTPGPAUTOSIGN))
++	msg->pgp |= PGPSIGN;
++      if (option (OPTPGPREPLYPGP) && cur && cur->pgp == PGPENCRYPT)
++	msg->pgp |= PGPENCRYPT;
++    }
++#endif /* _PGPPATH */
+ 
+     /* included replies/forwarded messages */
+     if (generate_body (flags, msg, cur, tempfp) == -1)
+@@ -1093,6 +1117,23 @@
+   if (msg->content->next)
+     msg->content = mutt_make_multipart (msg->content);
+ 
++#ifdef _PGPPATH
++  if (msg->pgp)
++  {
++    if (pgp_protect (msg) != 0)
++    {
++      if (msg->content->parts)
++      {
++	/* remove the toplevel multipart structure */
++	pbody = msg->content;
++	msg->content = msg->content->parts;
++	pbody->parts = NULL;
++	mutt_free_body (&pbody);
++      }
++      goto main_loop;
++    }
++  }
++#endif /* _PGPPATH */
+ 
+   mutt_expand_path (fcc, sizeof (fcc));
+ 
+diff -u mutt-0.81/send.h mutt-0.81+pgp50/send.h
+--- mutt-0.81/send.h	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/send.h	Wed Jun  4 16:44:44 1997
+@@ -41,3 +41,8 @@
+ int mutt_write_mime_header (BODY *, FILE *);
+ int mutt_write_rfc822_header (FILE *, ENVELOPE *, BODY *, int);
+ 
++#ifdef _PGPPATH
++BODY *pgp_sign_message (BODY *);
++BODY *pgp_encrypt_message (BODY *, char *, int);
++char *pgp_findKeys (ADDRESS *, ADDRESS *, ADDRESS *);
++#endif
+diff -u mutt-0.81/sendlib.c mutt-0.81+pgp50/sendlib.c
+--- mutt-0.81/sendlib.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/sendlib.c	Fri Jul 18 19:23:06 1997
+@@ -381,6 +381,14 @@
+     return 0;
+   }
+ 
++#ifdef _PGPPATH
++  /* This is pretty gross, but it's the best solution for now... */
++  if (a->type == TYPEAPPLICATION && strcmp (a->subtype, "pgp-encrypted") == 0)
++  {
++    fputs ("Version: 1\n", f);
++    return 0;
++  }
++#endif /* _PGPPATH */
+ 
+   if ((fpin = fopen (a->filename, "r")) == NULL)
+   {
+@@ -659,6 +667,15 @@
+     a->parameter->value = safe_strdup (set_text_charset (info));
+   }
+ 
++#ifdef _PGPPATH
++  /* save the info in case this message is signed.  we will want to do Q-P
++   * encoding if any lines begin with "From " so the signature won't be munged,
++   * for example.
++   */ 
++  safe_free ((void **) &a->content);
++  a->content = info;
++  info = NULL;
++#endif
+ 
+   safe_free ((void **) &info);
+ }
+@@ -708,6 +725,15 @@
+ 
+   mutt_set_encoding (att, info);
+ 
++#ifdef _PGPPATH
++  /*
++   * save the info in case this message is signed.  we will want to do Q-P
++   * encoding if any lines begin with "From " so the signature won't be munged,
++   * for example.
++   */
++  att->content = info;
++  info = NULL;
++#endif
+   safe_free ((void **) &info);
+ 
+   return (att);
+diff -u mutt-0.81/url.c mutt-0.81+pgp50/url.c
+--- mutt-0.81/url.c	Mon Aug  4 13:53:31 1997
++++ mutt-0.81+pgp50/url.c	Thu Jul 31 17:14:31 1997
+@@ -57,6 +57,9 @@
+     return (-1);
+   }
+ 
++#ifdef _PGPPATH
++  unset_option (OPTVERIFYSIG);
++#endif
+ 
+   s.fpin = msg->fp;
+   mutt_copy_header (msg->fp, hdr, s.fpout,
+diff -u mutt-0.81/version.h mutt-0.81+pgp50/version.h
+--- mutt-0.81/version.h	Mon Aug  4 13:53:27 1997
++++ mutt-0.81+pgp50/version.h	Mon Aug  4 11:58:07 1997
+@@ -1 +1 @@
+-const char MuttVersion[] = "Mutt 0.81e";
++const char MuttVersion[] = "Mutt 0.81";

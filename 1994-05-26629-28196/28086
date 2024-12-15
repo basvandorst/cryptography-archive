@@ -1,0 +1,89 @@
+Path: msuinfo!agate!library.ucla.edu!europa.eng.gtefsd.com!gatech!swrinde!cs.utexas.edu!not-for-mail
+From: 74512.261@CompuServe.COM (Bob Jenkins)
+Newsgroups: sci.crypt
+Subject: statistically good rng
+Date: 27 May 1994 01:03:07 -0500
+Organization: UTexas Mail-to-News Gateway
+Lines: 78
+Sender: nobody@cs.utexas.edu
+Message-ID: <940527055945_74512.261_EHH50-1@CompuServe.COM>
+NNTP-Posting-Host: news.cs.utexas.edu
+
+/*
+------------------------------------------------------------------------
+Bob Jenkins, May 10 1994
+
+Here's my latest random number generator (rng).  It's 9x faster than 
+LCG.  It's not two-phase because rr is fed back into mm.  If anyone
+can prove it is or is not secure, that would be Very Useful.
+
+But the neat thing about this rng is how well it does in statistical 
+tests, even when tests run for the entire length of the longest cycle.
+I only tested versions of the rng with 32 bits of internal state or 
+less because cycles longer than 2^32 cause my counters to overflow.
+
+Scaled-down versions of rng() were run for the whole longest cycle:
+  njk  is the uni test, but on the low-order bit of several values
+  uni  tests if all values occur equally often
+  njg  is the gap test, but on the low-order bit of several values
+  gap  checks the gaps between occurances of individual values
+  run  checks the lengths of strictly decreasing sequences
+  cycle is how many calls to rng were in the cycle being tested
+a is logarray, w is word, s is shift, format is   results (expected)
+
+        njk        uni        njg        gap         run     cycle
+a1w2s1: 0.7  (3)   0.3  (3)   18.0 (15)  15.0 (15)   4.1 (3) 71
+a1w3s2: 0.1  (3)   1.5  (7)   16.0 (15)  35.7 (31)   4.2 (7) 2771
+a1w4s2: 0.0  (3)   6.6  (15)  15.8 (15)  50.5 (63)   3.7 (7) 32607
+a1w5s2: 0.1  (3)   9.4  (31)  8.67 (15)  126  (127)  10  (7) 661469
+a1w6s4: 0.8  (3)   29.3 (63)  9.2  (15)  259  (255)  10  (7) 7720554
+a1w7s4: 0.5  (3)   120  (127) 12.0 (15)  512  (511)  10  (7) 239600196
+a1w8s5: 0.2  (3)   125  (255) 7.2  (15)  1041 (1023) 2.2 (7) 2127420178
+
+a2w2s1: 0.5  (3)   0.3  (3)   16.5 (15)  20.8 (15)   2.0 (3) 2165
+a2w3s2: 102  (7)   3.5  (7)   49.8 (31)  44.8 (31)   1.6 (7) 133341
+a2w4s2: 7.3  (15)  5.8  (15)  55.7 (63)  63.3 (63)   4.6 (7) 9393470
+a2w5w2: 3.9  (15)  4.5  (15)  68.9 (63)  99.0 (63)   18  (7) 840783196
+
+a3w3s2: 150  (7)   9.8  (7)   21.2 (31)  107  (31)   133 (7) 530975535
+------------------------------------------------------------------------
+*/
+
+typedef  unsigned int  u4;            /* unsigned four bytes, 32 bits */
+typedef  unsigned char u1;            /* unsigned one byte, 8 bits    */
+#define LOGARRAY   8
+#define WORD       32
+#define SHIFT      20 
+#define SIZE       (1<<LOGARRAY)
+#define f(mm,x)    (*(u4 *)(((u1 *)(mm))+((x)&(4*SIZE-4))))
+#define rotate(a)  (((a)<<SHIFT)^((a)>>(WORD-SHIFT)))
+
+static void rng(mm,rr,aa,bb)
+u4 *mm;  /* secret memory    */
+u4 *rr;  /* results given to the user */
+u4 *aa;  /* accumulator      */
+u4 *bb;  /* the previous result */
+{
+  register u4 a,b,x,y,i;
+
+  a = *aa; b = *bb;
+  for (i=0; i<SIZE; ++i)
+  {
+    x = mm[i];  
+    a = rotate(a) + mm[(i+SIZE/2)&(SIZE-1)];
+    mm[i] = y = f(mm,x) + a + b;
+    rr[i] = b = f(mm,y) + x;
+  }
+  *bb = b; *aa = a;
+}
+ 
+int main()                           /* produce a billion random bits */
+{
+  u4 i, a, b, mm[SIZE], rr[SIZE];
+  a=0; b=1;       for (i=0; i<SIZE; ++i) mm[i]=0;             /* seed */
+  for (i=0; i<(1000000000/(32*SIZE)); ++i) rng(mm,rr,&a,&b);
+  printf("\n%8lx %8lx %8lx %8lx\n",rr[0],rr[1],rr[2],rr[3]);
+                               /* b997e8b4 e5f968b2 ec720a80 b5d7c4ea */
+}
+
+

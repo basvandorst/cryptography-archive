@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# encryptmail <plain-email >encrypted-email        (c) Wolfgang Schreiner, 1994
+# encrypt an email using pgp                    <schreiner@risc.uni-linz.ac.at>
+#
+trap "" 0 1 2 3
+if [ -z "$PGPPATH" ] ; then
+  exec tee
+fi
+file0=$$.mail0
+file1=$$.mail1
+file2=$file1.asc
+tee $file0 >/dev/null
+# search for Enc: field
+key=`awk '/^[Ee][Nn][Cc]:/ { print $2 } /^[^:]*$/ { exit }' FS=":" $file0`
+# key=`expr "$key" : '[ \t]*\([^ \t]*\)[ \t]*'`
+# print header
+awk '/:/ { print } /^[^:]*$/ { print; exit }' $file0
+# get message without header
+awk '/^[^:]*$/ { g = f; f = 1; if (g==0) next} { if (f) print }' $file0 >$file1
+# do not apply pgp to empty file
+echo "              " >> $file1
+# signature and possibly encription
+if [ -n "$DISPLAY" ] ; then
+  if [ -n "$key" ] ; then
+    xterm -title pgp -geometry 80x9 -e pgp -esta +armorlines=0 \
+    +verbose=0 +clearsig=on $file1 $key
+  else
+    xterm -title pgp -geometry 80x9 -e pgp -sta +armorlines=0 \
+    +verbose=0 +clearsig=on $file1
+  fi
+else
+  if [ -n "$key" ] ; then
+    pgp -esta +clearsig=on +armorlines=0 $file1 $key >/dev/tty
+  else
+    pgp -sta +clearsig=on +armorlines=0 $file1 >/dev/tty
+  fi
+fi
+if [ -f $file2 ] ; then
+  cat $file2
+  rm -f $file0 $file1 $file2
+  exit 0
+else
+  awk '/:/ { print ">", $0 } /^[^:]*$/ { exit }' $file0 > $file2
+  cat $file1 >>$file2
+  mailx -s "PGP Error: Mail not sent" "$LOGNAME" < $file2
+  rm -f $file0 $file1 $file2
+  exit 1
+fi

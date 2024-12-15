@@ -1,0 +1,806 @@
+Interfacing with mountsfs
+-------------------------
+
+In order to facilitate the use of SFS with other software such as graphical
+front-ends, mountsfs has the ability to be run in batch mode in which it will
+accept abbreviated forms of the usual commands and output more complex results
+to data files instead of to the screen.  External software can then parse the
+mountsfs output and report the results back to the user.  This is how WinSFS
+performs the task of scanning for SFS volumes, since using direct disk access
+to do this under Windows is virtually impossible.
+
+
+Controlling mountsfs in Batch Mode
+
+You can enable the use of batch mode by giving mountsfs the keyword
+`batch=<filename>' as the first command option.  This tells mountsfs to output
+its results to the file specified in the command instead of to the screen.  In
+batch mode, mountsfs will recognise the additional command `password=' to allow
+you to specify the password needed to access a volume.  For ease of use, you
+may want to take advantage of the partial-commandname-matching capability of
+the SFS software to shorten the batch-mode command, so that for example to
+mount the volume "Test" with a quick-unmount hotkey of Ctrl-Alt-Z, an
+auto-unmount timeout of 10 minutes, and a password of "secret data" the command
+would be:
+
+    mountsfs b=result.dat v=Test h=Ctrl-Alt-Z t=10 "p=secret data"
+
+which is equivalent to the usual
+
+    mountsfs volume=test hotkey=ctrl-Alt-Z timeout=10
+
+and will result in mountsfs writing the output status of the mount to the file
+RESULT.DAT.
+
+
+mountsfs Output in Batch Mode
+
+During normal operation mountsfs may print several lines of information to the
+screen giving details on the status of the operation being performed and
+details on currently mounted and unmounted SFS volumes.  When you run mountsfs
+in batch mode, this information is written to a data file with the name and
+location you have specified using the `batch=' option.  For example if you have
+used:
+
+    mountsfs batch=c:\tmp\result.dat
+
+then the output will be writting to the file RESULT.DAT in the TMP directory of
+the C: drive.
+
+The mountsfs output is written to the file as a series of data packets with the
+same general layout as the ones given in the section "SFS Disk Volume Layout"
+above.  Each packet consists of a packet type identifier followed by the length
+of the data in the packet, and then by the packet data itself.
+
+The data file is laid out as follows:
+
+    Offset  Size    Type        Description
+
+       0      4     BYTE[ 4 ]   'SFS1' application identification string
+       4      4     BYTE[ 4 ]   'INFO' file type identification string
+       8      2     WORD        Information packet 1 ID
+      10      2     WORD        Information packet 1 data length
+      12     ??     ????        Information packet 1 data
+       n      2     WORD        Information packet 2 ID
+     n+2      2     WORD        Information packet 2 data length
+     n+4     ??     ????        Information packet 2 data
+                      ..........
+       m      2     WORD        Information packet n ID
+     m+2      2     WORD        Information packet n data length
+     m+4     ??     ????        Information packet n data
+
+The result records have data packet types with values starting at 1000 to
+distinguish them from disk volume packets contained within them.  These records
+are for internal use by mountsfs and mountsfs-related programs only and will
+never be found as part of any other SFS information such as an SFS volume
+header:
+
+    Name                    Value       Information type
+
+    SFS_PACKET_INT_RESULT   1000        Result of mountsfs command
+    SFS_PACKET_INT_INFO     1001        Disk volume information
+
+If the mountsfs command does not produce information on an encrypted volume,
+the outupt will consist of a single SFS_PACKET_INT_RESULT result packet.  If
+the command does produce information on an encrypted volume or volumes, the
+output will consist of one or more SFS_PACKET_INT_INFO information packets
+followed by a single SFS_PACKET_INT_RESULT result packet.  The result packet
+will always be the last packet in the file.
+
+
+Packet 1000 - Result of mountsfs Command Packet
+
+The result of mountsfs command packet contains the completion status of the
+command which has just been executed.  The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Command result packet ID = 1000
+       2      2     WORD        Command result packet data length
+       4      2     WORD        Command result status (see below)
+       6      2     WORD        Command result message character set
+       8      2     WORD        Command result message length
+      10     ??     BYTE[]      Command result message
+
+If the command result status is 0 indicating no error occurred, the command
+result message will have a length of 0 bytes.  If the command result status is
+nonzero indicating that an error occurred, more details on the error will be
+given in the result message, with the result status being an error code for the
+type of error which was encountered, or -1 for a nonspecific error type.  The
+use of error codes allows the calling program to define its own error messages
+rather than using the ones returned by mountsfs.  Currently no error codes are
+defined.
+
+The command result character set is as specified in the section "SFS Disk
+Volume Layout" above.
+
+The result message is stored as an octet string immediately following the
+character set and length values.  This string should in general not exceed 256
+octets.
+
+
+Packet 1001 - Disk Volume Information Packet
+
+This packet type contains a superset of the disk volume information packets
+given in the section "SFS Disk Volume Layout" above and provides extra
+information on the disk layout which is needed to access and mount the volume.
+The packet layout is as follows:
+
+    Offset  Size    Type        Description
+
+       0      2     WORD        Disk volume information packet ID = 1001
+       2      2     WORD        Disk volume information packet data length
+       4      2     WORD        Physical drive the SFS volume is stored on
+       6      4     LONG        Sector or disk block offset of logical volume
+                                from start of physical volume, or 0 if logical
+                                volume corresponds to physical volume
+      10      4     LONG        Size of the volume in kilobytes
+      12      2     WORD        Removable-media flag (0 = fixed, 1 = removable)
+      14     ??     BYTE[]      SFS volume header record
+
+The encoding of the physical drive value is as specified in the section
+"Interfacing with SFS" above.
+
+The SFS volume header record is as specified in the section "SFS Disk Volume
+Layout" above.  The volume header record is encapsulated by the disk volume
+information packet.
+
+
+Sample Output File
+
+When used to obtain information on one or more SFS disk volumes, mountsfs will
+output a series of disk volume header records encapsulated within a disk volume
+information packet as explained above, and terminate the file with a command
+result packet.  A sample output file produced from a scan of two volumes might
+be as follows:
+
+    'SFS1' application identification string
+    'INFO' file type identification string
+
+    SFS_PACKET_INT_INFO disk volume information packet
+        Disk volume information
+        SFS_PACKET_VOLUMEINFO volume information packet
+            Volume information
+        SFS_PACKET_ENCRINFO encryption information packet
+            Encryption information
+        SFS_PACKET_DISK_BPB filesystem information packet
+            Filesystem information
+
+    SFS_PACKET_INT_INFO disk volume information  packet
+        Disk volume information
+        SFS_PACKET_VOLUMEINFO volume information packet
+            Volume information
+        SFS_PACKET_ENCRINFO encryption information packet
+            Encryption information
+        SFS_PACKET_DISK_BPB filesystem information packet
+            Filesystem information
+        SFS_PACKET_FASTACCESS direct disk access information packet
+            Direct disk access
+        SFS_PACKET_UNMOUNT volume unmount information packet
+            Volume unmount information
+
+    SFS_PACKET_INT_RESULT mountsfs command result packet
+        Command result information
+
+In order to use this facility, a controlling program should invoke mountsfs in
+batch mode with the `i' information command.  mountsfs will run and write its
+output to the output file.  The controlling program can then read the data from
+the file, delete the file, and handle the information as appropriate.
+
+
+Selected Source Code
+--------------------
+
+This section contains a walkthrough of selected portions of the source code
+(mainly the encryption-related parts) to allow the verification of its
+correctness and to help people wishing to write SFS-compatible software.
+
+[!!!! Not in this release to save space and because I haven't had time to add
+      it yet, should be in a later version !!!!]
+
+
+Future Work
+-----------
+
+The following ideas may be incorporated into future versions of SFS if
+requested by users.  In addition reasonable requests for other improvements may
+also find their way into SFS.
+
+ - Improve error recovery for the encryption process.  This is somewhat
+   difficult, and will probably involve keeping a copy of status information
+   and the track currently being encrypted on a local volume to allow a restart
+   in the case of a power failure.  There are problems inherent in this as it
+   involves storing sensitive data in a disk file, and will slow down the
+   processing considerably due to the need to write each track to two
+   physically separate disk volumes instead of one continuous one.  A partial
+   solution is to keep the status information (simply an index of the disk
+   section currently being encrypted) in the volume header while mksfs is
+   running and provide some sort of restart option if power is lost, although
+   what happens if power dies halfway through writing a track is uncertain.
+
+ - A plug-in card which contains a BIOS extension which hooks int 13h and
+   encrypts and entire physical disk (not just one disk volume), from the
+   master boot record at the start to the very last sector at the end.  This
+   means all disk I/O must be done via int 13h and won't work on all systems.
+   Cost for the card is estimated to be about $80-$100 for the basic version an
+   up to $200 for the full hardware version whose throughput it significantly
+   higher than the basic version.
+
+
+Recommended Reading
+-------------------
+
+In recent years a large number of books and articles on crytography have
+appeared.  Many of these are beyond the level of anyone with a casual interest
+in the subject, but a good overview is given by Dorothy Dennings (now somewhat
+dated) "Cryptography and Data Security", published by Addison-Wesley in 1982
+(ISBN 0-201-10150-5).  Bruce Schneier's much more recent "Applied
+Cryptography", published by John Wiley and Sons in 1993 (ISBN 0-471-59756-2),
+is probably the best single text on cryptography currently available, and is
+recommended reading for anyone wanting more information on the principles
+behind SFS.  This book also contains a large list of references to more
+information on all manner of encryption algorithms, protocols, and technology.
+Voydock and Kent's tutorial "Security Mechanisms in High-Level Network
+Procotols", published in the ACM Computing Surveys Vol.15, No.2 (June 1983)
+provides a good overview of design considerations for encryption systems.
+
+The algorithms and techniques used in SFS are laid down in the following
+national and international standards:
+
+  ANSI X3.106, "American National Standard for Information Systems - Data
+    Encryption Algorithm - Modes of Operation"
+
+  ANSI X9.30 Part 2, "The Secure Hash Algorithm (SHA)"
+
+  Australian Standard AS 2805.5.2, "Electronic Funds Transfer - Requirements
+    for Interface", Part 5.2, "Ciphers - Modes of operation for an n-bit block
+    cipher algorithm"
+
+  ISO 10116:1991, "Information technology - Modes of operation for an n-bit
+    block cipher algorithm"[1]
+
+  ISO 10126-2:1991, "Banking - Procedures for message encipherment (wholesale)
+    - DEA Algorithm"[1]
+
+  NBS FIPS pub. 81, "DES Modes of Operation", 1980[2]
+
+  NIST FIPS pub. 180, "Secure Hash Standard", 1993[2]
+
+Information on the weaknesses of some cryptosystems are published in a variety
+of places.  The largest publicly available sources of information are the
+cryptography conference proceedings which are part of the Springer-Verlag
+"Lecture Notes in Computer Science" series.  Eli Biham and Adi Shamir's
+"Differential Cryptanalysis of the Data Encryption Standard", also published by
+Springer-Verlag (ISBN 0-387-97930-1), gives information on the resistance to
+attack of a number of block ciphers.
+
+Charles Pfleegers book "Security in Computing", published by Prentice Hall in
+1989 (ISBN 0-137-98943-1) provides a thorough overview of computer security
+techniques, including coverage of more obscure areas such as ethical issues.
+
+Three online references which contain links to a large number of other URL's
+containing computer security and cryptography related information are:
+
+  http://retriever.cs.umbc.edu/~mohan/Work/crypt.html
+
+  http://www.tansu.com.au/Info/security.html, and
+
+  http://www.tezcat.com/web/security/security_top_level.html
+
+These references include links to security and cryptography-related web and
+gopher servers, FTP sites, newsgroups, mailing lists, bulleting boards,
+frequently-asked question (FAQ) lists and incident bulletins, conferences,
+seminars, workshops, and miscellaneous other sources.  Another interesting
+online reference, but with less security-related information than the previous
+three, is:
+
+  http://www.misty.com/laughweb/lweb.html
+
+Information on upcoming meetings and conferences on cryptography and computer
+security can be found at:
+
+  http://www.itd.nrl.navy.mil:80/ITD/5540/ieee/cipher/
+
+A good technical coverage of smart cards can be found in "Smart Card 2000: The
+Future of IC Cards", published by North-Holland in 1988 (ISBN 0-444-70545-7).
+The physical and interface characteristics of smart cards are covered in the
+following international standard:
+
+  ISO 7816:1991, "Identification cards - Integrated circuit card with
+    contacts"[1]
+
+Threshold schemes, being a practical application of mathematical theory, are
+therefore mostly ignored by maths texts.  Rudolf Lidl and Harald Niederreiter's
+"Introduction to Finite Fields and their Applications", published by Cambridge
+University Press in 1986 (ISBN 0-521-30706-6) provides a good overview of the
+issues involved with the threshold scheme used by SFS, including a mention of
+the application of finite fields to cryptography.
+
+Finally, James Bamford's "The Puzzle Palace", published by Houghton-Mifflin in
+1982, is a good source of information on the operation of the NSA, albeit
+slightly dated (it predates the widespread availability of encryption for
+personal computers, for example).
+
+This list only scratches the surface of the full range of cryptographic and
+security literature available - a very detailed bibliography can be found in
+the "Applied Cryptography" book.
+
+Footnote [1]: These publications are available for a horribly high price from
+              ISO-affiliated national standards bodies in most countries.  A
+              catalogue of all ISO standards (including draft standards) along
+              with ordering information, can be found at:
+
+                http://www.iso.ch/welcome.html
+
+Footnote [2]: These publications are available from the National Technical
+              Information Service, Springfield, Virginia 22161.  NTIS will take
+              telephone orders on +1 (703) 487-4650 (8:30 AM to 5:30 PM Eastern
+              Time), fax +1 (703) 321-8547.  For assistance, call +1 (703)
+              487-4679.
+
+
+Staying Current with SFS Developments
+-------------------------------------
+
+As SFS is a continully evolving product, you can use the SFS Web page or
+mailing list and to stay up to date on the latest SFS developments.  The
+preferred method of obtaining updates on the current status of SFS is through
+the Web page, which is available as:
+
+  http://www.cs.auckland.ac.nz/~pgut01/sfs.html
+
+Alternatively, you can join the SFS mailing list, which has a very low volume
+and is used mainly to discuss of SFS issues and development work.  The list is
+administered through the mail address `majordomo@mbsks.franken.de'.  To join
+the list, send mail to this address with any subject line and the message body
+`subscribe sfs-crypt'.  You should receive a reply:
+
+    You have been added to the SFS mailing list.  To submit something to
+    the list, send it to sfs-crypt@mbsks.franken.de.  To unsubscribe from
+    the list, send a message with the message body "unsubscribe sfs-crypt"
+    to majordomo@mbsks.franken.de.
+
+To leave the mailing list, send mail to the list administration address with
+any subject line and the message body `unsubscribe sfs-crypt'.  You should
+receive a reply:
+
+    You have been removed from the SFS mailing list.  To resubscribe to
+    the list, send a message with the message body "subscribe sfs-crypt"
+    to majordomo@mbsks.franken.de.
+
+For information on the list, send mail to the list administration address with
+any subject line and the message body `info sfs-crypt'.  You should receive a
+reply containing information on the mailing list and how to use it.
+
+
+Using SFS
+---------
+
+In general SFS is free for personal (private) use.  However if you find SFS of
+use then in order to allow continued development of and enhancements to SFS, in
+particular the creation of more user-friendly versions of mksfs and mountsfs,
+of versions for other systems, of a low-cost plug-in card containing whole-disk
+encryption firmware, and the replacement of the drive I fried testing SFS, a
+donation of $25 would be appreciated.  Alternatively, the donation can be used
+to cover the legal costs of those people involved in the current US government
+investigation of the PGP encryption program.
+
+Use of SFS in a commercial, government, or institutional environment or for
+business purposes is allowed for free for 30 days to allow it to be evaluated.
+After this period it should be registered for further use.  The registration
+fee covers use of SFS on any one machine at any one time (so you could, for
+example, use SFS on a machine at work and keep a copy on your notebook PC for
+use while travelling).
+
+If you decide to send a donation or registration, please specify whether you'd
+like it to be used for further SFS development work or if it is to go into the
+PGP legal fund.  Cheques or money orders can be sent to:
+
+        Peter Gutmann
+        24 Durness Pl.
+        Orewa
+        Auckland
+        New Zealand
+
+New Zealand banks are very flexible with cheques so sending a personal cheque
+in your local currency is fine, there's no need to bother with complex currency
+conversions or bank cheques.
+
+I can also be contacted through email at (among others) the following
+addresses:
+
+        pgut01@cs.auckland.ac.nz
+        p.gutmann@cs.auckland.ac.nz
+        peterg@kcbbs.gen.nz
+
+with the first address being the preferred one.  Finally, the fastest way to
+contact me is by phone on +64 9 426-5097 between about 11am and 1am except
+Mondays and Fridays (remembering that NZ local time is GMT+13, so we're usually
+about 18-20 hours ahead of the US and about 12 hours ahead of Europe).  
+
+Testimony from one of our satisfied customers:
+
+ "I hear this crash and I find a rock, wrapped in paper, next to my living room
+  window.  I open up the note and it says `You want it in writing? You got it.
+  Next time, use a *real* encryption program.  SFS.  We know where you live'".
+
+  So why aren't *you* using SFS?
+
+Here's what reviewers have been saying about SFS:
+
+ "Version 1.2 has several of the advanced features recommended in version 1.1,
+  but not all of the ones I'd like to see in version 1.3.  So, it's pretty good
+  except when it's not.  Three stars.
+
+  You probably won't use half the features anyway.  I'm a little ticked off
+  that it clashes with my most exotic memory-resident programs, but otherwise
+  the software runs just fine on my Turbo Rambuster 586.  It will probably run
+  like molasses on your 386SX.
+
+  It's great value at $25, and I recommend you register it, although that's
+  easy for me to say because reviewers get freebies".
+
+
+Availability
+------------
+
+The latest shareware version of SFS should always be available from the
+following locations:
+
+FTP sites:
+
+  Finland:        garbo.uwasa.fi (193.166.120.5)
+                  /pc/crypt
+
+  Australia:      archie.au (139.130.4.6)
+                  /micros/pc/garbo/pc/crypt
+
+  Germany:        ftp.germany.eu.net (192.76.144.75)
+                  /pub/comp/msdos/mirror.garbo/pc/crypt
+
+  Italy:          cnuce_arch.cnr.it (131.114.1.10)
+                  /pub/msdos/garbo.uwasa.fi/pc/crypt
+
+  South Africa (Johannesburg):
+                  ftp.mpd.co.za (196.4.76.53)
+                  /pub/garbo/pc/crypt
+
+  South Africa (Natal):
+                  owl.und.ac.za (146.230.128.40)
+                  /mirrors/garbo/pc/crypt
+
+  Taiwan:         nctuccca.edu.tw (140.111.1.10)
+                  /PC/garbo/pc/crypt
+
+  USA (St. Louis, MO):
+                  wuarchive.wustl.edu (128.252.135.4)
+                  /systems/msdos/garbo.uwasa.fi/pc/crypt
+
+  USA (Walnut Creek, CA):
+                  ftp.cdrom.com (192.153.46.2)
+                  /pub/garbo/pc/crypt
+
+  A site which makes SFS available only to US users is:
+
+    csn.org
+    /mpj/I_will_not_export/crypto_???????/secdrv
+
+  where the exact value of ??????? is given in /mpj/README.MPJ.  This means of
+  access is used to comply with US export restrictions.  Please don't use this
+  site unless you're in the US.
+
+BBS's:
+
+  The Ferret Bulletin Board System, Arkansas +1 (501) 791-0124
+    (Log on as "PGP USER" with "PGP" as the password).
+
+  The Colorado Catacombs BBS, Colorado +1 (303) 938-9654.
+
+Beta releases of the next version of SFS are available from
+ftp://ftp.informatik.uni-hamburg.de/pub/virus/crypt/disk/.  Beta versions will
+be indicated by incrementing the least significant digit of the version number
+from zero, so that if the last release was 1.20 then later betas will be 1.21,
+1.22, and so on.  Betas of the next version generally don't appear until at
+least a month or two after the release of the current version.  Details on the
+availability of the latest SFS beta can be found on the SFS Web page as
+described in the section "Staying Current with SFS Developments" above.
+
+
+Revision levels
+---------------
+
+This section details the various improvements and changes made to each new
+version of SFS, beginning with the first public beta release.
+
+0.90 First public beta
+
+0.97 Second public beta
+
+     Added explict support for DRDOS large partitions (which differ from MSDOS
+     large partitions).
+
+     Added more internal consistency checks in mksfs, mountsfs, chsfs.
+
+     Performed a major rewrite of SFS library internals to improve usability.
+
+     Used XMS buffering or a more conservative write strategy to fix occasional
+     copy-on-write buffering problem in newer versions of DOS.
+
+     Added support for multiple mounted SFS volumes.
+
+     Added WinSFS 0.8, a prototype Windows front-end for SFS.
+
+     Added batch mode operation to mountsfs for WinSFS support.
+
+     Fixed a problem with a race condition when a hotkey or timed unmount
+     occurs during disk access to an encrypted volume.
+
+     Improved the overwriting of the SFS driver data on unmount.
+
+     Added better self-checking in the SFS driver during operation.
+
+1.00 General public release
+
+     Fixed some problems in the technical section of the docs.
+
+     Added the Quick-start section to the docs.
+
+     Precomputed the encryption key in SFS.SYS and made assorted other small
+     changes.  This makes the driver run approximately 1.7 times faster, and
+     gives a decrease of about 1K in the overall memory usage.
+
+     Added even better data overwriting based on an analysis of disk data
+     encoding schemes.
+
+     Added a quick introduction to encryption issues section to the docs.
+
+     mksfs now asks for a new disk when encrypting floppies, like the DOS
+     format program.
+
+1.10 Maintenance release
+
+     Added faster direct disk access for IDE drives.
+
+     Fixed an incompatibility with the DOS 6 scandisk.
+
+     Added a timeout to the automount password entry routine to allow booting
+     of unattended machines without them waiting forever for a password to be
+     entered.
+
+     Changed the error handling code in the driver to still load it if an error
+     occurs during a volume mount, instead of exiting back to DOS.
+
+     Added a disk read test when volumes are mounted as an extra check.
+
+     Fixed a bug in mountsfs where it wouldn't mount or get info on an SFS
+     volume created on a partition which was not the first partition on the
+     second physical hard disk in the system.
+
+     Fixed a problem with /PROMPT strings containing spaces.
+
+     Changed the way the drives are scanned in order to speed mountsfs disk
+     mounts.
+
+     Added the `hotkey=none' option to disable hotkey unmounts.
+
+     Added the option to transparently wipe the original unencrypted data from
+     the disk during the mksfs encryption process.
+
+     Added independant unmount timers for each volume instead of using one
+     global timer for all volumes.
+
+     chsfs now wipes the original volume header when the `newpass' command is
+     used.
+
+     Added the ability to specify default timeout values for each volume.
+
+     Added the handling of more escape codes and case conversion for /PROMPT
+     strings.
+
+     Added stealth features to the password-handling code to bypass trojan
+     horses.
+
+     Fixed a problem with the bizarre reverse-logic check used by the
+     DoubleDisk driver (it indirectly affects SFS).
+
+     Fixed several incompatibility problems with DRDOS.
+
+     Fixed a problem where a volume decrypted with chsfs and re-encrypted with
+     mksfs couldn't be accessed any more.
+
+     Added the ability to access SCSI devices controlled through ASPI and CAM
+     drivers.
+
+     Added the ability to mount volumes as fixed, non-removable volumes.
+
+     Changed all `automount' references in the documentation to simply `mount'.
+
+     Changed the driver to make the use of `/' optional.
+
+     Added the ability to detect if it has already been loaded to SFS driver.
+
+1.20 Key Escrow/Smart Card/WinSFS release
+
+     Changed the order of disk scanning even further to make mounting floppies
+     slightly faster.
+
+     Fixed a bug in chsfs which gave a divide error when changing the password
+     on a volume in a floppy drive.
+
+     Changed the disk scanning code again to skip network drives for faster
+     scanning.
+
+     Fixed a bug in the SFS driver write-protect error handler for floppies.
+
+     Updated the disk overwriting code based on new information obtained from
+     drive manufacturers.
+
+     Added the ability to handle timed and hotkey unmounts under Windows to the
+     SFS driver.
+
+     Fixed a problem when encrypting some drives over 2GB with unusual drive
+     characteristic remapping.
+
+     Fixed a problem with handling of some i18n-ized volume names.
+
+     Finally found out how to force DOS to recognize a floppy disk change for
+     mksfs, the occasional int 25h problems reported by mksfs when the `-c'
+     option is used are now fixed.
+
+     Added a threshold-scheme-based key escrow system for key safeguarding
+     purposes.
+
+     Fixed a problem where SFS's internal cacheing wouldn't be activated if no
+     SFS volumes were present, speeding up the mksfs initial disk scan in this
+     case.
+
+     Fixed the problem where a drive acessible via the BIOS and a SCSI driver
+     would be displayed twice, once for BIOS access, once for SCSI access.
+
+     Broke the documentation files up into smaller sections to make them more
+     manageable.
+
+     Added a pager to the program help screens.
+
+     Extended the help screens to provide more information.
+
+     Fixed a misfeature in which performing an unmount of the last mounted
+     volume would disable the KEYB.COM keyboard driver.
+
+     Added smart card support to allow volumes to be mounted and controlled via
+     smart cards.
+
+     Added proper internationalization of volume name character sets.
+
+     Rewrote the documentation to use the second person active voice instead of
+     the third person passive voice, and made miscellaneous changes and
+     improvements throughout.
+
+     Eliminted the unnecessary mksfs `-o' option.
+
+     Changed the `mksfs -c' code to perform more rigorous tests for SCSI and
+     EIDE drives.
+
+     Added the ability to specify the drive letter a volume is to be mounted as
+     to mountsfs.
+
+     Fixed a problem where chsfs wouldn't ask for a confirmation of the new
+     password when performing a `newpass' command.
+
+     Changed the access mode settings to use more intuitive names instead of
+     numeric values.
+
+     Changed the command-parsing to accept substrings of commands as well as
+     the full command names.
+
+     Fixed a bug which would cause DRDOS to give divide errors if it tried to
+     acess a newly-unmounted volume.
+
+     Added a few new features to the anti-keyboard-sniffer code.
+
+     Fixed an incompatibility with NCache.
+
+     Fixed a race condition in the hotkey unmount handler which occasionally
+     messed up the status of the shift keys.
+
+
+Credits
+-------
+
+Thanks to the readers of comp.os.msdos.programmer and comp.os.linux.development
+and in particular Jouni Kosonen, for their valuable advice with low-level DOS
+disk handling and organization, and the users of the Enigma BBS, in particular
+Arne Rohde, for helping test-run several early versions of the low-level disk
+handling code on various drive configurations and for providing useful advice
+on the vagaries of the PC's disk handling.   Thanks also to Steven Altchuler
+for performing all sorts of dangerous tests on SFS volumes and for his heroic
+efforts in finding the obscure mountsfs bug, and to Vadim Vlasov for help with
+various thorny problems with low-level disk and device driver programming.
+
+Matthias Bruestle (the greatest chemist of all time and space) provided
+valuable feedback on assorted problems in mksfs and mountsfs, and risked his
+disk drives testing the SFS driver and other SFS software.  At the behest of
+the author he also risked imprisonment for Datenvergewaltigung by letting mksfs
+near his Linux partition.
+
+Colin Plumb made noises about various problems with CFB-mode encryption,
+corrected me when I tried to explain the need for encrypted IV's in email at
+3am, and provided much useful feedback on SFS's operation in general, including
+the very elegant solution to the CFB-mode encryption problem and help with the
+disk overwriting method.
+
+Vesselin Bontchev sent in long lists of suggested improvements to SFS, and
+provided an ongoing commentary on features and ideas for the software (it seems
+half the functionality provided by SFS is due to his suggestions).  Ralf
+Brown's interrupt list provided help with the haze of obscure interrupts used
+by mksfs in its quest for random information.
+
+Thanks to John Huttley for the loan of a SCSI controller, Peter Shields for the
+loan of a SCSI cable, Stuart Woolford for the loan of a SCSI drive which didn't
+work, and John Huttley for the loan of a SCSI drive which did, in order to get
+the SCSI interface code for SFS going.
+
+Peter Conrad typset the entire set of SFS docs into LaTeX format.  Lynn
+Prentice helped answer all sorts of annoying questions about Windoze
+programming for WinSFS.  Matthias Bruestle (that chap again) did the German
+translation and Edoardo Comar did the Italian translation of the WinSFS text
+strings.
+
+The Beerdigungsinstitut Utzmann (erstes Erlanger Beerdigungsunternehmen) helped
+clean up the casualties from the SFS beta-testing.  Finally, Tony, Geezer,
+Bill, Ozzy, Ron, and Grandos helped me stay awake during many long nights of
+debugging low-level disk access code and encryption routines.
+
+Various other people have at various times offered help and suggestions on
+getting SFS going.  My thanks go to them also.
+
+
+Warranty
+--------
+
+1. Customer Obligations
+
+1.1. Customer assumes full responsibility that this program meets the
+     specifications, capacity, capabilities, and other requirements of said
+     customer, and agrees not to bother the author if the program does not
+     perform as expected, or performs other than expected, or does not perform
+     at all.
+
+1.2. Customer assumes full responsibility for any deaths or injuries that may
+     result from the normal or abnormal operation of this program.  In the
+     event of casualties exceeding 1000 persons or property damage in excess of
+     $10 million, customer agrees that he or she has stolen the program and we
+     didn't even know he or she had it.
+
+1.3. Customer agrees not to say bad things about the program or the author to
+     anyone claiming to be from "60 Minutes".
+
+
+2. Very Limited Warranty and Conditions of Sale
+
+2.1. For a period of 90 minutes, commencing from the time you first thought
+     about getting this program, we warrant that this program may or may not be
+     free of any manufacturing defects.  It will be replaced during the
+     warranty period upon payment of an amount equal to the original purchase
+     price plus $10.00 for handling.  This warranty is void if the program has
+     been examined or run by the user, or if the manual has been read.
+
+2.2. This program is sold on an AS WAS basis.  The author makes no warranty
+     that it is, in fact, what we say it is in our propaganda, or that it will
+     perform any useful function.  We have no obligation whatsoever other than
+     to provide you with this fine disclaimer.
+
+2.3. Some countries do not allow limitations as to how long an implied warranty
+     lasts, so we refuse to imply anything.
+
+2.4. There is an extremely small but nonzero chance that, through a process
+     known as "tunnelling", this program may spontaneously disappear from its
+     present location and reappear at any random place in the universe,
+     including your neighbours computer system.  The author will not be
+     responsible for any damages or inconvenience that may result.
+
+
+3. Limitation of Liability
+
+3.1. We have no liability or responsibility to the customer, the customers
+     agents, our creditors, your creditors, or anyone else.

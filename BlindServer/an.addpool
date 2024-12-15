@@ -1,0 +1,37 @@
+#!/bin/sh
+if [ ! "$1" ]
+then
+  echo "You must specify a directory where your ID is stored"
+  exit 1
+fi
+
+if [ ! -f $HOME/.blind/$1/name ]
+then
+  echo "You need to first create an identity"
+  echo "Run an.createid"
+  exit
+fi
+
+PGPPATH=$HOME/.blind/$1
+export PGPPATH
+
+echo -n "Enter the name of the newsgroup to use as a pool: "
+read NEWSGROUP
+
+pgp -saf <<EOF > /tmp/signed.$$
+::addpath remailer@soda.berkeley.edu
+::
+Anon-Post-To: $NEWSGROUP
+--END OF PATH--
+::encrypt
+EOF
+
+if [ -f $HOME/.blind/$1/serverpath ]
+then
+  cat $HOME/.blind/$1/serverpath /tmp/signed.$$ | /usr/lib/sendmail -t
+else
+  cat /tmp/signed.$$ | /usr/lib/sendmail `cat $HOME/.blind/$1/servername`
+fi
+rm /tmp/signed.$$
+
+

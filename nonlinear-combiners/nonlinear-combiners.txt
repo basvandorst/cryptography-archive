@@ -1,0 +1,91 @@
+From: cme@ellisun.sw.stratus.com (Carl Ellison)
+Message-Id: <9304211751.AA19986@ellisun.sw.stratus.com>
+To: bz848@cleveland.freenet.edu
+Subject: Re:  Non-linear combiners for streams of data
+Cc: crypt-comments@math.ncsu.edu, schneier@chinet.chi.il.us
+
+This could be a FAQ...
+
+>You mentioned in your message that if I didn't need to get the streams
+>back that there were some fairly simple methods for combining them.  Could
+>you give me any pointers?  Thanks again for your help!
+
+Sure --
+
+1.      For PRNG on a limited power machine (eg., Z80), I would use chain
+        addition:
+
+                j = (i + 1) % arr_lth ;
+                x[j] = (x[j] + x[i]) % radix ;
+                i = j ;
+
+        Since each x[j] is < radix, the % can be done more easily with
+        testing the result to see if it's >= radix and, if so, subtracting
+        radix once...ditto with i.
+
+        A variant, if you have a stream of entropy input you don't care to
+        recover:
+
+                j = (i + 1) % arr_lth ;
+                x[j] = (x[j] + stream() + x[i]) % radix ;
+                i = j ;
+
+        In this case, you might have to subtract radix twice (if stream()
+        is < radix) or do a real MOD if stream() isn't that constrained.
+
+2.      If you have two PRNGs you want to combine, use Knuth's Algorithm M
+        (from vol 2):
+
+                i = ranno1() % arr_lth ;
+                result = x[i] ;
+                x[i] = ranno2() % radix ;
+
+        This definition is recursive.  The result can be used as either
+        ranno1() or ranno2() for that recursion.  (The arrays are
+        different, of course.)  Each ranno() could also be a stream user
+        from #1 (or #3).
+
+3.      Meanwhile, there are functions which are not strictly invertible.
+        For example,
+
+                x = (x**n) % radix ;
+
+        There should be n values which would give the same x -- the n
+        roots of x, so this function has n possible inverses.  Of
+        course, to use this as a PRNG, you would need a very big radix
+        (hundreds of digits).
+
+                x = ((x+stream())**n) % radix ;
+
+        on the other hand, would not repeat as long as stream() doesn't and
+        would hide considerable information about the stream().  The larger
+        the value of n, the more previous paths for anyone trying to work
+        backwards.  It's possible to invert the function but the number of
+        possible inverses grows exponentially with the distance back you need
+        to work [before you get confirmation that you're on the right track].
+
+I'm sure there are other functions which are hard to invert.  MD5 is one,
+but that may be overkill for your application.
+
+Enjoy,
+
+        Carl
+
+P.S.  One of my favorite methods of getting stream() [of entropy] is on
+my Sparcstation 1 (with no audio source plugged in):
+
+        cat /dev/audio | compress - >entropy-file
+
+run for a while -- throw out the first few KB -- and use the rest.
+Someone posted this a while back on sci.crypt.
+
+There's a similar, new suggestion, spying on Ethernet traffic -- but
+an opponent might have access to the same Ethernet.
+
+ - cme
+
+ - <<Disclaimer: All opinions expressed are my own, of course.>>
+ - Carl Ellison                                        cme@sw.stratus.com
+ - Stratus Computer Inc.       M3-2-BKW                TEL: (508)460-2783
+ - 55 Fairbanks Boulevard ; Marlborough MA 01752-1298  FAX: (508)624-7488
+.
